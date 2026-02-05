@@ -1,0 +1,586 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../core/providers/checkout_provider.dart';
+import '../../../core/providers/cart_provider.dart';
+import '../../../core/providers/auth_provider.dart';
+import '../../../core/services/functions_service.dart';
+import '../../../core/models/address.dart';
+import '../../../screens/addresses_screen.dart';
+import '../../home/main_wrapper_screen.dart';
+import 'booking_status_screen.dart';
+import '../../payment/presentation/payment_screen.dart';
+
+class CheckoutScreen extends StatefulWidget {
+  const CheckoutScreen({super.key});
+
+  @override
+  State<CheckoutScreen> createState() => _CheckoutScreenState();
+}
+
+class _CheckoutScreenState extends State<CheckoutScreen> {
+  int _currentStep = 0;
+  bool _isProcessing = false;
+
+  final List<String> _steps = ['Address', 'Schedule', 'Summary'];
+
+  void _nextStep() {
+    if (_currentStep < _steps.length - 1) {
+      setState(() => _currentStep++);
+    } else {
+      _finishBooking();
+    }
+  }
+
+  void _prevStep() {
+    if (_currentStep > 0) {
+      setState(() => _currentStep--);
+    } else {
+      Navigator.pop(context);
+    }
+  }
+
+  Future<void> _finishBooking() async {
+    final checkout = Provider.of<CheckoutProvider>(context, listen: false);
+    if (checkout.selectedAddress == null || checkout.selectedDate == null || checkout.selectedTimeSlot == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please complete all selection steps')),
+      );
+      return;
+    }
+
+    setState(() => _isProcessing = true);
+    try {
+      final functions = Provider.of<FunctionsService>(context, listen: false);
+
+      final bookingData = {
+        'services': checkout.items.map((item) => {
+          'id': item.serviceId,
+          'name': item.serviceName,
+          'price': item.price,
+          'quantity': item.quantity,
+          'image': item.serviceImage,
+        }).toList(),
+        'address': checkout.selectedAddress!.toMap(),
+        'scheduledDate': checkout.selectedDate!.toIso8601String(),
+        'scheduledTime': checkout.selectedTimeSlot,
+        'totalAmount': checkout.grandTotal,
+        'status': 'confirmed',
+      };
+
+      final result = await functions.createBooking(bookingData);
+
+      if (result['bookingId'] != null) {
+        // Clear Cart
+        await Provider.of<CartProvider>(context, listen: false).clearCart();
+        
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PaymentScreen(
+                bookingId: result['bookingId'],
+                amount: checkout.grandTotal,
+              ),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Booking failed: $e'), backgroundColor: AppTheme.errorColor),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  void _showSuccessSheet(String bookingId) {
+    showModalBottomSheet(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
+      builder: (context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(color: AppTheme.successColor.withOpacity(0.1), shape: BoxShape.circle),
+              child: const Icon(Icons.check_circle_rounded, color: AppTheme.successColor, size: 64),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Booking Confirmed!',
+              style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.textColor),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Your professional is being assigned. You can track everything in your bookings.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.outfit(color: AppTheme.subtitleColor, fontSize: 15),
+            ),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (context) => BookingStatusScreen(bookingId: bookingId)),
+                    (route) => false,
+                  );
+                },
+                child: const Text('Track Booking'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FE),
+      appBar: AppBar(
+        title: Text('Checkout', style: GoogleFonts.outfit(fontWeight: FontWeight.w800)),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        foregroundColor: AppTheme.textColor,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+          onPressed: _prevStep,
+        ),
+      ),
+      body: Column(
+        children: [
+          _buildStepperHeader(),
+          Expanded(
+            child: _buildStepContent(),
+          ),
+        ],
+      ),
+      bottomNavigationBar: _buildBottomBar(),
+    );
+  }
+
+  Widget _buildStepperHeader() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: List.generate(_steps.length, (index) {
+          final isCompleted = index < _currentStep;
+          final isActive = index == _currentStep;
+          
+          return Row(
+            children: [
+              Column(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: isActive || isCompleted ? AppTheme.primaryColor : Colors.grey.shade200,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: isCompleted 
+                        ? const Icon(Icons.check, color: Colors.white, size: 16)
+                        : Text(
+                            '${index + 1}',
+                            style: GoogleFonts.outfit(
+                              color: isActive ? Colors.white : Colors.grey,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _steps[index],
+                    style: GoogleFonts.outfit(
+                      fontSize: 10,
+                      fontWeight: isActive ? FontWeight.w800 : FontWeight.w500,
+                      color: isActive ? AppTheme.primaryColor : Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+              if (index < _steps.length - 1)
+                Container(
+                  width: 40,
+                  height: 2,
+                  margin: const EdgeInsets.only(left: 8, right: 8, bottom: 14),
+                  color: isCompleted ? AppTheme.primaryColor : Colors.grey.shade200,
+                ),
+            ],
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildStepContent() {
+    switch (_currentStep) {
+      case 0:
+        return _buildAddressStep();
+      case 1:
+        return _buildScheduleStep();
+      case 2:
+        return _buildSummaryStep();
+      default:
+        return const SizedBox();
+    }
+  }
+
+  Widget _buildAddressStep() {
+    final checkout = Provider.of<CheckoutProvider>(context);
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Select Booking Address',
+            style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.textColor),
+          ),
+          const SizedBox(height: 16),
+          if (checkout.selectedAddress != null)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppTheme.primaryColor.withOpacity(0.5)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.location_on, color: AppTheme.primaryColor),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(checkout.selectedAddress!.label, style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+                        Text(checkout.selectedAddress!.fullAddress, style: GoogleFonts.outfit(color: Colors.grey, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _pickAddress,
+                    child: const Text('Change'),
+                  ),
+                ],
+              ),
+            )
+          else
+            InkWell(
+              onTap: _pickAddress,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 40),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.grey.shade300, style: BorderStyle.none),
+                ),
+                child: Center(
+                  child: Column(
+                    children: [
+                      Icon(Icons.add_location_alt_outlined, size: 48, color: Colors.grey.shade400),
+                      const SizedBox(height: 12),
+                      Text('Add or Select Address', style: GoogleFonts.outfit(color: Colors.grey, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickAddress() async {
+    final address = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const AddressesScreen(isSelectionMode: true)),
+    );
+    if (address != null && mounted) {
+      Provider.of<CheckoutProvider>(context, listen: false).setAddress(address as Address);
+    }
+  }
+
+  Widget _buildScheduleStep() {
+    final checkout = Provider.of<CheckoutProvider>(context);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'When should we arrive?',
+            style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.textColor),
+          ),
+          const SizedBox(height: 16),
+          _buildDateSelector(),
+          const SizedBox(height: 32),
+          Text(
+            'Select Time Slot',
+            style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.textColor),
+          ),
+          const SizedBox(height: 16),
+          _buildSlotGrid(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDateSelector() {
+    final checkout = Provider.of<CheckoutProvider>(context);
+    final selectedDate = checkout.selectedDate ?? DateTime.now();
+
+    return SizedBox(
+      height: 90,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: 14,
+        itemBuilder: (context, index) {
+          final date = DateTime.now().add(Duration(days: index));
+          final isSelected = DateFormat('yyyy-MM-dd').format(date) == 
+                             DateFormat('yyyy-MM-dd').format(selectedDate);
+          
+          return GestureDetector(
+            onTap: () {
+              Provider.of<CheckoutProvider>(context, listen: false)
+                  .setDateTime(date, checkout.selectedTimeSlot ?? '09:00 AM');
+            },
+            child: Container(
+              width: 64,
+              margin: const EdgeInsets.only(right: 12),
+              decoration: BoxDecoration(
+                color: isSelected ? AppTheme.primaryColor : Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: isSelected ? AppTheme.primaryColor : Colors.grey.shade200),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    DateFormat('EEE').format(date).toUpperCase(),
+                    style: GoogleFonts.outfit(
+                      fontSize: 10,
+                      color: isSelected ? Colors.white70 : Colors.grey,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    date.day.toString(),
+                    style: GoogleFonts.outfit(
+                      fontSize: 18,
+                      color: isSelected ? Colors.white : AppTheme.textColor,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSlotGrid() {
+    final checkout = Provider.of<CheckoutProvider>(context);
+    final slots = ['09:00 AM', '11:00 AM', '01:00 PM', '03:00 PM', '05:00 PM', '07:00 PM'];
+    
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: slots.map((slot) {
+        final isSelected = checkout.selectedTimeSlot == slot;
+        return GestureDetector(
+          onTap: () {
+            Provider.of<CheckoutProvider>(context, listen: false)
+                .setDateTime(checkout.selectedDate ?? DateTime.now(), slot);
+          },
+          child: Container(
+            width: (MediaQuery.of(context).size.width - 64) / 3,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: isSelected ? AppTheme.primaryColor : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: isSelected ? AppTheme.primaryColor : Colors.grey.shade200),
+            ),
+            child: Center(
+              child: Text(
+                slot,
+                style: GoogleFonts.outfit(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: isSelected ? Colors.white : AppTheme.textColor,
+                ),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildSummaryStep() {
+    final checkout = Provider.of<CheckoutProvider>(context);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSummaryCard('Service Details', [
+            ...checkout.items.map((item) => Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(child: Text('${item.serviceName} x${item.quantity}', style: GoogleFonts.outfit())),
+                Text('₹${item.totalPrice.toStringAsFixed(0)}', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+              ],
+            )),
+          ]),
+          const SizedBox(height: 16),
+          _buildSummaryCard('Location', [
+            Row(
+              children: [
+                const Icon(Icons.location_on, size: 16, color: AppTheme.primaryColor),
+                const SizedBox(width: 8),
+                Expanded(child: Text(checkout.selectedAddress?.fullAddress ?? '', style: GoogleFonts.outfit(fontSize: 13))),
+              ],
+            ),
+          ]),
+          const SizedBox(height: 16),
+          _buildSummaryCard('Schedule', [
+            Row(
+              children: [
+                const Icon(Icons.access_time_filled, size: 16, color: AppTheme.primaryColor),
+                const SizedBox(width: 8),
+                Text(
+                  checkout.selectedDate != null 
+                    ? '${DateFormat('EEE, d MMM').format(checkout.selectedDate!)} at ${checkout.selectedTimeSlot}'
+                    : '',
+                  style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ]),
+          const SizedBox(height: 24),
+          _buildPriceBreakdown(checkout),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryCard(String title, List<Widget> children) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 14, color: Colors.grey)),
+          const SizedBox(height: 12),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPriceBreakdown(CheckoutProvider checkout) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          _priceRow('Subtotal', checkout.subtotal),
+          const SizedBox(height: 8),
+          _priceRow('Taxes & Fee (5%)', checkout.taxes),
+          const Divider(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Total Amount', style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 18)),
+              Text('₹${checkout.grandTotal.toStringAsFixed(0)}', style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 22, color: AppTheme.primaryColor)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _priceRow(String label, double val) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: GoogleFonts.outfit(color: Colors.grey)),
+        Text('₹${val.toStringAsFixed(2)}', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+      ],
+    );
+  }
+
+  Widget _buildBottomBar() {
+    final checkout = Provider.of<CheckoutProvider>(context);
+    bool canContinue = false;
+    if (_currentStep == 0) canContinue = checkout.selectedAddress != null;
+    if (_currentStep == 1) canContinue = checkout.selectedDate != null && checkout.selectedTimeSlot != null;
+    if (_currentStep == 2) canContinue = true;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -2))],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Step ${_currentStep + 1} of 3', style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey)),
+              Text(_steps[_currentStep], style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 18)),
+            ],
+          ),
+          SizedBox(
+            width: 160,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: canContinue && !_isProcessing ? _nextStep : null,
+              style: ElevatedButton.styleFrom(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              child: _isProcessing 
+                ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                : Text(_currentStep == 2 ? 'Place Booking' : 'Continue'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

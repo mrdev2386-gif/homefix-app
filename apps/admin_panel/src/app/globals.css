@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        --background: 222.2 47.4% 1.2%;
+        /* Almost charcoal black */
+        --foreground: 210 40% 98%;
+
+        --card: 222.2 47.4% 4.5%;
+        --card-foreground: 210 40% 98%;
+
+        --popover: 222.2 47.4% 4.5%;
+        --popover-foreground: 210 40% 98%;
+
+        --primary: 262.1 83.3% 57.8%;
+        /* Indigo-Violet remains */
+        --primary-foreground: 210 40% 98%;
+
+        --secondary: 217.2 32.6% 17.5%;
+        --secondary-foreground: 210 40% 98%;
+
+        --muted: 217.2 32.6% 17.5%;
+        --muted-foreground: 215 20.2% 65.1%;
+
+        --accent: 217.2 32.6% 17.5%;
+        --accent-foreground: 210 40% 98%;
+
+        --destructive: 0 62.8% 30.6%;
+        --destructive-foreground: 210 40% 98%;
+
+        --border: 217.2 32.6% 17.5%;
+        --input: 217.2 32.6% 17.5%;
+        --ring: 262.1 83.3% 57.8%;
+
+        --radius: 0.75rem;
+    }
+
+    * {
+        @apply border-border;
+    }
+
+    body {
+        @apply bg-[#0f172a] text-slate-100 overflow-x-hidden;
+    }
+}
+
+@layer components {
+    /* Custom components removed in favor of ShadCN UI */
+}
+
+@layer utilities {
+    .glass-effect {
+        @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-sm;
+    }
+
+    .text-balance {
+        text-wrap: balance;
+    }
+
+    .no-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+
+    .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+
+    .animate-in {
+        animation: animateIn 0.3s ease-out forwards;
+    }
+
+    @keyframes animateIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .animate-spin-slow {
+        animation: spin 3s linear infinite;
+    }
+
+    @keyframes spin {
+        from {
+            transform: rotate(0deg);
+        }
+
+        to {
+            transform: rotate(360deg);
+        }
+    }
+}

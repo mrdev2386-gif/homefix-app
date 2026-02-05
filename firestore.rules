@@ -1,0 +1,106 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // --- HELPERS ---
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      // Check custom claim OR admin collection
+      return request.auth.token.admin == true || 
+             exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // --- COLLECTIONS ---
+
+    // 1. MASTER SERVICE CATALOG
+    // Public read, Admin write
+    match /services/{serviceId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /subServices/{subServiceId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // 2. TECHNICIAN ONBOARDING
+    // Owner read, No direct write (Functions only)
+    match /technicianApplications/{techId} {
+      allow read: if isSignedIn() && (isOwner(techId) || isAdmin());
+      allow write: if false; // All updates via Cloud Functions
+    }
+    
+    // 3. TECHNICIANS
+    // Public read (filtered in query usually), No direct write
+    match /technicians/{techId} {
+      allow read: if isSignedIn(); // Customers need to see profile if assigned? 
+      // Ideally restrictive, but for search/display we allows read. 
+      // Sensitive data like 'bankDetails' should NOT be in this doc.
+      allow write: if false; // All updates via Cloud Functions
+      
+      // Sub-collections
+      match /notifications/{nId} {
+        allow read: if isOwner(techId);
+        allow write: if false;
+      }
+    }
+    
+    // 4. CUSTOMERS
+    match /customers/{userId} {
+      allow read: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow create: if isOwner(userId); // Initial creation allowed?
+      allow update: if isOwner(userId) && 
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['balance', 'isAdmin']);
+    }
+
+    // 5. BOOKINGS
+    // Read: Customer, Assigned Tech, Admin
+    // Write: NO direct writes (Functions only)
+    match /bookings/{bookingId} {
+      allow read: if isSignedIn() && (
+        isOwner(resource.data.customerId) || 
+        isOwner(resource.data.technicianId) ||
+        isOwner(resource.data.assignedTechnicianId) ||
+        isAdmin()
+      );
+      allow create: if false; // createBooking Callable
+      allow update: if false; // updateBooking/respondToBooking Callables
+    }
+    
+    // 6. ALERTS
+    match /booking_alerts/{alertId} {
+      allow read: if isSignedIn() && (isOwner(resource.data.technicianId) || isAdmin());
+      allow write: if false;
+    }
+
+    // 7. PUBLIC/CONFIG
+    match /app_config/{docId} {
+        allow read: if true;
+        allow write: if isAdmin();
+    }
+    
+    // 8. ADMIN COLLECTIONS
+    match /admins/{adminId} {
+      allow read, write: if false; // Backend only
+    }
+    
+    match /verification_queue/{docId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+  }
+}

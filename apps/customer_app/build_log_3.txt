@@ -1,0 +1,20 @@
+
+Support for Android x86 targets will be removed in the next stable release after 3.27. See https://github.com/flutter/flutter/issues/157543 for details.
+Running Gradle task 'assembleDebug'...                          
+Error: unable to find directory entry in pubspec.yaml: C:\Users\yash\projects\homefix\apps\customer_app\assets\banners\
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':cloud_firestore:compileDebugJavaWithJavac'.
+> Could not store compilation result
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 2m 22s
+Running Gradle task 'assembleDebug'...                            148.0s
+Gradle task assembleDebug failed with exit code 1

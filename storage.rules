@@ -1,0 +1,68 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // --- Helper Functions ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      // Assuming custom claim 'admin' is set on the token
+      return request.auth.token.admin == true;
+    }
+    
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+    
+    function isSmallFile() {
+      return request.resource.size < 5 * 1024 * 1024; // 5MB limit
+    }
+
+    // --- Rules ---
+
+    // 1. User Profile Images
+    // Users can read any profile image, but only write their own
+    match /users/{userId}/profile.jpg {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isOwner(userId) && isImage() && isSmallFile();
+    }
+    
+    match /customers/{userId}/profile.jpg {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isOwner(userId) && isImage() && isSmallFile();
+    }
+
+    // 2. Technician Profile Images
+    match /technicians/{techId}/profile.jpg {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isOwner(techId) && isImage() && isSmallFile();
+    }
+    
+    // 3. Technician Documents (KYC)
+    // strictly private: only the tech and admin can read/write
+    match /technician_docs/{techId}/{fileName} {
+      allow read: if isSignedIn() && (isOwner(techId) || isAdmin());
+      allow write: if isSignedIn() && isOwner(techId) && isSmallFile();
+    }
+
+    // 4. Professional Reels/Portfolio
+    // Public read, Admin/Tech write (own)
+    match /reels/{techId}/{fileName} {
+      allow read: if true;
+      allow write: if isSignedIn() && (isOwner(techId) || isAdmin()) && isSmallFile();
+    }
+    
+    // 5. Chat/Support Images (optional, based on future needs)
+    match /support/{ticketId}/{fileName} {
+      allow read: if isSignedIn() && (resource.metadata.ownerId == request.auth.uid || isAdmin());
+      allow write: if isSignedIn() && isSmallFile();
+    }
+  }
+}

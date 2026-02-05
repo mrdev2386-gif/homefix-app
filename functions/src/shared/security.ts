@@ -1,0 +1,74 @@
+
+import * as admin from 'firebase-admin';
+import * as functions from 'firebase-functions';
+import * as crypto from 'crypto';
+
+const db = admin.firestore();
+
+// --- RATE LIMITING ---
+
+export async function checkRateLimit(uid: string, action: string, limit: number, windowMs: number) {
+    const now = Date.now();
+    const rateLimitRef = db.collection('rate_limits').doc(`${uid}_${action}`);
+    const doc = await rateLimitRef.get();
+
+    if (doc.exists) {
+        const data = doc.data()!;
+        if (now - data.lastReset < windowMs) {
+            if (data.count >= limit) {
+                throw new functions.https.HttpsError('resource-exhausted', 'Rate limit exceeded. Try again later.');
+            }
+            await rateLimitRef.update({ count: admin.firestore.FieldValue.increment(1) });
+        } else {
+            await rateLimitRef.set({ count: 1, lastReset: now });
+        }
+    } else {
+        await rateLimitRef.set({ count: 1, lastReset: now });
+    }
+}
+
+// --- ENCRYPTION ---
+
+// Use a fixed key from config or environment for demo purposes. 
+// In production, use Google Cloud KMS.
+// We'll use a 32-byte key derived from a config secret or default.
+const ENCRYPTION_KEY = crypto.scryptSync(functions.config().security?.secret || 'default_secret_key_change_me_in_prod', 'salt', 32);
+const IV_LENGTH = 16;
+
+export function encrypt(text: string): string {
+    const iv = crypto.randomBytes(IV_LENGTH);
+    const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
+    let encrypted = cipher.update(text);
+    encrypted = Buffer.concat([encrypted, cipher.final()]);
+    return iv.toString('hex') + ':' + encrypted.toString('hex');
+}
+
+export function decrypt(text: string): string {
+    const textParts = text.split(':');
+    const iv = Buffer.from(textParts.shift()!, 'hex');
+    const encryptedText = Buffer.from(textParts.join(':'), 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
+    let decrypted = decipher.update(encryptedText);
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    return decrypted.toString();
+}
+
+// --- AUTH HELPERS ---
+
+export function assertAuthenticated(context: functions.https.CallableContext) {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+    }
+}
+
+export async function assertAdmin(context: functions.https.CallableContext) {
+    assertAuthenticated(context);
+    // You might want to check a custom claim or a document in 'admins' collection
+    if (context.auth!.token.admin === true) return;
+
+    // Fallback check against Firestore
+    const adminDoc = await db.collection('admins').doc(context.auth!.uid).get();
+    if (!adminDoc.exists) {
+        throw new functions.https.HttpsError('permission-denied', 'Admin access required');
+    }
+}
