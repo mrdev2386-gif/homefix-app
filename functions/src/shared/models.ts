@@ -223,7 +223,7 @@ export interface TechnicianApplication {
 
 // --- TECHNICIAN PROFILE ---
 
-export interface Technician extends Omit<TechnicianApplication, 'id' | 'currentStep' | 'bankDetails' | 'training'> {
+export interface Technician extends Omit<TechnicianApplication, 'id' | 'currentStep' | 'bankDetails' | 'training' | 'status'> {
     // Fields from application are copied here upon approval
 
     isActive: boolean; // Technician toggle
@@ -276,6 +276,7 @@ export interface Booking {
     // Booking flow status
     status:
     | 'pending'              // Created, waiting for tech assignment
+    | 'pending_assignment'   // System is actively matching
     | 'assigned'             // Tech assigned, not yet accepted
     | 'accepted'             // Tech accepted
     | 'inspection_scheduled' // Inspection scheduled
@@ -285,7 +286,8 @@ export interface Booking {
     | 'in_progress'          // Work in progress
     | 'completed'            // Work completed
     | 'cancelled'            // Cancelled by customer/tech/admin
-    | 'rejected';            // Tech rejected or customer rejected quote
+    | 'rejected'             // Tech rejected or customer rejected quote
+    | 'pending_admin_review'; // Escalated to admin
 
     // Inspection flow
     requiresInspection: boolean;
@@ -306,6 +308,7 @@ export interface Booking {
         // Calculations
         subtotal: number; // Sum of all sub-service prices
         platformFee: number;
+        technicianAmount: number; // Share for the technician
         gst: number;
         total: number;
 
@@ -334,27 +337,110 @@ export interface Booking {
     completedAt?: firestore.Timestamp;
     cancelledAt?: firestore.Timestamp;
 
-    // Payment
-    paymentStatus: 'pending' | 'inspection_paid' | 'partially_paid' | 'paid' | 'refunded';
-    paymentMethod?: 'cash' | 'online' | 'wallet';
-    razorpayOrderId?: string;
-    razorpayPaymentId?: string;
+    // Payment (Razorpay Integration)
+    payment: {
+        // Payment status
+        status: 'pending' | 'processing' | 'paid' | 'failed' | 'refunded' | 'partially_refunded';
+
+        // Razorpay Order (created before payment)
+        razorpayOrderId?: string;
+        razorpayOrderCreatedAt?: firestore.Timestamp;
+
+        // Razorpay Payment (after successful payment)
+        razorpayPaymentId?: string;
+        razorpaySignature?: string; // For webhook verification
+
+        // Payment details
+        amountPaid?: number; // Actual amount paid (should match pricing.total)
+        currency: string; // Default: "INR"
+        paymentMethod?: 'card' | 'netbanking' | 'upi' | 'wallet'; // Razorpay method
+
+        // Timestamps
+        paidAt?: firestore.Timestamp;
+
+        // Payment metadata
+        receipt?: string; // Booking number used as receipt
+        notes?: string; // Additional notes
+
+        // Failure tracking
+        failureReason?: string;
+        failedAt?: firestore.Timestamp;
+        retryCount?: number;
+    };
+
+    // Refund (if applicable)
+    refund?: {
+        status: 'pending' | 'processing' | 'processed' | 'failed';
+        razorpayRefundId?: string;
+        refundAmount: number;
+        refundReason: string;
+        requestedBy: string; // Admin UID
+        requestedAt: firestore.Timestamp;
+        processedAt?: firestore.Timestamp;
+        failureReason?: string;
+    };
+
+    // Technician Payout (Manual initially)
+    payout?: {
+        status: 'pending' | 'processing' | 'paid' | 'failed' | 'on_hold';
+
+        // Amount calculation
+        totalAmount: number; // From pricing.total
+        platformFee: number; // Platform's cut
+        gst: number; // GST amount
+        technicianAmount: number; // What technician receives
+
+        // Payout details
+        paidBy?: string; // Admin UID who marked as paid
+        paidAt?: firestore.Timestamp;
+        paymentMethod?: 'bank_transfer' | 'upi' | 'cash' | 'wallet';
+        transactionId?: string; // Bank/UPI transaction ID
+
+        // Notes
+        notes?: string;
+        onHoldReason?: string; // If on hold
+    };
 
     // Cancellation
-    cancellationReason?: string;
-    cancelledBy?: 'customer' | 'technician' | 'admin' | 'system';
-    refundAmount?: number;
-    refundStatus?: 'pending' | 'processed' | 'failed';
+    cancellation?: {
+        cancelledBy: 'customer' | 'technician' | 'admin' | 'system';
+        cancelledAt: firestore.Timestamp;
+        reason: string;
+        refundEligible: boolean;
+        refundAmount?: number;
+    };
 
     // Rating & Feedback
-    rating?: number;
-    feedback?: string;
-    ratedAt?: firestore.Timestamp;
+    rating?: {
+        stars: number; // 1-5
+        feedback?: string;
+        ratedBy: string; // Customer UID
+        ratedAt: firestore.Timestamp;
+    };
 
-    // Admin notes
-    adminNotes?: string;
-    flagged?: boolean;
-    flagReason?: string;
+    // Admin controls
+    admin?: {
+        notes?: string;
+        flagged: boolean;
+        flagReason?: string;
+        flaggedBy?: string;
+        flaggedAt?: firestore.Timestamp;
+    };
+
+    // --- Top-level convenience fields (often denormalized or legacy) ---
+    assignedTechnicianId?: string;
+    assignedTechnicianName?: string;
+    assignedTechnicianPhone?: string;
+    paymentStatus?: 'pending' | 'processing' | 'paid' | 'failed' | 'refunded' | 'partially_refunded' | 'refund_pending';
+    razorpayOrderId?: string;
+    refundRequestedAt?: firestore.Timestamp;
+    cancellationReason?: string;
+    cancelledBy?: string;
+    isRated?: boolean;
+    ratingId?: string;
+    slotId?: string;
+    finalAmount?: number;
+    serviceTitle?: string; // Denormalized
 }
 
 /**

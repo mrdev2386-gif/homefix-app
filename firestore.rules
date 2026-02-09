@@ -27,6 +27,16 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     
+    match /celebrating_professionals/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /cleaning_categories/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
     match /subServices/{subServiceId} {
       allow read: if true;
       allow write: if isAdmin();
@@ -101,6 +111,44 @@ service cloud.firestore {
     match /audit_logs/{logId} {
       allow read: if isAdmin();
       allow write: if false;
+    }
+    
+    // 9. PAYMENT LOGS
+    // Admin read only, Cloud Functions write
+    match /payment_logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false; // Cloud Functions only
+    }
+    
+    // 10. PAYOUT LOGS
+    // Admin read only, Cloud Functions write
+    match /payout_logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false; // Cloud Functions only
+    }
+    
+    // 11. RATE LIMITS
+    // Backend only
+    match /rate_limits/{docId} {
+      allow read, write: if false;
+    }
+    
+    // 12. COUNTERS
+    // Backend only
+    match /counters/{docId} {
+      allow read, write: if false;
+    }
+
+    // 13. PAYMENT DISCREPANCIES
+    match /payment_mismatches/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // 14. SERVICE BOTTOM BANNERS
+    match /service_bottom_banners/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
   }
 }

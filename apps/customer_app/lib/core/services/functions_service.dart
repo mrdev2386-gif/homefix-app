@@ -112,4 +112,18 @@ class FunctionsService {
       rethrow;
     }
   }
+
+  // Matching Logic for Cleaning Essentials
+  Future<Map<String, dynamic>> findEligibleTechniciansCount(String categoryId, Map<String, double> userLocation) async {
+    try {
+      HttpsCallable callable = _functions.httpsCallable('findEligibleTechniciansCount');
+      final result = await callable.call({
+        'categoryId': categoryId,
+        'userLocation': userLocation,
+      });
+      return Map<String, dynamic>.from(result.data);
+    } catch (e) {
+      rethrow;
+    }
+  }
 }

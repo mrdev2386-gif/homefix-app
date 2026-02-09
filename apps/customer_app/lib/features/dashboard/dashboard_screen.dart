@@ -68,13 +68,13 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                   const CategoryGrid(),
                   const SizedBox(height: 24),
 
+                  _buildProfessionalReels(context),
+                  const SizedBox(height: 32),
+
                   _buildCleaningEssentials(context),
                   const SizedBox(height: 32),
 
                   _buildUpcomingBooking(context),
-
-                  _buildProfessionalReels(context),
-                  const SizedBox(height: 32),
 
                   _buildQuickActions(context),
                   const SizedBox(height: 32),

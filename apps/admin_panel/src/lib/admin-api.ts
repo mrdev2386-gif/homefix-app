@@ -93,5 +93,35 @@ export const adminApi = {
         const fn = httpsCallable(functions, 'admin_getAuditLogs');
         const result = await fn({ limit: limitCount });
         return result.data;
+    },
+
+    /**
+     * Manage Professional Video Reels
+     */
+    manageProfessionalVideos: async (data: any) => {
+        const fn = httpsCallable(functions, 'admin_manageProfessionalVideos');
+        return await fn(data);
+    },
+
+    /**
+     * Manage Cleaning Categories (Essentials)
+     */
+    manageCleaningEssentials: async (data: any) => {
+        const fn = httpsCallable(functions, 'admin_manageCleaningEssentials');
+        return await fn(data);
+    },
+    /**
+     * Manage Service Banners
+     */
+    manageServiceBanners: async (data: any) => {
+        const fn = httpsCallable(functions, 'admin_manageServiceBanners');
+        return await fn(data);
+    },
+    /**
+     * Manage Service Catalog
+     */
+    manageService: async (data: any) => {
+        const fn = httpsCallable(functions, 'admin_manageService');
+        return await fn(data);
     }
 };

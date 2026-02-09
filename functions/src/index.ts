@@ -4,7 +4,6 @@ import * as testing from './testing';
 import { getAppConfig } from './shared/config';
 import * as crypto from 'crypto';
 
-// Admin Modules
 import * as adminDashboard from './admin/dashboard';
 import * as adminUsers from './admin/users';
 import * as adminTechs from './admin/technicians';
@@ -12,8 +11,13 @@ import * as adminServices from './admin/services';
 import * as adminBookings from './admin/bookings';
 import * as adminFinance from './admin/finance';
 import * as adminNotif from './admin/notifications';
+import * as adminDynamic from './admin/dynamic_content';
 import * as technicianFinance from './finance/wallet_logic';
 import * as payoutLogic from './finance/payout_logic';
+
+// Payment Modules (New Razorpay Integration)
+import * as razorpayPayments from './payments/razorpay';
+import * as technicianPayouts from './payments/payouts';
 
 
 if (!admin.apps.length) {
@@ -132,7 +136,7 @@ async function checkRateLimit(uid: string, action: string, limit: number, window
     }
 }
 
-async function isAdmin(uid: string) {
+export async function isAdmin(uid: string) {
     const adminDoc = await db.collection('admins').doc(uid).get();
     return adminDoc.exists;
 }
@@ -309,39 +313,8 @@ export const verifyRazorpayPayment = functions.https.onCall(async (data: any, co
     }
 });
 
-/**
- * Customer: Cancel Booking
- */
-export const cancelBookingByCustomer = functions.https.onCall(async (data: any, context: functions.https.CallableContext) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
-    const { bookingId, reason } = data;
-
-    const bookingRef = db.collection('bookings').doc(bookingId);
-    const bSnap = await bookingRef.get();
-    if (!bSnap.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
-    const booking = bSnap.data()!;
-
-    if (booking.customerId !== context.auth.uid) {
-        throw new functions.https.HttpsError('permission-denied', 'Unauthorized');
-    }
-
-    if (['started', 'completed', 'cancelled'].includes(booking.status)) {
-        throw new functions.https.HttpsError('failed-precondition', 'Cannot cancel booking in current state');
-    }
-
-    await bookingRef.update({
-        status: 'cancelled',
-        cancellationReason: reason || 'Cancelled by customer',
-        cancelledBy: 'customer',
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
-
-    if (booking.paymentStatus === 'paid') {
-        await payoutLogic.initiateRefund(bookingId);
-    }
-
-    return { success: true };
-});
+// Replaced by new unified cancelBooking callable
+// export const cancelBookingByCustomer = ...
 
 // Secure Wallet Transaction (Internal / Triggered by Admin or Payment)
 export const processWalletTransaction = functions.https.onCall(async (data: any, context: functions.https.CallableContext) => {
@@ -444,7 +417,7 @@ export const updateUserProfile = functions.https.onCall(async (data: any, contex
 });
 
 export const validateReferralCode = customerFeatures.validateReferralCode;
-export const cancelBooking = customerFeatures.cancelBooking;
+// export const cancelBooking = customerFeatures.cancelBooking; // Replaced by cancelBookingByCustomer
 export const submitServiceRating = customerFeatures.submitServiceRating;
 export const submitSupportRequest = customerFeatures.submitSupportRequest;
 
@@ -486,6 +459,13 @@ export const admin_toggleTechAvailability = adminTechs.toggleTechAvailability;
 export const admin_updateTechServices = adminTechs.updateTechServices;
 
 export const admin_manageService = adminServices.manageService;
+export const createService = adminServices.createService;
+export const createSubService = adminServices.createSubService;
+export const updateSubService = adminServices.updateSubService;
+export const deleteService = adminServices.deleteService;
+export const updatePricingConfig = adminServices.updatePricingConfig;
+export const deleteSubService = adminServices.deleteSubService;
+export const getSubServicePriceHistory = adminServices.getSubServicePriceHistory;
 
 export const admin_manageBooking = adminBookings.adminManageBooking;
 
@@ -499,6 +479,20 @@ export const admin_sendPushNotification = adminNotif.sendPushNotification;
 
 import * as adminRisk from './admin/risk';
 export const admin_manageRiskProfile = adminRisk.manageRiskProfile;
+
+import {
+    admin_manageProfessionalVideos,
+    admin_manageCleaningEssentials,
+    admin_manageServiceBanners,
+    findEligibleTechniciansCount
+} from './admin/dynamic_content';
+
+export {
+    admin_manageProfessionalVideos,
+    admin_manageCleaningEssentials,
+    admin_manageServiceBanners,
+    findEligibleTechniciansCount
+};
 
 // Technician Finance & Payouts
 export const triggerTechnicianPayout = payoutLogic.triggerTechnicianPayout;
@@ -527,134 +521,19 @@ export const assignTechnicianToBooking = functions.https.onCall(async (data, con
 export const respondToAssignment = handleAssignmentResponse;
 
 
-// Update Booking Status (Technician & Admin)
-export const updateBookingStatus = functions.https.onCall(async (data: any, context: functions.https.CallableContext) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
-    const { bookingId, status, reason } = data;
+import * as bookingActions from './booking_actions';
 
-    const bookingRef = db.collection('bookings').doc(bookingId);
-    const bookingDoc = await bookingRef.get();
-    if (!bookingDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
+// Technician Actions
+export const scheduleInspection = bookingActions.scheduleInspection;
+export const startInspection = bookingActions.startInspection;
+export const submitInspectionReport = bookingActions.submitInspectionReport;
+export const startJob = bookingActions.startJob;
+export const completeJob = bookingActions.completeJob;
 
-    const booking = bookingDoc.data()!;
-    const adminUser = await isAdmin(context.auth.uid);
-    const isAssignedTech = booking.assignedTechnicianId === context.auth.uid;
-
-    // Only admin or the assigned technician can update the status
-    if (!adminUser && !isAssignedTech) {
-        throw new functions.https.HttpsError('permission-denied', 'Unauthorized to update this booking');
-    }
-
-    // Specific logic for technician rejecting an assignment
-    if (status === 'rejected' && isAssignedTech) {
-        await bookingRef.update({
-            status: 'confirmed', // Reset to confirmed to allow matching
-            assignedTechnicianId: null,
-            assignedTechnicianName: 'To be assigned',
-            lastRejectedTechId: context.auth.uid,
-            rejectionReason: reason || 'Declined',
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        // Smart Matching V2 Trigger
-        await matchAndAssignBooking(bookingId);
-
-        // Fraud Check: Rejection Abuse
-        await fraudProtection.evaluateTechnicianRejectionRisk(context.auth.uid);
-    } else {
-        // General status update
-        await bookingRef.update({
-            status,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            ...(status === 'cancelled' ? { cancellationReason: reason || 'Cancelled' } : {})
-        });
-
-        if (status === 'cancelled' && booking.paymentStatus === 'paid') {
-            await payoutLogic.initiateRefund(bookingId);
-        }
-    }
-
-    return { success: true };
-});
-
-// Technician: Claim unassigned booking
-export const claimBooking = functions.https.onCall(async (data: any, context: functions.https.CallableContext) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
-    const { bookingId } = data;
-
-    const techDoc = await db.collection('technicians').doc(context.auth.uid).get();
-    if (!techDoc.exists || !techDoc.data()?.isVerified) {
-        throw new functions.https.HttpsError('permission-denied', 'Only verified technicians can claim jobs');
-    }
-
-    const techData = techDoc.data()!;
-
-    try {
-        await db.runTransaction(async (t) => {
-            const bookingRef = db.collection('bookings').doc(bookingId);
-            const bDoc = await t.get(bookingRef);
-            if (!bDoc.exists) throw new Error("Booking not found");
-            const b = bDoc.data()!;
-
-            if (b.assignedTechnicianId) throw new Error("Booking already assigned");
-            // Allow claiming if status is confirmed or quoted (and assigned tech matches?) 
-            // Actually, if it's quoted, it's not unassigned.
-            if (b.status !== 'confirmed') throw new Error("Booking not in valid state for claiming");
-
-            t.update(bookingRef, {
-                assignedTechnicianId: context.auth!.uid,
-                assignedTechnicianName: techData.name || 'Technician',
-                status: 'assigned',
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-        });
-        return { success: true };
-    } catch (e: any) {
-        throw new functions.https.HttpsError('internal', e.message);
-    }
-});
-
-// Technician: Send Quote
-export const sendQuote = functions.https.onCall(async (data: any, context: functions.https.CallableContext) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
-    const { bookingId, price, scheduledAt, scheduledTime, note } = data;
-
-    const techDoc = await db.collection('technicians').doc(context.auth.uid).get();
-    if (!techDoc.exists) throw new functions.https.HttpsError('permission-denied', 'Only technicians can send quotes');
-    const techData = techDoc.data()!;
-
-    try {
-        await db.collection('bookings').doc(bookingId).update({
-            status: 'quoted',
-            quoteData: {
-                technicianId: context.auth.uid,
-                technicianName: techData.name || 'Technician',
-                price,
-                scheduledAt: admin.firestore.Timestamp.fromDate(new Date(scheduledAt)),
-                scheduledTime,
-                note: note || '',
-                quotedAt: admin.firestore.FieldValue.serverTimestamp(),
-            },
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        await logActivity('technician', context.auth.uid, 'quote_sent', { bookingId, price });
-
-        // Notify Customer
-        const bDoc = await db.collection('bookings').doc(bookingId).get();
-        if (bDoc.exists) {
-            await sendPushNotification(bDoc.data()!.customerId, 'customers', {
-                title: 'New Quote Received',
-                body: `A professional has sent a quote of ₹${price} for ${bDoc.data()!.serviceTitle}.`,
-                data: { bookingId, type: 'quote' }
-            });
-        }
-
-        return { success: true };
-    } catch (e: any) {
-        throw new functions.https.HttpsError('internal', e.message);
-    }
-});
+// Customer Actions
+export const approveJobQuote = bookingActions.approveJobQuote;
+export const rejectJobQuote = bookingActions.rejectJobQuote;
+export const cancelBookingByCustomer = bookingActions.cancelBookingByCustomer;
 
 
 // ==========================================
@@ -843,9 +722,9 @@ export const updateLocation = techTrack.updateLocation;
 export const toggleOnlineStatus = techTrack.toggleOnlineStatus;
 
 // Matching & Booking
-// Matching & Booking
-export const onNewBookingMatch = matchEngine.onBookingCreated; // Trigger
-export const respondToBooking = matchEngine.respondToBooking; // Callable
+import { onBookingCreatedMatch } from './matching/matching_v2';
+export const onNewBookingMatch = onBookingCreatedMatch; // Trigger
+// export const respondToBooking = matchEngine.respondToBooking; // Use handleAssignmentResponse instead
 
 export const onPaymentUpdate = functions.firestore.document('bookings/{bookingId}')
     .onUpdate(async (change, context) => {
@@ -943,3 +822,24 @@ export const test_createTechnician = testing.createTestTechnician;
 export const test_generateBooking = testing.generateTestBooking;
 export const test_simulatePayment = testing.simulatePayment;
 export const test_resetData = testing.resetTestData;
+
+// ==========================================
+// 5. RAZORPAY PAYMENT INTEGRATION
+// ==========================================
+
+// Payment Functions
+export const createPaymentOrder = razorpayPayments.createPaymentOrder;
+export const razorpayWebhook = razorpayPayments.razorpayWebhook;
+export const verifyPayment = razorpayPayments.verifyPayment;
+export const initiateRefund = razorpayPayments.initiateRefund;
+
+// Payout Functions (Admin)
+export const getPendingPayouts = technicianPayouts.getPendingPayouts;
+export const getPayoutHistory = technicianPayouts.getPayoutHistory;
+export const getPayoutSummary = technicianPayouts.getPayoutSummary;
+export const markPayoutPaid = technicianPayouts.markPayoutPaid;
+export const putPayoutOnHold = technicianPayouts.putPayoutOnHold;
+export const releasePayoutFromHold = technicianPayouts.releasePayoutFromHold;
+export const bulkMarkPayoutsPaid = technicianPayouts.bulkMarkPayoutsPaid;
+export const getPayoutAnalytics = technicianPayouts.getPayoutAnalytics;
+

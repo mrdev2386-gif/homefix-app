@@ -3,10 +3,10 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react';
 
-interface Column {
+export interface Column {
     key: string;
     label: string;
-    render?: (item: any) => React.ReactNode;
+    render?: (item: any, index: number) => React.ReactNode;
     sortable?: boolean;
     align?: 'left' | 'center' | 'right';
 }
@@ -81,7 +81,7 @@ export default function Table({
                                 <tr key={item.id || index} className="group hover:bg-indigo-500/5 transition-colors duration-200">
                                     {columns.map((col) => (
                                         <td key={`${item.id}-${col.key}`} className={`px-6 py-5 align-middle text-${col.align || 'left'}`}>
-                                            {col.render ? col.render(item) : (
+                                            {col.render ? col.render(item, index) : (
                                                 <span className="text-sm font-bold text-slate-300">
                                                     {item[col.key]}
                                                 </span>

@@ -2,7 +2,7 @@
 import * as admin from 'firebase-admin';
 import { db, getAppConfig } from '../shared/config';
 
-export const DEFAULT_COMMISSION_PERCENTAGE = 0.20; // 20%
+export const DEFAULT_COMMISSION_PERCENTAGE = 0.15; // 15% to match pricing logic
 
 export interface WalletData {
     availableBalance: number;

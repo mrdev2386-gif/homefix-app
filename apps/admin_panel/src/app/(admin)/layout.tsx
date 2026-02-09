@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from '@/components/Sidebar';
 import Topbar from '@/components/Topbar';
 import { useAuth } from '@/components/AuthProvider';
 import { Loader2 } from 'lucide-react';
+import { initializeBanners } from '@/lib/initialize-banners';
 
 export default function AdminLayout({
     children,
@@ -13,6 +14,12 @@ export default function AdminLayout({
 }) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const { isAdmin, loading } = useAuth();
+
+    useEffect(() => {
+        if (isAdmin) {
+            initializeBanners();
+        }
+    }, [isAdmin]);
 
     const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 

@@ -379,4 +379,16 @@ class FirestoreService {
       return spotlights;
     });
   }
+
+  Stream<List<ServiceBanner>> streamServiceBottomBanners() {
+    return _db
+        .collection('service_bottom_banners')
+        .where('isActive', isEqualTo: true)
+        .snapshots()
+        .map((snapshot) {
+          final banners = snapshot.docs.map((doc) => ServiceBanner.fromFirestore(doc)).toList();
+          banners.sort((a, b) => a.order.compareTo(b.order));
+          return banners;
+        });
+  }
 }

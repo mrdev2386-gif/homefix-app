@@ -28,11 +28,24 @@ export const adminManageBooking = functions.https.onCall(async (data, context) =
             if (!techDoc.exists) throw new functions.https.HttpsError('not-found', 'Technician not found');
             const techData = techDoc.data()!;
 
-            await bookingRef.update({
-                assignedTechnicianId: technicianId,
-                assignedTechnicianName: techData.name || 'Expert',
-                status: 'assigned',
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            await db.runTransaction(async (t) => {
+                // If reassigning, remove from old technician
+                if (booking.assignedTechnicianId && booking.assignedTechnicianId !== technicianId) {
+                    t.update(db.collection('technicians').doc(booking.assignedTechnicianId), {
+                        currentAssignments: admin.firestore.FieldValue.arrayRemove(bookingId)
+                    });
+                }
+
+                t.update(bookingRef, {
+                    assignedTechnicianId: technicianId,
+                    assignedTechnicianName: techData.name || 'Expert',
+                    status: 'assigned',
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+
+                t.update(db.collection('technicians').doc(technicianId), {
+                    currentAssignments: admin.firestore.FieldValue.arrayUnion(bookingId)
+                });
             });
 
             // Notify Technician
@@ -60,12 +73,13 @@ export const adminManageBooking = functions.https.onCall(async (data, context) =
             await logAdminAction(context.auth!.uid, `booking_${action}`, bookingId, { technicianId });
         } else if (action === 'cancel') {
             const { reason } = payload;
-            await bookingRef.update({
-                status: 'cancelled',
-                cancellationReason: reason || 'Cancelled by admin',
-                cancelledBy: 'admin',
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
+
+            // Use unified flow for cancellation to ensure tech cleanup and potentially refund logic
+            const { updateBookingStatusUnified } = require('../shared/booking_flow');
+            await updateBookingStatusUnified(bookingId, 'cancelled',
+                { uid: context.auth!.uid, role: 'admin' },
+                { reason: reason || 'Cancelled by admin', logAction: true }
+            );
 
             // Notify Customer
             try {

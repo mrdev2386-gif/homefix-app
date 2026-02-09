@@ -102,7 +102,8 @@ export default function ServicesPage() {
                 price: Number(form.price),
                 description: form.description,
                 categoryId: form.categoryId,
-                image: finalImageUrl,
+                imageUrl: finalImageUrl,
+                image: finalImageUrl, // Compatibility
                 order: Number(form.order),
                 isActive: form.isActive,
                 title: form.name,

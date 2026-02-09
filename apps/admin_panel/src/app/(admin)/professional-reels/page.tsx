@@ -15,8 +15,9 @@ import {
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
-import Table from '@/components/ui/Table';
+import Table, { Column } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
+import { adminApi } from '@/lib/admin-api';
 
 interface ProfessionalReel {
     id: string;
@@ -30,6 +31,7 @@ interface ProfessionalReel {
 export default function ProfessionalReelsPage() {
     const [reels, setReels] = useState<ProfessionalReel[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
     const [isAdding, setIsAdding] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -48,7 +50,7 @@ export default function ProfessionalReelsPage() {
                 id: doc.id,
                 ...doc.data()
             } as ProfessionalReel));
-            setReels(data);
+            setReels(data.slice(0, 5)); // Client-side enforcement as well
             setIsLoading(false);
         });
 
@@ -56,14 +58,23 @@ export default function ProfessionalReelsPage() {
     }, []);
 
     const handleSave = async () => {
+        setIsSaving(true);
         try {
             if (editingId) {
-                await updateDoc(doc(db, 'celebrating_professionals', editingId), formData);
+                await adminApi.manageProfessionalVideos({
+                    action: 'update',
+                    videoId: editingId,
+                    videoData: formData
+                });
                 setEditingId(null);
             } else {
-                await addDoc(collection(db, 'celebrating_professionals'), {
-                    ...formData,
-                    order: reels.length
+                if (reels.length >= 5) {
+                    alert('Maximum 5 videos allowed. Delete one before adding more.');
+                    return;
+                }
+                await adminApi.manageProfessionalVideos({
+                    action: 'add',
+                    videoData: formData
                 });
                 setIsAdding(false);
             }
@@ -71,13 +82,18 @@ export default function ProfessionalReelsPage() {
         } catch (error: any) {
             console.error('Error saving reel:', error);
             alert(`Error saving reel: ${error.message}`);
+        } finally {
+            setIsSaving(false);
         }
     };
 
     const handleDelete = async (id: string) => {
         if (confirm('Are you sure you want to delete this reel?')) {
             try {
-                await deleteDoc(doc(db, 'celebrating_professionals', id));
+                await adminApi.manageProfessionalVideos({
+                    action: 'delete',
+                    videoId: id
+                });
             } catch (error) {
                 console.error('Error deleting reel:', error);
             }
@@ -86,8 +102,10 @@ export default function ProfessionalReelsPage() {
 
     const toggleStatus = async (reel: ProfessionalReel) => {
         try {
-            await updateDoc(doc(db, 'celebrating_professionals', reel.id), {
-                isActive: !reel.isActive
+            await adminApi.manageProfessionalVideos({
+                action: 'update',
+                videoId: reel.id,
+                videoData: { isActive: !reel.isActive }
             });
         } catch (error) {
             console.error('Error toggling status:', error);
@@ -105,23 +123,22 @@ export default function ProfessionalReelsPage() {
         newReels[targetIndex] = temp;
 
         try {
-            for (let i = 0; i < newReels.length; i++) {
-                if (newReels[i].order !== i) {
-                    await updateDoc(doc(db, 'celebrating_professionals', newReels[i].id), {
-                        order: i
-                    });
-                }
-            }
-        } catch (error) {
+            const orders = newReels.map((r, i) => ({ id: r.id, order: i }));
+            await adminApi.manageProfessionalVideos({
+                action: 'reorder',
+                orders
+            });
+        } catch (error: any) {
             console.error('Error reordering:', error);
+            alert(`Error reordering: ${error.message}`);
         }
     };
 
-    const columns = [
+    const columns: Column[] = [
         {
             key: 'title',
             label: 'Asset Intelligence',
-            render: (r: ProfessionalReel) => (
+            render: (r: ProfessionalReel, index: number) => (
                 <div className="flex items-center gap-4">
                     <div className="w-12 h-16 rounded-xl bg-slate-800 border border-slate-700 overflow-hidden relative group/asset">
                         {r.thumbnailUrl ? (
@@ -170,12 +187,12 @@ export default function ProfessionalReelsPage() {
         {
             key: 'status',
             label: 'State',
-            render: (r: ProfessionalReel) => (
+            render: (r: ProfessionalReel, index: number) => (
                 <button
                     onClick={() => toggleStatus(r)}
                     className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl border transition-all ${r.isActive
-                            ? 'bg-emerald-500/5 border-emerald-500/10 text-emerald-400'
-                            : 'bg-slate-800/50 border-slate-700 text-slate-500'
+                        ? 'bg-emerald-500/5 border-emerald-500/10 text-emerald-400'
+                        : 'bg-slate-800/50 border-slate-700 text-slate-500'
                         }`}
                 >
                     {r.isActive ? <Eye size={12} className="stroke-[3]" /> : <EyeOff size={12} className="stroke-[3]" />}
@@ -187,7 +204,7 @@ export default function ProfessionalReelsPage() {
             key: 'actions',
             label: 'Control',
             align: 'right' as const,
-            render: (r: ProfessionalReel) => (
+            render: (r: ProfessionalReel, index: number) => (
                 <div className="flex justify-end gap-2 pr-2">
                     <Button
                         size="sm"

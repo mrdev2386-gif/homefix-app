@@ -23,7 +23,7 @@ import { Service, SubService, PriceHistoryEntry, PricingConfig } from '../shared
 export const createService = functions.https.onCall(async (data, context) => {
     await assertAdmin(context);
 
-    const { name, slug, category, icon, description, requiresInspection, inspectionCharge, inspectionDuration, isFeatured, order } = data;
+    const { name, slug, category, icon, imageUrl, description, requiresInspection, inspectionCharge, inspectionDuration, isFeatured, order } = data;
 
     // Validation
     if (!name || !slug || !category) {
@@ -45,6 +45,7 @@ export const createService = functions.https.onCall(async (data, context) => {
         slug,
         category,
         icon: icon || 'default',
+        imageUrl: imageUrl || '',
         description: description || '',
         isActive: true,
         isFeatured: isFeatured || false,
@@ -494,3 +495,33 @@ export const getSubServicePriceHistory = functions.https.onCall(async (data, con
         priceHistory: subService.priceHistory || []
     };
 });
+
+/**
+ * Dispatcher for service management (backward compatibility with frontend)
+ */
+export const manageService = functions.https.onCall(async (data, context) => {
+    await assertAdmin(context);
+    const { action, serviceId, payload } = data;
+
+    if (action === 'create') {
+        const createData = {
+            ...payload,
+            slug: payload.slug || payload.name?.toLowerCase().replace(/\s+/g, '-') || `service-${Date.now()}`,
+            category: payload.category || payload.categoryId || 'general'
+        };
+        // @ts-ignore - access the internal handler if needed, or just redirect
+        // In this case, we can't easily call onCall from another onCall without .run in some environments
+        // So we'll just implement a simple dispatch logic or re-link
+        // For simplicity and safety, we'll re-implement the dispatch logic here
+        // but actually, we can just call the logic since it's in the same file.
+        // However, onCall functions are wrapped. We'll use a helper or just re-route.
+        return await (createService as any).run(createData, context);
+    } else if (action === 'update') {
+        return await (updateService as any).run({ serviceId, updates: payload }, context);
+    } else if (action === 'delete') {
+        return await (deleteService as any).run({ serviceId }, context);
+    } else {
+        throw new functions.https.HttpsError('invalid-argument', `Invalid action: ${action}`);
+    }
+});
+

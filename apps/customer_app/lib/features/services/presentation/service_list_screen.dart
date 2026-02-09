@@ -171,28 +171,17 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     return StreamBuilder<List<HomeService>>(
       stream: service.streamServices(category: _selectedCategory),
       builder: (context, snapshot) {
-        // MANDATORY: Check for errors first
         if (snapshot.hasError) {
-          debugPrint('Firestore Error: ${snapshot.error}');
           return Center(child: Text('Error loading services', style: GoogleFonts.outfit()));
         }
 
-        // MANDATORY: Check connection state and data presence
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _buildSkeleton();
         }
         
-        if (!snapshot.hasData || snapshot.data == null) {
-          return _buildEmpty();
-        }
-
-        var services = snapshot.data!;
+        final servicesList = snapshot.data ?? [];
         
-        // Final sanity check before filtering
-        if (services.isEmpty) {
-          return _buildEmpty();
-        }
-        
+        var services = List<HomeService>.from(servicesList);
         if (_searchQuery.isNotEmpty) {
           services = services.where((s) => 
             s.title.toLowerCase().contains(_searchQuery.toLowerCase())
@@ -203,27 +192,180 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           services.sort((a, b) => b.rating.compareTo(a.rating));
         }
 
-        if (services.isEmpty) {
-          return _buildEmpty();
+        return CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            if (services.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _buildEmpty(),
+              )
+            else ...[
+              SliverPadding(
+                padding: const EdgeInsets.all(20),
+                sliver: SliverGrid(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                    childAspectRatio: 0.8,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) => ServiceGridIcon(service: services[index]),
+                    childCount: services.length,
+                  ),
+                ),
+              ),
+              _buildBottomBanners(service),
+              const SliverToBoxAdapter(child: SizedBox(height: 100)),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildBottomBanners(FirestoreService service) {
+    return StreamBuilder<List<ServiceBanner>>(
+      stream: service.streamServiceBottomBanners(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return const SliverToBoxAdapter(child: SizedBox.shrink());
         }
 
-        return GridView.builder(
-          padding: const EdgeInsets.all(20),
-          physics: const BouncingScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: 0.8,
+        final banners = snapshot.data!;
+        return SliverPadding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final banner = banners[index];
+                return _buildBannerCard(banner);
+              },
+              childCount: banners.length,
+            ),
           ),
-          itemCount: services.length,
-          itemBuilder: (context, index) {
-            // SAFETY: Double check bounds
-            if (index >= services.length) return const SizedBox();
-            
-            final service = services[index];
-            return ServiceGridIcon(service: service);
-          },
+        );
+      },
+    );
+  }
+
+  Widget _buildBannerCard(ServiceBanner banner) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      height: 160,
+      width: double.infinity,
+      child: InkWell(
+        onTap: () => _showComingSoonDialog(banner.title),
+        borderRadius: BorderRadius.circular(24),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.network(
+                banner.imageUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => Container(
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  child: const Icon(Icons.broken_image_rounded, color: AppTheme.primaryColor),
+                ),
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Shimmer.fromColors(
+                    baseColor: Colors.grey[100]!,
+                    highlightColor: Colors.white,
+                    child: Container(color: Colors.white),
+                  );
+                },
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      Colors.black.withOpacity(0.6),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      banner.title,
+                      style: GoogleFonts.outfit(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      banner.description,
+                      style: GoogleFonts.outfit(
+                        color: Colors.white.withOpacity(0.8),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showComingSoonDialog(String title) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '',
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, anim1, anim2) => const SizedBox(),
+      transitionBuilder: (context, anim1, anim2, child) {
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.8, end: 1.0).animate(
+            CurvedAnimation(parent: anim1, curve: Curves.easeOutBack),
+          ),
+          child: FadeTransition(
+            opacity: anim1,
+            child: AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+              title: Row(
+                children: [
+                  const Icon(Icons.rocket_launch_rounded, color: AppTheme.primaryColor),
+                  const SizedBox(width: 12),
+                  Text('Coming Soon', style: GoogleFonts.outfit(fontWeight: FontWeight.w900)),
+                ],
+              ),
+              content: Text(
+                'This feature ($title) will be available soon. We are working hard to bring you the best experience!',
+                style: GoogleFonts.outfit(fontSize: 15, height: 1.5),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(
+                    'GOT IT',
+                    style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w900,
+                      color: AppTheme.primaryColor,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
       },
     );

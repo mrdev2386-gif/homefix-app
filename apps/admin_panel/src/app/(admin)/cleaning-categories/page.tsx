@@ -31,8 +31,9 @@ import {
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
-import Table from '@/components/ui/Table';
+import Table, { Column } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
+import { adminApi } from '@/lib/admin-api';
 
 interface CleaningCategory {
     id: string;
@@ -45,6 +46,7 @@ interface CleaningCategory {
 export default function CleaningCategoriesPage() {
     const [categories, setCategories] = useState<CleaningCategory[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
     const [isAdding, setIsAdding] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -76,28 +78,41 @@ export default function CleaningCategoriesPage() {
             return;
         }
 
+        setIsSaving(true);
         try {
             if (editingId) {
-                await updateDoc(doc(db, 'cleaning_categories', editingId), formData);
+                await adminApi.manageCleaningEssentials({
+                    action: 'update',
+                    categoryId: editingId,
+                    categoryData: formData
+                });
                 setEditingId(null);
             } else {
-                await addDoc(collection(db, 'cleaning_categories'), {
-                    ...formData,
-                    order: categories.length
+                await adminApi.manageCleaningEssentials({
+                    action: 'add',
+                    categoryData: {
+                        ...formData,
+                        order: categories.length
+                    }
                 });
                 setIsAdding(false);
             }
             setFormData({ name: '', iconUrl: '', isActive: true, order: 0 });
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error saving category:', error);
-            alert('Error saving category');
+            alert(`Error saving category: ${error.message}`);
+        } finally {
+            setIsSaving(false);
         }
     };
 
     const handleDelete = async (id: string) => {
         if (confirm('Are you sure you want to delete this category?')) {
             try {
-                await deleteDoc(doc(db, 'cleaning_categories', id));
+                await adminApi.manageCleaningEssentials({
+                    action: 'delete',
+                    categoryId: id
+                });
             } catch (error) {
                 console.error('Error deleting category:', error);
             }
@@ -106,8 +121,10 @@ export default function CleaningCategoriesPage() {
 
     const toggleStatus = async (cat: CleaningCategory) => {
         try {
-            await updateDoc(doc(db, 'cleaning_categories', cat.id), {
-                isActive: !cat.isActive
+            await adminApi.manageCleaningEssentials({
+                action: 'update',
+                categoryId: cat.id,
+                categoryData: { isActive: !cat.isActive }
             });
         } catch (error) {
             console.error('Error toggling status:', error);
@@ -125,23 +142,22 @@ export default function CleaningCategoriesPage() {
         newCats[targetIndex] = temp;
 
         try {
-            for (let i = 0; i < newCats.length; i++) {
-                if (newCats[i].order !== i) {
-                    await updateDoc(doc(db, 'cleaning_categories', newCats[i].id), {
-                        order: i
-                    });
-                }
-            }
-        } catch (error) {
+            const orders = newCats.map((c, i) => ({ id: c.id, order: i }));
+            await adminApi.manageCleaningEssentials({
+                action: 'reorder',
+                orders
+            });
+        } catch (error: any) {
             console.error('Error reordering:', error);
+            alert(`Error reordering: ${error.message}`);
         }
     };
 
-    const columns = [
+    const columns: Column[] = [
         {
             key: 'preview',
             label: 'Asset',
-            render: (cat: CleaningCategory) => (
+            render: (cat: CleaningCategory, index: number) => (
                 <div className="w-14 h-14 bg-slate-800 border-2 border-slate-700/50 rounded-[18px] flex items-center justify-center overflow-hidden shadow-2xl relative group/asset">
                     {cat.iconUrl ? (
                         <img src={cat.iconUrl} alt={cat.name} className="w-full h-full object-cover group-hover/asset:scale-110 transition-transform duration-500" />
@@ -155,7 +171,7 @@ export default function CleaningCategoriesPage() {
         {
             key: 'name',
             label: 'Category Taxonomy',
-            render: (cat: CleaningCategory) => (
+            render: (cat: CleaningCategory, index: number) => (
                 <div className="flex flex-col">
                     <span className="font-black text-white text-base tracking-tight uppercase leading-tight">{cat.name}</span>
                     <span className="text-[10px] font-mono font-bold text-slate-500 mt-1 tracking-tighter uppercase">UID: {cat.id.substring(0, 16).toUpperCase()}</span>
@@ -192,12 +208,12 @@ export default function CleaningCategoriesPage() {
         {
             key: 'status',
             label: 'Deployment',
-            render: (cat: CleaningCategory) => (
+            render: (cat: CleaningCategory, index: number) => (
                 <button
                     onClick={() => toggleStatus(cat)}
                     className={`flex items-center gap-2 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${cat.isActive
-                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-lg shadow-emerald-500/5'
-                            : 'bg-slate-800/50 text-slate-500 border-slate-700'
+                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-lg shadow-emerald-500/5'
+                        : 'bg-slate-800/50 text-slate-500 border-slate-700'
                         }`}
                 >
                     {cat.isActive ? <Eye size={12} className="fill-emerald-400/20" /> : <EyeOff size={12} />}
@@ -209,7 +225,7 @@ export default function CleaningCategoriesPage() {
             key: 'actions',
             label: '',
             align: 'right' as const,
-            render: (cat: CleaningCategory) => (
+            render: (cat: CleaningCategory, index: number) => (
                 <div className="flex justify-end gap-2 pr-4">
                     <Button
                         size="icon"

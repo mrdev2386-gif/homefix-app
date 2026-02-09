@@ -129,3 +129,33 @@ class ServiceSpotlight {
     );
   }
 }
+
+class ServiceBanner {
+  final String id;
+  final String imageUrl;
+  final bool isActive;
+  final int order;
+  final String title;
+  final String description;
+
+  ServiceBanner({
+    required this.id,
+    required this.imageUrl,
+    this.isActive = true,
+    this.order = 0,
+    this.title = 'Special Offer',
+    this.description = 'Check out our new services',
+  });
+
+  factory ServiceBanner.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    return ServiceBanner(
+      id: doc.id,
+      imageUrl: (data['imageUrl'] ?? '').toString(),
+      isActive: data['isActive'] ?? true,
+      order: int.tryParse((data['order'] ?? 0).toString()) ?? 0,
+      title: (data['title'] ?? 'Special Offer').toString(),
+      description: (data['description'] ?? 'Check out our new services').toString(),
+    );
+  }
+}

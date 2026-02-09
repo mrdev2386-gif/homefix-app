@@ -381,9 +381,10 @@ export const handleAssignmentResponse = functions.https.onCall(async (data, cont
             // Finalize Booking
             const bookingRef = db.collection('bookings').doc(req.bookingId);
             t.update(bookingRef, {
-                status: 'assigned',
+                status: 'accepted',
                 assignedTechnicianId: req.technicianId,
                 assignedTechnicianName: (await db.collection('technicians').doc(req.technicianId).get()).data()?.name || 'Technician',
+                acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
 
