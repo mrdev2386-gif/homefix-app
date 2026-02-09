@@ -7,11 +7,8 @@ const db = admin.firestore();
 export const manageRiskProfile = functions.https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
 
-    // Verify Admin
-    const adminDoc = await db.collection('admins').doc(context.auth.uid).get();
-    if (!adminDoc.exists) {
-        throw new functions.https.HttpsError('permission-denied', 'Admin access required');
-    }
+    // Verify Admin via Claims
+    await import('./utils').then(m => m.assertAdmin(context));
 
     const { entityId, action, reason, newStatus } = data;
 

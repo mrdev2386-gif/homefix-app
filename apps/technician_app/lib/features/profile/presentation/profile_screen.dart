@@ -14,15 +14,53 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final provider = Provider.of<TechnicianProvider>(context);
     final tech = provider.technician;
+    final isLoading = provider.isLoading;
+
+    if (isLoading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFF8FAFC),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (tech == null) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        appBar: AppBar(
+          title: Text("Profile", style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.person_off_outlined, size: 64, color: Colors.grey),
+              const SizedBox(height: 16),
+              Text(
+                'Profile not found',
+                style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Please complete onboarding',
+                style: GoogleFonts.outfit(fontSize: 14, color: Colors.grey),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: provider.signOut,
+                child: const Text('Logout'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: Text("Profile", style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
       ),
-      body: tech == null
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
+      body: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: Column(
                 children: [

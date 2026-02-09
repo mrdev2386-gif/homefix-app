@@ -20,6 +20,7 @@ import {
     Star,
     Video,
     Sparkles,
+    ShieldAlert,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 
@@ -40,7 +41,7 @@ const menuItems = [
     { icon: Settings, label: 'Settings', href: '/settings' },
 ];
 
-import { ShieldAlert } from 'lucide-react';
+
 
 interface SidebarProps {
     isOpen: boolean;

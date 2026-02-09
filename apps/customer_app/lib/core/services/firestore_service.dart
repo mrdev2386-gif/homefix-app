@@ -298,7 +298,12 @@ class FirestoreService {
   }
 
   Stream<UserModel> streamUserModel(String userId) {
-    return _db.collection('customers').doc(userId).snapshots().map((doc) => UserModel.fromFirestore(doc));
+    return _db.collection('customers').doc(userId).snapshots().map((doc) {
+      if (!doc.exists) {
+        return UserModel(uid: userId);
+      }
+      return UserModel.fromFirestore(doc);
+    });
   }
 
   Future<void> updateUserProfile(String userId, Map<String, dynamic> data) async {

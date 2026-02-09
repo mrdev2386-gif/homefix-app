@@ -19,9 +19,9 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context, listen: false);
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-    final userId = authService.currentUser?.uid;
+    final currentUser = authService.currentUser;
 
-    if (userId == null) {
+    if (currentUser == null) {
       return const Scaffold(body: Center(child: Text('Please login to continue')));
     }
 
@@ -43,14 +43,21 @@ class ProfileScreen extends StatelessWidget {
           const SizedBox(width: 8),
         ],
       ),
-      body: StreamBuilder<UserModel>(
-        stream: firestoreService.streamUserModel(userId),
+      body: StreamBuilder<UserModel?>(
+        stream: firestoreService.streamUserModel(currentUser.uid),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final user = snapshot.data;
-          if (user == null) return const Center(child: Text('User details not found'));
+          // Use Firestore data if available, otherwise fallback to Firebase Auth
+          final firestoreUser = snapshot.data;
+          
+          // Create a fallback user from Firebase Auth data
+          final user = firestoreUser ?? UserModel(
+            uid: currentUser.uid,
+            email: currentUser.email,
+            phone: currentUser.phoneNumber,
+            name: currentUser.displayName ?? 'Valued Customer',
+            photoUrl: currentUser.photoURL,
+            walletBalance: 0.0,
+          );
 
           return SingleChildScrollView(
             physics: const BouncingScrollPhysics(),

@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils"
 // So I will just support default button props
 
 const buttonVariants = {
-    default: "bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-600/10 active:scale-[0.98]",
+    default: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/10 active:scale-[0.98]",
     destructive: "bg-rose-600 text-white hover:bg-rose-500 shadow-lg shadow-rose-600/10 active:scale-[0.98]",
     outline: "border border-slate-800 bg-slate-900/50 text-slate-300 hover:bg-slate-800 hover:text-white active:scale-[0.98]",
     secondary: "bg-slate-800 text-slate-200 hover:bg-slate-700 active:scale-[0.98]",

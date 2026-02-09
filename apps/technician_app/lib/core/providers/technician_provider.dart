@@ -19,6 +19,7 @@ class TechnicianProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
 
   TechnicianProvider() {
+    _isLoading = true;
     _auth.authStateChanges().listen((user) {
       if (user != null) {
         _fetchUserRole(user.uid);
@@ -26,6 +27,7 @@ class TechnicianProvider extends ChangeNotifier {
       } else {
         _technician = null;
         _userRole = null;
+        _isLoading = false;
         notifyListeners();
       }
     });
@@ -50,7 +52,10 @@ class TechnicianProvider extends ChangeNotifier {
   }
 
   Future<void> _fetchTechnicianData(String uid) async {
+    _isLoading = true;
+    notifyListeners();
     _technician = await _techService.getTechnician(uid);
+    _isLoading = false;
     notifyListeners();
   }
 

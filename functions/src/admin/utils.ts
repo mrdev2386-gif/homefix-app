@@ -14,7 +14,7 @@ export async function assertAdmin(context: functions.https.CallableContext) {
     try {
         if (!context.auth?.token?.admin) {
             console.error(`[Admin Auth] Access DENIED for user ${uid}. Admin claim missing.`);
-            throw new functions.https.HttpsError('permission-denied', 'Admin access required');
+            throw new functions.https.HttpsError("permission-denied", "Admin access required");
         }
 
         console.log(`[Admin Auth] Access GRANTED for user ${uid} via claims`);

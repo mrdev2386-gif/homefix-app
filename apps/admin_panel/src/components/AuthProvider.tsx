@@ -88,6 +88,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
     };
 
+    if (loading) {
+        return (
+            <div className="h-screen w-full flex flex-col items-center justify-center bg-[#020617] gap-4">
+                <div className="relative">
+                    <div className="w-12 h-12 border-4 border-indigo-500/20 rounded-full"></div>
+                    <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin absolute top-0 left-0"></div>
+                </div>
+                <p className="text-indigo-400/80 text-[10px] font-black uppercase tracking-[0.3em] animate-pulse">Verifying Credentials</p>
+            </div>
+        );
+    }
+
     return (
         <AuthContext.Provider value={{ user, loading, isAdmin, signOut: handleSignOut }}>
             {children}

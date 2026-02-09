@@ -48,6 +48,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: StreamBuilder<UserModel?>(
         stream: firestoreService.streamUserModel(currentUser.uid),
         builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text('Error loading profile', style: GoogleFonts.outfit(fontSize: 18)),
+                  const SizedBox(height: 8),
+                  Text('${snapshot.error}', style: GoogleFonts.outfit(fontSize: 14, color: Colors.grey)),
+                ],
+              ),
+            );
+          }
+          
           // Fallback data from Firebase Auth if Firestore is loading or missing
           final userModel = snapshot.data;
           
