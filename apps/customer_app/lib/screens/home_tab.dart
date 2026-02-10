@@ -111,6 +111,23 @@ class HomeTab extends StatelessWidget {
               ListTile(
                 leading: CircleAvatar(
                   backgroundColor: Colors.grey[200],
+                  child: Icon(Icons.add_location_alt_outlined, color: Colors.grey[800]),
+                ),
+                title: const Text('Add New Address'),
+                subtitle: const Text('Save a new address to your profile'),
+                onTap: () {
+                  Navigator.pop(context);
+                   Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AddressesScreen(isSelectionMode: false), // Open in full management mode, user can add there
+                    ),
+                  );
+                },
+              ),
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.grey[200],
                   child: Icon(Icons.location_on_outlined, color: Colors.grey[800]),
                 ),
                 title: const Text('Select Saved Address'),

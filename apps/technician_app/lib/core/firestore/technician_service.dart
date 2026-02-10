@@ -1,10 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../models/technician.dart';
 
 class TechnicianService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
   Future<void> saveTechnicianProfile(User user, {
     required List<String> skills,
@@ -12,48 +14,32 @@ class TechnicianService {
     double? lng,
   }) async {
     try {
-      final docRef = _db.collection('technicians').doc(user.uid);
-      final doc = await docRef.get();
-
-      final data = {
-        'uid': user.uid,
+      final callable = _functions.httpsCallable('updateTechnicianProfile');
+      await callable.call({
         'name': user.displayName ?? 'Technician',
-        'phone': user.phoneNumber ?? '',
         'email': user.email ?? '',
+        'phone': user.phoneNumber ?? '',
         'photoUrl': user.photoURL,
         'skills': skills,
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-
-      if (lat != null && lng != null) {
-        data['geo'] = {'lat': lat, 'lng': lng};
-      }
-
-      if (!doc.exists) {
-        data['isOnline'] = false;
-        data['isVerified'] = false;
-        data['rating'] = 4.5;
-        data['jobsDone'] = 0;
-        data['createdAt'] = FieldValue.serverTimestamp();
-        await docRef.set(data);
-      } else {
-        await docRef.update(data);
-      }
+        if (lat != null && lng != null) 'geo': {'lat': lat, 'lng': lng},
+      });
     } catch (e) {
-      debugPrint("Error saving technician profile: $e");
+      debugPrint("Error saving technician profile via CF: $e");
       rethrow;
     }
   }
 
-  Future<void> updateOnlineStatus(String uid, bool isOnline, {double? lat, double? lng}) async {
-    final Map<String, dynamic> data = {
-      'isOnline': isOnline,
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
-    if (lat != null && lng != null) {
-      data['geo'] = {'lat': lat, 'lng': lng};
-    }
-    await _db.collection('technicians').doc(uid).update(data);
+  Future<void> updateOnlineStatus(String uid, bool isOnline) async {
+    final callable = _functions.httpsCallable('toggleOnlineStatus');
+    await callable.call({'isOnline': isOnline});
+  }
+
+  Future<void> updateLocation(String uid, double lat, double lng) async {
+    final callable = _functions.httpsCallable('updateLocation');
+    await callable.call({
+      'location': {'lat': lat, 'lng': lng},
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
   }
 
   Future<Technician?> getTechnician(String uid) async {
@@ -69,3 +55,4 @@ class TechnicianService {
     });
   }
 }
+

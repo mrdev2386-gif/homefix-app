@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -18,12 +19,17 @@ class TechnicianProvider extends ChangeNotifier {
   bool _isLoading = false;
   bool get isLoading => _isLoading;
 
+  StreamSubscription<DocumentSnapshot>? _roleSubscription;
+  StreamSubscription<Technician?>? _techSubscription;
+
   TechnicianProvider() {
-    _isLoading = true;
     _auth.authStateChanges().listen((user) {
+      _roleSubscription?.cancel();
+      _techSubscription?.cancel();
+      
       if (user != null) {
-        _fetchUserRole(user.uid);
-        _fetchTechnicianData(user.uid);
+        _listenToUserRole(user.uid);
+        _listenToTechnicianData(user.uid);
       } else {
         _technician = null;
         _userRole = null;
@@ -33,47 +39,66 @@ class TechnicianProvider extends ChangeNotifier {
     });
   }
 
-  Future<void> _fetchUserRole(String uid) async {
-    try {
-      final doc = await _db.collection('users').doc(uid).get();
+  void _listenToUserRole(String uid) {
+    _roleSubscription = _db.collection('users').doc(uid).snapshots().listen((doc) {
       if (doc.exists) {
         _userRole = doc.data()?['role'] ?? 'customer';
       } else {
-        // If no user document exists, treat as customer to trigger block screen
         _userRole = 'customer';
       }
       notifyListeners();
-    } catch (e) {
-      debugPrint("Error fetching user role: $e");
-      // On error, we still want to block access until we're sure
-      _userRole = 'blocked'; 
-      notifyListeners();
-    }
+    }, onError: (e) {
+      debugPrint("Error listening to user role: $e");
+    });
   }
 
-  Future<void> _fetchTechnicianData(String uid) async {
+  void _listenToTechnicianData(String uid) {
     _isLoading = true;
     notifyListeners();
-    _technician = await _techService.getTechnician(uid);
-    _isLoading = false;
-    notifyListeners();
+    
+    _techSubscription = _techService.getTechnicianStream(uid).listen((tech) {
+      _technician = tech;
+      _isLoading = false;
+      notifyListeners();
+    }, onError: (e) {
+      debugPrint("Error listening to tech data: $e");
+      _isLoading = false;
+      notifyListeners();
+    });
   }
 
-  Future<void> updateOnlineStatus(bool isOnline, {double? lat, double? lng}) async {
+  Future<void> updateOnlineStatus(bool isOnline) async {
     if (_technician == null) return;
-    await _techService.updateOnlineStatus(_technician!.uid, isOnline, lat: lat, lng: lng);
-    _technician = await _techService.getTechnician(_technician!.uid);
-    notifyListeners();
+    
+    if (isOnline && !_auth.currentUser!.emailVerified) {
+        throw Exception("Please verify your email address first.");
+    }
+
+    await _techService.updateOnlineStatus(_technician!.uid, isOnline);
+    // Stream takes care of local update
+  }
+
+  Future<void> updateLocation(double lat, double lng) async {
+    if (_technician == null) return;
+    await _techService.updateLocation(_technician!.uid, lat, lng);
   }
 
   Future<void> onboard(List<String> skills, {double? lat, double? lng}) async {
     final user = _auth.currentUser;
     if (user == null) return;
     await _techService.saveTechnicianProfile(user, skills: skills, lat: lat, lng: lng);
-    await _fetchTechnicianData(user.uid);
   }
 
   Future<void> signOut() async {
+    _roleSubscription?.cancel();
+    _techSubscription?.cancel();
     await _auth.signOut();
+  }
+
+  @override
+  void dispose() {
+    _roleSubscription?.cancel();
+    _techSubscription?.cancel();
+    super.dispose();
   }
 }

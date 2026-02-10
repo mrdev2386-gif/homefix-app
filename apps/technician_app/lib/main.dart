@@ -11,7 +11,10 @@ import 'screens/login_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/block_screen.dart';
+import 'screens/application_status_screen.dart';
 import 'features/kyc/presentation/kyc_status_screen.dart';
+
+
 import 'firebase_options.dart';
 
 import 'package:firebase_app_check/firebase_app_check.dart';
@@ -89,14 +92,29 @@ class AuthGate extends StatelessWidget {
               }
 
               if (provider.technician == null) {
-                return const OnboardingScreen();
+                return const BlockScreen(); // No technician profile yet
               }
               
+              final status = provider.technician!.status;
+              
+              if (status == 'pending_verification') {
+                  return const ApplicationStatusScreen(status: 'pending');
+              }
+              
+              if (status == 'rejected' || status == 'suspended') {
+                  return ApplicationStatusScreen(
+                    status: status, 
+                    reason: provider.technician!.rejectionReason
+                  );
+              }
+
+
               if (provider.technician!.kycStatus != 'approved') {
                  return const KycStatusScreen();
               }
 
               return const DashboardScreen();
+
             },
           );
         }

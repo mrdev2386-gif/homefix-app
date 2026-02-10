@@ -121,7 +121,7 @@ class _OtpScreenState extends State<OtpScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF0F172A)),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -133,13 +133,33 @@ class _OtpScreenState extends State<OtpScreen> {
             children: [
               const SizedBox(height: 20),
               Text(
-                'Verify Phone',
-                style: GoogleFonts.outfit(fontSize: 32, fontWeight: FontWeight.bold),
+                'Verify Account',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF0F172A),
+                  letterSpacing: -1,
+                ),
               ),
               const SizedBox(height: 12),
-              Text(
-                'Enter the 6-digit code sent to ${widget.phoneNumber}',
-                style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 16),
+              RichText(
+                text: TextSpan(
+                  style: GoogleFonts.plusJakartaSans(
+                    color: const Color(0xFF64748B),
+                    fontSize: 16,
+                    height: 1.5,
+                  ),
+                  children: [
+                    const TextSpan(text: 'Enter the verification code we just sent to '),
+                    TextSpan(
+                      text: widget.phoneNumber,
+                      style: const TextStyle(
+                        color: Color(0xFF0F172A),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 48),
               
@@ -147,8 +167,8 @@ class _OtpScreenState extends State<OtpScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: List.generate(6, (index) {
                   return SizedBox(
-                    width: 45,
-                    height: 55,
+                    width: 48,
+                    height: 60,
                     child: TextFormField(
                       controller: _controllers[index],
                       focusNode: _focusNodes[index],
@@ -156,12 +176,23 @@ class _OtpScreenState extends State<OtpScreen> {
                       keyboardType: TextInputType.number,
                       textAlign: TextAlign.center,
                       maxLength: 1,
-                      style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold),
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF0F172A),
+                      ),
                       decoration: InputDecoration(
                         counterText: '',
                         filled: true,
                         fillColor: const Color(0xFFF8FAFC),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey[200]!)),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: const BorderSide(color: Color(0xFF6366F1), width: 2),
+                        ),
                       ),
                       onChanged: (value) {
                         if (value.isNotEmpty) {
@@ -184,16 +215,28 @@ class _OtpScreenState extends State<OtpScreen> {
               
               SizedBox(
                 width: double.infinity,
-                height: 56,
+                height: 58,
                 child: ElevatedButton(
                   onPressed: (_isLoading || !_isOtpComplete) ? null : _handleVerify,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF0F172A),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                    elevation: 0,
                   ),
                   child: _isLoading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text('Verify & Continue', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      ? const SizedBox(
+                          height: 24,
+                          width: 24,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        )
+                      : Text(
+                          'Verify & Continue',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
                 ),
               ),
               
@@ -201,10 +244,31 @@ class _OtpScreenState extends State<OtpScreen> {
               
               Center(
                 child: _timerSeconds > 0
-                    ? Text('Resend code in 0:$_timerSeconds', style: GoogleFonts.outfit(color: Colors.grey))
+                    ? Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Resend code in ',
+                            style: GoogleFonts.plusJakartaSans(color: const Color(0xFF64748B)),
+                          ),
+                          Text(
+                            '0:${_timerSeconds.toString().padLeft(2, '0')}',
+                            style: GoogleFonts.plusJakartaSans(
+                              color: const Color(0xFF0F172A),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      )
                     : TextButton(
                         onPressed: _resendCode,
-                        child: Text('Resend Code', style: GoogleFonts.outfit(color: const Color(0xFF6366F1), fontWeight: FontWeight.bold)),
+                        child: Text(
+                          'Resend Code',
+                          style: GoogleFonts.plusJakartaSans(
+                            color: const Color(0xFF6366F1),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
               ),
             ],
@@ -213,4 +277,5 @@ class _OtpScreenState extends State<OtpScreen> {
       ),
     );
   }
+
 }

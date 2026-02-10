@@ -17,6 +17,7 @@ class _BannerSliderState extends State<BannerSlider> {
   int _currentPage = 0;
   Timer? _timer;
   List<BannerModel> _banners = [];
+  bool _isUserInteracting = false;
 
   @override
   void dispose() {
@@ -28,12 +29,14 @@ class _BannerSliderState extends State<BannerSlider> {
   void _startAutoSlide() {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 4), (timer) {
-      if (_banners.isEmpty) return;
+      if (_banners.isEmpty || _isUserInteracting) return;
+      
       if (_currentPage < _banners.length - 1) {
         _currentPage++;
       } else {
         _currentPage = 0;
       }
+      
       if (_pageController.hasClients) {
         _pageController.animateToPage(
           _currentPage,
@@ -44,12 +47,24 @@ class _BannerSliderState extends State<BannerSlider> {
     });
   }
 
+  void _onUserInteractionStart() {
+    setState(() {
+      _isUserInteracting = true;
+    });
+  }
+
+  void _onUserInteractionEnd() {
+    setState(() {
+      _isUserInteracting = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
-          .collection('banners')
-          .where('active', isEqualTo: true)
+          .collection('service_bottom_banners')
+          .where('isActive', isEqualTo: true)
           .orderBy('order')
           .snapshots(),
       builder: (context, snapshot) {
@@ -58,12 +73,31 @@ class _BannerSliderState extends State<BannerSlider> {
         }
 
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return const SizedBox.shrink(); // Hide if no banners
+          return const SizedBox.shrink();
         }
 
-        _banners = snapshot.data!.docs
-            .map((doc) => BannerModel.fromFirestore(doc))
-            .toList();
+        // Map Firestore data to BannerModel
+        // Note: Check if BannerModel matches 'service_bottom_banners' structure
+        // Assuming BannerModel has fromFirestore or we map manually if diverse
+        try {
+          _banners = snapshot.data!.docs.map((doc) {
+             final data = doc.data() as Map<String, dynamic>;
+             return BannerModel(
+               id: doc.id,
+               imageUrl: data['imageUrl'] ?? '',
+               targetScreen: 'service', // Default or from data
+               targetId: data['id'] ?? '',
+               order: data['order'] ?? 0,
+               active: data['isActive'] ?? true,
+             );
+          }).toList();
+        } catch (e) {
+          // Fallback or debug print
+          debugPrint("Error parsing banners: $e");
+          return const SizedBox.shrink();
+        }
+
+        if (_banners.isEmpty) return const SizedBox.shrink();
 
         // Only start timer once
         if (_timer == null) _startAutoSlide();
@@ -72,47 +106,49 @@ class _BannerSliderState extends State<BannerSlider> {
           children: [
             SizedBox(
               height: 180,
-              child: PageView.builder(
-                controller: _pageController,
-                onPageChanged: (index) {
-                  setState(() {
-                    _currentPage = index;
-                  });
-                },
-                itemCount: _banners.length,
-                itemBuilder: (context, index) {
-                  final banner = _banners[index];
-                  return GestureDetector(
-                    onTap: () {
-                      // Handle navigation based on banner.targetScreen
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Tapped: ${banner.targetId}')),
-                      );
-                    },
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        image: DecorationImage(
-                          image: CachedNetworkImageProvider(banner.imageUrl),
-                          fit: BoxFit.cover,
+              child: Listener(
+                onPointerDown: (_) => _onUserInteractionStart(),
+                onPointerUp: (_) => _onUserInteractionEnd(),
+                onPointerCancel: (_) => _onUserInteractionEnd(),
+                child: PageView.builder(
+                  controller: _pageController,
+                  onPageChanged: (index) {
+                    setState(() {
+                      _currentPage = index;
+                    });
+                  },
+                  itemCount: _banners.length,
+                  itemBuilder: (context, index) {
+                    final banner = _banners[index];
+                    return GestureDetector(
+                      onTap: () {
+                        // Handle navigation
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 16),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          image: DecorationImage(
+                            image: CachedNetworkImageProvider(banner.imageUrl),
+                            fit: BoxFit.cover,
+                          ),
                         ),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: CachedNetworkImage(
-                          imageUrl: banner.imageUrl,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => _buildShimmer(height: 180),
-                          errorWidget: (context, url, error) => Container(
-                            color: Colors.grey[300],
-                            child: const Icon(Icons.broken_image, size: 50, color: Colors.grey),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: CachedNetworkImage(
+                            imageUrl: banner.imageUrl,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => _buildShimmer(height: 180),
+                            errorWidget: (context, url, error) => Container(
+                              color: Colors.grey[300],
+                              child: const Icon(Icons.broken_image, size: 50, color: Colors.grey),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ),
             const SizedBox(height: 12),

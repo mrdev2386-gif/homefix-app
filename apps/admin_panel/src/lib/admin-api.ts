@@ -118,6 +118,66 @@ export const adminApi = {
         return await fn(data);
     },
     /**
+     * Get paginated users
+     */
+    getUsers: async (params: { limit?: number; offset?: number; role?: string; status?: string; search?: string }) => {
+        const fn = httpsCallable(functions, 'admin_getUsers');
+        const result = await fn(params);
+        return result.data as { users: any[]; total: number; limit: number; offset: number };
+    },
+
+    /**
+     * Get user details
+     */
+    getUserById: async (userId: string) => {
+        const fn = httpsCallable(functions, 'admin_getUserById');
+        const result = await fn({ userId });
+        return result.data;
+    },
+
+    /**
+     * Update user details
+     */
+    updateUser: async (userId: string, updates: any) => {
+        const fn = httpsCallable(functions, 'admin_updateUser');
+        return await fn({ userId, updates });
+    },
+
+    /**
+     * Block/Unblock user
+     */
+    blockUser: async (userId: string, block: boolean) => {
+        const fn = httpsCallable(functions, 'admin_blockUser');
+        return await fn({ userId, block });
+    },
+
+    /**
+     * Get paginated technicians
+     */
+    getTechnicians: async (params: { limit?: number; offset?: number; status?: string; search?: string; city?: string }) => {
+        const fn = httpsCallable(functions, 'admin_getTechnicians');
+        const result = await fn(params);
+        return result.data as { techs: any[]; total: number; limit: number; offset: number };
+    },
+
+    /**
+     * Get technician details
+     */
+    getTechnicianById: async (techId: string) => {
+        const fn = httpsCallable(functions, 'admin_getTechnicianById');
+        const result = await fn({ techId });
+        return result.data;
+    },
+
+    /**
+     * Update technician details
+     */
+    updateTechnician: async (techId: string, updates: any) => {
+        const fn = httpsCallable(functions, 'admin_updateTechnician');
+        return await fn({ techId, updates });
+    },
+
+    /**
      * Manage Service Catalog
      */
     manageService: async (data: any) => {

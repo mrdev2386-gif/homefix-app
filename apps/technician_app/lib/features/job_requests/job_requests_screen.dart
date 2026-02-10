@@ -25,11 +25,14 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: Text("New Job Requests", style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        title: Text(
+          "Available Requests",
+          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold),
+        ),
         actions: [
           IconButton(
             onPressed: () {},
-            icon: const Icon(Icons.filter_list_rounded),
+            icon: const Icon(Icons.tune_rounded),
           ),
         ],
       ),
@@ -41,15 +44,15 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                
+
                 final bookings = snapshot.data ?? [];
-                
+
                 if (bookings.isEmpty) {
                   return _buildEmptyState();
                 }
 
                 return ListView.builder(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   itemCount: bookings.length,
                   itemBuilder: (context, index) {
                     return _buildRequestCard(bookings[index], tech);
@@ -62,108 +65,189 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
 
   Widget _buildEmptyState() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: const Color(0xFF6366F1).withOpacity(0.05),
-              shape: BoxShape.circle,
+      child: Padding(
+        padding: const EdgeInsets.all(40.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(32),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEEF2FF),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.search_rounded, size: 48, color: Color(0xFF6366F1)),
             ),
-            child: Icon(Icons.search_rounded, size: 64, color: Colors.grey[300]),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            "Searching for tasks...",
-            style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: const Color(0xFF475569)),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            "New opportunities matching your skills\nwill appear here.",
-            textAlign: TextAlign.center,
-            style: GoogleFonts.outfit(color: const Color(0xFF94A3B8)),
-          ),
-        ],
+            const SizedBox(height: 24),
+            Text(
+              "Looking for jobs...",
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              "As soon as customers post jobs in your area, they will appear right here.",
+              textAlign: TextAlign.center,
+              style: GoogleFonts.plusJakartaSans(
+                color: const Color(0xFF64748B),
+                fontSize: 15,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildRequestCard(Booking b, dynamic tech) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.grey.shade100),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4)),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Stack(
-            children: [
-              SafeNetworkImage(
-                imageUrl: b.serviceImage,
-                height: 140,
-                width: double.infinity,
-                borderRadius: 20,
-              ),
-              Positioned(
-                top: 12,
-                right: 12,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4)],
-                  ),
-                  child: Text(
-                    "₹${b.price.toInt()}",
-                    style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: const Color(0xFF10B981)),
-                  ),
-                ),
-              ),
-            ],
-          ),
           Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(b.serviceTitle, style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: const Color(0xFF1E293B))),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SafeNetworkImage(
+                      imageUrl: b.serviceImage,
+                      height: 64,
+                      width: 64,
+                      borderRadius: 18,
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF0FDF4),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              "ESTIMATED EARNING",
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFF15803D),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            "₹${b.price.toInt()}",
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFF0F172A),
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _buildPill(
+                      DateFormat('MMM dd').format(b.scheduledAt),
+                      Icons.calendar_today_rounded,
+                      const Color(0xFF6366F1),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  b.serviceTitle,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF0F172A),
+                    letterSpacing: -0.5,
+                  ),
+                ),
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    const Icon(Icons.location_on_rounded, size: 14, color: Color(0xFF6366F1)),
-                    const SizedBox(width: 4),
-                    Text(b.addressSnapshot['area'] ?? 'Nearby Area', style: GoogleFonts.outfit(fontSize: 13, color: const Color(0xFF64748B))),
-                    const Spacer(),
-                    const Icon(Icons.calendar_today_rounded, size: 14, color: Color(0xFF6366F1)),
-                    const SizedBox(width: 4),
-                    Text(DateFormat('MMM dd').format(b.scheduledAt), style: GoogleFonts.outfit(fontSize: 13, color: const Color(0xFF64748B))),
+                    const Icon(Icons.location_on_rounded, size: 16, color: Color(0xFF64748B)),
+                    const SizedBox(width: 6),
+                    Text(
+                      b.addressSnapshot['area'] ?? 'Nearby Area',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 14,
+                        color: const Color(0xFF64748B),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 16),
                 if (b.problemDescription != null) ...[
-                  Text("Problem Description:", style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold, color: const Color(0xFF94A3B8))),
-                  const SizedBox(height: 4),
-                  Text(b.problemDescription!, style: GoogleFonts.outfit(fontSize: 13, color: const Color(0xFF475569))),
                   const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFF1F5F9)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "CUSTOMER NOTE",
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF94A3B8),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          b.problemDescription!,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 14,
+                            color: const Color(0xFF475569),
+                            height: 1.5,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
+                const SizedBox(height: 28),
                 Row(
                   children: [
                     Expanded(
                       child: OutlinedButton(
                         onPressed: () {},
                         style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(0, 48),
-                          foregroundColor: const Color(0xFFEF4444),
-                          side: const BorderSide(color: Color(0xFFEF4444)),
+                          minimumSize: const Size(0, 52),
+                          foregroundColor: const Color(0xFF94A3B8),
+                          side: const BorderSide(color: Color(0xFFE2E8F0)),
                         ),
-                        child: const Text("Ignore"),
+                        child: const Text("Dismiss"),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -171,9 +255,10 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
                       child: ElevatedButton(
                         onPressed: () => _showQuoteModal(context, b, tech),
                         style: ElevatedButton.styleFrom(
-                          minimumSize: const Size(0, 48),
+                          minimumSize: const Size(0, 52),
+                          backgroundColor: const Color(0xFF0F172A),
                         ),
-                        child: const Text("Send Quote"),
+                        child: const Text("Submit Quote"),
                       ),
                     ),
                   ],
@@ -185,6 +270,32 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
       ),
     );
   }
+
+  Widget _buildPill(String label, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
 
   void _showQuoteModal(BuildContext context, Booking booking, dynamic tech) {
     final priceController = TextEditingController(text: booking.price.toInt().toString());

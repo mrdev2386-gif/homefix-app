@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:customer_app/core/services/storage_service.dart';
 
 import '../../core/services/auth_service.dart';
 import '../../core/services/firestore_service.dart';
@@ -11,6 +13,7 @@ import '../../core/widgets/safe_network_image.dart';
 import '../../shared/widgets/app_widgets.dart';
 import '../bookings/presentation/booking_history_screen.dart';
 import '../support/presentation/support_screen.dart';
+import '../settings/settings_screen.dart';
 import 'presentation/edit_profile_screen.dart';
 import 'presentation/favorite_services_screen.dart';
 import 'presentation/technician_onboarding_screen.dart';
@@ -55,20 +58,144 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
-class _ProfileContent extends StatelessWidget {
+class _ProfileContent extends StatefulWidget {
   final UserModel user;
 
   const _ProfileContent({required this.user});
 
   @override
+  State<_ProfileContent> createState() => _ProfileContentState();
+}
+
+class _ProfileContentState extends State<_ProfileContent> {
+  bool _isUploading = false;
+
+  Future<void> _changeProfileImage() async {
+    if (_isUploading) return; // Prevent multiple taps during upload
+
+    try {
+      final picker = ImagePicker();
+      
+      // Show source selection dialog
+      final ImageSource? source = await showDialog<ImageSource>(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text('Choose Image Source', style: GoogleFonts.outfit(fontWeight: FontWeight.w800)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library_rounded, color: AppTheme.primaryColor),
+                title: Text('Gallery', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+                onTap: () => Navigator.pop(context, ImageSource.gallery),
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt_rounded, color: AppTheme.primaryColor),
+                title: Text('Camera', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+                onTap: () => Navigator.pop(context, ImageSource.camera),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (source == null) return; // User cancelled
+
+      // Pick image with quality compression
+      final XFile? image = await picker.pickImage(
+        source: source,
+        imageQuality: 70, // Compress to reduce file size
+        maxWidth: 1024,
+        maxHeight: 1024,
+      );
+      
+      if (image == null) return; // User cancelled picker
+
+      // Validate file size before upload
+      final file = File(image.path);
+      final fileSize = await file.length();
+      if (fileSize > StorageService.maxFileSizeBytes) {
+        if (mounted) {
+          final sizeMB = (fileSize / (1024 * 1024)).toStringAsFixed(1);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Image size ($sizeMB MB) exceeds 5MB limit'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Start upload
+      setState(() => _isUploading = true);
+
+      final storage = Provider.of<StorageService>(context, listen: false);
+      final firestore = Provider.of<FirestoreService>(context, listen: false);
+      
+      // Upload to Firebase Storage
+      final String downloadURL = await storage.uploadProfilePhoto(
+        userId: widget.user.uid,
+        file: image,
+      );
+      
+      // Update Firestore with download URL
+      await firestore.updateProfileImageUrl(widget.user.uid, downloadURL);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 12),
+                Text('Profile image updated successfully!', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[ProfileScreen] Error uploading profile image: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    e.toString(),
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context, listen: false);
-    final initials = (user.name?.isNotEmpty ?? false) ? user.name!.substring(0, 1).toUpperCase() : 'U';
+    final initials = (widget.user.name?.isNotEmpty ?? false) ? widget.user.name!.substring(0, 1).toUpperCase() : 'U';
 
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
       slivers: [
-        // Modern Header
         SliverAppBar(
           expandedHeight: 280,
           pinned: true,
@@ -86,10 +213,6 @@ class _ProfileContent extends StatelessWidget {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  Positioned.fill(
-                    child: Container(color: Colors.transparent),
-                  ),
-                   // Decorative Circles
                   Positioned(
                     top: -50, right: -50,
                     child: CircleAvatar(radius: 120, backgroundColor: Colors.white.withOpacity(0.05)),
@@ -102,40 +225,119 @@ class _ProfileContent extends StatelessWidget {
                   Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const SizedBox(height: 40),
-                      // Avatar
-                      Container(
-                        width: 110, height: 110,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 4),
-                          boxShadow: [
-                            BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 10)),
+                      const SizedBox(height: 50),
+                      // Avatar with Upload
+                      GestureDetector(
+                        onTap: _isUploading ? null : _changeProfileImage,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Container(
+                              width: 110, height: 110,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 4),
+                                boxShadow: [
+                                  BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 10)),
+                                ],
+                              ),
+                              child: ClipOval(
+                                child: widget.user.photoUrl != null && widget.user.photoUrl!.isNotEmpty
+                                    ? Image.network(
+                                        widget.user.photoUrl!,
+                                        fit: BoxFit.cover,
+                                        loadingBuilder: (context, child, loadingProgress) {
+                                          if (loadingProgress == null) return child;
+                                          return Container(
+                                            color: AppTheme.accentColor,
+                                            child: Center(
+                                              child: CircularProgressIndicator(
+                                                value: loadingProgress.expectedTotalBytes != null
+                                                    ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                                    : null,
+                                                color: AppTheme.primaryColor,
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                        errorBuilder: (context, error, stackTrace) {
+                                          debugPrint('[ProfileScreen] Error loading profile image: $error');
+                                          return Container(
+                                            color: AppTheme.primaryColor,
+                                            child: Center(
+                                              child: Text(
+                                                initials,
+                                                style: GoogleFonts.outfit(
+                                                  fontSize: 40,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      )
+                                    : Container(
+                                        color: AppTheme.primaryColor,
+                                        child: Center(
+                                          child: Text(
+                                            initials,
+                                            style: GoogleFonts.outfit(
+                                              fontSize: 40,
+                                              fontWeight: FontWeight.w900,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            if (_isUploading)
+                              Container(
+                                width: 110,
+                                height: 110,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.black.withOpacity(0.5),
+                                ),
+                                child: const Center(
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 3,
+                                  ),
+                                ),
+                              )
+                            else
+                              Positioned(
+                                bottom: 0,
+                                right: 0,
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.2),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(Icons.camera_alt, size: 16, color: AppTheme.primaryColor),
+                                ),
+                              ),
                           ],
-                        ),
-                        child: ClipOval(
-                          child: SafeNetworkImage(
-                            imageUrl: user.photoUrl,
-                            fallbackUrl: 'https://ui-avatars.com/api/?name=$initials&background=6366F1&color=fff&bold=true&size=256',
-                          ),
                         ),
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        user.name?.isNotEmpty ?? false ? user.name! : 'Welcome User',
-                        style: GoogleFonts.outfit(
-                          color: Colors.white,
-                          fontSize: 26,
-                          fontWeight: FontWeight.w900,
-                        ),
+                        widget.user.name?.isNotEmpty ?? false ? widget.user.name! : 'Welcome User',
+                        style: GoogleFonts.outfit(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900),
                       ),
                       Text(
-                        (user.email?.isNotEmpty ?? false) ? user.email! : ((user.phone?.isNotEmpty ?? false) ? user.phone! : 'HomeFix Member'),
-                        style: GoogleFonts.outfit(
-                          color: Colors.white.withOpacity(0.8),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
+                        (widget.user.email?.isNotEmpty ?? false) ? widget.user.email! : ((widget.user.phone?.isNotEmpty ?? false) ? widget.user.phone! : 'HomeFix Member'),
+                        style: GoogleFonts.outfit(color: Colors.white.withOpacity(0.8), fontSize: 14, fontWeight: FontWeight.w500),
                       ),
                     ],
                   ),
@@ -145,7 +347,6 @@ class _ProfileContent extends StatelessWidget {
           ),
         ),
 
-        // Settings Sections
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 24, 20, 100),
@@ -166,7 +367,7 @@ class _ProfileContent extends StatelessWidget {
                         icon: Icons.location_on_rounded,
                         color: Colors.redAccent,
                         title: 'Primary Address',
-                        value: (user.defaultAddress?.isNotEmpty ?? false) ? user.defaultAddress! : 'No address set',
+                        value: (widget.user.defaultAddress?.isNotEmpty ?? false) ? widget.user.defaultAddress! : 'No address set',
                       ),
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 16),
@@ -176,7 +377,7 @@ class _ProfileContent extends StatelessWidget {
                         icon: Icons.account_balance_wallet_rounded,
                         color: Colors.green,
                         title: 'Wallet Balance',
-                        value: '₹${user.walletBalance.toStringAsFixed(2)}',
+                        value: '₹${widget.user.walletBalance.toStringAsFixed(2)}',
                         trailing: TextButton(
                           onPressed: () {},
                           child: Text('ADD MONEY', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 12)),
@@ -190,19 +391,51 @@ class _ProfileContent extends StatelessWidget {
                 _sectionTitle('ACCOUNT SETTINGS'),
                 _settingsGroup([
                   _settingsTile(Icons.person_outline_rounded, 'Personal Details', 'Name, Email, Phone', 
-                    () => Navigator.push(context, MaterialPageRoute(builder: (_) => EditProfileScreen(user: user)))),
+                    () => Navigator.push(context, MaterialPageRoute(builder: (_) => EditProfileScreen(user: widget.user)))),
                   _settingsTile(Icons.history_rounded, 'Booking History', 'View all your past services', 
                     () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookingHistoryScreen()))),
                   _settingsTile(Icons.favorite_border_rounded, 'Favorites', 'Services you loved', 
                     () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FavoriteServicesScreen()))),
                 ]),
 
-                if ((user.role ?? 'customer').toString().toLowerCase() == 'customer') ...[
+                const SizedBox(height: 32),
+                _sectionTitle('PREFERENCES'),
+                _settingsGroup([
+                  _settingsTile(
+                    Icons.settings_rounded,
+                    'Settings',
+                    'App preferences and privacy',
+                    () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SettingsScreen(user: widget.user),
+                      ),
+                    ),
+                  ),
+                  _settingsTile(Icons.notifications_none_rounded, 'Notifications', 'Manage alerts and updates', () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SettingsScreen(user: widget.user),
+                      ),
+                    );
+                  }),
+                  _settingsTile(Icons.language_rounded, 'Language', 'English (UK)', () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SettingsScreen(user: widget.user),
+                      ),
+                    );
+                  }),
+                ]),
+
+                if ((widget.user.role ?? 'customer').toString().toLowerCase() == 'customer') ...[
                   const SizedBox(height: 32),
                   _buildBecomeTechnicianCTA(context),
                 ],
 
-                const SizedBox(height: 24),
+                const SizedBox(height: 32),
                 _sectionTitle('SUPPORT'),
                 _settingsGroup([
                   _settingsTile(Icons.help_outline_rounded, 'Help Center', 'FAQs and Customer Support', 
@@ -214,7 +447,6 @@ class _ProfileContent extends StatelessWidget {
                 ]),
 
                 const SizedBox(height: 40),
-                // Logout Button
                 SizedBox(
                   width: double.infinity,
                   height: 60,
@@ -226,10 +458,7 @@ class _ProfileContent extends StatelessWidget {
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: Colors.red.shade100)),
                     ),
-                    child: Text(
-                      'LOGOUT',
-                      style: GoogleFonts.outfit(fontWeight: FontWeight.w900, letterSpacing: 1),
-                    ),
+                    child: Text('LOGOUT', style: GoogleFonts.outfit(fontWeight: FontWeight.w900, letterSpacing: 1)),
                   ),
                 ),
               ],
@@ -252,6 +481,7 @@ class _ProfileContent extends StatelessWidget {
 
   Widget _settingsGroup(List<Widget> children) {
     return Container(
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
@@ -280,54 +510,55 @@ class _ProfileContent extends StatelessWidget {
           )
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
-                child: const Icon(Icons.handyman_rounded, color: Colors.white, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                'Earn more with HomeFix',
-                style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Join our community of 50,000+ service professionals and grow your business today.',
-            style: GoogleFonts.outfit(color: Colors.white.withOpacity(0.9), fontSize: 13, height: 1.5),
-          ),
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TechnicianOnboardingScreen())),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: const Color(0xFF059669),
-              minimumSize: const Size(double.infinity, 50),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              elevation: 0,
+      child: InkWell(
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TechnicianOnboardingScreen())),
+        borderRadius: BorderRadius.circular(28),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
+                  child: const Icon(Icons.handyman_rounded, color: Colors.white, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Earn more with HomeFix',
+                  style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+              ],
             ),
-            child: Text(
-              'REGISTER AS A PARTNER',
-              style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5),
+            const SizedBox(height: 16),
+            Text(
+              'Join our community of 50,000+ service professionals and grow your business today.',
+              style: GoogleFonts.outfit(color: Colors.white.withOpacity(0.9), fontSize: 13, height: 1.5),
             ),
-          ),
-        ],
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TechnicianOnboardingScreen())),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF059669),
+                elevation: 0,
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+              child: Text(
+                'REGISTER AS A PARTNER',
+                style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _settingsTile(IconData icon, String title, String subtitle, VoidCallback onTap) {
     return ListTile(
-      onTap: () {
-        debugPrint("[Profile] Clicked: $title");
-        onTap();
-      },
+      onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       leading: Container(
         padding: const EdgeInsets.all(10),

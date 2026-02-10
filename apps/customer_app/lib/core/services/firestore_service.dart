@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import '../models/booking.dart';
 import '../models/service.dart';
@@ -108,18 +109,30 @@ class FirestoreService {
   }
   
   Future<void> saveAddress(String userId, Address address) async {
-    final collection = _db.collection('customers').doc(userId).collection('addresses');
-    if (address.id.isEmpty) {
-      final docRef = collection.doc();
-      await docRef.set(address.copyWith(id: docRef.id).toMap());
-    } else {
-      await collection.doc(address.id).set(address.toMap(), SetOptions(merge: true));
-    }
+    final callable = FirebaseFunctions.instance.httpsCallable('manageAddress');
+    await callable.call({
+      'action': address.id.isEmpty ? 'add' : 'edit',
+      'addressId': address.id.isEmpty ? null : address.id,
+      'addressData': address.toMap(),
+    });
   }
 
   Future<void> deleteAddress(String userId, String addressId) async {
-    await _db.collection('customers').doc(userId).collection('addresses').doc(addressId).delete();
+    final callable = FirebaseFunctions.instance.httpsCallable('manageAddress');
+    await callable.call({
+      'action': 'delete',
+      'addressId': addressId,
+    });
   }
+
+  Future<void> setDefaultAddress(String userId, String addressId) async {
+    final callable = FirebaseFunctions.instance.httpsCallable('manageAddress');
+    await callable.call({
+      'action': 'setDefault',
+      'addressId': addressId,
+    });
+  }
+
 
   // --- Cart Management ---
   Stream<List<CartItem>> streamCart(String userId) {
@@ -298,6 +311,16 @@ class FirestoreService {
     await _db.collection('customers').doc(userId).update(data);
   }
 
+  /// Update user profile image URL
+  /// CRITICAL: Only updates profileImageUrl field
+  Future<void> updateProfileImageUrl(String userId, String imageUrl) async {
+    await _db.collection('customers').doc(userId).set({
+      'photoUrl': imageUrl,
+      'profileImageUrl': imageUrl, // Keep both for compatibility
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
   Stream<UserModel> streamUserModel(String userId) {
     return _db.collection('customers').doc(userId).snapshots().map((doc) {
       if (!doc.exists) {
@@ -403,21 +426,60 @@ class FirestoreService {
   }
 
   // --- Technician Categories ---
+  Stream<List<TechnicianCategory>> streamTechnicianCategories() {
+    return _db.collection('technician_categories')
+        .where('isActive', isEqualTo: true)
+        .snapshots()
+        .map((snapshot) {
+          final categories = snapshot.docs
+            .map((doc) => TechnicianCategory.fromFirestore(doc))
+            .toList();
+          // Sort in-memory to avoid index requirement
+          categories.sort((a, b) => a.order.compareTo(b.order));
+          return categories;
+        });
+  }
+
+  Stream<List<TechnicianSubcategory>> streamTechnicianSubcategories({String? categoryId}) {
+    Query query = _db.collection('technician_subcategories')
+        .where('isActive', isEqualTo: true);
+    
+    if (categoryId != null) {
+      query = query.where('categoryId', isEqualTo: categoryId);
+    }
+
+    return query.snapshots()
+        .map((snapshot) {
+          final subcategories = snapshot.docs
+            .map((doc) => TechnicianSubcategory.fromFirestore(doc))
+            .toList();
+          // Sort in-memory to avoid index requirement
+          subcategories.sort((a, b) => a.order.compareTo(b.order));
+          return subcategories;
+        });
+  }
+
   Future<List<TechnicianCategory>> getTechnicianCategories() async {
     final snapshot = await _db.collection('technician_categories')
         .where('isActive', isEqualTo: true)
-        .orderBy('order')
         .get();
-        
-    return snapshot.docs.map((doc) => TechnicianCategory.fromFirestore(doc)).toList();
+    
+    final categories = snapshot.docs
+      .map((doc) => TechnicianCategory.fromFirestore(doc))
+      .toList();
+    categories.sort((a, b) => a.order.compareTo(b.order));
+    return categories;
   }
 
   Future<List<TechnicianSubcategory>> getTechnicianSubcategories() async {
     final snapshot = await _db.collection('technician_subcategories')
         .where('isActive', isEqualTo: true)
-        .orderBy('order')
         .get();
-        
-    return snapshot.docs.map((doc) => TechnicianSubcategory.fromFirestore(doc)).toList();
+    
+    final subcategories = snapshot.docs
+      .map((doc) => TechnicianSubcategory.fromFirestore(doc))
+      .toList();
+    subcategories.sort((a, b) => a.order.compareTo(b.order));
+    return subcategories;
   }
 }

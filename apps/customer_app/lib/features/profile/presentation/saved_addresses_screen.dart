@@ -94,9 +94,18 @@ class SavedAddressesScreen extends StatelessWidget {
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 15, offset: const Offset(0, 5))],
       ),
       child: InkWell(
-        onTap: () {
-          Provider.of<LocationProvider>(context, listen: false).setSelectedAddress(address);
-          Navigator.pop(context);
+        onTap: () async {
+          final locationProvider = Provider.of<LocationProvider>(context, listen: false);
+          await locationProvider.setSelectedAddress(address);
+          if (context.mounted) {
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Delivering to ${address.label}'),
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
         },
         borderRadius: BorderRadius.circular(24),
         child: Padding(

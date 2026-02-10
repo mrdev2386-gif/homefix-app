@@ -14,120 +14,313 @@ class JobDetailsScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: Text("Job Details", style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        title: Text("Job Details", style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold)),
+        actions: [
+          IconButton(
+            onPressed: () {},
+            icon: const Icon(Icons.share_outlined),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SafeNetworkImage(
-              imageUrl: booking.serviceImage,
-              height: 200,
-              width: double.infinity,
+            Stack(
+              children: [
+                SafeNetworkImage(
+                  imageUrl: booking.serviceImage,
+                  height: 240,
+                  width: double.infinity,
+                ),
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: _buildStatusPill(booking.status),
+                ),
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Transform.translate(
+              offset: const Offset(0, -24),
+              child: Container(
+                width: double.infinity,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: Text(
-                          booking.serviceTitle,
-                          style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              booking.serviceTitle,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 26,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFF0F172A),
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            "₹${booking.finalAmount}",
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFF6366F1),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        "Booking ID: #${booking.bookingId.substring(0, 8).toUpperCase()}",
+                        style: GoogleFonts.plusJakartaSans(
+                          color: const Color(0xFF94A3B8),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                      _buildStatusPill(booking.status),
+                      const SizedBox(height: 32),
+                      
+                      _buildSectionTitle("Customer Detail"),
+                      const SizedBox(height: 16),
+                      _buildDetailCard([
+                        _buildInfoRow(Icons.person_outline_rounded, "Recipient Name", booking.customerName),
+                        const Divider(height: 32, color: Color(0xFFF1F5F9)),
+                        _buildInfoRow(Icons.location_on_outlined, "Service Address", booking.addressSnapshot['fullAddress'] ?? 'N/A'),
+                      ]),
+                      
+                      const SizedBox(height: 32),
+                      _buildSectionTitle("Schedule"),
+                      const SizedBox(height: 16),
+                      _buildDetailCard([
+                        _buildInfoRow(Icons.calendar_today_rounded, "Appointment Date", DateFormat('EEEE, dd MMM yyyy').format(booking.scheduledAt)),
+                        const Divider(height: 32, color: Color(0xFFF1F5F9)),
+                        _buildInfoRow(Icons.access_time_rounded, "Preferred Slot", booking.scheduledTime),
+                      ]),
+
+                      if (booking.problemDescription != null) ...[
+                        const SizedBox(height: 32),
+                        _buildSectionTitle("Technician Notes"),
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFFF1F5F9)),
+                          ),
+                          child: Text(
+                            booking.problemDescription!,
+                            style: GoogleFonts.plusJakartaSans(
+                              color: const Color(0xFF475569),
+                              height: 1.6,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 32),
+                      _buildSectionTitle("Payment Information"),
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0F172A),
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: Column(
+                          children: [
+                            _buildPriceRow("Base Fare", "₹${booking.price}"),
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 16),
+                              child: Divider(color: Colors.white10),
+                            ),
+                            _buildPriceRow("Technician Payout", "₹${booking.finalAmount}", isTotal: true),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 120),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "Booking ID: #${booking.bookingId.substring(0, 8).toUpperCase()}",
-                    style: GoogleFonts.outfit(color: Colors.grey, fontSize: 13),
-                  ),
-                  const SizedBox(height: 32),
-                  
-                  _buildSectionTitle("Customer Information"),
-                  const SizedBox(height: 16),
-                  _buildInfoRow(Icons.person_outline_rounded, "Name", booking.customerName),
-                  const SizedBox(height: 12),
-                  _buildInfoRow(Icons.location_on_outlined, "Address", booking.addressSnapshot['fullAddress'] ?? 'N/A'),
-                  const SizedBox(height: 32),
-
-                  _buildSectionTitle("Job Schedule"),
-                  const SizedBox(height: 16),
-                  _buildInfoRow(Icons.calendar_today_rounded, "Date", DateFormat('EEEE, dd MMM yyyy').format(booking.scheduledAt)),
-                  const SizedBox(height: 12),
-                  _buildInfoRow(Icons.access_time_rounded, "Time Slot", booking.scheduledTime),
-                  const SizedBox(height: 32),
-
-                  if (booking.problemDescription != null) ...[
-                    _buildSectionTitle("Problem Description"),
-                    const SizedBox(height: 12),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                      ),
-                      child: Text(
-                        booking.problemDescription!,
-                        style: GoogleFonts.outfit(color: const Color(0xFF475569), height: 1.5),
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-                  ],
-
-                  _buildSectionTitle("Payment Summary"),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF6366F1).withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Column(
-                      children: [
-                        _buildPriceRow("Service Fare", "₹${booking.price}"),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 12),
-                          child: Divider(color: Color(0xFFE2E8F0)),
-                        ),
-                        _buildPriceRow("Total Earnings", "₹${booking.finalAmount}", isTotal: true),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-                ],
+                ),
               ),
             ),
           ],
         ),
       ),
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.all(24),
+      bottomSheet: Container(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
         decoration: BoxDecoration(
           color: Colors.white,
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 20,
+              offset: const Offset(0, -8),
+            ),
+          ],
         ),
-        child: ElevatedButton.icon(
-          onPressed: () {
-            // Implement Call Customer
-          },
-          icon: const Icon(Icons.call_rounded),
-          label: const Text("Call Customer"),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF10B981),
-            minimumSize: const Size(double.infinity, 56),
-          ),
+        child: Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () {},
+                icon: const Icon(Icons.call_rounded, size: 20),
+                label: const Text("Call Customer"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF10B981),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 56),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 0,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
+
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: GoogleFonts.plusJakartaSans(
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+        color: const Color(0xFF0F172A),
+      ),
+    );
+  }
+
+  Widget _buildDetailCard(List<Widget> children) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFF1F5F9)),
+      ),
+      child: Column(children: children),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, size: 20, color: const Color(0xFF6366F1)),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 12,
+                  color: const Color(0xFF94A3B8),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF334155),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPriceRow(String label, String value, {bool isTotal = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: isTotal ? 16 : 14,
+            fontWeight: isTotal ? FontWeight.bold : FontWeight.w500,
+            color: isTotal ? Colors.white : Colors.white60,
+          ),
+        ),
+        Text(
+          value,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: isTotal ? 22 : 16,
+            fontWeight: FontWeight.bold,
+            color: isTotal ? const Color(0xFF818CF8) : Colors.white,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatusPill(String status) {
+    Color color = const Color(0xFF6366F1);
+    if (status == 'completed') color = const Color(0xFF10B981);
+    if (status == 'started') color = const Color(0xFFF59E0B);
+    if (status == 'cancelled') color = const Color(0xFFEF4444);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            status.toUpperCase().replaceAll('_', ' '),
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 11,
+              color: const Color(0xFF0F172A),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
 
   Widget _buildSectionTitle(String title) {
     return Text(

@@ -102,46 +102,47 @@ export const savePersonalDetails = functions.https.onCall(async (data, context) 
 export const submitKYC = functions.https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
-    const { idType, frontUrl, backUrl, selfieUrl } = data;
+    const { idType, frontUrl, backUrl, selfieUrl, fullName, aadharNumber, panNumber } = data;
 
-    if (!frontUrl || !backUrl || !selfieUrl) {
-        throw new functions.https.HttpsError('invalid-argument', 'All KYC images are required.');
+    if (!frontUrl || !selfieUrl) {
+        throw new functions.https.HttpsError('invalid-argument', 'Required KYC images are missing.');
     }
 
-    // In a real app, we'd trigger OCR here or verify the images.
-    // For now, we simulate extraction.
-    const extractedData = {
-        name: 'Extracted Name Placeholder',
-        idNumber: 'XXXX-XXXX-XXXX',
-        dob: '01/01/1990'
-    };
-
     const kycData = {
-        idType,
+        idType: idType || 'aadhar',
+        fullName,
+        aadharNumber,
+        panNumber,
         frontUrl,
-        backUrl,
+        backUrl: backUrl || null,
         selfieUrl,
-        extractedData,
-        status: 'pending',
+        status: 'submitted',
         submittedAt: admin.firestore.FieldValue.serverTimestamp()
     };
 
     // Create verification queue item
-    await db.collection('kycVerificationQueue').add({
+    await db.collection('kyc_verification_queue').add({
         technicianId: uid,
         ...kycData,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    await db.collection('technicianApplications').doc(uid).set({
+    // Update Application
+    await db.collection('technician_applications').doc(uid).set({
         kyc: kycData,
-        status: 'kyc_submitted', // Should strictly be 'kyc_submitted' or just step update? Design says status update.
-        currentStep: 3,
+        kycStatus: 'submitted',
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
 
-    return { success: true, message: 'KYC submitted for verification' };
+    // Update Technician Profile
+    await db.collection('technicians').doc(uid).update({
+        kycStatus: 'submitted',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    return { success: true, message: 'KYC submitted successfully' };
 });
+
 
 export const saveSkillSelection = functions.https.onCall(async (data, context) => {
     assertAuthenticated(context);
@@ -388,4 +389,110 @@ export const submitApplication = functions.https.onCall(async (data, context) =>
     console.log(`Technician Application Submitted: ${uid}`);
 
     return { success: true, message: 'Application submitted successfully.' };
+});
+
+export const submitFullApplication = functions.https.onCall(async (data, context) => {
+    assertAuthenticated(context);
+    const uid = context.auth!.uid;
+    const {
+        name, email, phone, address, city, pinCode,
+        bankName, accountNumber, ifsc, accountHolder,
+        categories, subcategories, experience,
+        idProofUrl, photoUrl
+    } = data; // Match keys sent from Flutter
+
+    // Check for existing application
+    const existingApp = await db.collection('technician_applications').doc(uid).get();
+    if (existingApp.exists) {
+        throw new functions.https.HttpsError('already-exists', 'Application already submitted.');
+    }
+
+    // Basic Validation
+    if (!name || !phone || !categories || !subcategories) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing required fields.');
+    }
+
+    // Construct the Application Data Structure
+    const applicationData = {
+        id: uid,
+        phone,
+        status: 'submitted', // Direct to submitted
+        currentStep: 9, // Skipped steps
+
+        personalDetails: {
+            name,
+            email,
+            phone,
+            address,
+            city,
+            pinCode, // Note: Schema uses 'pinCodes' in serviceArea, but 'pinCode' in UI. 
+            // We'll map for now.
+            photoUrl: photoUrl || null
+        },
+
+        skills: {
+            // We need to map the flat lists to the structure expected: { serviceId: { ... } }
+            // But since the UI sends flat lists, we might store them as is for this simplified flow,
+            // OR we try to construct the complex object.
+            // For now, let's store the raw UI selection to allow admin viewing.
+            categories,     // List of IDs
+            subcategories, // List of IDs
+        },
+
+        experience: {
+            years: experience,
+            description: ""
+        },
+
+        bankDetails: {
+            bankName,
+            accountNumber, // Should encrypt
+            ifsc,
+            holderName: accountHolder
+        },
+
+        kyc: {
+            idProofUrl,
+            status: 'pending'
+        },
+
+        submittedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    // Save Application Doc
+    await db.collection('technician_applications').doc(uid).set(applicationData);
+
+    // Also create the Technician Profile (Inactive)
+    // Note: This duplicates logic from 'submitApplication' but adapts to the new data shape.
+    const techData = {
+        id: uid,
+        name,
+        email,
+        phone,
+        photoUrl: photoUrl || null,
+
+        address,
+        city,
+
+        categoryIds: categories,
+        subcategoryIds: subcategories,
+
+        experienceYears: experience,
+
+        status: 'pending_verification',
+        isActive: false,
+        isOnline: false,
+
+        rating: 0,
+        totalJobs: 0,
+
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    await db.collection('technicians').doc(uid).set(techData);
+
+    return { success: true, message: 'Application received.' };
 });

@@ -54,49 +54,48 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _signInWithPhone() async {
-    if (!_formKey.currentState!.validate()) return;
-    
+  Future<void> _verifyPhone() async {
+    final phone = _phoneController.text.trim();
+    if (phone.isEmpty || phone.length < 10) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please enter a valid phone number")),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
-    final phoneNumber = '+91${_phoneController.text.trim()}';
-    
+
     try {
       await FirebaseAuth.instance.verifyPhoneNumber(
-        phoneNumber: phoneNumber,
-        codeSent: (verificationId, resendToken) {
-          if (mounted) {
-            setState(() => _isLoading = false);
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => OtpScreen(
-                  verificationId: verificationId,
-                  phoneNumber: phoneNumber,
-                ),
-              ),
-            );
-          }
-        },
-        verificationFailed: (e) {
-          if (mounted) {
-            setState(() => _isLoading = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text("Verification failed: ${e.message}")),
-            );
-          }
-        },
-        verificationCompleted: (credential) async {
+        phoneNumber: "+91$phone",
+        verificationCompleted: (PhoneAuthCredential credential) async {
           await FirebaseAuth.instance.signInWithCredential(credential);
         },
-        codeAutoRetrievalTimeout: (id) {},
+        verificationFailed: (FirebaseAuthException e) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Verification failed: ${e.message}")),
+          );
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          setState(() => _isLoading = false);
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => OtpScreen(
+                verificationId: verificationId,
+                phoneNumber: "+91$phone",
+              ),
+            ),
+          );
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {},
       );
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e")),
-        );
-      }
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e")),
+      );
     }
   }
 
@@ -104,124 +103,95 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            Container(
-              height: 350,
-              width: double.infinity,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 60),
+              // Logo or App Name
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6366F1).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
                 ),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(40),
-                  bottomRight: Radius.circular(40),
+                child: const Icon(
+                  Icons.build_circle_rounded,
+                  color: Color(0xFF6366F1),
+                  size: 32,
                 ),
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.handyman_rounded, size: 64, color: Colors.white),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'HomeFix Partner',
-                    style: GoogleFonts.outfit(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Professional Network for Experts',
-                    style: GoogleFonts.outfit(
-                      fontSize: 16,
-                      color: Colors.white.withOpacity(0.6),
-                    ),
-                  ),
-                ],
+              const SizedBox(height: 32),
+              Text(
+                "Welcome Back,",
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF0F172A),
+                  letterSpacing: -1,
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(32.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Partner Login',
-                    style: GoogleFonts.outfit(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: const Color(0xFF1E293B),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Connect with customers and grow your service business with HomeFix.',
-                    style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 15, height: 1.5),
-                  ),
-                  const SizedBox(height: 40),
-                  
-                  // Phone Input
-                  Form(
-                    key: _formKey,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.grey[200]!),
-                      ),
-                      child: TextFormField(
-                        controller: _phoneController,
-                        keyboardType: TextInputType.phone,
-                        style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
-                        decoration: InputDecoration(
-                          prefixIcon: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text('+91', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-                                const SizedBox(width: 8),
-                                Container(width: 1, height: 20, color: Colors.grey[300]),
-                              ],
-                            ),
-                          ),
-                          hintText: 'Phone Number',
-                          border: InputBorder.none,
-                        ),
-                        validator: (v) => (v?.length ?? 0) != 10 ? 'Enter 10 digits' : null,
+              const SizedBox(height: 8),
+              Text(
+                "Partner with HomeFix and start earning today.",
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 16,
+                  color: const Color(0xFF64748B),
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 48),
+              
+              Text(
+                "Phone Number",
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF0F172A),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+                decoration: InputDecoration(
+                  hintText: "Enter your phone number",
+                  prefixIcon: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    child: Text(
+                      "+91",
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF0F172A),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _signInWithPhone,
+                ),
+              ),
+              const SizedBox(height: 32),
+              _isLoading && !_isGoogleLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : ElevatedButton(
+                      onPressed: _verifyPhone,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0F172A), 
+                        minimumSize: const Size(double.infinity, 56),
+                        backgroundColor: const Color(0xFF6366F1),
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                         elevation: 0,
                       ),
-                      child: _isLoading && !_isGoogleLoading
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : Text('Continue', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)),
+                      child: const Text("Continue"),
                     ),
-                  ),
                   
                   const SizedBox(height: 32),
                   Row(
@@ -229,7 +199,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       const Expanded(child: Divider()),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                        child: Text('OR', style: GoogleFonts.outfit(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                        child: Text('OR', 
+                            style: GoogleFonts.plusJakartaSans(
+                                color: const Color(0xFF94A3B8), 
+                                fontSize: 12, 
+                                fontWeight: FontWeight.bold)),
                       ),
                       const Expanded(child: Divider()),
                     ],
@@ -247,26 +221,45 @@ class _LoginScreenState extends State<LoginScreen> {
                               'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1200px-Google_%22G%22_logo.svg.png',
                               width: 20,
                             ),
-                      label: Text('Continue with Google', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black)),
+                      label: Text('Continue with Google', 
+                          style: GoogleFonts.plusJakartaSans(
+                              fontWeight: FontWeight.bold, 
+                              fontSize: 16, 
+                              color: const Color(0xFF0F172A))),
                       style: OutlinedButton.styleFrom(
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         side: BorderSide(color: Colors.grey[300]!),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 60),
                   Center(
-                    child: Text(
-                      'By joining, you agree to our Service Terms',
-                      style: GoogleFonts.outfit(color: Colors.grey, fontSize: 12),
+                    child: RichText(
+                      textAlign: TextAlign.center,
+                      text: TextSpan(
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 13,
+                          color: const Color(0xFF64748B),
+                          height: 1.5,
+                        ),
+                        children: const [
+                          TextSpan(text: "By continuing, you agree to our "),
+                          TextSpan(
+                            text: "Terms of Service",
+                            style: TextStyle(
+                              color: Color(0xFF6366F1),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
-          ],
-        ),
-      ),
+          ),
     );
   }
 }

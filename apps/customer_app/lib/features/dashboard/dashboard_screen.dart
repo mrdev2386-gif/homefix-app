@@ -11,6 +11,7 @@ import '../../core/services/notifications_service.dart';
 import '../cart/presentation/cart_screen.dart';
 import '../notifications/presentation/notification_screen.dart';
 import '../profile/presentation/saved_addresses_screen.dart';
+import '../profile/presentation/add_edit_address_screen.dart';
 import '../services/presentation/service_request_screen.dart';
 import '../services/presentation/service_list_screen.dart';
 import '../support/presentation/support_screen.dart';
@@ -33,15 +34,32 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAliveClientMixin {
+  late Stream<List<ProfessionalReel>> _reelsStream;
+  late Stream<List<CleaningEssential>> _essentialsStream;
+  late Stream<List<ServiceBanner>> _bannersStream;
+  Stream<List<Booking>>? _bookingsStream;
+  
   @override
   bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<LocationProvider>(context, listen: false).updateCurrentLocation();
-    });
+    final firestore = Provider.of<FirestoreService>(context, listen: false);
+    _reelsStream = firestore.streamProfessionalReels();
+    _essentialsStream = firestore.streamCleaningEssentials();
+    _bannersStream = firestore.streamServiceBottomBanners();
+
+    final auth = Provider.of<AuthService>(context, listen: false);
+    if (auth.currentUser != null) {
+      _bookingsStream = firestore.streamBookings(auth.currentUser!.uid, limit: 1);
+      
+      // Initialize location provider with user ID
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final locationProvider = Provider.of<LocationProvider>(context, listen: false);
+        locationProvider.initialize(auth.currentUser!.uid);
+      });
+    }
   }
 
   @override
@@ -61,58 +79,31 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildSearchBar(context),
-                  
                   const HomeBannerCarousel(),
                   const SizedBox(height: 32),
-                  
                   _buildSectionHeader('What are you looking for?', null),
                   const CategoryGrid(),
                   const SizedBox(height: 24),
-
                   _buildProfessionalReels(context),
                   const SizedBox(height: 32),
-
                   _buildCleaningEssentials(context),
                   const SizedBox(height: 32),
-
                   _buildUpcomingBooking(context),
-
                   _buildQuickActions(context),
                   const SizedBox(height: 32),
-                  
-                  const ServiceListSection(
-                    title: 'Top Rated Services', 
-                    isHorizontal: true, 
-                    isTopOnly: true
-                  ),
+                  const ServiceListSection(title: 'Top Rated Services', isHorizontal: true, isTopOnly: true),
                   const SizedBox(height: 32),
-
                   const ServiceSpotlightSection(),
                   const SizedBox(height: 32),
-
                   _buildSupportCard(context),
                   const SizedBox(height: 32),
-                  
-                  const ServiceListSection(
-                    title: 'Professional Home Services', 
-                    isHorizontal: false,
-                  ),
+                  const ServiceListSection(title: 'Professional Home Services', isHorizontal: false),
                   const SizedBox(height: 32),
-
-                  const ServiceListSection(
-                    title: 'Recommended For You', 
-                    category: 'cleaning',
-                    isHorizontal: true,
-                  ),
+                  const ServiceListSection(title: 'Recommended For You', category: 'cleaning', isHorizontal: true),
                   const SizedBox(height: 32),
-
-                  ServiceSection(child: _buildServiceBottomBanners(context)),
+                  _buildServiceBottomBanners(context),
                   const SizedBox(height: 32),
-
-                  const ServiceListSection(
-                    title: 'Recently Viewed', 
-                    isHorizontal: true,
-                  ),
+                  const ServiceListSection(title: 'Recently Viewed', isHorizontal: true),
                   const SizedBox(height: 100),
                 ],
               ),
@@ -127,7 +118,6 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
     return SliverAppBar(
       floating: true,
       pinned: true,
-      snap: false,
       expandedHeight: 120,
       backgroundColor: Colors.white,
       elevation: 0,
@@ -136,51 +126,59 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
         background: Container(color: Colors.white),
         titlePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         centerTitle: false,
-        title: Consumer<LocationProvider>(
-          builder: (context, location, child) {
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.location_on_rounded, color: AppTheme.primaryColor, size: 14),
-                    const SizedBox(width: 4),
-                    Text(
-                      'DELIVERING TO',
-                      style: GoogleFonts.outfit(
-                        color: AppTheme.primaryColor,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                  ],
-                ),
-                InkWell(
-                  onTap: () => _showLocationBottomSheet(context),
-                  child: Row(
+        title: Material(
+          color: Colors.transparent,
+          child: Consumer<LocationProvider>(
+            builder: (context, location, child) {
+              return InkWell(
+                onTap: () => _showLocationBottomSheet(context),
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.all(4.0),
+                  child: Column(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Flexible(
-                        child: Text(
-                          location.currentAddress, 
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.outfit(
-                            color: AppTheme.textColor,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 15,
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.location_on_rounded, color: AppTheme.primaryColor, size: 14),
+                          const SizedBox(width: 4),
+                          Text(
+                            'DELIVERING TO',
+                            style: GoogleFonts.outfit(
+                              color: AppTheme.primaryColor,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1,
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                      const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.primaryColor, size: 18),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              location.currentAddress, 
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.outfit(
+                                color: AppTheme.textColor,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ),
+                          const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.primaryColor, size: 18),
+                        ],
+                      ),
                     ],
                   ),
                 ),
-              ],
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
       actions: [
@@ -311,10 +309,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
               icon: Icons.my_location_rounded,
               title: 'Current Location',
               subtitle: 'Precision location via GPS',
-              onTap: () {
-                Provider.of<LocationProvider>(context, listen: false).updateCurrentLocation();
-                Navigator.pop(context);
-              },
+              onTap: () => _handleCurrentLocation(context),
             ),
             const Divider(height: 1, indent: 80),
             _buildLocationOption(
@@ -322,10 +317,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
               icon: Icons.map_outlined,
               title: 'Add New Address',
               subtitle: 'Search for your home or office',
-              onTap: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const SavedAddressesScreen()));
-                Navigator.pop(context);
-              },
+              onTap: () => _handleAddNewAddress(context),
             ),
             const Divider(height: 1, indent: 80),
             _buildLocationOption(
@@ -333,14 +325,62 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
               icon: Icons.home_work_outlined,
               title: 'Saved Addresses',
               subtitle: 'Select from frequently used locations',
-              onTap: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const SavedAddressesScreen()));
-                Navigator.pop(context);
-              },
+              onTap: () => _handleSavedAddresses(context),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _handleCurrentLocation(BuildContext context) async {
+    Navigator.pop(context);
+    
+    final locationProvider = Provider.of<LocationProvider>(context, listen: false);
+    
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final success = await locationProvider.updateCurrentLocation(saveToFirestore: true);
+    
+    if (mounted) Navigator.pop(context); // Close loading dialog
+
+    if (!success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            locationProvider.currentAddress == 'Location Denied'
+                ? 'Location permission denied. Please enable in settings.'
+                : 'Unable to get current location. Please try again.',
+          ),
+          action: locationProvider.currentAddress == 'Location Denied'
+              ? SnackBarAction(
+                  label: 'Settings',
+                  onPressed: () => locationProvider.openAppSettings(),
+                )
+              : null,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleAddNewAddress(BuildContext context) async {
+    Navigator.pop(context);
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AddEditAddressScreen()),
+    );
+  }
+
+  Future<void> _handleSavedAddresses(BuildContext context) async {
+    Navigator.pop(context);
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SavedAddressesScreen()),
     );
   }
 
@@ -402,40 +442,33 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   }
 
   Widget _buildUpcomingBooking(BuildContext context) {
-    return Consumer<AuthService>(
-      builder: (context, auth, _) {
-        final user = auth.currentUser;
-        if (user == null) return const SizedBox.shrink();
-        return StreamBuilder<List<Booking>>(
-          stream: Provider.of<FirestoreService>(context, listen: false).streamBookings(user.uid, limit: 1),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-               return const Center(child: CircularProgressIndicator());
-            }
+    if (_bookingsStream == null) return const SizedBox.shrink();
 
-            final bookings = snapshot.data ?? [];
-            if (bookings.isEmpty) {
-              debugPrint("[Firestore] No upcoming bookings found");
-              return const SizedBox.shrink(); // This section is dynamic and should be hidden if no bookings, but following "added to widget tree unconditionally" I'll keep it for now? 
-              // Actually, maybe I'll show a "Ready to book?" card.
-            }
-            
-            debugPrint("[Firestore] Upcoming booking found: ${bookings.first.id}");
-            final booking = bookings.first;
-            if (booking.status == 'completed' || booking.status == 'cancelled') return const SizedBox.shrink();
-            
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 32),
-              child: UpcomingBookingWidget(
-                booking: booking,
-                onTap: () {
-                  // Navigate to booking details
-                },
-              ),
-            );
-          }
+    return StreamBuilder<List<Booking>>(
+      stream: _bookingsStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+           return const Center(child: CircularProgressIndicator());
+        }
+
+        final bookings = snapshot.data ?? [];
+        if (bookings.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        
+        final booking = bookings.first;
+        if (booking.status == 'completed' || booking.status == 'cancelled') return const SizedBox.shrink();
+        
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 32),
+          child: UpcomingBookingWidget(
+            booking: booking,
+            onTap: () {
+              // Navigate to booking details
+            },
+          ),
         );
-      }
+      },
     );
   }
 
@@ -553,7 +586,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
 
   Widget _buildProfessionalReels(BuildContext context) {
     return StreamBuilder<List<ProfessionalReel>>(
-      stream: Provider.of<FirestoreService>(context, listen: false).streamProfessionalReels(),
+      stream: _reelsStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: Padding(
@@ -573,7 +606,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
 
   Widget _buildCleaningEssentials(BuildContext context) {
     return StreamBuilder<List<CleaningEssential>>(
-      stream: Provider.of<FirestoreService>(context, listen: false).streamCleaningEssentials(),
+      stream: _essentialsStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: Padding(
@@ -593,7 +626,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
 
   Widget _buildServiceBottomBanners(BuildContext context) {
     return StreamBuilder<List<ServiceBanner>>(
-      stream: Provider.of<FirestoreService>(context, listen: false).streamServiceBottomBanners(),
+      stream: _bannersStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SizedBox(height: 180, child: Center(child: CircularProgressIndicator()));

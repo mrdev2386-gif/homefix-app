@@ -38,6 +38,7 @@ dependencies:
   url_launcher: ^6.2.2
   share_plus: ^7.2.2
   app_links: ^6.3.2
+  package_info_plus: ^8.0.0
 
   # Google
   google_fonts: ^5.1.0
@@ -47,6 +48,7 @@ dependencies:
   # Location
   geolocator: ^10.1.0
   geocoding: ^2.1.1
+  permission_handler: ^11.0.1
 
   # UI
   shimmer: ^3.0.0

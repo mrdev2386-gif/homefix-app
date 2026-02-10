@@ -19,25 +19,24 @@ class TechnicianOnboardingScreen extends StatefulWidget {
 
 class _TechnicianOnboardingScreenState extends State<TechnicianOnboardingScreen> {
   final PageController _pageController = PageController();
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   int _currentStep = 0;
   bool _isLoading = false;
-  bool _isDataLoading = true;
 
-  // Data
-  final _nameController = TextEditingController();
-  final _phoneController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _experienceYearsController = TextEditingController();
-  final _experienceDescController = TextEditingController();
-  final _bankAccountController = TextEditingController();
-  final _bankIfscController = TextEditingController();
-  final _bankHolderController = TextEditingController();
-  final _addressController = TextEditingController();
+  // Data - Non-nullable controllers
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _experienceYearsController = TextEditingController();
+  final TextEditingController _experienceDescController = TextEditingController();
+  final TextEditingController _bankAccountController = TextEditingController();
+  final TextEditingController _bankIfscController = TextEditingController();
+  final TextEditingController _bankHolderController = TextEditingController();
+  final TextEditingController _addressController = TextEditingController();
   
   // Category Selection
   List<TechnicianCategory> _allCategories = [];
   List<TechnicianSubcategory> _allSubcategories = [];
-  List<TechnicianCategory> _filteredCategories = [];
   final TextEditingController _searchController = TextEditingController();
   final Set<String> _selectedCategoryIds = {};
   final Set<String> _selectedSubCategoryIds = {};
@@ -49,47 +48,25 @@ class _TechnicianOnboardingScreenState extends State<TechnicianOnboardingScreen>
   @override
   void initState() {
     super.initState();
-    _fetchCategories();
+    _nameController.addListener(_validateStep1);
+    _phoneController.addListener(_validateStep1);
+    _emailController.addListener(_validateStep1);
   }
 
-  Future<void> _fetchCategories() async {
-    try {
-      final firestore = Provider.of<FirestoreService>(context, listen: false);
-      final cats = await firestore.getTechnicianCategories();
-      final subCats = await firestore.getTechnicianSubcategories();
-      
-      setState(() {
-        _allCategories = cats;
-        _allSubcategories = subCats;
-        _filteredCategories = cats;
-        _isDataLoading = false;
-      });
-    } catch (e) {
-      debugPrint("Error fetching categories: $e");
-      if (mounted) setState(() => _isDataLoading = false);
-    }
+  void _validateStep1() {
+    setState(() {}); // Trigger rebuild to update button state
   }
 
   void _filterCategories(String query) {
-    if (query.isEmpty) {
-      setState(() => _filteredCategories = _allCategories);
-      return;
-    }
-    
-    setState(() {
-      _filteredCategories = _allCategories.where((cat) {
-        final catMatch = cat.name.toLowerCase().contains(query.toLowerCase());
-        final subCatMatch = _allSubcategories.any((sub) => 
-          sub.categoryId == cat.id && sub.name.toLowerCase().contains(query.toLowerCase())
-        );
-        return catMatch || subCatMatch;
-      }).toList();
-    });
+    setState(() {}); // Trigger rebuild for search
   }
 
   @override
   void dispose() {
     _pageController.dispose();
+    _nameController.removeListener(_validateStep1);
+    _phoneController.removeListener(_validateStep1);
+    _emailController.removeListener(_validateStep1);
     _nameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
@@ -103,74 +80,81 @@ class _TechnicianOnboardingScreenState extends State<TechnicianOnboardingScreen>
     super.dispose();
   }
 
-  bool _validateCurrentStep() {
+  bool _isStepValid() {
     switch (_currentStep) {
       case 0:
-        if (_nameController.text.isEmpty || _phoneController.text.isEmpty || _emailController.text.isEmpty) {
-          _showError('Please fill all personal details');
-          return false;
-        }
+        // Step 1: Strict validation
+        final name = _nameController.text.trim();
+        final phone = _phoneController.text.trim();
+        final email = _emailController.text.trim();
+        
+        if (name.length < 3) return false;
+        if (phone.length != 10) return false;
+        
+        // Email regex validation
+        final emailRegex = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+        if (!emailRegex.hasMatch(email)) return false;
+        
         return true;
       case 1:
-        if (_selectedCategoryIds.isEmpty) {
-          _showError('Please select at least one category');
-          return false;
-        }
-        if (_selectedSubCategoryIds.isEmpty) {
-          _showError('Please select at least one subcategory');
-          return false;
-        }
-        return true;
+        return _selectedCategoryIds.isNotEmpty && _selectedSubCategoryIds.isNotEmpty;
       case 2:
-        if (_experienceYearsController.text.isEmpty) {
-          _showError('Please enter your years of experience');
-          return false;
-        }
-        return true;
+        return _experienceYearsController.text.trim().isNotEmpty;
       case 3:
-        if (_profilePhoto == null) {
-          _showError('Please upload a profile photo');
-          return false;
-        }
-        return true;
+        return _profilePhoto != null;
       case 4:
-        if (_idProof == null) {
-          _showError('Please upload an ID proof');
-          return false;
-        }
-        return true;
+        return _idProof != null;
       case 5:
-        if (_addressController.text.isEmpty) {
-          _showError('Please enter your service area address');
-          return false;
-        }
-        return true;
+        return _addressController.text.trim().isNotEmpty;
       case 6:
-        if (_bankHolderController.text.isEmpty || _bankAccountController.text.isEmpty || _bankIfscController.text.isEmpty) {
-          _showError('Please fill all bank details');
-          return false;
-        }
-        return true;
+        return _bankHolderController.text.trim().isNotEmpty && 
+               _bankAccountController.text.trim().isNotEmpty && 
+               _bankIfscController.text.trim().isNotEmpty;
       case 7:
-        if (!_agreedToTerms) {
-          _showError('Please agree to the terms and conditions');
-          return false;
-        }
-        return true;
+        return _agreedToTerms;
       default:
         return true;
     }
   }
 
+  bool _validateCurrentStep() {
+    if (!_isStepValid()) {
+      switch (_currentStep) {
+        case 0: 
+          _showError('Please enter valid details:\n• Name (min 3 characters)\n• Phone (10 digits)\n• Valid email address'); 
+          break;
+        case 1: _showError('Please select at least 1 category and 1 subcategory'); break;
+        case 2: _showError('Please enter your years of experience'); break;
+        case 3: _showError('Please upload a profile photo'); break;
+        case 4: _showError('Please upload an ID proof'); break;
+        case 5: _showError('Please enter your service area address'); break;
+        case 6: _showError('Please fill all bank details'); break;
+        case 7: _showError('Please agree to the terms and conditions'); break;
+      }
+      return false;
+    }
+    return true;
+  }
+
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.redAccent));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   void _nextPage() {
     if (!_validateCurrentStep()) return;
     
     if (_currentStep < 7) {
-      _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+      // Save data locally and navigate to next step
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 300), 
+        curve: Curves.easeInOut,
+      );
     } else {
       _submitApplication();
     }
@@ -359,120 +343,300 @@ class _TechnicianOnboardingScreenState extends State<TechnicianOnboardingScreen>
   }
 
   Widget _buildStepPersonal() {
-    return _buildStepPadding([
-      _buildStepHeader('Let\'s start with basics', 'Your name and contact details help us reach you.'),
-      _buildTextField('Full Name', _nameController, Icons.person_outline),
-      _buildTextField('Phone Number', _phoneController, Icons.phone_android_outlined, keyboardType: TextInputType.phone),
-      _buildTextField('Email Address', _emailController, Icons.email_outlined, keyboardType: TextInputType.emailAddress),
-    ]);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildStepHeader('Let\'s start with basics', 'Your name and contact details help us reach you.'),
+            _buildTextField(
+              'Full Name',
+              _nameController,
+              Icons.person_outline,
+              validator: (value) {
+                if (value == null || value.trim().length < 3) {
+                  return 'Name must be at least 3 characters';
+                }
+                return null;
+              },
+            ),
+            _buildTextField(
+              'Phone Number',
+              _phoneController,
+              Icons.phone_android_outlined,
+              keyboardType: TextInputType.phone,
+              validator: (value) {
+                if (value == null || value.trim().length != 10) {
+                  return 'Phone must be exactly 10 digits';
+                }
+                return null;
+              },
+            ),
+            _buildTextField(
+              'Email Address',
+              _emailController,
+              Icons.email_outlined,
+              keyboardType: TextInputType.emailAddress,
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Email is required';
+                }
+                final emailRegex = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+                if (!emailRegex.hasMatch(value.trim())) {
+                  return 'Enter a valid email address';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 100), // Space for keyboard
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildStepCategories() {
-    if (_isDataLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_allCategories.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Text(
-            "Admin has not configured service categories yet",
-            textAlign: TextAlign.center,
-            style: GoogleFonts.outfit(
-                color: Colors.redAccent,
-                fontSize: 16,
-                fontWeight: FontWeight.w600),
-          ),
-        ),
-      );
-    }
+    final firestore = Provider.of<FirestoreService>(context, listen: false);
 
     return Column(
       children: [
-        _buildStepPadding([
-          _buildStepHeader('What are you good at?', 'Select the categories & subcategories you excel in.'),
-          TextField(
-            controller: _searchController,
-            onChanged: _filterCategories,
-            decoration: InputDecoration(
-              hintText: 'Search categories...',
-              prefixIcon: const Icon(Icons.search_rounded),
-              filled: true,
-              fillColor: const Color(0xFFF8F9FE),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-            ),
-          ),
-        ]),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            itemCount: _filteredCategories.length,
-            itemBuilder: (context, index) {
-              final cat = _filteredCategories[index];
-              final subCats = _allSubcategories.where((s) => s.categoryId == cat.id).toList();
-              final isCatSelected = _selectedCategoryIds.contains(cat.id);
-
-              return Card(
-                elevation: 0,
-                color: isCatSelected ? AppTheme.primaryColor.withOpacity(0.05) : Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.shade200)),
-                margin: const EdgeInsets.only(bottom: 12),
-                child: ExpansionTile(
-                  leading: Checkbox(
-                    value: isCatSelected,
-                    activeColor: AppTheme.primaryColor,
-                    onChanged: (val) {
-                      setState(() {
-                         if (val == true) {
-                           _selectedCategoryIds.add(cat.id);
-                         } else {
-                           _selectedCategoryIds.remove(cat.id);
-                           // Deselect subcategories if parent is deselected?
-                           // _selectedSubCategoryIds.removeWhere((id) => subCats.any((s) => s.id == id));
-                         }
-                      });
-                    },
+        Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildStepHeader('What are you good at?', 'Select the categories & subcategories you excel in.'),
+              TextField(
+                controller: _searchController,
+                onChanged: _filterCategories,
+                decoration: InputDecoration(
+                  hintText: 'Search categories or services...',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  filled: true,
+                  fillColor: const Color(0xFFF8F9FE),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
                   ),
-                  title: Text(cat.name, style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-                  children: subCats.map((sub) {
-                    final isSubSelected = _selectedSubCategoryIds.contains(sub.id);
-                    return ListTile(
-                      contentPadding: const EdgeInsets.only(left: 60, right: 20),
-                      leading: Checkbox(
-                        value: isSubSelected,
-                        activeColor: AppTheme.primaryColor,
-                        onChanged: (val) {
-                          setState(() {
-                            if (val == true) {
-                              _selectedSubCategoryIds.add(sub.id);
-                              // Auto-select parent
-                              _selectedCategoryIds.add(cat.id);
-                            } else {
-                              _selectedSubCategoryIds.remove(sub.id);
-                            }
-                          });
-                        },
-                      ),
-                      title: Text(sub.name, style: GoogleFonts.outfit()),
-                      onTap: () {
-                         setState(() {
-                            if (isSubSelected) {
-                              _selectedSubCategoryIds.remove(sub.id);
-                            } else {
-                              _selectedSubCategoryIds.add(sub.id);
-                              _selectedCategoryIds.add(cat.id);
-                            }
-                          });
-                      },
-                    );
-                  }).toList(),
                 ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: StreamBuilder<List<TechnicianCategory>>(
+            stream: firestore.streamTechnicianCategories(),
+            builder: (context, catSnapshot) {
+              if (catSnapshot.connectionState == ConnectionState.waiting) {
+                return _buildCategorySkeleton();
+              }
+              
+              if (catSnapshot.hasError) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(40.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.error_outline, size: 64, color: Colors.redAccent),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Error loading categories',
+                          style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '${catSnapshot.error}',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.outfit(color: Colors.grey, fontSize: 14),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+              
+              if (!catSnapshot.hasData || catSnapshot.data!.isEmpty) {
+                return _buildEmptyCategories();
+              }
+
+              final categories = catSnapshot.data!;
+
+              return StreamBuilder<List<TechnicianSubcategory>>(
+                stream: firestore.streamTechnicianSubcategories(),
+                builder: (context, subSnapshot) {
+                  if (subSnapshot.connectionState == ConnectionState.waiting) {
+                    return _buildCategorySkeleton();
+                  }
+                  
+                  final allSubCats = subSnapshot.data ?? [];
+                  final query = _searchController.text.toLowerCase();
+
+                  // Filter logic
+                  final filteredCats = categories.where((cat) {
+                    if (query.isEmpty) return true;
+                    final catMatch = cat.name.toLowerCase().contains(query);
+                    final subCatMatch = allSubCats.any((sub) => 
+                      sub.categoryId == cat.id && sub.name.toLowerCase().contains(query)
+                    );
+                    return catMatch || subCatMatch;
+                  }).toList();
+
+                  if (filteredCats.isEmpty && query.isNotEmpty) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(40.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.search_off, size: 64, color: Colors.grey.shade300),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No results for "$query"',
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.outfit(color: Colors.grey, fontSize: 16, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
+                  return ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    itemCount: filteredCats.length,
+                    itemBuilder: (context, index) {
+                      final cat = filteredCats[index];
+                      final subCats = allSubCats.where((s) => s.categoryId == cat.id).toList();
+                      final isCatSelected = _selectedCategoryIds.contains(cat.id);
+                      final subMatch = query.isNotEmpty && subCats.any((s) => s.name.toLowerCase().contains(query));
+
+                      return Card(
+                        elevation: 0,
+                        clipBehavior: Clip.antiAlias,
+                        color: isCatSelected ? AppTheme.primaryColor.withOpacity(0.04) : Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16), 
+                          side: BorderSide(
+                            color: isCatSelected 
+                              ? AppTheme.primaryColor.withOpacity(0.2) 
+                              : Colors.grey.shade200,
+                          ),
+                        ),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        child: ExpansionTile(
+                          initiallyExpanded: subMatch || isCatSelected,
+                          title: Text(
+                            cat.name,
+                            style: GoogleFonts.outfit(
+                              fontWeight: FontWeight.bold,
+                              color: isCatSelected ? AppTheme.primaryColor : AppTheme.textColor,
+                            ),
+                          ),
+                          leading: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: isCatSelected ? AppTheme.primaryColor : Colors.transparent,
+                              border: Border.all(
+                                color: isCatSelected ? AppTheme.primaryColor : Colors.grey.shade300,
+                                width: 2,
+                              ),
+                            ),
+                            child: isCatSelected 
+                              ? const Icon(Icons.check, size: 14, color: Colors.white) 
+                              : null,
+                          ),
+                          children: subCats.map((sub) {
+                            final isSubSelected = _selectedSubCategoryIds.contains(sub.id);
+                            final subQueryMatch = query.isEmpty || sub.name.toLowerCase().contains(query);
+                            
+                            if (!subQueryMatch) return const SizedBox.shrink();
+
+                            return ListTile(
+                              contentPadding: const EdgeInsets.only(left: 48, right: 16),
+                              title: Text(sub.name, style: GoogleFonts.outfit(fontSize: 14)),
+                              trailing: isSubSelected 
+                                ? const Icon(Icons.check_circle, color: AppTheme.primaryColor, size: 20)
+                                : Icon(Icons.add_circle_outline, color: Colors.grey.shade300, size: 20),
+                              onTap: () {
+                                setState(() {
+                                  if (isSubSelected) {
+                                    _selectedSubCategoryIds.remove(sub.id);
+                                    // If no more subcategories selected for this category, deselect category
+                                    final hasOtherSubs = allSubCats
+                                      .where((s) => s.categoryId == cat.id)
+                                      .any((s) => _selectedSubCategoryIds.contains(s.id));
+                                    if (!hasOtherSubs) _selectedCategoryIds.remove(cat.id);
+                                  } else {
+                                    _selectedSubCategoryIds.add(sub.id);
+                                    _selectedCategoryIds.add(cat.id);
+                                  }
+                                });
+                              },
+                            );
+                          }).toList(),
+                        ),
+                      );
+                    },
+                  );
+                },
               );
             },
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildEmptyCategories() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.category_outlined, size: 64, color: Colors.grey.shade300),
+            const SizedBox(height: 16),
+            Text(
+              "Services will be available soon",
+              textAlign: TextAlign.center,
+              style: GoogleFonts.outfit(
+                color: Colors.grey,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "Categories are being configured by admin",
+              textAlign: TextAlign.center,
+              style: GoogleFonts.outfit(
+                color: Colors.grey.shade400,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategorySkeleton() {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      itemCount: 5,
+      itemBuilder: (context, index) => Container(
+        height: 72,
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
     );
   }
 
@@ -550,23 +714,49 @@ class _TechnicianOnboardingScreenState extends State<TechnicianOnboardingScreen>
     );
   }
 
-  Widget _buildTextField(String label, TextEditingController controller, IconData icon, {TextInputType? keyboardType, int maxLines = 1}) {
+  Widget _buildTextField(
+    String label,
+    TextEditingController controller,
+    IconData icon, {
+    TextInputType? keyboardType,
+    int maxLines = 1,
+    String? Function(String?)? validator,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 13, color: AppTheme.textColor)),
+          Text(
+            label,
+            style: GoogleFonts.outfit(
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+              color: AppTheme.textColor,
+            ),
+          ),
           const SizedBox(height: 10),
-          TextField(
+          TextFormField(
             controller: controller,
             keyboardType: keyboardType,
             maxLines: maxLines,
+            validator: validator,
             decoration: InputDecoration(
               prefixIcon: Icon(icon, color: Colors.grey.shade400, size: 20),
               filled: true,
               fillColor: const Color(0xFFF8F9FE),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
+              ),
+              errorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: Colors.redAccent, width: 1),
+              ),
+              focusedErrorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: Colors.redAccent, width: 2),
+              ),
               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             ),
           ),
@@ -611,27 +801,49 @@ class _TechnicianOnboardingScreenState extends State<TechnicianOnboardingScreen>
   }
 
   Widget _buildBottomBar() {
+    final isValid = _isStepValid();
+    
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -5),
+          ),
+        ],
       ),
       child: SafeArea(
         child: SizedBox(
           width: double.infinity,
           height: 56,
           child: ElevatedButton(
-            onPressed: _isLoading ? null : _nextPage,
+            onPressed: (_isLoading || !isValid) ? null : _nextPage,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primaryColor,
+              disabledBackgroundColor: Colors.grey.shade300,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              elevation: isValid ? 2 : 0,
             ),
             child: _isLoading 
-              ? const CircularProgressIndicator(color: Colors.white)
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
+                )
               : Text(
                   _currentStep == 7 ? 'SUBMIT APPLICATION' : 'CONTINUE',
-                  style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 16, color: Colors.white, letterSpacing: 1),
+                  style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                    color: isValid ? Colors.white : Colors.grey.shade500,
+                    letterSpacing: 1,
+                  ),
                 ),
           ),
         ),

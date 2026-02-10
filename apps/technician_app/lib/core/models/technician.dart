@@ -17,8 +17,12 @@ class Technician {
   final double? lng;
   final String? referralCode;
   final String? kycStatus;
+  final String status;
+  final String? rejectionReason;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+
 
   Technician({
     required this.uid,
@@ -37,6 +41,8 @@ class Technician {
     this.lng,
     this.referralCode,
     this.kycStatus,
+    required this.status,
+    this.rejectionReason,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -81,10 +87,14 @@ class Technician {
       lng: geo != null ? (geo['lng'] as num?)?.toDouble() : null,
       referralCode: data['referralCode'],
       kycStatus: data['kycStatus'],
+      status: data['status'] ?? 'pending_verification',
+      rejectionReason: data['rejectionReason'] ?? data['suspensionReason'] ?? data['kyc']?['rejectionReason'],
       createdAt: data['createdAt'] != null ? (data['createdAt'] as Timestamp).toDate() : DateTime.now(),
       updatedAt: data['updatedAt'] != null ? (data['updatedAt'] as Timestamp).toDate() : DateTime.now(),
     );
   }
+
+
 
   Map<String, dynamic> toMap() {
     return {

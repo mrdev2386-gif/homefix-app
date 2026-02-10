@@ -141,54 +141,22 @@ export async function isAdmin(uid: string) {
     return adminDoc.exists;
 }
 
-// ==========================================
 // 1. CUSTOMER CALLABLES
-// ==========================================
-
 export const createBooking = functions.https.onCall(async (data: any, context: functions.https.CallableContext) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
-
     const { services, scheduledDate, scheduledTime, address, totalAmount, couponCode } = data;
-
     if (!services || services.length === 0 || !address || !totalAmount) {
         throw new functions.https.HttpsError('invalid-argument', 'Missing fields');
     }
-
     const bookingId = db.collection('bookings').doc().id;
     const finalStatus = 'pending_payment';
-
     try {
         await db.runTransaction(async (transaction: admin.firestore.Transaction) => {
-            // Fraud & Abuse Check
             const riskDoc = await transaction.get(db.collection('risk_profiles').doc(context.auth!.uid));
             if (riskDoc.exists) {
                 const riskData = riskDoc.data()!;
-                if (riskData.status === 'suspended') {
-                    throw new functions.https.HttpsError('permission-denied', 'Account suspended due to policy violations. Contact support.');
-                }
-                if (riskData.status === 'restricted') {
-                    // Logic for restricted users (e.g. cooldown)
-                    const lastBooking = await db.collection('bookings')
-                        .where('customerId', '==', context.auth!.uid)
-                        .orderBy('createdAt', 'desc')
-                        .limit(1)
-                        .get();
-                    if (!lastBooking.empty) {
-                        const lastTime = (lastBooking.docs[0].data().createdAt as admin.firestore.Timestamp).toDate().getTime();
-                        if (Date.now() - lastTime < 12 * 60 * 60 * 1000) { // 12h cooldown
-                            throw new functions.https.HttpsError('resource-exhausted', 'Account restricted. Please wait 12 hours between bookings.');
-                        }
-                    }
-                }
+                if (riskData.status === 'suspended') throw new functions.https.HttpsError('permission-denied', 'Account suspended.');
             }
-
-            const activeBookings = await transaction.get(
-                db.collection('bookings')
-                    .where('customerId', '==', context.auth!.uid)
-                    .where('status', 'in', ['pending_payment', 'confirmed', 'assigned', 'on_the_way', 'started'])
-            );
-            if (activeBookings.size >= 15) throw new functions.https.HttpsError('resource-exhausted', 'Max 15 active bookings allowed');
-
             transaction.set(db.collection('bookings').doc(bookingId), {
                 id: bookingId,
                 bookingId,
@@ -198,15 +166,11 @@ export const createBooking = functions.https.onCall(async (data: any, context: f
                 status: finalStatus,
                 paymentStatus: 'pending',
                 price: totalAmount,
-                discountAmount: 0,
                 finalAmount: totalAmount,
-                couponCode: couponCode || null,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 services,
                 serviceTitle: services[0].name + (services.length > 1 ? ` (+${services.length - 1} more)` : ''),
-                technicianId: null,
-                technicianName: 'Finding Professional...',
                 scheduledDate,
                 scheduledTime,
                 scheduledAt: admin.firestore.Timestamp.fromDate(new Date(scheduledDate))
@@ -214,245 +178,43 @@ export const createBooking = functions.https.onCall(async (data: any, context: f
         });
         return { success: true, bookingId, totalAmount };
     } catch (e: any) {
-        console.error('Create Booking Error:', e);
         throw new functions.https.HttpsError('internal', e.message);
     }
 });
 
-/**
- * Initiate Razorpay Order
- */
-export const initiateRazorpayPayment = functions.https.onCall(async (data: any, context: functions.https.CallableContext) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
-    const { bookingId } = data;
+export const initiateRazorpayPayment = razorpayPayments.createPaymentOrder;
+export const verifyRazorpayPayment = razorpayPayments.verifyPayment;
+export const processWalletTransaction = technicianFinance.processWalletTransaction;
 
-    const bDoc = await db.collection('bookings').doc(bookingId).get();
-    if (!bDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
-    const booking = bDoc.data()!;
-
-    if (booking.customerId !== context.auth.uid) throw new functions.https.HttpsError('permission-denied', 'Unauthorized');
-    if (booking.paymentStatus === 'paid') throw new functions.https.HttpsError('already-exists', 'Already paid');
-
-    try {
-        const rzp = await getRazorpay();
-        const order = await rzp.orders.create({
-            amount: Math.round(booking.finalAmount * 100),
-            currency: 'INR',
-            receipt: bookingId,
-            notes: { bookingId: bookingId, customerId: context.auth.uid }
-        });
-
-        await db.collection('bookings').doc(bookingId).update({
-            razorpayOrderId: order.id,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        return {
-            orderId: order.id,
-            amount: order.amount,
-            currency: order.currency,
-            key: functions.config().razorpay?.key_id
-        };
-    } catch (e: any) {
-        console.error('Razorpay Order Error:', e);
-        throw new functions.https.HttpsError('internal', 'Could not create Razorpay order');
-    }
-});
-
-/**
- * Verify Payment and Confirm Booking
- */
-export const verifyRazorpayPayment = functions.https.onCall(async (data: any, context: functions.https.CallableContext) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
-    const { bookingId, razorpay_order_id, razorpay_payment_id, razorpay_signature } = data;
-
-    const body = razorpay_order_id + "|" + razorpay_payment_id;
-    const expectedSignature = crypto
-        .createHmac('sha256', functions.config().razorpay?.key_secret || 'placeholder_secret')
-        .update(body.toString())
-        .digest('hex');
-
-    if (expectedSignature !== razorpay_signature) {
-        throw new functions.https.HttpsError('invalid-argument', 'Invalid payment signature');
-    }
-
-    try {
-        await db.runTransaction(async (transaction) => {
-            const bookingRef = db.collection('bookings').doc(bookingId);
-            const bSnap = await transaction.get(bookingRef);
-            if (!bSnap.exists) throw new Error('Booking not found');
-            const booking = bSnap.data()!;
-
-            transaction.update(bookingRef, {
-                paymentStatus: 'paid',
-                status: 'confirmed',
-                razorpayPaymentId: razorpay_payment_id,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-
-            const paymentRef = db.collection('payments').doc();
-            transaction.set(paymentRef, {
-                id: paymentRef.id,
-                bookingId,
-                userId: context.auth!.uid,
-                razorpayOrderId: razorpay_order_id,
-                razorpayPaymentId: razorpay_payment_id,
-                amount: booking.finalAmount,
-                status: 'success',
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-        });
-
-        // Trigger Smart Matching V2
-        await matchAndAssignBooking(bookingId);
-
-        return { success: true };
-    } catch (e: any) {
-        console.error('Payment Verification Error:', e);
-        throw new functions.https.HttpsError('internal', 'Payment verification failed');
-    }
-});
-
-// Replaced by new unified cancelBooking callable
-// export const cancelBookingByCustomer = ...
-
-// Secure Wallet Transaction (Internal / Triggered by Admin or Payment)
-export const processWalletTransaction = functions.https.onCall(async (data: any, context: functions.https.CallableContext) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
-
-    const { type, amount, description, targetUid } = data;
-
-    // Only Admin can credit/debit for others. Customers can only see their own.
-    const adminUser = await isAdmin(context.auth.uid);
-    if (!adminUser && context.auth.uid !== targetUid) {
-        throw new functions.https.HttpsError('permission-denied', 'Unauthorized wallet operation');
-    }
-
-    // Logic for depositing via payment gateway would be separate. 
-    // This is for manual adjustments or internal transfers.
-    if (!adminUser && type === 'credit') {
-        throw new functions.https.HttpsError('permission-denied', 'Users cannot manually credit their own wallet');
-    }
-
-    try {
-        await db.runTransaction(async (t: admin.firestore.Transaction) => {
-            const userRef = db.collection('customers').doc(targetUid);
-            const userDoc = await t.get(userRef);
-            if (!userDoc.exists) throw new Error("User not found");
-
-            const currentBalance = userDoc.data()?.walletBalance || 0;
-            const newBalance = type === 'credit' ? currentBalance + amount : currentBalance - amount;
-
-            if (newBalance < 0) throw new Error("Insufficient wallet balance");
-
-            t.update(userRef, {
-                walletBalance: newBalance,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-
-            t.set(userRef.collection('wallet_transactions').doc(), {
-                type,
-                amount,
-                description,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                status: 'completed'
-            });
-        });
-
-        await logActivity('system', targetUid, `wallet_${type}`, { amount, description });
-        return { success: true };
-    } catch (e: any) {
-        throw new functions.https.HttpsError('internal', e.message);
-    }
-});
-
-// Create Custom Service Request
-export const createServiceRequest = functions.https.onCall(async (data: any, context: functions.https.CallableContext) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
-
-    const { title, description, preferredDateTime, address } = data;
-    if (!title || !description || !address) {
-        throw new functions.https.HttpsError('invalid-argument', 'Missing fields');
-    }
-
-    const requestId = db.collection('service_requests').doc().id;
-    await db.collection('service_requests').doc(requestId).set({
-        id: requestId,
-        customerId: context.auth.uid,
-        title,
-        description,
-        preferredDateTime: new Date(preferredDateTime),
-        address,
-        status: 'pending',
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    await logActivity('customer', context.auth.uid, 'request_created', { requestId });
-    return { success: true, requestId };
-});
-
-// Update User Profile
-export const updateUserProfile = functions.https.onCall(async (data: any, context: functions.https.CallableContext) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
-
-    const uid = context.auth.uid;
-    const allowedKeys = ['name', 'email', 'phone', 'photoUrl', 'isOnboarded', 'defaultAddress', 'latitude', 'longitude'];
-    const updateData: any = {};
-
-    Object.keys(data).forEach(key => {
-        if (allowedKeys.includes(key)) {
-            updateData[key] = data[key];
-        }
-    });
-
-    if (Object.keys(updateData).length === 0) {
-        throw new functions.https.HttpsError('invalid-argument', 'No valid fields provided for update');
-    }
-
-    updateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
-    await db.collection('customers').doc(uid).update(updateData);
-
-    return { success: true };
-});
-
+// Export Customer Features
+export const createServiceRequest = customerFeatures.createServiceRequest;
+export const updateUserProfile = customerFeatures.updateUserProfile;
+export const updateTechnicianProfile = customerFeatures.updateTechnicianProfile;
+export const deleteAccount = customerFeatures.deleteAccount;
+export const manageAddress = customerFeatures.manageAddress;
+export const managePaymentMethod = customerFeatures.managePaymentMethod;
+export const updatePrivacySettings = customerFeatures.updatePrivacySettings;
 export const validateReferralCode = customerFeatures.validateReferralCode;
-// export const cancelBooking = customerFeatures.cancelBooking; // Replaced by cancelBookingByCustomer
 export const submitServiceRating = customerFeatures.submitServiceRating;
 export const submitSupportRequest = customerFeatures.submitSupportRequest;
 
-// Update Technician Profile
-export const updateTechnicianProfile = functions.https.onCall(async (data: any, context: functions.https.CallableContext) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
 
-    const uid = context.auth.uid;
-    const allowedKeys = ['name', 'email', 'phone', 'photoUrl', 'skills', 'bio', 'experience', 'isOnline', 'geo'];
-    const updateData: any = {};
-
-    Object.keys(data).forEach(key => {
-        if (allowedKeys.includes(key)) {
-            updateData[key] = data[key];
-        }
-    });
-
-    if (Object.keys(updateData).length === 0) {
-        throw new functions.https.HttpsError('invalid-argument', 'No valid fields provided for update');
-    }
-
-    updateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
-    await db.collection('technicians').doc(uid).set(updateData, { merge: true });
-
-    return { success: true };
-});
 
 // ==========================================
 // 2. ADMIN & TECH CALLABLES
 // ==========================================
 
 export const admin_getDashboardStats = adminDashboard.getDashboardStats;
+export const admin_getUsers = adminUsers.getUsers;
+export const admin_getUserById = adminUsers.getUserById;
+export const admin_updateUser = adminUsers.updateUser;
+export const admin_blockUser = adminUsers.blockUser;
 export const admin_manageUser = adminUsers.manageUser;
 export const admin_deleteTestUser = adminUsers.deleteTestUser;
 
+export const admin_getTechnicians = adminTechs.getTechnicians;
+export const admin_getTechnicianById = adminTechs.getTechnicianById;
+export const admin_updateTechnician = adminTechs.updateTechnician;
 export const admin_approveTechnicianApplication = adminTechs.approveTechnicianApplication;
 export const admin_approveTechnician = adminTechs.approveTechnician;
 export const admin_toggleTechAvailability = adminTechs.toggleTechAvailability;
@@ -713,6 +475,7 @@ export const saveServiceArea = techApp.saveServiceArea;
 export const saveBankDetails = techApp.saveBankDetails;
 export const completeTraining = techApp.completeTraining;
 export const submitApplication = techApp.submitApplication;
+export const submitFullApplication = techApp.submitFullApplication;
 
 // Admin Management
 export const approveKYC = adminTechMgmt.approveKYC;

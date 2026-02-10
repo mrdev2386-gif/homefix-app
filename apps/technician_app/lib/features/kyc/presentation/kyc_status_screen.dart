@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:io';
 import '../../../core/providers/technician_provider.dart';
@@ -59,7 +60,14 @@ class _KycStatusScreenState extends State<KycStatusScreen> {
 
     setState(() => _isSubmitting = true);
     try {
-        final uid = FirebaseAuth.instance.currentUser!.uid;
+        final user = FirebaseAuth.instance.currentUser!;
+        
+        // Email verification check
+        if (!user.emailVerified) {
+            throw Exception("Please verify your email address before submitting KYC.");
+        }
+
+        final uid = user.uid;
         
         final aadharRef = FirebaseStorage.instance.ref().child('kyc/$uid/aadhar_front.jpg');
         await aadharRef.putFile(_aadharFront!);
@@ -69,20 +77,14 @@ class _KycStatusScreenState extends State<KycStatusScreen> {
         await selfieRef.putFile(_selfie!);
         final selfieUrl = await selfieRef.getDownloadURL();
 
-        await FirebaseFirestore.instance.collection('technician_kyc').doc(uid).set({
-            'uid': uid,
+        final callable = FirebaseFunctions.instance.httpsCallable('submitKYC');
+        await callable.call({
             'fullName': _nameController.text.trim(),
             'aadharNumber': _aadharController.text.trim(),
             'panNumber': _panController.text.trim(),
-            'aadharFrontUrl': aadharUrl,
+            'frontUrl': aadharUrl,
             'selfieUrl': selfieUrl,
-            'status': 'submitted',
-            'createdAt': FieldValue.serverTimestamp(),
-        });
-
-        await FirebaseFirestore.instance.collection('technicians').doc(uid).update({
-            'kycStatus': 'submitted',
-            'updatedAt': FieldValue.serverTimestamp(),
+            'idType': 'aadhar',
         });
 
         if(mounted) {
@@ -94,6 +96,7 @@ class _KycStatusScreenState extends State<KycStatusScreen> {
     } finally {
         if(mounted) setState(() => _isSubmitting = false);
     }
+
   }
 
   @override

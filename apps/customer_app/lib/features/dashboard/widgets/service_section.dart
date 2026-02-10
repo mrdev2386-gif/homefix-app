@@ -9,7 +9,7 @@ import 'package:provider/provider.dart';
 import '../../../core/providers/cart_provider.dart';
 import '../../../core/models/cart_item.dart';
 
-class ServiceListSection extends StatelessWidget {
+class ServiceListSection extends StatefulWidget {
   final String title;
   final bool isHorizontal;
   final bool isTopOnly;
@@ -24,17 +24,29 @@ class ServiceListSection extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  State<ServiceListSection> createState() => _ServiceListSectionState();
+}
+
+class _ServiceListSectionState extends State<ServiceListSection> {
+  late Stream<QuerySnapshot> _serviceStream;
+
+  @override
+  void initState() {
+    super.initState();
     Query query = FirebaseFirestore.instance.collection('services').where('isActive', isEqualTo: true);
     
-    if (category != null) {
-      query = query.where('category', isEqualTo: category);
+    if (widget.category != null) {
+      query = query.where('category', isEqualTo: widget.category);
     }
     
-    if (isTopOnly) {
+    if (widget.isTopOnly) {
       query = query.limit(5); // Simulated top services
     }
+    _serviceStream = query.snapshots();
+  }
 
+  @override
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -44,7 +56,7 @@ class ServiceListSection extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                title,
+                widget.title,
                 style: GoogleFonts.outfit(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
@@ -52,7 +64,7 @@ class ServiceListSection extends StatelessWidget {
                 ),
               ),
               GestureDetector(
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ServiceListScreen(category: category))),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ServiceListScreen(category: widget.category))),
                 child: Text(
                   'View all',
                   style: GoogleFonts.outfit(
@@ -67,10 +79,10 @@ class ServiceListSection extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         StreamBuilder<QuerySnapshot>(
-          stream: query.snapshots(),
+          stream: _serviceStream,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return Center(child: Padding(
+              return const Center(child: Padding(
                 padding: EdgeInsets.symmetric(vertical: 20),
                 child: CircularProgressIndicator(),
               ));
@@ -78,7 +90,6 @@ class ServiceListSection extends StatelessWidget {
             
             final services = snapshot.data?.docs ?? [];
             if (services.isEmpty) {
-              debugPrint("[Firestore] service_section ($title) is empty");
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 child: Text(
@@ -88,9 +99,7 @@ class ServiceListSection extends StatelessWidget {
               );
             }
 
-            debugPrint("[Firestore] service_section ($title) docs: ${services.length}");
-
-            if (isHorizontal) {
+            if (widget.isHorizontal) {
               return SizedBox(
                 height: 180,
                 child: ListView.builder(

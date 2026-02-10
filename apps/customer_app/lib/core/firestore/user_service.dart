@@ -14,54 +14,19 @@ class UserService {
   // Save/Update Customer Profile
   Future<void> saveUserProfile(User user, {String? referredBy, String? fcmToken}) async {
     try {
-      final docRef = _db.collection('customers').doc(user.uid);
-      final doc = await docRef.get();
-
-      if (!doc.exists) {
-        // Create new profile
-        final String referralCode = _generateReferralCode(user.displayName ?? 'USER');
-        final data = {
-          'uid': user.uid,
-          'name': user.displayName ?? 'Customer',
-          'phone': user.phoneNumber ?? '',
-          'email': user.email ?? '',
-          'photoUrl': user.photoURL,
-          'referralCode': referralCode,
-          'referredBy': referredBy,
-          'walletBalance': 0.0,
-          'fcmToken': fcmToken,
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        };
-        await docRef.set(data);
-
-        // Handle referral reward if referredBy exists
-        if (referredBy != null) {
-          await _handleRegistrationReferral(user.uid, referredBy);
-        }
-      } else {
-        // Update existing profile
-        final Map<String, dynamic> updateData = {
-          'name': user.displayName ?? doc.data()?['name'] ?? 'Customer',
-          'phone': user.phoneNumber ?? doc.data()?['phone'] ?? '',
-          'email': user.email ?? doc.data()?['email'] ?? '',
-          'photoUrl': user.photoURL ?? doc.data()?['photoUrl'],
-          'updatedAt': FieldValue.serverTimestamp(),
-        };
-        if (fcmToken != null) updateData['fcmToken'] = fcmToken;
-        await docRef.update(updateData);
-      }
+      final callable = FirebaseFunctions.instance.httpsCallable('updateUserProfile');
+      await callable.call({
+        'name': user.displayName ?? 'Customer',
+        'email': user.email ?? '',
+        'phone': user.phoneNumber ?? '',
+        'photoUrl': user.photoURL,
+        'fcmToken': fcmToken,
+        'referredBy': referredBy,
+      });
     } catch (e) {
-      debugPrint("Error saving user profile: $e");
+      debugPrint("Error saving user profile via CF: $e");
       rethrow;
     }
-  }
-
-  String _generateReferralCode(String name) {
-    final random = Random();
-    final String prefix = name.length >= 3 ? name.substring(0, 3).toUpperCase() : 'CUS';
-    final int suffix = random.nextInt(9000) + 1000;
-    return '$prefix$suffix';
   }
 
   Future<Customer?> getCustomer(String uid) async {
@@ -92,41 +57,6 @@ class UserService {
         .map((snapshot) => snapshot.docs.map((doc) => WalletTransaction.fromFirestore(doc)).toList());
   }
 
-  // WALLET
-  Future<void> addWalletTransaction(String uid, {required String type, required double amount, required String description}) async {
-    try {
-      final httpsCallable = FirebaseFunctions.instance.httpsCallable('processWalletTransaction');
-      await httpsCallable.call({
-        'type': type,
-        'amount': amount,
-        'description': description,
-        'targetUid': uid,
-      });
-    } catch (e) {
-      debugPrint("Error processing wallet transaction: $e");
-      rethrow;
-    }
-  }
-
-  // REFERRAL LOGIC (Basic implementation, usually done in Cloud Functions)
-  Future<void> _handleRegistrationReferral(String refereeUid, String referralCode) async {
-    // Find referrer by code
-    final referrerQuery = await _db.collection('customers').where('referralCode', isEqualTo: referralCode).limit(1).get();
-    if (referrerQuery.docs.isEmpty) return;
-
-    final referrerDoc = referrerQuery.docs.first;
-    final referrerUid = referrerDoc.id;
-
-    // Track referral
-    await _db.collection('referrals').add({
-      'referrerUid': referrerUid,
-      'refereeUid': refereeUid,
-      'referralCode': referralCode,
-      'status': 'signed_up',
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-  }
-
   // ADDRESSES
   Stream<List<Address>> getAddresses(String uid) {
     return _db
@@ -139,30 +69,28 @@ class UserService {
   }
 
   Future<void> addAddress(String uid, Address address) async {
-    final coll = _db.collection('customers').doc(uid).collection('addresses');
-    if (address.isDefault) {
-      final defaults = await coll.where('isDefault', isEqualTo: true).get();
-      for (var doc in defaults.docs) {
-        await doc.reference.update({'isDefault': false});
-      }
-    }
-    await coll.add(address.toMap());
+    final callable = FirebaseFunctions.instance.httpsCallable('manageAddress');
+    await callable.call({
+      'action': 'add',
+      'addressData': address.toMap(),
+    });
   }
 
   Future<void> updateAddress(String uid, String addressId, Map<String, dynamic> data) async {
-    final docRef = _db.collection('customers').doc(uid).collection('addresses').doc(addressId);
-    if (data['isDefault'] == true) {
-      final coll = _db.collection('customers').doc(uid).collection('addresses');
-      final defaults = await coll.where('isDefault', isEqualTo: true).get();
-      for (var doc in defaults.docs) {
-        if (doc.id != addressId) await doc.reference.update({'isDefault': false});
-      }
-    }
-    await docRef.update(data);
+    final callable = FirebaseFunctions.instance.httpsCallable('manageAddress');
+    await callable.call({
+      'action': 'edit',
+      'addressId': addressId,
+      'addressData': data,
+    });
   }
 
   Future<void> deleteAddress(String uid, String addressId) async {
-    await _db.collection('customers').doc(uid).collection('addresses').doc(addressId).delete();
+    final callable = FirebaseFunctions.instance.httpsCallable('manageAddress');
+    await callable.call({
+      'action': 'delete',
+      'addressId': addressId,
+    });
   }
 
   // PAYMENT METHODS
@@ -177,16 +105,27 @@ class UserService {
   }
 
   Future<void> addPaymentMethod(String uid, PaymentMethod method) async {
-    await _db.collection('customers').doc(uid).collection('payment_methods').add(method.toMap());
+    final callable = FirebaseFunctions.instance.httpsCallable('managePaymentMethod');
+    await callable.call({
+      'action': 'add',
+      'methodData': method.toMap(),
+    });
   }
 
   Future<void> deletePaymentMethod(String uid, String methodId) async {
-    await _db.collection('customers').doc(uid).collection('payment_methods').doc(methodId).delete();
-  }
-  Future<void> updateDefaultAddress(String uid, String address) async {
-    await _db.collection('customers').doc(uid).update({
-      'defaultAddress': address,
-      'updatedAt': FieldValue.serverTimestamp(),
+    final callable = FirebaseFunctions.instance.httpsCallable('managePaymentMethod');
+    await callable.call({
+      'action': 'delete',
+      'methodId': methodId,
     });
   }
+
+  Future<void> updateDefaultAddress(String uid, String addressId) async {
+    final callable = FirebaseFunctions.instance.httpsCallable('manageAddress');
+    await callable.call({
+      'action': 'setDefault',
+      'addressId': addressId,
+    });
+  }
+
 }

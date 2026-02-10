@@ -324,3 +324,171 @@ export const submitSupportRequest = functions.https.onCall(async (data, context)
 
     return { success: true, requestId };
 });
+
+// ==========================================
+// ACCOUNT & PROFILE MANAGEMENT
+// ==========================================
+
+export const updateUserProfile = functions.https.onCall(async (data: any, context: functions.https.CallableContext) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+
+    const uid = context.auth.uid;
+    const allowedKeys = ['name', 'email', 'phone', 'photoUrl', 'isOnboarded', 'defaultAddress', 'latitude', 'longitude', 'fcmToken'];
+    const updateData: any = {};
+
+    Object.keys(data).forEach(key => {
+        if (allowedKeys.includes(key)) {
+            updateData[key] = data[key];
+        }
+    });
+
+    const userRef = db.collection('customers').doc(uid);
+    const userDoc = await userRef.get();
+
+    if (!userDoc.exists) {
+        // New User Initialization
+        const name = data.name || 'Customer';
+        const referralCode = (name.substring(0, 3).toUpperCase() + Math.floor(1000 + Math.random() * 9000));
+
+        updateData.referralCode = referralCode;
+        updateData.walletBalance = 0;
+        updateData.createdAt = admin.firestore.FieldValue.serverTimestamp();
+
+        // Handle referral
+        if (data.referredBy) {
+            updateData.referredBy = data.referredBy;
+            // logic to reward referrer could be added here or in a separate trigger
+        }
+
+        await userRef.set(updateData);
+    } else {
+        if (Object.keys(updateData).length === 0) {
+            throw new functions.https.HttpsError('invalid-argument', 'No valid fields provided for update');
+        }
+        updateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+        await userRef.update(updateData);
+    }
+
+    return { success: true };
+});
+
+
+export const updateTechnicianProfile = functions.https.onCall(async (data: any, context: functions.https.CallableContext) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+
+    const uid = context.auth.uid;
+    const allowedKeys = ['name', 'email', 'phone', 'photoUrl', 'skills', 'bio', 'experience', 'isOnline', 'geo'];
+    const updateData: any = {};
+
+    Object.keys(data).forEach(key => {
+        if (allowedKeys.includes(key)) {
+            updateData[key] = data[key];
+        }
+    });
+
+    if (Object.keys(updateData).length === 0) {
+        throw new functions.https.HttpsError('invalid-argument', 'No valid fields provided for update');
+    }
+
+    updateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+    await db.collection('technicians').doc(uid).set(updateData, { merge: true });
+
+    return { success: true };
+});
+
+export const deleteAccount = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+    const uid = context.auth.uid;
+
+    // 1. Delete Firestore Data
+    await db.collection('customers').doc(uid).delete();
+    // 2. Disable/Delete Auth User
+    await admin.auth().deleteUser(uid);
+
+    return { success: true };
+});
+
+export const manageAddress = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+    const uid = context.auth.uid;
+    const { action, addressId, addressData } = data; // action: 'add', 'edit', 'delete', 'setDefault'
+
+    const addrRef = db.collection('customers').doc(uid).collection('addresses');
+
+    if (action === 'add') {
+        const newId = addrRef.doc().id;
+        await addrRef.doc(newId).set({
+            ...addressData,
+            id: newId,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+    } else if (action === 'edit' && addressId) {
+        await addrRef.doc(addressId).update(addressData);
+    } else if (action === 'delete' && addressId) {
+        await addrRef.doc(addressId).delete();
+    } else if (action === 'setDefault' && addressId) {
+        const batch = db.batch();
+        const all = await addrRef.get();
+        all.docs.forEach(doc => {
+            batch.update(doc.ref, { isDefault: doc.id === addressId });
+        });
+        batch.update(db.collection('customers').doc(uid), { defaultAddress: addressId });
+        await batch.commit();
+    }
+
+    return { success: true };
+});
+
+export const managePaymentMethod = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+    const uid = context.auth.uid;
+    const { action, methodId, methodData } = data;
+
+    const pmRef = db.collection('customers').doc(uid).collection('payment_methods');
+
+    if (action === 'add') {
+        const newId = pmRef.doc().id;
+        await pmRef.doc(newId).set({ ...methodData, id: newId, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+    } else if (action === 'delete' && methodId) {
+        await pmRef.doc(methodId).delete();
+    } else if (action === 'setDefault' && methodId) {
+        const batch = db.batch();
+        const all = await pmRef.get();
+        all.docs.forEach(doc => batch.update(doc.ref, { isDefault: doc.id === methodId }));
+        await batch.commit();
+    }
+
+    return { success: true };
+});
+
+export const updatePrivacySettings = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+    const uid = context.auth.uid;
+    await db.collection('customers').doc(uid).set({ privacy: data }, { merge: true });
+    return { success: true };
+});
+
+export const createServiceRequest = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+
+    const { title, description, preferredDateTime, address } = data;
+    if (!title || !description || !address) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing fields');
+    }
+
+    const requestId = db.collection('service_requests').doc().id;
+    await db.collection('service_requests').doc(requestId).set({
+        id: requestId,
+        customerId: context.auth.uid,
+        title,
+        description,
+        preferredDateTime: new Date(preferredDateTime),
+        address,
+        status: 'pending',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return { success: true, requestId };
+});
+

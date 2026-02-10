@@ -44,10 +44,10 @@ class _EarningsScreenState extends State<EarningsScreen> with SingleTickerProvid
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: Text("Wallet & Earnings", style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-        elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        title: Text(
+          "My Wallet",
+          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold),
+        ),
       ),
       body: StreamBuilder<TechnicianWallet>(
         stream: _walletService.getWallet(tech.uid),
@@ -62,8 +62,9 @@ class _EarningsScreenState extends State<EarningsScreen> with SingleTickerProvid
           return Column(
             children: [
               _buildWalletHeader(wallet),
-              const SizedBox(height: 16),
+              const SizedBox(height: 32),
               _buildTabBar(),
+              const SizedBox(height: 16),
               Expanded(
                 child: TabBarView(
                   controller: _tabController,
@@ -83,20 +84,16 @@ class _EarningsScreenState extends State<EarningsScreen> with SingleTickerProvid
   Widget _buildWalletHeader(TechnicianWallet wallet) {
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(24),
+      margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF6366F1), Color(0xFF4F46E5)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
+        color: const Color(0xFF0F172A),
+        borderRadius: BorderRadius.circular(36),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF6366F1).withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
+            color: const Color(0xFF0F172A).withOpacity(0.2),
+            blurRadius: 30,
+            offset: const Offset(0, 15),
           ),
         ],
       ),
@@ -111,24 +108,43 @@ class _EarningsScreenState extends State<EarningsScreen> with SingleTickerProvid
                 children: [
                   Text(
                     "Available Balance",
-                    style: GoogleFonts.outfit(color: Colors.white.withOpacity(0.8), fontSize: 14),
+                    style: GoogleFonts.plusJakartaSans(
+                      color: Colors.white.withOpacity(0.5),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 8),
                   Text(
                     currencyFormat.format(wallet.availableBalance),
-                    style: GoogleFonts.outfit(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+                    style: GoogleFonts.plusJakartaSans(
+                      color: Colors.white,
+                      fontSize: 40,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: -1,
+                    ),
                   ),
                 ],
               ),
-              const Icon(Icons.account_balance_wallet_rounded, color: Colors.white, size: 40),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(Icons.account_balance_wallet_rounded, color: Colors.white, size: 28),
+              ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 40),
           Row(
             children: [
-              _buildSmallStat("Pending", currencyFormat.format(wallet.pendingBalance)),
-              const SizedBox(width: 24),
-              _buildSmallStat("Lifetime", currencyFormat.format(wallet.lifetimeEarnings)),
+              Expanded(child: _buildSmallStat("Pending", currencyFormat.format(wallet.pendingBalance))),
+              Container(width: 1, height: 40, color: Colors.white.withOpacity(0.1)),
+              Expanded(child: Padding(
+                padding: const EdgeInsets.only(left: 24),
+                child: _buildSmallStat("Lifetime", currencyFormat.format(wallet.lifetimeEarnings)),
+              )),
             ],
           ),
         ],
@@ -140,27 +156,54 @@ class _EarningsScreenState extends State<EarningsScreen> with SingleTickerProvid
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: GoogleFonts.outfit(color: Colors.white.withOpacity(0.7), fontSize: 12)),
-        const SizedBox(height: 2),
-        Text(value, style: GoogleFonts.outfit(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+        Text(
+          label,
+          style: GoogleFonts.plusJakartaSans(
+            color: Colors.white.withOpacity(0.4),
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: GoogleFonts.plusJakartaSans(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ],
     );
   }
 
   Widget _buildTabBar() {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
+      margin: const EdgeInsets.symmetric(horizontal: 24),
+      height: 56,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: TabBar(
         controller: _tabController,
-        indicatorColor: const Color(0xFF6366F1),
-        labelColor: const Color(0xFF6366F1),
-        unselectedLabelColor: Colors.grey,
-        indicatorSize: TabBarIndicatorSize.tab,
-        labelStyle: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+        indicator: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        indicatorPadding: const EdgeInsets.all(4),
+        labelColor: const Color(0xFF0F172A),
+        unselectedLabelColor: const Color(0xFF64748B),
+        labelStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 14),
+        unselectedLabelStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600, fontSize: 14),
+        dividerColor: Colors.transparent,
         tabs: const [
           Tab(text: "Earnings"),
           Tab(text: "Payouts"),
@@ -168,6 +211,7 @@ class _EarningsScreenState extends State<EarningsScreen> with SingleTickerProvid
       ),
     );
   }
+
 
   Widget _buildEarningsList(String techId) {
     return StreamBuilder<List<TechnicianEarning>>(

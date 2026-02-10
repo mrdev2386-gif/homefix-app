@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -15,12 +16,28 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
   
-  final List<String> _availableSkills = [
-    "AC Repair", "Cleaning", "Electrician", "Plumbing", "Pest Control", 
-    "Washing Machine", "Refrigerator", "Water Purifier", "Television", "Microwave"
-  ];
+  List<String> _availableSkills = [];
   final List<String> _selectedSkills = [];
-  bool _isLoading = false;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchSkills();
+  }
+
+  Future<void> _fetchSkills() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance.collection('technician_categories').get();
+      setState(() {
+        _availableSkills = snapshot.docs.map((doc) => doc.data()['name'] as String).toList();
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint("Error fetching skills: $e");
+      setState(() => _isLoading = false);
+    }
+  }
 
   void _nextPage() {
     _pageController.nextPage(duration: const Duration(milliseconds: 400), curve: Curves.easeInOut);
@@ -96,11 +113,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           Text("Select the services you are expert in. You will receive job requests based on these skills.", style: GoogleFonts.outfit(color: const Color(0xFF64748B), fontSize: 16, height: 1.5)),
           const SizedBox(height: 40),
           Expanded(
-            child: SingleChildScrollView(
+            child: _isLoading 
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
               child: Wrap(
                 spacing: 12,
                 runSpacing: 12,
                 children: _availableSkills.map((skill) {
+
                   final isSelected = _selectedSkills.contains(skill);
                   return FilterChip(
                     label: Text(skill),
