@@ -9,6 +9,13 @@ import '../../core/models/user_model.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/safe_network_image.dart';
 import '../../shared/widgets/app_widgets.dart';
+import '../bookings/presentation/booking_history_screen.dart';
+import '../support/presentation/support_screen.dart';
+import 'presentation/edit_profile_screen.dart';
+import 'presentation/favorite_services_screen.dart';
+import 'presentation/technician_onboarding_screen.dart';
+import 'presentation/about_screen.dart';
+import 'presentation/policy_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -25,20 +32,24 @@ class ProfileScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
-      body: StreamBuilder<UserModel>(
-        stream: firestoreService.streamUserModel(currentUser.uid),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const _ProfileSkeleton();
-          }
+      body: SafeArea(
+        top: false, // SliverAppBar handles top if needed, but let's be safe
+        child: StreamBuilder<UserModel>(
+          stream: firestoreService.streamUserModel(currentUser.uid),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const _ProfileSkeleton();
+            }
 
-          if (snapshot.hasError) {
-            return _ProfileErrorView(error: snapshot.error.toString());
-          }
+            if (snapshot.hasError) {
+              return _ProfileErrorView(error: snapshot.error.toString());
+            }
 
-          final user = snapshot.data;
-          return _ProfileContent(user: user ?? UserModel(uid: currentUser.uid));
-        },
+            final user = snapshot.data;
+            debugPrint("[Profile] User role logic: ${(user?.role ?? 'customer').toString().toLowerCase()}");
+            return _ProfileContent(user: user ?? UserModel(uid: currentUser.uid));
+          },
+        ),
       ),
     );
   }
@@ -52,7 +63,7 @@ class _ProfileContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context, listen: false);
-    final initials = user.name.isNotEmpty ? user.name.substring(0, 1).toUpperCase() : 'U';
+    final initials = (user.name?.isNotEmpty ?? false) ? user.name!.substring(0, 1).toUpperCase() : 'U';
 
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
@@ -75,6 +86,9 @@ class _ProfileContent extends StatelessWidget {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
+                  Positioned.fill(
+                    child: Container(color: Colors.transparent),
+                  ),
                    // Decorative Circles
                   Positioned(
                     top: -50, right: -50,
@@ -108,7 +122,7 @@ class _ProfileContent extends StatelessWidget {
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        user.name.isNotEmpty ? user.name : 'Welcome User',
+                        user.name?.isNotEmpty ?? false ? user.name! : 'Welcome User',
                         style: GoogleFonts.outfit(
                           color: Colors.white,
                           fontSize: 26,
@@ -116,7 +130,7 @@ class _ProfileContent extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        user.email.isNotEmpty ? user.email : (user.phone.isNotEmpty ? user.phone : 'HomeFix Member'),
+                        (user.email?.isNotEmpty ?? false) ? user.email! : ((user.phone?.isNotEmpty ?? false) ? user.phone! : 'HomeFix Member'),
                         style: GoogleFonts.outfit(
                           color: Colors.white.withOpacity(0.8),
                           fontSize: 14,
@@ -152,7 +166,7 @@ class _ProfileContent extends StatelessWidget {
                         icon: Icons.location_on_rounded,
                         color: Colors.redAccent,
                         title: 'Primary Address',
-                        value: user.defaultAddress.isNotEmpty ? user.defaultAddress : 'No address set',
+                        value: (user.defaultAddress?.isNotEmpty ?? false) ? user.defaultAddress! : 'No address set',
                       ),
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 16),
@@ -175,17 +189,28 @@ class _ProfileContent extends StatelessWidget {
                 const SizedBox(height: 32),
                 _sectionTitle('ACCOUNT SETTINGS'),
                 _settingsGroup([
-                  _settingsTile(Icons.person_outline_rounded, 'Personal Details', 'Name, Email, Phone', () {}),
-                  _settingsTile(Icons.history_rounded, 'Booking History', 'View all your past services', () {}),
-                  _settingsTile(Icons.favorite_border_rounded, 'Favorites', 'Services you loved', () {}),
+                  _settingsTile(Icons.person_outline_rounded, 'Personal Details', 'Name, Email, Phone', 
+                    () => Navigator.push(context, MaterialPageRoute(builder: (_) => EditProfileScreen(user: user)))),
+                  _settingsTile(Icons.history_rounded, 'Booking History', 'View all your past services', 
+                    () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookingHistoryScreen()))),
+                  _settingsTile(Icons.favorite_border_rounded, 'Favorites', 'Services you loved', 
+                    () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FavoriteServicesScreen()))),
                 ]),
+
+                if ((user.role ?? 'customer').toString().toLowerCase() == 'customer') ...[
+                  const SizedBox(height: 32),
+                  _buildBecomeTechnicianCTA(context),
+                ],
 
                 const SizedBox(height: 24),
                 _sectionTitle('SUPPORT'),
                 _settingsGroup([
-                  _settingsTile(Icons.help_outline_rounded, 'Help Center', 'FAQs and Customer Support', () {}),
-                  _settingsTile(Icons.policy_outlined, 'Privacy Policy', 'How we protect your data', () {}),
-                  _settingsTile(Icons.info_outline_rounded, 'About HomeFix', 'Version 2.0.1', () {}),
+                  _settingsTile(Icons.help_outline_rounded, 'Help Center', 'FAQs and Customer Support', 
+                    () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SupportScreen()))),
+                  _settingsTile(Icons.policy_outlined, 'Privacy Policy', 'How we protect your data', 
+                    () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PolicyScreen(title: 'Privacy Policy')))),
+                  _settingsTile(Icons.info_outline_rounded, 'About HomeFix', 'Version 2.0.1', 
+                    () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen()))),
                 ]),
 
                 const SizedBox(height: 40),
@@ -236,9 +261,73 @@ class _ProfileContent extends StatelessWidget {
     );
   }
 
+  Widget _buildBecomeTechnicianCTA(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF10B981), Color(0xFF059669)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF10B981).withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          )
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.handyman_rounded, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Earn more with HomeFix',
+                style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Join our community of 50,000+ service professionals and grow your business today.',
+            style: GoogleFonts.outfit(color: Colors.white.withOpacity(0.9), fontSize: 13, height: 1.5),
+          ),
+          const SizedBox(height: 20),
+          ElevatedButton(
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TechnicianOnboardingScreen())),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: const Color(0xFF059669),
+              minimumSize: const Size(double.infinity, 50),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              elevation: 0,
+            ),
+            child: Text(
+              'REGISTER AS A PARTNER',
+              style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _settingsTile(IconData icon, String title, String subtitle, VoidCallback onTap) {
     return ListTile(
-      onTap: onTap,
+      onTap: () {
+        debugPrint("[Profile] Clicked: $title");
+        onTap();
+      },
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       leading: Container(
         padding: const EdgeInsets.all(10),

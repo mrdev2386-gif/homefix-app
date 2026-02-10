@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/models/service.dart';
+import '../../../core/models/dashboard_models.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../dashboard/widgets/service_grid_icon.dart';
 import '../../../core/theme/app_theme.dart';
@@ -226,14 +227,33 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   }
 
   Widget _buildBottomBanners(FirestoreService service) {
+    debugPrint("[Firestore] streaming service_bottom_banners for list...");
     return StreamBuilder<List<ServiceBanner>>(
       stream: service.streamServiceBottomBanners(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return const SliverToBoxAdapter(child: SizedBox.shrink());
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return SliverToBoxAdapter(child: Center(child: Padding(
+            padding: EdgeInsets.all(20),
+            child: CircularProgressIndicator(),
+          )));
         }
 
-        final banners = snapshot.data!;
+        final banners = snapshot.data ?? [];
+        if (banners.isEmpty) {
+          debugPrint("[Firestore] service_bottom_banners is empty");
+          return SliverToBoxAdapter(
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.grey.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: const Center(child: Text('More offers arriving soon!')),
+            ),
+          );
+        }
+
         return SliverPadding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
           sliver: SliverList(

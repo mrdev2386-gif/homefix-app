@@ -1,5 +1,12 @@
-import { db } from '@/lib/firebase';
-import { doc, writeBatch, collection } from 'firebase/firestore';
+import * as functions from 'firebase-functions';
+import * as admin from 'firebase-admin';
+
+// Initialize admin if not already initialized
+if (!admin.apps.length) {
+    admin.initializeApp();
+}
+
+const db = admin.firestore();
 
 // ============================================================================
 // 1. DATA DEFINITIONS
@@ -44,102 +51,141 @@ const TECHNICIAN_CATEGORIES = [
 ];
 
 const CLEANING_ESSENTIALS = [
-    { title: "Sofa Deep Cleaning", imageUrl: "https://images.unsplash.com/photo-1556228453-efd6c1ff04f6?auto=format&fit=crop&q=80&w=800", categoryKey: "cleaning", order: 1 },
-    { title: "Bathroom Cleaning", imageUrl: "https://images.unsplash.com/photo-1584622050111-993a426fbf0a?auto=format&fit=crop&q=80&w=800", categoryKey: "cleaning", order: 2 },
-    { title: "Kitchen Deep Clean", imageUrl: "https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&q=80&w=800", categoryKey: "cleaning", order: 3 },
-    { title: "Full Home Cleaning", imageUrl: "https://images.unsplash.com/photo-1581578731117-104f2a41272c?auto=format&fit=crop&q=80&w=800", categoryKey: "cleaning", order: 4 },
+    { id: 'sofa_cleaning', title: "Sofa Deep Cleaning", imageUrl: "https://images.unsplash.com/photo-1556228453-efd6c1ff04f6?auto=format&fit=crop&q=80&w=800", categoryKey: "cleaning", order: 1 },
+    { id: 'bathroom_cleaning', title: "Bathroom Cleaning", imageUrl: "https://images.unsplash.com/photo-1584622050111-993a426fbf0a?auto=format&fit=crop&q=80&w=800", categoryKey: "cleaning", order: 2 },
+    { id: 'kitchen_cleaning', title: "Kitchen Deep Clean", imageUrl: "https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&q=80&w=800", categoryKey: "cleaning", order: 3 },
+    { id: 'full_home_cleaning', title: "Full Home Cleaning", imageUrl: "https://images.unsplash.com/photo-1581578731117-104f2a41272c?auto=format&fit=crop&q=80&w=800", categoryKey: "cleaning", order: 4 },
 ];
 
 const PRO_REELS = [
-    { title: "AC Repair Masterclass", videoUrl: "https://assets.mixkit.co/videos/preview/mixkit-man-working-on-an-air-conditioner-condenser-40899-large.mp4", order: 1, thumbnailUrl: "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=800" },
-    { title: "Professional Cleaning", videoUrl: "https://assets.mixkit.co/videos/preview/mixkit-woman-cleaning-a-glass-window-with-a-squeegee-40938-large.mp4", order: 2, thumbnailUrl: "https://images.unsplash.com/photo-1581578731117-104f2a41272c?auto=format&fit=crop&q=80&w=800" },
-    { title: "Expert Plumbing", videoUrl: "https://assets.mixkit.co/videos/preview/mixkit-plumber-fixing-a-sink-pipe-40922-large.mp4", order: 3, thumbnailUrl: "https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?auto=format&fit=crop&q=80&w=800" },
-    { title: "Electrical Safety", videoUrl: "https://assets.mixkit.co/videos/preview/mixkit-electrician-working-on-a-fuse-box-40915-large.mp4", order: 4, thumbnailUrl: "https://images.unsplash.com/photo-1621905252507-b35a83013b0b?auto=format&fit=crop&q=80&w=800" },
+    { id: 'ac_repair_reel', title: "AC Repair Masterclass", videoUrl: "https://assets.mixkit.co/videos/preview/mixkit-man-working-on-an-air-conditioner-condenser-40899-large.mp4", order: 1, thumbnailUrl: "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=800" },
+    { id: 'cleaning_reel', title: "Professional Cleaning", videoUrl: "https://assets.mixkit.co/videos/preview/mixkit-woman-cleaning-a-glass-window-with-a-squeegee-40938-large.mp4", order: 2, thumbnailUrl: "https://images.unsplash.com/photo-1581578731117-104f2a41272c?auto=format&fit=crop&q=80&w=800" },
+    { id: 'plumbing_reel', title: "Expert Plumbing", videoUrl: "https://assets.mixkit.co/videos/preview/mixkit-plumber-fixing-a-sink-pipe-40922-large.mp4", order: 3, thumbnailUrl: "https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?auto=format&fit=crop&q=80&w=800" },
+    { id: 'electrical_reel', title: "Electrical Safety", videoUrl: "https://assets.mixkit.co/videos/preview/mixkit-electrician-working-on-a-fuse-box-40915-large.mp4", order: 4, thumbnailUrl: "https://images.unsplash.com/photo-1621905252507-b35a83013b0b?auto=format&fit=crop&q=80&w=800" },
 ];
 
-// ============================================================================
-// 2. SEEDING FUNCTION
-// ============================================================================
+const SERVICE_BANNERS = [
+    { id: 'banner_1', title: 'Summer Ready', description: 'Get your AC serviced today', imageUrl: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&q=80&w=800', order: 1 },
+    { id: 'banner_2', title: 'Deep Cleaning', description: 'Make your home sparkle', imageUrl: 'https://images.unsplash.com/photo-1581578731117-104f2a41272c?auto=format&fit=crop&q=80&w=800', order: 2 },
+    { id: 'banner_3', title: 'Pest Control', description: 'Safe & effective treatment', imageUrl: 'https://images.unsplash.com/photo-1626876115993-9c8a0029b9dc?auto=format&fit=crop&q=80&w=800', order: 3 },
+];
 
-export async function initializeServiceCatalog(onProgress?: (msg: string) => void) {
-    const results = { servicesCreated: 0, subServicesCreated: 0, errors: [] as string[] };
+export const admin_initializeHomeContent = functions.https.onCall(async (data, context) => {
+    // 1. Security Check
+    if (!context.auth || context.auth.token.admin !== true) {
+        throw new functions.https.HttpsError('permission-denied', 'Only admins can initialize system data.');
+    }
 
-    onProgress?.("🚀 Starting FULL HomeFix Content Initialization...");
+    const batch = db.batch();
+    let opCount = 0;
+    const MAX_BATCH_SIZE = 450;
 
-    try {
-        const batch = writeBatch(db);
-        let opCount = 0;
+    // Track if we did any work
+    let seededCategories = false;
+    let seededCleaning = false;
+    let seededPros = false;
+    let seededBanners = false;
 
-        // 1. Technician Categories & Subcategories
-        onProgress?.("📦 Seeding Technician Categories...");
-
+    // 1. Technician Categories & Subcategories
+    const catSnap = await db.collection('technician_categories').limit(1).get();
+    if (catSnap.empty) {
+        seededCategories = true;
         for (const cat of TECHNICIAN_CATEGORIES) {
-            const catRef = doc(db, 'technician_categories', cat.id);
+            const catRef = db.collection('technician_categories').doc(cat.id);
             batch.set(catRef, {
                 id: cat.id,
                 name: cat.name,
                 order: cat.order,
-                isActive: true,
-                icon: cat.id // placeholder, assumes local asset mapping
-            }, { merge: true });
+                isActive: true
+            });
             opCount++;
 
-            // Subcategories
             let subOrder = 1;
             for (const subName of cat.subs) {
-                const subId = `${cat.id}_${subName.toLowerCase().replace(/\s+/g, '_')}`;
-                const subRef = doc(db, 'technician_subcategories', subId);
+                const subId = `${cat.id}_${subName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+                const subRef = db.collection('technician_subcategories').doc(subId);
                 batch.set(subRef, {
                     id: subId,
                     categoryId: cat.id,
                     name: subName,
                     order: subOrder++,
                     isActive: true
-                }, { merge: true });
+                });
                 opCount++;
             }
         }
-        results.servicesCreated = TECHNICIAN_CATEGORIES.length;
-
-        // 2. Cleaning Essentials
-        onProgress?.("🧹 Seeding Cleaning Essentials...");
-        for (const item of CLEANING_ESSENTIALS) {
-            const ref = doc(collection(db, 'cleaning_essentials'));
-            batch.set(ref, {
-                ...item,
-                isActive: true
-            });
-            opCount++;
-        }
-
-        // 3. Celebrating Professionals
-        onProgress?.("🎥 Seeding Professional Reels...");
-        for (const item of PRO_REELS) {
-            const ref = doc(collection(db, 'celebrating_professionals'));
-            batch.set(ref, {
-                ...item,
-                isActive: true
-            });
-            opCount++;
-        }
-
-        onProgress?.(`💾 Committing ${opCount} writes to Firestore...`);
-        await batch.commit();
-        onProgress?.("✅ Database seeding COMPLETE!");
-
-    } catch (e: any) {
-        onProgress?.(`❌ Error: ${e.message}`);
-        results.errors.push(e.message);
     }
 
-    return results;
-}
+    // 2. Cleaning Essentials
+    const cleanSnap = await db.collection('cleaning_essentials').limit(1).get();
+    if (cleanSnap.empty) {
+        seededCleaning = true;
+        for (const item of CLEANING_ESSENTIALS) {
+            const ref = db.collection('cleaning_essentials').doc(item.id);
+            // Prompt requires: id, title, imageUrl, categoryId, order, isActive
+            // item has categoryKey, map to categoryId
+            batch.set(ref, {
+                id: item.id,
+                title: item.title,
+                imageUrl: item.imageUrl,
+                categoryId: item.categoryKey, // Mapping key to Id as requested
+                order: item.order,
+                isActive: true
+            });
+            opCount++;
+        }
+    }
 
-export async function completeInitialization(onProgress?: (msg: string) => void) {
-    return await initializeServiceCatalog(onProgress);
-}
+    // 3. Celebrating Professionals
+    const proSnap = await db.collection('celebrating_professionals').limit(1).get();
+    if (proSnap.empty) {
+        seededPros = true;
+        for (const item of PRO_REELS) {
+            const ref = db.collection('celebrating_professionals').doc(item.id);
+            // Prompt requires: id, videoUrl, order, isActive. 
+            // We can keep title/thumbnail as extra if not strictly forbidden, but let's stick to core functionality or minimal superset.
+            // videoUrl is in item.
+            batch.set(ref, {
+                id: item.id,
+                videoUrl: item.videoUrl,
+                order: item.order,
+                isActive: true,
+                // Keeping thumbnail/title as they are useful for UI even if not explicitly demanded in minimum valid schema
+                thumbnailUrl: item.thumbnailUrl,
+                title: item.title
+            });
+            opCount++;
+        }
+    }
 
-// Stub for pricing config if still referenced elsewhere
-export async function initializePricingConfig() {
-    return { success: true };
-}
+    // 4. Service Bottom Banners
+    const bannerSnap = await db.collection('service_bottom_banners').limit(1).get();
+    if (bannerSnap.empty) {
+        seededBanners = true;
+        for (const item of SERVICE_BANNERS) {
+            const ref = db.collection('service_bottom_banners').doc(item.id);
+            batch.set(ref, {
+                id: item.id,
+                imageUrl: item.imageUrl,
+                title: item.title,
+                description: item.description,
+                order: item.order,
+                isActive: true
+            });
+            opCount++;
+        }
+    }
+
+    if (opCount > 0) {
+        await batch.commit();
+        return {
+            success: true,
+            message: `Initialization complete. seededCategories=${seededCategories}, seededCleaning=${seededCleaning}, seededPros=${seededPros}, seededBanners=${seededBanners}`
+        };
+    } else {
+        return {
+            success: true,
+            message: 'All collections already contain data. No changes made.'
+        };
+    }
+});

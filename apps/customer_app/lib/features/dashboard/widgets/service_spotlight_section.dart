@@ -13,11 +13,12 @@ class ServiceSpotlightSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
 
+    debugPrint("[Firestore] streaming service_spotlight...");
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: firestoreService.streamServiceSpotlight(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SizedBox(
+          return SizedBox(
             height: 200,
             child: Center(child: CircularProgressIndicator()),
           );
@@ -25,8 +26,23 @@ class ServiceSpotlightSection extends StatelessWidget {
 
         final spotlightServices = snapshot.data ?? [];
         if (spotlightServices.isEmpty) {
-          return const SizedBox.shrink();
+          debugPrint("[Firestore] service_spotlight is empty");
+          return Container(
+            margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.grey.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Center(
+              child: Text(
+                'Spotlight deals are taking a break!',
+                style: GoogleFonts.outfit(color: Colors.grey, fontWeight: FontWeight.w600),
+              ),
+            ),
+          );
         }
+        debugPrint("[Firestore] service_spotlight docs: ${spotlightServices.length}");
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -146,8 +162,8 @@ class ServiceSpotlightSection extends StatelessWidget {
                         width: double.infinity,
                         height: double.infinity,
                         color: AppTheme.accentColor,
-                        child: imageUrl != null && imageUrl.isNotEmpty
-                            ? Image.network(imageUrl, fit: BoxFit.cover)
+                        child: (imageUrl?.isNotEmpty ?? false)
+                            ? Image.network(imageUrl!, fit: BoxFit.cover)
                             : Icon(Icons.home_repair_service_rounded, size: 40, color: AppTheme.primaryColor.withOpacity(0.3)),
                       ),
                     ),

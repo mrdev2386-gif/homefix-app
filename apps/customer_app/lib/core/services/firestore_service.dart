@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../models/booking.dart';
 import '../models/service.dart';
 import '../models/address.dart';
@@ -340,26 +341,31 @@ class FirestoreService {
 
   // --- Dashboard Data ---
   Stream<List<ProfessionalReel>> streamProfessionalReels() {
+    debugPrint("[Firestore] streaming celebrating_professionals...");
     return _db
         .collection('celebrating_professionals')
         .where('isActive', isEqualTo: true)
         .snapshots()
         .map((snapshot) {
+          debugPrint("[Firestore] celebrating_professionals docs: ${snapshot.docs.length}");
           final reels = snapshot.docs.map((doc) => ProfessionalReel.fromFirestore(doc)).toList();
           reels.sort((a, b) => a.order.compareTo(b.order));
           return reels;
         });
   }
 
-  Stream<List<CleaningCategory>> streamCleaningCategories() {
+  Stream<List<CleaningEssential>> streamCleaningEssentials() {
+    debugPrint("[Firestore] streaming cleaning_essentials...");
     return _db
-        .collection('cleaning_categories')
+        .collection('cleaning_essentials')
         .where('isActive', isEqualTo: true)
         .snapshots()
         .map((snapshot) {
-          final categories = snapshot.docs.map((doc) => CleaningCategory.fromFirestore(doc)).toList();
-          categories.sort((a, b) => a.order.compareTo(b.order));
-          return categories;
+          debugPrint("[Firestore] cleaning_essentials docs: ${snapshot.docs.length}");
+          final essentials = snapshot.docs.map((doc) => CleaningEssential.fromFirestore(doc)).toList();
+          // Sort by order field in-memory
+          essentials.sort((a, b) => a.order.compareTo(b.order));
+          return essentials;
         });
   }
 
@@ -381,14 +387,37 @@ class FirestoreService {
   }
 
   Stream<List<ServiceBanner>> streamServiceBottomBanners() {
+    debugPrint("[Firestore] streaming service_bottom_banners...");
     return _db
         .collection('service_bottom_banners')
         .where('isActive', isEqualTo: true)
         .snapshots()
         .map((snapshot) {
+          debugPrint("[Firestore] service_bottom_banners docs: ${snapshot.docs.length}");
           final banners = snapshot.docs.map((doc) => ServiceBanner.fromFirestore(doc)).toList();
+          banners.sort((a, b) => a.order.compareTo(b.order));
+// ... (existing content)
           banners.sort((a, b) => a.order.compareTo(b.order));
           return banners;
         });
+  }
+
+  // --- Technician Categories ---
+  Future<List<TechnicianCategory>> getTechnicianCategories() async {
+    final snapshot = await _db.collection('technician_categories')
+        .where('isActive', isEqualTo: true)
+        .orderBy('order')
+        .get();
+        
+    return snapshot.docs.map((doc) => TechnicianCategory.fromFirestore(doc)).toList();
+  }
+
+  Future<List<TechnicianSubcategory>> getTechnicianSubcategories() async {
+    final snapshot = await _db.collection('technician_subcategories')
+        .where('isActive', isEqualTo: true)
+        .orderBy('order')
+        .get();
+        
+    return snapshot.docs.map((doc) => TechnicianSubcategory.fromFirestore(doc)).toList();
   }
 }

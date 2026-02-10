@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -7,6 +8,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/models/dashboard_models.dart';
 
 class TechnicianOnboardingScreen extends StatefulWidget {
   const TechnicianOnboardingScreen({super.key});
@@ -19,6 +21,7 @@ class _TechnicianOnboardingScreenState extends State<TechnicianOnboardingScreen>
   final PageController _pageController = PageController();
   int _currentStep = 0;
   bool _isLoading = false;
+  bool _isDataLoading = true;
 
   // Data
   final _nameController = TextEditingController();
@@ -31,14 +34,58 @@ class _TechnicianOnboardingScreenState extends State<TechnicianOnboardingScreen>
   final _bankHolderController = TextEditingController();
   final _addressController = TextEditingController();
   
-  List<String> _selectedCategories = [];
+  // Category Selection
+  List<TechnicianCategory> _allCategories = [];
+  List<TechnicianSubcategory> _allSubcategories = [];
+  List<TechnicianCategory> _filteredCategories = [];
+  final TextEditingController _searchController = TextEditingController();
+  final Set<String> _selectedCategoryIds = {};
+  final Set<String> _selectedSubCategoryIds = {};
+  
   XFile? _profilePhoto;
   XFile? _idProof;
   bool _agreedToTerms = false;
 
-  final List<String> _categories = [
-    'Cleaning', 'Plumbing', 'Electrical', 'Painting', 'AC Repair', 'Appliance Repair', 'Carpentry', 'Pest Control'
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _fetchCategories();
+  }
+
+  Future<void> _fetchCategories() async {
+    try {
+      final firestore = Provider.of<FirestoreService>(context, listen: false);
+      final cats = await firestore.getTechnicianCategories();
+      final subCats = await firestore.getTechnicianSubcategories();
+      
+      setState(() {
+        _allCategories = cats;
+        _allSubcategories = subCats;
+        _filteredCategories = cats;
+        _isDataLoading = false;
+      });
+    } catch (e) {
+      debugPrint("Error fetching categories: $e");
+      if (mounted) setState(() => _isDataLoading = false);
+    }
+  }
+
+  void _filterCategories(String query) {
+    if (query.isEmpty) {
+      setState(() => _filteredCategories = _allCategories);
+      return;
+    }
+    
+    setState(() {
+      _filteredCategories = _allCategories.where((cat) {
+        final catMatch = cat.name.toLowerCase().contains(query.toLowerCase());
+        final subCatMatch = _allSubcategories.any((sub) => 
+          sub.categoryId == cat.id && sub.name.toLowerCase().contains(query.toLowerCase())
+        );
+        return catMatch || subCatMatch;
+      }).toList();
+    });
+  }
 
   @override
   void dispose() {
@@ -52,6 +99,7 @@ class _TechnicianOnboardingScreenState extends State<TechnicianOnboardingScreen>
     _bankIfscController.dispose();
     _bankHolderController.dispose();
     _addressController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -64,8 +112,12 @@ class _TechnicianOnboardingScreenState extends State<TechnicianOnboardingScreen>
         }
         return true;
       case 1:
-        if (_selectedCategories.isEmpty) {
+        if (_selectedCategoryIds.isEmpty) {
           _showError('Please select at least one category');
+          return false;
+        }
+        if (_selectedSubCategoryIds.isEmpty) {
+          _showError('Please select at least one subcategory');
           return false;
         }
         return true;
@@ -144,11 +196,6 @@ class _TechnicianOnboardingScreenState extends State<TechnicianOnboardingScreen>
   }
 
   Future<void> _submitApplication() async {
-    if (!_agreedToTerms) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please agree to the terms')));
-      return;
-    }
-
     setState(() => _isLoading = true);
     try {
       final auth = Provider.of<AuthService>(context, listen: false);
@@ -172,7 +219,8 @@ class _TechnicianOnboardingScreenState extends State<TechnicianOnboardingScreen>
         'fullName': _nameController.text,
         'phone': _phoneController.text,
         'email': _emailController.text,
-        'categories': _selectedCategories,
+        'categories': _selectedCategoryIds.toList(),
+        'subCategories': _selectedSubCategoryIds.toList(),
         'experienceYears': _experienceYearsController.text,
         'experienceDescription': _experienceDescController.text,
         'profilePhotoUrl': profileUrl,
@@ -203,7 +251,7 @@ class _TechnicianOnboardingScreenState extends State<TechnicianOnboardingScreen>
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.check_circle_outline_rounded, color: Colors.emerald, size: 80),
+            const Icon(Icons.check_circle_outline_rounded, color: Color(0xFF10B981), size: 80),
             const SizedBox(height: 24),
             Text('Application Received!', style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w800)),
             const SizedBox(height: 12),
@@ -320,31 +368,112 @@ class _TechnicianOnboardingScreenState extends State<TechnicianOnboardingScreen>
   }
 
   Widget _buildStepCategories() {
-    return _buildStepPadding([
-      _buildStepHeader('What are you good at?', 'Select the categories you want to provide services in.'),
-      Wrap(
-        spacing: 12,
-        runSpacing: 12,
-        children: _categories.map((cat) {
-          final isSelected = _selectedCategories.contains(cat);
-          return FilterChip(
-            label: Text(cat, style: GoogleFonts.outfit(fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600, color: isSelected ? Colors.white : AppTheme.textColor)),
-            selected: isSelected,
-            onSelected: (val) {
-              setState(() {
-                if (val) _selectedCategories.add(cat);
-                else _selectedCategories.remove(cat);
-              });
+    if (_isDataLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_allCategories.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Text(
+            "Admin has not configured service categories yet",
+            textAlign: TextAlign.center,
+            style: GoogleFonts.outfit(
+                color: Colors.redAccent,
+                fontSize: 16,
+                fontWeight: FontWeight.w600),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        _buildStepPadding([
+          _buildStepHeader('What are you good at?', 'Select the categories & subcategories you excel in.'),
+          TextField(
+            controller: _searchController,
+            onChanged: _filterCategories,
+            decoration: InputDecoration(
+              hintText: 'Search categories...',
+              prefixIcon: const Icon(Icons.search_rounded),
+              filled: true,
+              fillColor: const Color(0xFFF8F9FE),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            ),
+          ),
+        ]),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            itemCount: _filteredCategories.length,
+            itemBuilder: (context, index) {
+              final cat = _filteredCategories[index];
+              final subCats = _allSubcategories.where((s) => s.categoryId == cat.id).toList();
+              final isCatSelected = _selectedCategoryIds.contains(cat.id);
+
+              return Card(
+                elevation: 0,
+                color: isCatSelected ? AppTheme.primaryColor.withOpacity(0.05) : Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.shade200)),
+                margin: const EdgeInsets.only(bottom: 12),
+                child: ExpansionTile(
+                  leading: Checkbox(
+                    value: isCatSelected,
+                    activeColor: AppTheme.primaryColor,
+                    onChanged: (val) {
+                      setState(() {
+                         if (val == true) {
+                           _selectedCategoryIds.add(cat.id);
+                         } else {
+                           _selectedCategoryIds.remove(cat.id);
+                           // Deselect subcategories if parent is deselected?
+                           // _selectedSubCategoryIds.removeWhere((id) => subCats.any((s) => s.id == id));
+                         }
+                      });
+                    },
+                  ),
+                  title: Text(cat.name, style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+                  children: subCats.map((sub) {
+                    final isSubSelected = _selectedSubCategoryIds.contains(sub.id);
+                    return ListTile(
+                      contentPadding: const EdgeInsets.only(left: 60, right: 20),
+                      leading: Checkbox(
+                        value: isSubSelected,
+                        activeColor: AppTheme.primaryColor,
+                        onChanged: (val) {
+                          setState(() {
+                            if (val == true) {
+                              _selectedSubCategoryIds.add(sub.id);
+                              // Auto-select parent
+                              _selectedCategoryIds.add(cat.id);
+                            } else {
+                              _selectedSubCategoryIds.remove(sub.id);
+                            }
+                          });
+                        },
+                      ),
+                      title: Text(sub.name, style: GoogleFonts.outfit()),
+                      onTap: () {
+                         setState(() {
+                            if (isSubSelected) {
+                              _selectedSubCategoryIds.remove(sub.id);
+                            } else {
+                              _selectedSubCategoryIds.add(sub.id);
+                              _selectedCategoryIds.add(cat.id);
+                            }
+                          });
+                      },
+                    );
+                  }).toList(),
+                ),
+              );
             },
-            selectedColor: AppTheme.primaryColor,
-            checkmarkColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            backgroundColor: const Color(0xFFF8F9FE),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-          );
-        }).toList(),
-      ),
-    ]);
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildStepExperience() {

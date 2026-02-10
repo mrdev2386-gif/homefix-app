@@ -56,7 +56,7 @@ class UserModel {
       name: (data['name'] ?? data['displayName'] ?? '').toString(),
       photoUrl: (data['photoUrl'] ?? data['photoURL'] ?? '').toString(),
       createdAt: data['createdAt'] is Timestamp ? (data['createdAt'] as Timestamp).toDate() : null,
-      role: (data['role'] ?? 'customer').toString(),
+      role: (data['role'] ?? 'customer').toString().toLowerCase(),
       referralCode: (data['referralCode'] ?? '').toString(),
       referredBy: (data['referredBy'] ?? '').toString(),
       walletBalance: double.tryParse((data['walletBalance'] ?? 0.0).toString()) ?? 0.0,

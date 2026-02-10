@@ -64,12 +64,16 @@ class CleaningEssential {
   final String title;
   final String imageUrl;
   final String categoryId;
+  final int order;
+  final bool isActive;
 
   CleaningEssential({
     required this.id,
     required this.title,
     required this.imageUrl,
     required this.categoryId,
+    this.order = 0,
+    this.isActive = true,
   });
 
   factory CleaningEssential.fromFirestore(DocumentSnapshot doc) {
@@ -78,7 +82,9 @@ class CleaningEssential {
       id: doc.id,
       title: (data['title'] ?? data['name'] ?? '').toString(),
       imageUrl: (data['imageUrl'] ?? data['iconUrl'] ?? '').toString(),
-      categoryId: (data['categoryId'] ?? doc.id).toString(),
+      categoryId: (data['categoryKey'] ?? data['categoryId'] ?? data['category'] ?? doc.id).toString(),
+      order: int.tryParse((data['order'] ?? 0).toString()) ?? 0,
+      isActive: data['isActive'] ?? true,
     );
   }
 }
@@ -155,7 +161,61 @@ class ServiceBanner {
       isActive: data['isActive'] ?? true,
       order: int.tryParse((data['order'] ?? 0).toString()) ?? 0,
       title: (data['title'] ?? 'Special Offer').toString(),
-      description: (data['description'] ?? 'Check out our new services').toString(),
+      description: (data['description'] ?? data['subtitle'] ?? '').toString(),
+    );
+  }
+}
+
+class TechnicianCategory {
+  final String id;
+  final String name;
+  final String icon;
+  final bool isActive;
+  final int order;
+
+  TechnicianCategory({
+    required this.id,
+    required this.name,
+    required this.icon,
+    this.isActive = true,
+    this.order = 0
+  });
+
+  factory TechnicianCategory.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    return TechnicianCategory(
+      id: doc.id,
+      name: (data['name'] ?? '').toString(),
+      icon: (data['icon'] ?? '').toString(),
+      isActive: data['isActive'] ?? true,
+      order: int.tryParse((data['order'] ?? 0).toString()) ?? 0,
+    );
+  }
+}
+
+class TechnicianSubcategory {
+  final String id;
+  final String categoryId;
+  final String name;
+  final bool isActive;
+  final int order;
+
+  TechnicianSubcategory({
+    required this.id,
+    required this.categoryId,
+    required this.name,
+    this.isActive = true,
+    this.order = 0
+  });
+
+  factory TechnicianSubcategory.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    return TechnicianSubcategory(
+      id: doc.id,
+      categoryId: (data['categoryId'] ?? '').toString(),
+      name: (data['name'] ?? '').toString(),
+      isActive: data['isActive'] ?? true,
+      order: int.tryParse((data['order'] ?? 0).toString()) ?? 0,
     );
   }
 }

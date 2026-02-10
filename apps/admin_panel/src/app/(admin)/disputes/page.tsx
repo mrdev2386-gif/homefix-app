@@ -104,7 +104,7 @@ export default function DisputesPage() {
                                         <div className="relative p-6 bg-slate-950/30 rounded-2xl border border-slate-800/50 group-hover:bg-slate-950/50 transition-colors">
                                             <MessageSquare size={16} className="absolute -top-2 -left-2 text-indigo-500 p-0.5 bg-slate-900 rounded-full" />
                                             <p className="text-slate-400 text-sm font-medium leading-relaxed italic opacity-80 line-clamp-3">
-                                                "{dispute.description || 'No detailed incident report provided by stakeholder.'}"
+                                                &quot;{dispute.description || 'No detailed incident report provided by stakeholder.'}&quot;
                                             </p>
                                         </div>
                                     </div>

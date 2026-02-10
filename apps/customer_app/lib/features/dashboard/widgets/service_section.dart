@@ -9,13 +9,13 @@ import 'package:provider/provider.dart';
 import '../../../core/providers/cart_provider.dart';
 import '../../../core/models/cart_item.dart';
 
-class ServiceSection extends StatelessWidget {
+class ServiceListSection extends StatelessWidget {
   final String title;
   final bool isHorizontal;
   final bool isTopOnly;
   final String? category;
 
-  const ServiceSection({
+  const ServiceListSection({
     super.key,
     required this.title,
     this.isHorizontal = true,
@@ -69,10 +69,26 @@ class ServiceSection extends StatelessWidget {
         StreamBuilder<QuerySnapshot>(
           stream: query.snapshots(),
           builder: (context, snapshot) {
-            if (!snapshot.hasData) return const SizedBox.shrink();
-            final services = snapshot.data!.docs;
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Center(child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: CircularProgressIndicator(),
+              ));
+            }
             
-            if (services.isEmpty) return const SizedBox.shrink();
+            final services = snapshot.data?.docs ?? [];
+            if (services.isEmpty) {
+              debugPrint("[Firestore] service_section ($title) is empty");
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                child: Text(
+                  'Explore more services in the catalog!',
+                  style: GoogleFonts.outfit(color: AppTheme.subtitleColor, fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+              );
+            }
+
+            debugPrint("[Firestore] service_section ($title) docs: ${services.length}");
 
             if (isHorizontal) {
               return SizedBox(
@@ -111,6 +127,15 @@ class ServiceSection extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+class ServiceSection extends StatelessWidget {
+  final Widget child;
+  const ServiceSection({Key? key, required this.child}) : super(key: key);
+  @override
+  Widget build(BuildContext context) {
+    return child;
   }
 }
 

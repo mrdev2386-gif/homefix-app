@@ -34,6 +34,22 @@ export default function SettingsPage() {
         }
     };
 
+    const handleInitializeContent = async () => {
+        if (!confirm('This will seed default demo data into empty home collections. Proceed?')) return;
+        setLoading(true);
+        try {
+            const fn = httpsCallable(functions, 'admin_initializeHomeContent');
+            const result = await fn();
+            console.log('Init result:', result.data);
+            alert('Home content initialized successfully! Check logs for details.');
+        } catch (e: any) {
+            console.error(e);
+            alert(`Initialization failure: ${e.message}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="space-y-8 max-w-[1400px] mx-auto pb-20">
             <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -192,9 +208,19 @@ export default function SettingsPage() {
                                 Continuous integrity monitoring active. All administrative actions are recorded in the encrypted ledger.
                             </p>
                         </CardHeader>
-                        <CardFooter className="p-8 pt-0">
+                        <CardFooter className="p-8 pt-0 flex flex-col gap-3">
                             <Button variant="outline" className="w-full border-white/10 bg-white/5 text-white hover:bg-white/10 hover:text-white rounded-2xl h-12 font-black uppercase text-[10px] tracking-widest">
                                 <Database size={16} className="mr-2 text-indigo-400" /> Retrieve Audit Trails
+                            </Button>
+
+                            <Button
+                                onClick={handleInitializeContent}
+                                disabled={loading}
+                                variant="outline"
+                                className="w-full border-emerald-500/20 bg-emerald-500/5 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-400 rounded-2xl h-12 font-black uppercase text-[10px] tracking-widest"
+                            >
+                                {loading ? <Loader2 size={16} className="mr-2 animate-spin" /> : <LayoutGrid size={16} className="mr-2" />}
+                                Initialize Home Content
                             </Button>
                         </CardFooter>
                     </Card>

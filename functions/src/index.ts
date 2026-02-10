@@ -484,14 +484,19 @@ import {
     admin_manageProfessionalVideos,
     admin_manageCleaningEssentials,
     admin_manageServiceBanners,
-    findEligibleTechniciansCount
+    admin_manageTechnicianCategories,
+    admin_manageTechnicianSubcategories
 } from './admin/dynamic_content';
+
+import { admin_initializeHomeContent } from './admin/system_initialization';
 
 export {
     admin_manageProfessionalVideos,
     admin_manageCleaningEssentials,
     admin_manageServiceBanners,
-    findEligibleTechniciansCount
+    admin_initializeHomeContent,
+    admin_manageTechnicianCategories,
+    admin_manageTechnicianSubcategories
 };
 
 // Technician Finance & Payouts

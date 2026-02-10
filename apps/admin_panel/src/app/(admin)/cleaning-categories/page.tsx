@@ -59,7 +59,7 @@ export default function CleaningCategoriesPage() {
     });
 
     useEffect(() => {
-        const q = query(collection(db, 'cleaning_categories'), orderBy('order', 'asc'));
+        const q = query(collection(db, 'cleaning_essentials'), orderBy('order', 'asc'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({
                 id: doc.id,

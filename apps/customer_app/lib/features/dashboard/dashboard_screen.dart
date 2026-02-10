@@ -21,6 +21,7 @@ import 'widgets/category_grid.dart';
 import 'widgets/service_spotlight_section.dart';
 import 'widgets/professional_reels_section.dart';
 import 'widgets/cleaning_essentials_section.dart';
+import 'widgets/service_bottom_banners_section.dart';
 import '../../core/models/dashboard_models.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -79,7 +80,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                   _buildQuickActions(context),
                   const SizedBox(height: 32),
                   
-                  const ServiceSection(
+                  const ServiceListSection(
                     title: 'Top Rated Services', 
                     isHorizontal: true, 
                     isTopOnly: true
@@ -92,20 +93,23 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                   _buildSupportCard(context),
                   const SizedBox(height: 32),
                   
-                  const ServiceSection(
+                  const ServiceListSection(
                     title: 'Professional Home Services', 
                     isHorizontal: false,
                   ),
                   const SizedBox(height: 32),
 
-                  const ServiceSection(
+                  const ServiceListSection(
                     title: 'Recommended For You', 
-                    isHorizontal: true,
                     category: 'cleaning',
+                    isHorizontal: true,
                   ),
                   const SizedBox(height: 32),
 
-                  const ServiceSection(
+                  ServiceSection(child: _buildServiceBottomBanners(context)),
+                  const SizedBox(height: 32),
+
+                  const ServiceListSection(
                     title: 'Recently Viewed', 
                     isHorizontal: true,
                   ),
@@ -405,8 +409,18 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
         return StreamBuilder<List<Booking>>(
           stream: Provider.of<FirestoreService>(context, listen: false).streamBookings(user.uid, limit: 1),
           builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+               return const Center(child: CircularProgressIndicator());
+            }
+
             final bookings = snapshot.data ?? [];
-            if (bookings.isEmpty) return const SizedBox.shrink();
+            if (bookings.isEmpty) {
+              debugPrint("[Firestore] No upcoming bookings found");
+              return const SizedBox.shrink(); // This section is dynamic and should be hidden if no bookings, but following "added to widget tree unconditionally" I'll keep it for now? 
+              // Actually, maybe I'll show a "Ready to book?" card.
+            }
+            
+            debugPrint("[Firestore] Upcoming booking found: ${bookings.first.id}");
             final booking = bookings.first;
             if (booking.status == 'completed' || booking.status == 'cancelled') return const SizedBox.shrink();
             
@@ -541,22 +555,55 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
     return StreamBuilder<List<ProfessionalReel>>(
       stream: Provider.of<FirestoreService>(context, listen: false).streamProfessionalReels(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.data == null || snapshot.data!.isEmpty) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: CircularProgressIndicator(),
+          ));
+        }
+        
+        final reels = snapshot.data ?? [];
+        if (reels.isEmpty) {
           return const SizedBox.shrink();
         }
-        return ProfessionalReelsSection(reels: snapshot.data!);
+        return ProfessionalReelsSection(reels: reels);
       },
     );
   }
 
   Widget _buildCleaningEssentials(BuildContext context) {
-    return StreamBuilder<List<CleaningCategory>>(
-      stream: Provider.of<FirestoreService>(context, listen: false).streamCleaningCategories(),
+    return StreamBuilder<List<CleaningEssential>>(
+      stream: Provider.of<FirestoreService>(context, listen: false).streamCleaningEssentials(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.data == null || snapshot.data!.isEmpty) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: CircularProgressIndicator(),
+          ));
+        }
+
+        final essentials = snapshot.data ?? [];
+        if (essentials.isEmpty) {
           return const SizedBox.shrink();
         }
-        return CleaningEssentialsSection(essentials: snapshot.data!);
+        return CleaningEssentialsSection(essentials: essentials);
+      },
+    );
+  }
+
+  Widget _buildServiceBottomBanners(BuildContext context) {
+    return StreamBuilder<List<ServiceBanner>>(
+      stream: Provider.of<FirestoreService>(context, listen: false).streamServiceBottomBanners(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox(height: 180, child: Center(child: CircularProgressIndicator()));
+        }
+
+        final banners = snapshot.data ?? [];
+        if (banners.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return ServiceBottomBannersSection(banners: banners);
       },
     );
   }

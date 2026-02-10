@@ -154,7 +154,7 @@ export default function ReviewsPage() {
 
                                     <div className="space-y-4">
                                         <p className="text-slate-300 font-medium text-lg leading-relaxed italic group-hover:text-white transition-colors">
-                                            "{review.reviewText || 'No verbal feedback provided.'}"
+                                            &quot;{review.reviewText || 'No verbal feedback provided.'}&quot;
                                         </p>
 
                                         <div className="flex flex-wrap gap-2">

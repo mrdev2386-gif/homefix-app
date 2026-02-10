@@ -32,7 +32,15 @@ class _ProfessionalReelsSectionState extends State<ProfessionalReelsSection> {
     final displayReels = widget.reels.take(5).toList();
     
     if (displayReels.isEmpty) {
-      return const SizedBox.shrink();
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Text(
+            "Admin has not added content yet",
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+          ),
+        ),
+      );
     }
 
     return Column(

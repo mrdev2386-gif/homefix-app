@@ -24,7 +24,6 @@ import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/onboarding_screen.dart';
 import 'features/home/main_wrapper_screen.dart';
 import 'core/models/user_model.dart';
-import 'core/firestore/seed_service.dart';
 import 'firebase_options.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -70,14 +69,6 @@ void main() async {
       debugPrint("Notifications initialization failed: $e");
     }
 
-    // Synchronize Services Catalog
-    if (!kIsWeb) {
-      try {
-        await SeedService.seedServicesIfEmpty();
-      } catch (e) {
-        debugPrint("Seed service failed: $e");
-      }
-    }
   } catch (e) {
     debugPrint("Firebase initialization failed: $e");
   }

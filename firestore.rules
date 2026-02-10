@@ -24,7 +24,7 @@ service cloud.firestore {
     // Public read, Admin write
     match /services/{serviceId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if false; // All writes via Cloud Functions
     }
     
     match /celebrating_professionals/{id} {
@@ -32,14 +32,24 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     
-    match /cleaning_categories/{id} {
+    match /cleaning_essentials/{id} {
       allow read: if true;
       allow write: if isAdmin();
     }
     
+    match /home_banners/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /service_spotlight/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+    
     match /subServices/{subServiceId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if false;
     }
     
     // 2. TECHNICIAN ONBOARDING
@@ -147,6 +157,17 @@ service cloud.firestore {
 
     // 14. SERVICE BOTTOM BANNERS
     match /service_bottom_banners/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 15. TECHNICIAN CATEGORIES
+    match /technician_categories/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /technician_subcategories/{id} {
       allow read: if true;
       allow write: if isAdmin();
     }

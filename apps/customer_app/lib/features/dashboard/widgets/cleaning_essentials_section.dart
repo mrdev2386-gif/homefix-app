@@ -10,7 +10,7 @@ import '../../../core/providers/location_provider.dart';
 import '../../services/presentation/service_list_screen.dart';
 
 class CleaningEssentialsSection extends StatefulWidget {
-  final List<CleaningCategory> essentials;
+  final List<CleaningEssential> essentials;
 
   const CleaningEssentialsSection({
     super.key,
@@ -24,7 +24,7 @@ class CleaningEssentialsSection extends StatefulWidget {
 class _CleaningEssentialsSectionState extends State<CleaningEssentialsSection> {
   bool _isLoading = false;
 
-  Future<void> _handleCategoryTap(BuildContext context, CleaningCategory category) async {
+  Future<void> _handleCategoryTap(BuildContext context, CleaningEssential essential) async {
     final locationProvider = Provider.of<LocationProvider>(context, listen: false);
     final functionsService = Provider.of<FunctionsService>(context, listen: false);
 
@@ -40,7 +40,7 @@ class _CleaningEssentialsSectionState extends State<CleaningEssentialsSection> {
 
     try {
       final result = await functionsService.findEligibleTechniciansCount(
-        category.id,
+        essential.categoryId,
         {
           'latitude': locationProvider.currentPosition!.latitude,
           'longitude': locationProvider.currentPosition!.longitude,
@@ -54,14 +54,13 @@ class _CleaningEssentialsSectionState extends State<CleaningEssentialsSection> {
             context,
             MaterialPageRoute(
               builder: (_) => ServiceListScreen(
-                categoryId: category.id,
-                categoryName: category.name,
+                category: essential.categoryId,
               ),
             ),
           );
         } else {
           // No technician found
-          _showNotAvailableDialog(context, category.name);
+          _showNotAvailableDialog(context, essential.title);
         }
       }
     } catch (e) {
@@ -98,7 +97,15 @@ class _CleaningEssentialsSectionState extends State<CleaningEssentialsSection> {
   @override
   Widget build(BuildContext context) {
     if (widget.essentials.isEmpty) {
-      return const SizedBox.shrink();
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Text(
+            "Admin has not added content yet",
+            style: GoogleFonts.outfit(color: Colors.grey),
+          ),
+        ),
+      );
     }
 
     return Column(
@@ -127,8 +134,8 @@ class _CleaningEssentialsSectionState extends State<CleaningEssentialsSection> {
             itemCount: widget.essentials.length,
             controller: PageController(viewportFraction: 0.92),
             itemBuilder: (context, index) {
-              final category = widget.essentials[index];
-              return _buildLargeCard(context, category);
+              final essential = widget.essentials[index];
+              return _buildLargeCard(context, essential);
             },
           ),
         ),
@@ -136,9 +143,9 @@ class _CleaningEssentialsSectionState extends State<CleaningEssentialsSection> {
     );
   }
 
-  Widget _buildLargeCard(BuildContext context, CleaningCategory category) {
+  Widget _buildLargeCard(BuildContext context, CleaningEssential essential) {
     return GestureDetector(
-      onTap: _isLoading ? null : () => _handleCategoryTap(context, category),
+      onTap: _isLoading ? null : () => _handleCategoryTap(context, essential),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
@@ -157,7 +164,7 @@ class _CleaningEssentialsSectionState extends State<CleaningEssentialsSection> {
             fit: StackFit.expand,
             children: [
               SafeNetworkImage(
-                imageUrl: category.iconUrl,
+                imageUrl: essential.imageUrl,
                 fit: BoxFit.cover,
               ),
               // Gradient Overlay
@@ -187,7 +194,7 @@ class _CleaningEssentialsSectionState extends State<CleaningEssentialsSection> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            category.name,
+                            essential.title,
                             style: GoogleFonts.outfit(
                               color: Colors.white,
                               fontSize: 18,

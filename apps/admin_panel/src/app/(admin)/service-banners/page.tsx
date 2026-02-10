@@ -223,7 +223,7 @@ export default function ServiceBannersPage() {
                                 className="aspect-[21/9] rounded-2xl border-2 border-dashed border-slate-800 bg-slate-950/50 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-500/50 transition-all overflow-hidden relative"
                             >
                                 {imagePreview ? (
-                                    <img src={imagePreview} className="w-full h-full object-cover" />
+                                    <img src={imagePreview} alt="Preview" className="h-full w-full object-cover" />
                                 ) : (
                                     <div className="text-center text-slate-600">
                                         <Upload size={40} className="mx-auto mb-2" />
