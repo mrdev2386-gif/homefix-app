@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
@@ -19,6 +20,8 @@ import 'core/providers/service_provider.dart';
 import 'core/providers/booking_provider.dart';
 import 'core/providers/location_provider.dart';
 import 'core/providers/checkout_provider.dart';
+import 'core/providers/locale_provider.dart';
+import 'core/utils/app_localizations.dart';
 import 'features/auth/screens/splash_screen.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/onboarding_screen.dart';
@@ -97,15 +100,31 @@ class HomeFixApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => BookingProvider()),
         ChangeNotifierProvider(create: (_) => LocationProvider()),
         ChangeNotifierProvider(create: (_) => CheckoutProvider()),
+        ChangeNotifierProvider(create: (_) => LocaleProvider()),
       ],
-      child: MaterialApp(
-        title: 'HomeFix',
-        navigatorKey: navigatorKey,
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme,
-        darkTheme: AppTheme.darkTheme,
-        themeMode: ThemeMode.system,
-        home: const AuthWrapper(),
+      child: Consumer<LocaleProvider>(
+        builder: (context, localeProvider, child) {
+          return MaterialApp(
+            title: 'HomeFix',
+            navigatorKey: navigatorKey,
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: ThemeMode.system,
+            locale: localeProvider.locale,
+            supportedLocales: const [
+              Locale('en'),
+              Locale('hi'),
+            ],
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            home: const AuthWrapper(),
+          );
+        },
       ),
     );
   }
@@ -118,6 +137,7 @@ class AuthWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context, listen: false);
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    final localeProvider = Provider.of<LocaleProvider>(context, listen: false);
 
     return StreamBuilder(
       stream: authService.authStateChanges,
@@ -128,6 +148,9 @@ class AuthWrapper extends StatelessWidget {
         
         final user = snapshot.data;
         if (user != null) {
+          // Set user ID for locale sync
+          localeProvider.setUserId(user.uid);
+          
           return StreamBuilder<UserModel>(
             stream: firestoreService.streamUserModel(user.uid),
             builder: (context, userSnapshot) {

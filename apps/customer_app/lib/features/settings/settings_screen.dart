@@ -7,9 +7,11 @@ import '../../core/services/user_settings_service.dart';
 import '../../core/models/user_settings.dart';
 import '../../core/models/user_model.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/app_localizations.dart';
 import '../profile/presentation/edit_profile_screen.dart';
 import '../support/presentation/support_screen.dart';
 import '../profile/presentation/policy_screen.dart';
+import 'language_selection_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final UserModel user;
@@ -72,9 +74,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _localSettings = oldSettings;
       });
       if (mounted) {
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to update settings: $e'),
+            content: Text('${l10n.translate('failedToUpdateSettings')}: $e'),
             backgroundColor: Colors.redAccent,
             behavior: SnackBarBehavior.floating,
           ),
@@ -112,9 +115,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _localSettings = oldSettings;
       });
       if (mounted) {
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to update settings: $e'),
+            content: Text('${l10n.translate('failedToUpdateSettings')}: $e'),
             backgroundColor: Colors.redAccent,
             behavior: SnackBarBehavior.floating,
           ),
@@ -130,12 +134,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context, listen: false);
+    final l10n = AppLocalizations.of(context);
 
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
       appBar: AppBar(
         title: Text(
-          'Settings',
+          l10n.settings,
           style: GoogleFonts.outfit(
             fontWeight: FontWeight.w800,
             color: AppTheme.textColor,
@@ -175,12 +180,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
               children: [
                 // Notifications Section
-                _buildSectionHeader('NOTIFICATIONS'),
+                _buildSectionHeader(l10n.translate('notificationsSection')),
                 _buildSettingsCard([
                   _buildSwitchTile(
                     icon: Icons.notifications_active_rounded,
-                    title: 'Push Notifications',
-                    subtitle: 'Master toggle for all notifications',
+                    title: l10n.translate('pushNotifications'),
+                    subtitle: l10n.translate('masterToggle'),
                     value: settings.notifications.enabled,
                     onChanged: (value) {
                       _updateNotificationSetting(
@@ -192,8 +197,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const Divider(height: 1, indent: 60),
                     _buildSwitchTile(
                       icon: Icons.event_note_rounded,
-                      title: 'Booking Updates',
-                      subtitle: 'Status changes and reminders',
+                      title: l10n.translate('bookingUpdates'),
+                      subtitle: l10n.translate('statusChangesReminders'),
                       value: settings.notifications.bookingUpdates,
                       onChanged: (value) {
                         _updateNotificationSetting(
@@ -204,8 +209,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const Divider(height: 1, indent: 60),
                     _buildSwitchTile(
                       icon: Icons.local_offer_rounded,
-                      title: 'Promotions & Offers',
-                      subtitle: 'Deals and special discounts',
+                      title: l10n.translate('promotionsOffers'),
+                      subtitle: l10n.translate('dealsDiscounts'),
                       value: settings.notifications.promotions,
                       onChanged: (value) {
                         _updateNotificationSetting(
@@ -216,8 +221,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const Divider(height: 1, indent: 60),
                     _buildSwitchTile(
                       icon: Icons.payment_rounded,
-                      title: 'Payments & Wallet',
-                      subtitle: 'Transaction alerts',
+                      title: l10n.translate('paymentsWallet'),
+                      subtitle: l10n.translate('transactionAlerts'),
                       value: settings.notifications.payments,
                       onChanged: (value) {
                         _updateNotificationSetting(
@@ -229,8 +234,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       const Divider(height: 1, indent: 60),
                       _buildSwitchTile(
                         icon: Icons.work_outline_rounded,
-                        title: 'Technician Status',
-                        subtitle: 'Job requests and updates',
+                        title: l10n.translate('technicianStatus'),
+                        subtitle: l10n.translate('jobRequestsUpdates'),
                         value: settings.notifications.technicianStatus,
                         onChanged: (value) {
                           _updateNotificationSetting(
@@ -245,12 +250,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 32),
 
                 // Account Section
-                _buildSectionHeader('ACCOUNT'),
+                _buildSectionHeader(l10n.translate('accountSection')),
                 _buildSettingsCard([
                   _buildNavigationTile(
                     icon: Icons.person_outline_rounded,
-                    title: 'Edit Profile',
-                    subtitle: 'Update your personal information',
+                    title: l10n.translate('editProfile'),
+                    subtitle: l10n.translate('updatePersonalInfo'),
                     onTap: () {
                       Navigator.push(
                         context,
@@ -263,55 +268,64 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const Divider(height: 1, indent: 60),
                   _buildNavigationTile(
                     icon: Icons.phone_android_rounded,
-                    title: 'Change Phone Number',
-                    subtitle: 'Update your mobile number',
-                    onTap: () => _showComingSoonDialog('Change Phone Number'),
+                    title: l10n.translate('changePhoneNumber'),
+                    subtitle: l10n.translate('updateMobileNumber'),
+                    onTap: () => _showComingSoonDialog(l10n.translate('changePhoneNumber')),
                   ),
                   if (widget.user.email?.isNotEmpty ?? false) ...[
                     const Divider(height: 1, indent: 60),
                     _buildNavigationTile(
                       icon: Icons.email_outlined,
-                      title: 'Email Preferences',
-                      subtitle: 'Manage email notifications',
-                      onTap: () => _showComingSoonDialog('Email Preferences'),
+                      title: l10n.translate('emailPreferences'),
+                      subtitle: l10n.translate('manageEmailNotifications'),
+                      onTap: () => _showComingSoonDialog(l10n.translate('emailPreferences')),
                     ),
                   ],
                   const Divider(height: 1, indent: 60),
                   _buildNavigationTile(
                     icon: Icons.language_rounded,
-                    title: 'Language',
-                    subtitle: 'English (UK)',
-                    onTap: () => _showComingSoonDialog('Language Selection'),
+                    title: l10n.translate('language'),
+                    subtitle: l10n.locale.languageCode == 'hi' 
+                        ? l10n.translate('hindi')
+                        : l10n.translate('languageSubtitle'),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const LanguageSelectionScreen(),
+                        ),
+                      );
+                    },
                   ),
                 ]),
 
                 const SizedBox(height: 32),
 
                 // Privacy & Security Section
-                _buildSectionHeader('PRIVACY & SECURITY'),
+                _buildSectionHeader(l10n.translate('privacySecuritySection')),
                 _buildSettingsCard([
                   _buildSwitchTile(
                     icon: Icons.lock_outline_rounded,
-                    title: 'App Lock',
-                    subtitle: 'Require PIN/biometric to open app',
+                    title: l10n.translate('appLock'),
+                    subtitle: l10n.translate('requirePinBiometric'),
                     value: settings.privacy.appLock,
                     onChanged: (value) {
-                      _showComingSoonDialog('App Lock');
+                      _showComingSoonDialog(l10n.translate('appLock'));
                     },
                   ),
                   const Divider(height: 1, indent: 60),
                   _buildNavigationTile(
                     icon: Icons.logout_rounded,
-                    title: 'Logout',
-                    subtitle: 'Sign out of your account',
+                    title: l10n.translate('logout'),
+                    subtitle: l10n.translate('signOutAccount'),
                     onTap: () => _confirmLogout(authService),
                     iconColor: Colors.orange,
                   ),
                   const Divider(height: 1, indent: 60),
                   _buildNavigationTile(
                     icon: Icons.delete_forever_rounded,
-                    title: 'Delete Account',
-                    subtitle: 'Permanently remove your account',
+                    title: l10n.translate('deleteAccount'),
+                    subtitle: l10n.translate('permanentlyRemoveAccount'),
                     onTap: () => _confirmDeleteAccount(),
                     iconColor: Colors.redAccent,
                   ),
@@ -320,12 +334,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 32),
 
                 // Support & Info Section
-                _buildSectionHeader('SUPPORT & INFO'),
+                _buildSectionHeader(l10n.translate('supportInfoSection')),
                 _buildSettingsCard([
                   _buildNavigationTile(
                     icon: Icons.help_outline_rounded,
-                    title: 'Help & Support',
-                    subtitle: 'FAQs and customer service',
+                    title: l10n.translate('helpCenter'),
+                    subtitle: l10n.translate('faqsCustomerSupport'),
                     onTap: () {
                       Navigator.push(
                         context,
@@ -336,13 +350,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const Divider(height: 1, indent: 60),
                   _buildNavigationTile(
                     icon: Icons.description_outlined,
-                    title: 'Terms & Conditions',
-                    subtitle: 'Service agreement',
+                    title: l10n.translate('termsConditions'),
+                    subtitle: l10n.translate('serviceAgreement'),
                     onTap: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => const PolicyScreen(title: 'Terms & Conditions'),
+                          builder: (_) => PolicyScreen(title: l10n.translate('termsConditions')),
                         ),
                       );
                     },
@@ -350,13 +364,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const Divider(height: 1, indent: 60),
                   _buildNavigationTile(
                     icon: Icons.policy_outlined,
-                    title: 'Privacy Policy',
-                    subtitle: 'How we protect your data',
+                    title: l10n.translate('privacyPolicy'),
+                    subtitle: l10n.translate('howWeProtectData'),
                     onTap: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => const PolicyScreen(title: 'Privacy Policy'),
+                          builder: (_) => PolicyScreen(title: l10n.translate('privacyPolicy')),
                         ),
                       );
                     },
@@ -364,8 +378,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const Divider(height: 1, indent: 60),
                   _buildNavigationTile(
                     icon: Icons.info_outline_rounded,
-                    title: 'About HomeFix',
-                    subtitle: _appVersion.isNotEmpty ? 'Version $_appVersion' : 'Loading...',
+                    title: l10n.translate('aboutHomeFix'),
+                    subtitle: _appVersion.isNotEmpty ? '${l10n.translate('version')} $_appVersion' : 'Loading...',
                     onTap: () => _showAboutDialog(),
                   ),
                 ]),

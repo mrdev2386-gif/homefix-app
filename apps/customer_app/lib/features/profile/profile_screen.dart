@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import 'package:customer_app/core/services/storage_service.dart';
 
 import '../../core/services/auth_service.dart';
@@ -10,6 +11,7 @@ import '../../core/services/firestore_service.dart';
 import '../../core/models/user_model.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/safe_network_image.dart';
+import '../../core/utils/app_localizations.dart';
 import '../../shared/widgets/app_widgets.dart';
 import '../bookings/presentation/booking_history_screen.dart';
 import '../support/presentation/support_screen.dart';
@@ -75,24 +77,25 @@ class _ProfileContentState extends State<_ProfileContent> {
 
     try {
       final picker = ImagePicker();
+      final l10n = AppLocalizations.of(context);
       
       // Show source selection dialog
       final ImageSource? source = await showDialog<ImageSource>(
         context: context,
         builder: (context) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Text('Choose Image Source', style: GoogleFonts.outfit(fontWeight: FontWeight.w800)),
+          title: Text(l10n.translate('chooseImageSource'), style: GoogleFonts.outfit(fontWeight: FontWeight.w800)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
                 leading: const Icon(Icons.photo_library_rounded, color: AppTheme.primaryColor),
-                title: Text('Gallery', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+                title: Text(l10n.translate('gallery'), style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
                 onTap: () => Navigator.pop(context, ImageSource.gallery),
               ),
               ListTile(
                 leading: const Icon(Icons.camera_alt_rounded, color: AppTheme.primaryColor),
-                title: Text('Camera', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+                title: Text(l10n.translate('camera'), style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
                 onTap: () => Navigator.pop(context, ImageSource.camera),
               ),
             ],
@@ -120,7 +123,7 @@ class _ProfileContentState extends State<_ProfileContent> {
           final sizeMB = (fileSize / (1024 * 1024)).toStringAsFixed(1);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Image size ($sizeMB MB) exceeds 5MB limit'),
+              content: Text(l10n.translate('imageSizeExceeds', params: {'size': sizeMB})),
               backgroundColor: Colors.red,
             ),
           );
@@ -150,7 +153,7 @@ class _ProfileContentState extends State<_ProfileContent> {
               children: [
                 const Icon(Icons.check_circle, color: Colors.white),
                 const SizedBox(width: 12),
-                Text('Profile image updated successfully!', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+                Text(l10n.translate('profileImageUpdated'), style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
               ],
             ),
             backgroundColor: Colors.green,
@@ -162,6 +165,7 @@ class _ProfileContentState extends State<_ProfileContent> {
     } catch (e) {
       debugPrint('[ProfileScreen] Error uploading profile image: $e');
       if (mounted) {
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -191,6 +195,7 @@ class _ProfileContentState extends State<_ProfileContent> {
   @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context, listen: false);
+    final l10n = AppLocalizations.of(context);
     final initials = (widget.user.name?.isNotEmpty ?? false) ? widget.user.name!.substring(0, 1).toUpperCase() : 'U';
 
     return CustomScrollView(
@@ -332,11 +337,11 @@ class _ProfileContentState extends State<_ProfileContent> {
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        widget.user.name?.isNotEmpty ?? false ? widget.user.name! : 'Welcome User',
+                        widget.user.name?.isNotEmpty ?? false ? widget.user.name! : l10n.translate('welcomeUser'),
                         style: GoogleFonts.outfit(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900),
                       ),
                       Text(
-                        (widget.user.email?.isNotEmpty ?? false) ? widget.user.email! : ((widget.user.phone?.isNotEmpty ?? false) ? widget.user.phone! : 'HomeFix Member'),
+                        (widget.user.email?.isNotEmpty ?? false) ? widget.user.email! : ((widget.user.phone?.isNotEmpty ?? false) ? widget.user.phone! : l10n.translate('homeFixMember')),
                         style: GoogleFonts.outfit(color: Colors.white.withOpacity(0.8), fontSize: 14, fontWeight: FontWeight.w500),
                       ),
                     ],
@@ -366,8 +371,8 @@ class _ProfileContentState extends State<_ProfileContent> {
                       _buildInfoRow(
                         icon: Icons.location_on_rounded,
                         color: Colors.redAccent,
-                        title: 'Primary Address',
-                        value: (widget.user.defaultAddress?.isNotEmpty ?? false) ? widget.user.defaultAddress! : 'No address set',
+                        title: l10n.translate('primaryAddress'),
+                        value: (widget.user.defaultAddress?.isNotEmpty ?? false) ? widget.user.defaultAddress! : l10n.translate('noAddressSet'),
                       ),
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 16),
@@ -376,11 +381,11 @@ class _ProfileContentState extends State<_ProfileContent> {
                       _buildInfoRow(
                         icon: Icons.account_balance_wallet_rounded,
                         color: Colors.green,
-                        title: 'Wallet Balance',
+                        title: l10n.translate('walletBalance'),
                         value: '₹${widget.user.walletBalance.toStringAsFixed(2)}',
                         trailing: TextButton(
                           onPressed: () {},
-                          child: Text('ADD MONEY', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 12)),
+                          child: Text(l10n.translate('addMoney'), style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 12)),
                         ),
                       ),
                     ],
@@ -388,23 +393,23 @@ class _ProfileContentState extends State<_ProfileContent> {
                 ),
 
                 const SizedBox(height: 32),
-                _sectionTitle('ACCOUNT SETTINGS'),
+                _sectionTitle(l10n.translate('accountSettings')),
                 _settingsGroup([
-                  _settingsTile(Icons.person_outline_rounded, 'Personal Details', 'Name, Email, Phone', 
+                  _settingsTile(Icons.person_outline_rounded, l10n.translate('personalDetails'), l10n.translate('nameEmailPhone'), 
                     () => Navigator.push(context, MaterialPageRoute(builder: (_) => EditProfileScreen(user: widget.user)))),
-                  _settingsTile(Icons.history_rounded, 'Booking History', 'View all your past services', 
+                  _settingsTile(Icons.history_rounded, l10n.translate('bookingHistory'), l10n.translate('viewAllPastServices'), 
                     () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookingHistoryScreen()))),
-                  _settingsTile(Icons.favorite_border_rounded, 'Favorites', 'Services you loved', 
+                  _settingsTile(Icons.favorite_border_rounded, l10n.translate('favorites'), l10n.translate('servicesYouLoved'), 
                     () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FavoriteServicesScreen()))),
                 ]),
 
                 const SizedBox(height: 32),
-                _sectionTitle('PREFERENCES'),
+                _sectionTitle(l10n.translate('preferences')),
                 _settingsGroup([
                   _settingsTile(
                     Icons.settings_rounded,
-                    'Settings',
-                    'App preferences and privacy',
+                    l10n.settings,
+                    l10n.translate('appPreferencesPrivacy'),
                     () => Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -412,7 +417,7 @@ class _ProfileContentState extends State<_ProfileContent> {
                       ),
                     ),
                   ),
-                  _settingsTile(Icons.notifications_none_rounded, 'Notifications', 'Manage alerts and updates', () {
+                  _settingsTile(Icons.notifications_none_rounded, l10n.notifications, l10n.translate('manageAlertsUpdates'), () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -420,7 +425,7 @@ class _ProfileContentState extends State<_ProfileContent> {
                       ),
                     );
                   }),
-                  _settingsTile(Icons.language_rounded, 'Language', 'English (UK)', () {
+                  _settingsTile(Icons.language_rounded, l10n.language, l10n.translate('languageSubtitle'), () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -432,17 +437,17 @@ class _ProfileContentState extends State<_ProfileContent> {
 
                 if ((widget.user.role ?? 'customer').toString().toLowerCase() == 'customer') ...[
                   const SizedBox(height: 32),
-                  _buildBecomeTechnicianCTA(context),
+                  _buildBecomeTechnicianCTA(context, l10n),
                 ],
 
                 const SizedBox(height: 32),
-                _sectionTitle('SUPPORT'),
+                _sectionTitle(l10n.translate('support')),
                 _settingsGroup([
-                  _settingsTile(Icons.help_outline_rounded, 'Help Center', 'FAQs and Customer Support', 
+                  _settingsTile(Icons.help_outline_rounded, l10n.translate('helpCenter'), l10n.translate('faqsCustomerSupport'), 
                     () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SupportScreen()))),
-                  _settingsTile(Icons.policy_outlined, 'Privacy Policy', 'How we protect your data', 
-                    () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PolicyScreen(title: 'Privacy Policy')))),
-                  _settingsTile(Icons.info_outline_rounded, 'About HomeFix', 'Version 2.0.1', 
+                  _settingsTile(Icons.policy_outlined, l10n.translate('privacyPolicy'), l10n.translate('howWeProtectData'), 
+                    () => Navigator.push(context, MaterialPageRoute(builder: (_) => PolicyScreen(title: l10n.translate('privacyPolicy'))))),
+                  _settingsTile(Icons.info_outline_rounded, l10n.translate('aboutHomeFix'), '${l10n.translate('version')} 2.0.1', 
                     () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen()))),
                 ]),
 
@@ -451,14 +456,14 @@ class _ProfileContentState extends State<_ProfileContent> {
                   width: double.infinity,
                   height: 60,
                   child: ElevatedButton(
-                    onPressed: () => _confirmLogout(context, authService),
+                    onPressed: () => _confirmLogout(context, authService, l10n),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red.shade50,
                       foregroundColor: Colors.red,
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: Colors.red.shade100)),
                     ),
-                    child: Text('LOGOUT', style: GoogleFonts.outfit(fontWeight: FontWeight.w900, letterSpacing: 1)),
+                    child: Text(l10n.logout.toUpperCase(), style: GoogleFonts.outfit(fontWeight: FontWeight.w900, letterSpacing: 1)),
                   ),
                 ),
               ],
@@ -491,7 +496,7 @@ class _ProfileContentState extends State<_ProfileContent> {
     );
   }
 
-  Widget _buildBecomeTechnicianCTA(BuildContext context) {
+  Widget _buildBecomeTechnicianCTA(BuildContext context, AppLocalizations l10n) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
@@ -525,14 +530,14 @@ class _ProfileContentState extends State<_ProfileContent> {
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  'Earn more with HomeFix',
+                  l10n.translate('earnMoreWithHomeFix'),
                   style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
                 ),
               ],
             ),
             const SizedBox(height: 16),
             Text(
-              'Join our community of 50,000+ service professionals and grow your business today.',
+              l10n.translate('joinCommunity'),
               style: GoogleFonts.outfit(color: Colors.white.withOpacity(0.9), fontSize: 13, height: 1.5),
             ),
             const SizedBox(height: 20),
@@ -546,7 +551,7 @@ class _ProfileContentState extends State<_ProfileContent> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
               child: Text(
-                'REGISTER AS A PARTNER',
+                l10n.translate('registerAsPartner'),
                 style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5),
               ),
             ),
@@ -594,21 +599,21 @@ class _ProfileContentState extends State<_ProfileContent> {
     );
   }
 
-  void _confirmLogout(BuildContext context, AuthService auth) {
+  void _confirmLogout(BuildContext context, AuthService auth, AppLocalizations l10n) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Text('Logout?', style: GoogleFonts.outfit(fontWeight: FontWeight.w900)),
-        content: const Text('Are you sure you want to sign out?'),
+        title: Text(l10n.translate('logoutQuestion'), style: GoogleFonts.outfit(fontWeight: FontWeight.w900)),
+        content: Text(l10n.translate('logoutConfirm')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCEL')),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(l10n.cancel.toUpperCase())),
           TextButton(
             onPressed: () {
               Navigator.pop(context);
               auth.signOut();
             },
-            child: const Text('LOGOUT', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+            child: Text(l10n.logout.toUpperCase(), style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -649,6 +654,7 @@ class _ProfileErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -657,13 +663,13 @@ class _ProfileErrorView extends StatelessWidget {
           children: [
             const Icon(Icons.error_outline_rounded, size: 80, color: Colors.redAccent),
             const SizedBox(height: 24),
-            Text('Oops! Something went wrong', style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w900)),
+            Text(l10n.translate('oopsSomethingWrong'), style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w900)),
             const SizedBox(height: 12),
             Text(error, textAlign: TextAlign.center, style: GoogleFonts.outfit(color: AppTheme.subtitleColor)),
             const SizedBox(height: 32),
             ElevatedButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Go Back'),
+              child: Text(l10n.translate('goBack')),
             ),
           ],
         ),
@@ -677,17 +683,18 @@ class _ProfileGuestView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const Icon(Icons.person_outline_rounded, size: 100, color: AppTheme.primaryColor),
           const SizedBox(height: 24),
-          Text('Login to view Profile', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800)),
+          Text(l10n.translate('loginToViewProfile'), style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800)),
           const SizedBox(height: 32),
           ElevatedButton(
             onPressed: () => Navigator.pushNamed(context, '/login'),
-            child: const Text('LOGIN'),
+            child: Text(l10n.login.toUpperCase()),
           ),
         ],
       ),

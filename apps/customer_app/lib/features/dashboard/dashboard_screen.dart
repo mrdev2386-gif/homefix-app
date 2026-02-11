@@ -34,9 +34,9 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAliveClientMixin {
-  late Stream<List<ProfessionalReel>> _reelsStream;
-  late Stream<List<CleaningEssential>> _essentialsStream;
-  late Stream<List<ServiceBanner>> _bannersStream;
+  Stream<List<ProfessionalReel>>? _reelsStream;
+  Stream<List<CleaningEssential>>? _essentialsStream;
+  Stream<List<ServiceBanner>>? _bannersStream;
   Stream<List<Booking>>? _bookingsStream;
   
   @override

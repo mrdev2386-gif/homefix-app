@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
@@ -5,7 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../models/address.dart';
 import '../services/address_service.dart';
 
-/// Enhanced LocationProvider with permission handling and address persistence
+/// Production-ready LocationProvider with comprehensive error handling
 class LocationProvider extends ChangeNotifier {
   final AddressService _addressService = AddressService();
   
@@ -14,11 +15,13 @@ class LocationProvider extends ChangeNotifier {
   Position? _currentPosition;
   bool _isLoading = false;
   String? _userId;
+  String? _errorMessage;
 
   String get currentAddress => _selectedAddress?.fullAddress ?? _currentAddress;
   Address? get selectedAddress => _selectedAddress;
   Position? get currentPosition => _currentPosition;
   bool get isLoading => _isLoading;
+  String? get errorMessage => _errorMessage;
 
   /// Initialize with user ID and load selected address
   Future<void> initialize(String userId) async {
@@ -34,6 +37,7 @@ class LocationProvider extends ChangeNotifier {
       final address = await _addressService.getSelectedAddress(_userId!);
       if (address != null) {
         _selectedAddress = address;
+        _currentAddress = address.fullAddress;
         notifyListeners();
       }
     } catch (e) {
@@ -44,6 +48,8 @@ class LocationProvider extends ChangeNotifier {
   /// Set selected address and persist to Firestore
   Future<void> setSelectedAddress(Address address) async {
     _selectedAddress = address;
+    _currentAddress = address.fullAddress;
+    _errorMessage = null;
     notifyListeners();
 
     if (_userId != null) {
@@ -55,69 +61,96 @@ class LocationProvider extends ChangeNotifier {
     }
   }
 
-  /// Check location permission status
-  Future<PermissionStatus> checkLocationPermission() async {
-    return await Permission.location.status;
+  /// Check if location service is enabled
+  Future<bool> _checkLocationService() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    debugPrint('[LocationProvider] Location service enabled: $serviceEnabled');
+    
+    if (!serviceEnabled) {
+      _currentAddress = 'Location service disabled';
+      _errorMessage = 'Please enable location services in your device settings';
+      return false;
+    }
+    return true;
   }
 
-  /// Request location permission
-  Future<PermissionStatus> requestLocationPermission() async {
-    return await Permission.location.request();
-  }
+  /// Check and request location permission
+  Future<bool> _checkLocationPermission() async {
+    LocationPermission permission = await Geolocator.checkPermission();
+    debugPrint('[LocationProvider] Current permission: $permission');
 
-  /// Update current location with permission handling and Firestore save
-  Future<bool> updateCurrentLocation({bool saveToFirestore = false}) async {
-    if (_userId == null) {
-      _currentAddress = 'Login required';
-      notifyListeners();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      debugPrint('[LocationProvider] Permission after request: $permission');
+      
+      if (permission == LocationPermission.denied) {
+        _currentAddress = 'Location permission denied';
+        _errorMessage = 'Location permission is required to find nearby services';
+        return false;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      _currentAddress = 'Location permission denied permanently';
+      _errorMessage = 'Please enable location permission in app settings';
       return false;
     }
 
+    debugPrint('[LocationProvider] Permission granted: ${permission == LocationPermission.always || permission == LocationPermission.whileInUse}');
+    return permission == LocationPermission.always || permission == LocationPermission.whileInUse;
+  }
+
+  /// Fetch current location with comprehensive error handling
+  Future<LocationResult> fetchCurrentLocation() async {
+    if (_userId == null) {
+      return LocationResult.error('Please login to use location services');
+    }
+
     _isLoading = true;
+    _errorMessage = null;
     notifyListeners();
 
     try {
-      // Check if location service is enabled
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        _currentAddress = 'Enable Location';
+      // Step 1: Check location service
+      debugPrint('[LocationProvider] Step 1: Checking location service...');
+      if (!await _checkLocationService()) {
         _isLoading = false;
         notifyListeners();
-        return false;
+        return LocationResult.error(_errorMessage ?? 'Location service disabled');
       }
 
-      // Check permission
-      PermissionStatus permission = await checkLocationPermission();
-      
-      if (permission.isDenied) {
-        permission = await requestLocationPermission();
-        if (permission.isDenied) {
-          _currentAddress = 'Location Denied';
-          _isLoading = false;
-          notifyListeners();
-          return false;
-        }
-      }
-
-      if (permission.isPermanentlyDenied) {
-        _currentAddress = 'Location Denied';
+      // Step 2: Check permission
+      debugPrint('[LocationProvider] Step 2: Checking permission...');
+      if (!await _checkLocationPermission()) {
         _isLoading = false;
         notifyListeners();
-        return false;
+        return LocationResult.error(_errorMessage ?? 'Location permission denied');
       }
 
-      // Get current position
+      // Step 3: Get position
+      debugPrint('[LocationProvider] Step 3: Fetching position...');
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
       );
+      
       _currentPosition = position;
+      debugPrint('[LocationProvider] ✅ Position fetched: ${position.latitude}, ${position.longitude}');
 
-      // Reverse geocode to get address
+      // Step 4: Reverse geocode
+      debugPrint('[LocationProvider] Step 4: Reverse geocoding...');
       List<Placemark> placemarks = await placemarkFromCoordinates(
         position.latitude,
         position.longitude,
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          debugPrint('[LocationProvider] ⚠️ Geocoding timeout, using coordinates only');
+          return [];
+        },
       );
 
+      String addressText;
       if (placemarks.isNotEmpty) {
         Placemark place = placemarks[0];
         final addressParts = [
@@ -126,10 +159,71 @@ class LocationProvider extends ChangeNotifier {
           place.locality,
         ].where((part) => part != null && part.isNotEmpty).toList();
         
-        _currentAddress = addressParts.join(', ');
+        addressText = addressParts.isNotEmpty 
+            ? addressParts.join(', ') 
+            : 'Lat: ${position.latitude.toStringAsFixed(4)}, Lng: ${position.longitude.toStringAsFixed(4)}';
+        
+        debugPrint('[LocationProvider] ✅ Address: $addressText');
+      } else {
+        addressText = 'Lat: ${position.latitude.toStringAsFixed(4)}, Lng: ${position.longitude.toStringAsFixed(4)}';
+        debugPrint('[LocationProvider] ⚠️ No address found, using coordinates');
+      }
 
-        // Save to Firestore if requested
-        if (saveToFirestore) {
+      _currentAddress = addressText;
+      _errorMessage = null;
+      _isLoading = false;
+      notifyListeners();
+
+      return LocationResult.success(position, addressText);
+
+    } on TimeoutException catch (e) {
+      debugPrint('[LocationProvider] ❌ Timeout: $e');
+      _currentAddress = 'Location request timed out';
+      _errorMessage = 'Location request took too long. Please try again.';
+      _isLoading = false;
+      notifyListeners();
+      return LocationResult.error(_errorMessage!);
+      
+    } on PermissionDeniedException catch (e) {
+      debugPrint('[LocationProvider] ❌ Permission denied: $e');
+      _currentAddress = 'Location permission denied';
+      _errorMessage = 'Location permission is required';
+      _isLoading = false;
+      notifyListeners();
+      return LocationResult.error(_errorMessage!);
+      
+    } on LocationServiceDisabledException catch (e) {
+      debugPrint('[LocationProvider] ❌ Service disabled: $e');
+      _currentAddress = 'Location service disabled';
+      _errorMessage = 'Please enable location services';
+      _isLoading = false;
+      notifyListeners();
+      return LocationResult.error(_errorMessage!);
+      
+    } catch (e) {
+      debugPrint('[LocationProvider] ❌ Unexpected error: $e');
+      _currentAddress = 'Location unavailable';
+      _errorMessage = 'Unable to fetch location. Please try again.';
+      _isLoading = false;
+      notifyListeners();
+      return LocationResult.error(_errorMessage!);
+    }
+  }
+
+  /// Update current location and optionally save to Firestore
+  Future<bool> updateCurrentLocation({bool saveToFirestore = false}) async {
+    final result = await fetchCurrentLocation();
+    
+    if (result.isSuccess && saveToFirestore && result.position != null) {
+      try {
+        // Get detailed address for Firestore
+        List<Placemark> placemarks = await placemarkFromCoordinates(
+          result.position!.latitude,
+          result.position!.longitude,
+        ).timeout(const Duration(seconds: 10));
+
+        if (placemarks.isNotEmpty) {
+          Placemark place = placemarks[0];
           final fullAddress = [
             place.street,
             place.subLocality,
@@ -139,47 +233,89 @@ class LocationProvider extends ChangeNotifier {
 
           final addressId = await _addressService.saveCurrentLocationAddress(
             userId: _userId!,
-            latitude: position.latitude,
-            longitude: position.longitude,
-            fullAddress: fullAddress,
-            city: place.locality ?? '',
+            latitude: result.position!.latitude,
+            longitude: result.position!.longitude,
+            fullAddress: fullAddress.isNotEmpty ? fullAddress : result.address,
+            city: place.locality ?? 'Unknown',
             landmark: place.subLocality,
             pincode: place.postalCode,
           );
 
-          // Load the newly created address and set as selected
+          // Load and set as selected
           final newAddress = await _addressService.getAddress(_userId!, addressId);
           if (newAddress != null) {
             await setSelectedAddress(newAddress);
           }
         }
-
-        _isLoading = false;
-        notifyListeners();
-        return true;
+      } catch (e) {
+        debugPrint('[LocationProvider] Error saving to Firestore: $e');
+        // Don't fail the whole operation if save fails
       }
-    } catch (e) {
-      debugPrint('[LocationProvider] Error updating location: $e');
-      _currentAddress = 'Unavailable';
-      _isLoading = false;
-      notifyListeners();
-      return false;
     }
 
-    _isLoading = false;
-    notifyListeners();
-    return false;
+    return result.isSuccess;
+  }
+
+  /// Open location settings
+  Future<void> openLocationSettings() async {
+    try {
+      await Geolocator.openLocationSettings();
+    } catch (e) {
+      debugPrint('[LocationProvider] Error opening location settings: $e');
+    }
   }
 
   /// Open app settings for permission
   Future<void> openAppSettings() async {
-    await openAppSettings();
+    try {
+      await Geolocator.openAppSettings();
+    } catch (e) {
+      debugPrint('[LocationProvider] Error opening app settings: $e');
+    }
   }
 
   /// Clear selected address
   void clearSelectedAddress() {
     _selectedAddress = null;
+    _currentAddress = 'Select location';
     notifyListeners();
+  }
+
+  /// Clear error message
+  void clearError() {
+    _errorMessage = null;
+    notifyListeners();
+  }
+}
+
+/// Result object for location operations
+class LocationResult {
+  final bool isSuccess;
+  final Position? position;
+  final String address;
+  final String? error;
+
+  LocationResult._({
+    required this.isSuccess,
+    this.position,
+    required this.address,
+    this.error,
+  });
+
+  factory LocationResult.success(Position position, String address) {
+    return LocationResult._(
+      isSuccess: true,
+      position: position,
+      address: address,
+    );
+  }
+
+  factory LocationResult.error(String error) {
+    return LocationResult._(
+      isSuccess: false,
+      address: '',
+      error: error,
+    );
   }
 }
 

@@ -53,7 +53,7 @@ This implementation plan breaks down the Google Sign-In feature into discrete, i
   - Verify user, isAdmin, and loading are all reset
   - Configure for minimum 100 iterations
 
-- [-] 3. Modernize login page UI and add Google sign-in
+- [x] 3. Modernize login page UI and add Google sign-in
   - Open `apps/admin_panel/src/app/login/page.tsx`
   - Remove the "Tailwind Active" test div completely
   - Import `signInWithGoogle` and `verifyAdminClaim` from auth utilities
@@ -90,7 +90,7 @@ This implementation plan breaks down the Google Sign-In feature into discrete, i
   - Test sign-out and error display for non-admin users
   - _Requirements: 1.1, 3.2, 3.4, 5.3_
 
-- [ ] 4. Add centralized error handling
+- [x] 4. Add centralized error handling
   - Create error handler function in `apps/admin_panel/src/lib/auth.ts`
   - Implement `handleAuthError(error: FirebaseError): string` function
   - Map Firebase error codes to user-friendly messages
@@ -106,14 +106,14 @@ This implementation plan breaks down the Google Sign-In feature into discrete, i
   - Test unknown errors return generic message
   - _Requirements: 1.4, 5.1, 5.2, 5.4_
 
-- [ ] 5. Install and configure property-based testing library
+- [x] 5. Install and configure property-based testing library
   - Install `fast-check` and `@fast-check/jest` as dev dependencies
   - Configure Jest to work with fast-check
   - Create test setup file if needed
   - Verify property tests can run with `npm test`
   - _Requirements: Testing Strategy_
 
-- [ ] 6. Checkpoint - Ensure all tests pass
+- [x] 6. Checkpoint - Ensure all tests pass
   - Run all unit tests and verify they pass
   - Run all property tests and verify they pass
   - Manually test Google sign-in flow in browser
