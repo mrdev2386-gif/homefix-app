@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../core/providers/category_provider.dart';
 import '../core/providers/auth_provider.dart';
@@ -11,6 +10,8 @@ import '../core/providers/service_provider.dart';
 import '../core/providers/cart_provider.dart';
 import '../core/providers/booking_provider.dart';
 import '../core/models/service.dart';
+import '../core/models/cart_item.dart';
+import '../core/models/dashboard_models.dart';
 import '../core/services/location_service.dart';
 import '../features/dashboard/widgets/banner_slider.dart';
 import '../screens/request_service_screen.dart';
@@ -210,58 +211,29 @@ class HomeTab extends StatelessWidget {
           const BannerSlider(),
           
           // Professional Reels Section
-          StreamBuilder<List<Map<String, dynamic>>>(
+          StreamBuilder<List<ProfessionalReel>>(
             stream: firestoreService.streamProfessionalReels(),
             builder: (context, snapshot) {
               if (!snapshot.hasData || snapshot.data!.isEmpty) {
                 return const SizedBox.shrink();
               }
-              return ProfessionalReelsSection(
-                reels: snapshot.data!,
-                onTechnicianTap: (technicianId) {
-                  // TODO: Navigate to technician profile
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Opening technician profile: $technicianId')),
-                  );
-                },
-              );
+              return ProfessionalReelsSection(reels: snapshot.data!);
             },
           ),
           
           // Cleaning Essentials Section
-          StreamBuilder<List<Map<String, dynamic>>>(
+          StreamBuilder<List<CleaningEssential>>(
             stream: firestoreService.streamCleaningEssentials(),
             builder: (context, snapshot) {
               if (!snapshot.hasData || snapshot.data!.isEmpty) {
                 return const SizedBox.shrink();
               }
-              return CleaningEssentialsSection(
-                essentials: snapshot.data!,
-                onEssentialTap: (categoryId) {
-                  // Navigate to category services
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Opening category: $categoryId')),
-                  );
-                },
-              );
+              return CleaningEssentialsSection(essentials: snapshot.data!);
             },
           ),
           
           // In the Spotlight Section
-          StreamBuilder<List<Map<String, dynamic>>>(
-            stream: firestoreService.streamServiceSpotlight(),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                return const SizedBox.shrink();
-              }
-              return ServiceSpotlightSection(
-                spotlightServices: snapshot.data!,
-                onServiceTap: (service) {
-                  _showServiceDetailBottomSheet(context, service);
-                },
-              );
-            },
-          ),
+          const ServiceSpotlightSection(),
           
           // Professional Services Section
           const Padding(
@@ -332,7 +304,16 @@ class HomeTab extends StatelessWidget {
             return ServiceCard(
               service: service,
               onAddToCart: () {
-                cartProvider.addItem(service);
+                final cartItem = CartItem(
+                  id: '',
+                  serviceId: service.id,
+                  serviceName: service.title,
+                  serviceImage: service.imageUrl,
+                  price: service.price,
+                  quantity: 1,
+                  totalPrice: service.price,
+                );
+                cartProvider.addItem(cartItem);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('${service.title} added to cart')),
                 );
@@ -464,179 +445,6 @@ class HomeTab extends StatelessWidget {
       context,
       MaterialPageRoute(
         builder: (context) => SlotSelectionScreen(service: service),
-      ),
-    );
-  }
-
-  void _showServiceDetailBottomSheet(BuildContext context, Map<String, dynamic> service) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.4,
-        maxChildSize: 0.9,
-        expand: false,
-        builder: (context, scrollController) => SingleChildScrollView(
-          controller: scrollController,
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Handle bar
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                
-                // Service image
-                if (service['imageUrl'] != null && (service['imageUrl'] as String).isNotEmpty)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Image.network(
-                      service['imageUrl'],
-                      height: 200,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        height: 200,
-                        color: Colors.grey[200],
-                        child: const Icon(Icons.home_repair_service, size: 60),
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 20),
-                
-                // Service title
-                Text(
-                  service['title'] ?? 'Service',
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                
-                // Rating and price row
-                Row(
-                  children: [
-                    const Icon(Icons.star, color: Colors.amber, size: 20),
-                    const SizedBox(width: 4),
-                    Text(
-                      (service['rating'] ?? 0.0).toStringAsFixed(1),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(width: 20),
-                    Text(
-                      '₹${(service['price'] ?? 0.0).toStringAsFixed(0)}',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF6366F1),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                
-                // Available technicians
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.green.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.people, color: Colors.green),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          '${service['availableTechnicians'] ?? 0} technicians available',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.green,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                
-                // Description (if available)
-                if (service['description'] != null)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Description',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        service['description'],
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.black54,
-                          height: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                  ),
-                
-                // Book now button
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Booking feature - Coming soon')),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF6366F1),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text(
-                      'Book Now',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

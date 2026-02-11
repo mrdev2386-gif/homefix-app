@@ -18,7 +18,7 @@ import '../support/presentation/support_screen.dart';
 import '../settings/settings_screen.dart';
 import 'presentation/edit_profile_screen.dart';
 import 'presentation/favorite_services_screen.dart';
-import 'presentation/technician_onboarding_screen.dart';
+import 'package:customer_app/features/profile/presentation/technician_onboarding_screen.dart';
 import 'presentation/about_screen.dart';
 import 'presentation/policy_screen.dart';
 

@@ -29,6 +29,17 @@ class ProfessionalReel {
       order: int.tryParse((data['order'] ?? 0).toString()) ?? 0,
     );
   }
+
+  factory ProfessionalReel.fromMap(Map<String, dynamic> data) {
+    return ProfessionalReel(
+      id: data['id'] ?? '',
+      videoUrl: (data['videoUrl'] ?? data['video'] ?? '').toString(),
+      thumbnailUrl: (data['thumbnailUrl'] ?? data['thumbnail'] ?? data['imageUrl'] ?? '').toString(),
+      title: (data['title'] ?? '').toString(),
+      isActive: data['isActive'] ?? true,
+      order: int.tryParse((data['order'] ?? 0).toString()) ?? 0,
+    );
+  }
 }
 
 class CleaningCategory {
@@ -83,6 +94,17 @@ class CleaningEssential {
       title: (data['title'] ?? data['name'] ?? '').toString(),
       imageUrl: (data['imageUrl'] ?? data['iconUrl'] ?? '').toString(),
       categoryId: (data['categoryKey'] ?? data['categoryId'] ?? data['category'] ?? doc.id).toString(),
+      order: int.tryParse((data['order'] ?? 0).toString()) ?? 0,
+      isActive: data['isActive'] ?? true,
+    );
+  }
+
+  factory CleaningEssential.fromMap(Map<String, dynamic> data) {
+    return CleaningEssential(
+      id: data['id'] ?? '',
+      title: (data['title'] ?? data['name'] ?? '').toString(),
+      imageUrl: (data['imageUrl'] ?? data['iconUrl'] ?? '').toString(),
+      categoryId: (data['categoryKey'] ?? data['categoryId'] ?? data['category'] ?? data['id'] ?? '').toString(),
       order: int.tryParse((data['order'] ?? 0).toString()) ?? 0,
       isActive: data['isActive'] ?? true,
     );

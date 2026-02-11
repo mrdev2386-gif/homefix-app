@@ -6,7 +6,7 @@ import '../../../core/services/firestore_service.dart';
 import '../../../core/models/user_model.dart';
 import '../../../core/theme/app_theme.dart';
 import 'referral_screen.dart';
-import 'technician_onboarding_screen.dart';
+import 'package:customer_app/features/profile/presentation/technician_onboarding_screen.dart';
 import 'saved_addresses_screen.dart';
 import '../../notifications/presentation/notification_screen.dart';
 import '../../bookings/presentation/booking_history_screen.dart';
