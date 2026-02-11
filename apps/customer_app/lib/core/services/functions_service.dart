@@ -1,4 +1,5 @@
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/foundation.dart';
 
 class FunctionsService {
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
@@ -121,6 +122,42 @@ class FunctionsService {
         'categoryId': categoryId,
         'userLocation': userLocation,
       });
+      return Map<String, dynamic>.from(result.data);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // Save FCM Token securely
+  Future<void> saveFcmToken(String token, String userType) async {
+    try {
+      HttpsCallable callable = _functions.httpsCallable('saveFcmToken');
+      await callable.call({
+        'token': token,
+        'userType': userType, // 'customer' or 'technician'
+      });
+    } catch (e) {
+      debugPrint('Failed to save FCM token: $e');
+      // Don't throw - token save failure shouldn't break the flow
+    }
+  }
+
+  // Submit Partner Application
+  Future<Map<String, dynamic>> submitPartnerApplication(Map<String, dynamic> applicationData) async {
+    try {
+      HttpsCallable callable = _functions.httpsCallable('submitPartnerApplication');
+      final result = await callable.call(applicationData);
+      return Map<String, dynamic>.from(result.data);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // Save Address securely
+  Future<Map<String, dynamic>> saveAddress(Map<String, dynamic> addressData) async {
+    try {
+      HttpsCallable callable = _functions.httpsCallable('saveAddress');
+      final result = await callable.call(addressData);
       return Map<String, dynamic>.from(result.data);
     } catch (e) {
       rethrow;

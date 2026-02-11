@@ -19,6 +19,9 @@ import * as payoutLogic from './finance/payout_logic';
 import * as razorpayPayments from './payments/razorpay';
 import * as technicianPayouts from './payments/payouts';
 
+// Partner Applications
+import * as partnerApplications from './partner/applications';
+
 
 if (!admin.apps.length) {
     admin.initializeApp();
@@ -198,6 +201,9 @@ export const validateReferralCode = customerFeatures.validateReferralCode;
 export const submitServiceRating = customerFeatures.submitServiceRating;
 export const submitSupportRequest = customerFeatures.submitSupportRequest;
 
+// Partner Applications
+export const submitPartnerApplication = partnerApplications.submitPartnerApplication;
+
 
 
 // ==========================================
@@ -210,7 +216,6 @@ export const admin_getUserById = adminUsers.getUserById;
 export const admin_updateUser = adminUsers.updateUser;
 export const admin_blockUser = adminUsers.blockUser;
 export const admin_manageUser = adminUsers.manageUser;
-export const admin_deleteTestUser = adminUsers.deleteTestUser;
 
 export const admin_getTechnicians = adminTechs.getTechnicians;
 export const admin_getTechnicianById = adminTechs.getTechnicianById;

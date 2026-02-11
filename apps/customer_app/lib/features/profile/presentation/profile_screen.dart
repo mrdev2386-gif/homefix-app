@@ -6,7 +6,7 @@ import '../../../core/services/firestore_service.dart';
 import '../../../core/models/user_model.dart';
 import '../../../core/theme/app_theme.dart';
 import 'referral_screen.dart';
-import 'package:customer_app/features/profile/presentation/technician_onboarding_screen.dart';
+import 'package:customer_app/features/profile/presentation/partner_onboarding_screen_v2.dart';
 import 'saved_addresses_screen.dart';
 import '../../notifications/presentation/notification_screen.dart';
 import '../../bookings/presentation/booking_history_screen.dart';
@@ -93,7 +93,7 @@ class ProfileScreen extends StatelessWidget {
                           icon: Icons.construction_rounded,
                           title: 'Become a Technician',
                           subtitle: 'Join as a service expert and start earning',
-                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TechnicianOnboardingScreen())),
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PartnerOnboardingScreenV2())),
                           isHighlighted: user.role != 'technician',
                         ),
                       ]),

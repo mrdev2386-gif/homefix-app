@@ -22,6 +22,7 @@ import 'core/providers/location_provider.dart';
 import 'core/providers/checkout_provider.dart';
 import 'core/providers/locale_provider.dart';
 import 'core/utils/app_localizations.dart';
+import 'features/profile/providers/partner_onboarding_provider.dart';
 import 'features/auth/screens/splash_screen.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/onboarding_screen.dart';
@@ -46,14 +47,51 @@ void main() async {
     
     // 1. Initialize App Check (Critical Security)
     try {
-      await FirebaseAppCheck.instance.activate(
-        androidProvider: AndroidProvider.playIntegrity,
-        appleProvider: AppleProvider.deviceCheck,
-        // Using a dummy key for now, caught in try-catch to prevent fatal crash
-        webProvider: ReCaptchaV3Provider('6LfqvMsqAAAAAA-E4yG4yv6YvY-vS9k1yL_S0G4A'), 
-      );
+      if (kDebugMode) {
+        // Debug mode: Use debug provider to avoid "Too many attempts" error
+        await FirebaseAppCheck.instance.activate(
+          androidProvider: AndroidProvider.debug,
+          appleProvider: AppleProvider.debug,
+          webProvider: ReCaptchaV3Provider('6LfqvMsqAAAAAA-E4yG4yv6YvY-vS9k1yL_S0G4A'),
+        );
+        debugPrint("═══════════════════════════════════════════════════════════");
+        debugPrint("🔐 AppCheck initialized in DEBUG mode");
+        debugPrint("═══════════════════════════════════════════════════════════");
+        
+        // Listen for App Check token changes and log the debug token
+        FirebaseAppCheck.instance.onTokenChange.listen((token) {
+          if (token != null) {
+            debugPrint("═══════════════════════════════════════════════════════════");
+            debugPrint("🎫 APP CHECK DEBUG TOKEN:");
+            debugPrint("   Copy this token and add it to Firebase Console:");
+            debugPrint("   Firebase Console → App Check → Apps → Manage debug tokens");
+            debugPrint("   Token: $token");
+            debugPrint("═══════════════════════════════════════════════════════════");
+          }
+        });
+        
+        // Also try to get the token immediately
+        try {
+          final token = await FirebaseAppCheck.instance.getToken();
+          if (token != null) {
+            debugPrint("🎫 Initial App Check token obtained successfully");
+          }
+        } catch (tokenError) {
+          debugPrint("⚠️ Could not get initial App Check token: $tokenError");
+          debugPrint("   This is normal on first run. Uninstall app and run again.");
+        }
+      } else {
+        // Production mode: Use Play Integrity
+        await FirebaseAppCheck.instance.activate(
+          androidProvider: AndroidProvider.playIntegrity,
+          appleProvider: AppleProvider.deviceCheck,
+          webProvider: ReCaptchaV3Provider('6LfqvMsqAAAAAA-E4yG4yv6YvY-vS9k1yL_S0G4A'),
+        );
+        debugPrint("🔐 AppCheck initialized in PRODUCTION mode (Play Integrity)");
+      }
     } catch (e) {
-      debugPrint("AppCheck initialization skipped or failed: $e");
+      debugPrint("❌ AppCheck initialization failed: $e");
+      debugPrint("   Uploads and Firestore operations may fail without App Check.");
     }
 
     // 2. Initialize Crashlytics & Performance
@@ -101,6 +139,11 @@ class HomeFixApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => LocationProvider()),
         ChangeNotifierProvider(create: (_) => CheckoutProvider()),
         ChangeNotifierProvider(create: (_) => LocaleProvider()),
+        ChangeNotifierProvider(
+          create: (context) => PartnerOnboardingProvider(
+            context.read<StorageService>(),
+          ),
+        ),
       ],
       child: Consumer<LocaleProvider>(
         builder: (context, localeProvider, child) {

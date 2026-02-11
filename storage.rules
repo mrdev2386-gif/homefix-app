@@ -13,7 +13,6 @@ service firebase.storage {
     }
     
     function isAdmin() {
-      // Assuming custom claim 'admin' is set on the token
       return request.auth.token.admin == true;
     }
     
@@ -21,14 +20,28 @@ service firebase.storage {
       return request.resource.contentType.matches('image/.*');
     }
     
+    function isVideo() {
+      return request.resource.contentType.matches('video/.*');
+    }
+    
     function isSmallFile() {
       return request.resource.size < 5 * 1024 * 1024; // 5MB limit
+    }
+    
+    function isLargeFile() {
+      return request.resource.size < 50 * 1024 * 1024; // 50MB for videos
     }
 
     // --- Rules ---
 
-    // 1. User Profile Images
-    // Users can read any profile image, but only write their own
+    // 1. User Profile Images (FIXED: matches code path)
+    // Path: users/{userId}/profile/profile.jpg
+    match /users/{userId}/profile/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isOwner(userId) && isImage() && isSmallFile();
+    }
+    
+    // Legacy paths for backward compatibility
     match /users/{userId}/profile.jpg {
       allow read: if isSignedIn();
       allow write: if isSignedIn() && isOwner(userId) && isImage() && isSmallFile();
@@ -45,24 +58,42 @@ service firebase.storage {
       allow write: if isSignedIn() && isOwner(techId) && isImage() && isSmallFile();
     }
     
-    // 3. Technician Documents (KYC)
-    // strictly private: only the tech and admin can read/write
+    // 3. Technician Documents (KYC) - FIXED: matches code path
+    // Path: technicians/{userId}/{docType}/{fileName}
+    match /technicians/{techId}/{docType}/{fileName} {
+      allow read: if isSignedIn() && (isOwner(techId) || isAdmin());
+      allow write: if isSignedIn() && isOwner(techId) && isSmallFile();
+    }
+    
+    // Legacy path
     match /technician_docs/{techId}/{fileName} {
       allow read: if isSignedIn() && (isOwner(techId) || isAdmin());
       allow write: if isSignedIn() && isOwner(techId) && isSmallFile();
     }
 
-    // 4. Professional Reels/Portfolio
-    // Public read, Admin/Tech write (own)
+    // 4. Professional Reels/Portfolio (videos)
+    // Public read for video playback, authenticated write
     match /reels/{techId}/{fileName} {
       allow read: if true;
-      allow write: if isSignedIn() && (isOwner(techId) || isAdmin()) && isSmallFile();
+      allow write: if isSignedIn() && (isOwner(techId) || isAdmin()) && isLargeFile();
     }
     
-    // 5. Chat/Support Images (optional, based on future needs)
+    // 5. Chat/Support Images
     match /support/{ticketId}/{fileName} {
       allow read: if isSignedIn() && (resource.metadata.ownerId == request.auth.uid || isAdmin());
       allow write: if isSignedIn() && isSmallFile();
+    }
+    
+    // 6. Service Images (public read, admin write)
+    match /services/{serviceId}/{fileName} {
+      allow read: if true;
+      allow write: if isSignedIn() && isAdmin();
+    }
+    
+    // 7. Banner Images (public read, admin write)
+    match /banners/{fileName} {
+      allow read: if true;
+      allow write: if isSignedIn() && isAdmin();
     }
   }
 }

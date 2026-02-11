@@ -72,14 +72,50 @@ service cloud.firestore {
         allow read: if isOwner(techId);
         allow write: if false;
       }
+      
+      // Technician FCM Tokens
+      match /fcmTokens/{tokenId} {
+        allow read: if isSignedIn() && isOwner(techId);
+        allow create: if isSignedIn() && isOwner(techId);
+        allow update: if isSignedIn() && isOwner(techId);
+        allow delete: if isSignedIn() && isOwner(techId);
+      }
     }
     
     // 4. CUSTOMERS
     match /customers/{userId} {
       allow read: if isSignedIn() && (isOwner(userId) || isAdmin());
-      allow create: if isOwner(userId); // Initial creation allowed?
-      allow update: if isOwner(userId) && 
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) &&
         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['balance', 'isAdmin']);
+      
+      // FIXED: Addresses subcollection - user can manage their own addresses
+      match /addresses/{addressId} {
+        allow read: if isSignedIn() && isOwner(userId);
+        allow create: if isSignedIn() && isOwner(userId);
+        allow update: if isSignedIn() && isOwner(userId);
+        allow delete: if isSignedIn() && isOwner(userId);
+      }
+      
+      // User settings subcollection
+      match /settings/{settingId} {
+        allow read: if isSignedIn() && isOwner(userId);
+        allow write: if isSignedIn() && isOwner(userId);
+      }
+      
+      // FIXED: FCM Tokens subcollection - user can manage their own tokens
+      match /fcmTokens/{tokenId} {
+        allow read: if isSignedIn() && isOwner(userId);
+        allow create: if isSignedIn() && isOwner(userId);
+        allow update: if isSignedIn() && isOwner(userId);
+        allow delete: if isSignedIn() && isOwner(userId);
+      }
+      
+      // User notifications subcollection
+      match /notifications/{notificationId} {
+        allow read: if isSignedIn() && isOwner(userId);
+        allow write: if false; // Cloud Functions only
+      }
     }
 
     // 5. BOOKINGS

@@ -18,7 +18,7 @@ import '../support/presentation/support_screen.dart';
 import '../settings/settings_screen.dart';
 import 'presentation/edit_profile_screen.dart';
 import 'presentation/favorite_services_screen.dart';
-import 'package:customer_app/features/profile/presentation/technician_onboarding_screen.dart';
+import 'package:customer_app/features/profile/presentation/partner_onboarding_screen_v2.dart';
 import 'presentation/about_screen.dart';
 import 'presentation/policy_screen.dart';
 
@@ -516,7 +516,7 @@ class _ProfileContentState extends State<_ProfileContent> {
         ],
       ),
       child: InkWell(
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TechnicianOnboardingScreen())),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PartnerOnboardingScreenV2())),
         borderRadius: BorderRadius.circular(28),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -542,7 +542,7 @@ class _ProfileContentState extends State<_ProfileContent> {
             ),
             const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TechnicianOnboardingScreen())),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PartnerOnboardingScreenV2())),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: const Color(0xFF059669),

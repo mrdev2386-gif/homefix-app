@@ -1,6 +1,6 @@
-
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import '../../../core/models/dashboard_models.dart';
 import '../../../core/widgets/safe_network_image.dart';
 
@@ -93,8 +93,10 @@ class _ReelItem extends StatefulWidget {
 }
 
 class _ReelItemState extends State<_ReelItem> {
-  late VideoPlayerController _controller;
+  VideoPlayerController? _controller;
   bool _isInitialized = false;
+  bool _hasError = false;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -102,33 +104,92 @@ class _ReelItemState extends State<_ReelItem> {
     _initializeController();
   }
 
-  void _initializeController() {
-    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.reel.videoUrl))
-      ..setLooping(true)
-      ..setVolume(0) // Auto-play muted
-      ..initialize().then((_) {
-        if (mounted) {
-          setState(() => _isInitialized = true);
-          if (widget.isFocused) _controller.play();
+  /// CRITICAL FIX: Get proper download URL before initializing video player
+  /// Direct storage URLs cause 403 errors with App Check enabled
+  Future<void> _initializeController() async {
+    try {
+      String videoUrl = widget.reel.videoUrl;
+      
+      // Skip if URL is empty
+      if (videoUrl.isEmpty) {
+        setState(() {
+          _hasError = true;
+          _errorMessage = 'No video URL provided';
+        });
+        return;
+      }
+      
+      // CRITICAL FIX: If URL is a storage path (not a download URL), get the download URL
+      // Download URLs contain 'firebasestorage.googleapis.com' and 'token='
+      if (!videoUrl.contains('firebasestorage.googleapis.com') || 
+          !videoUrl.contains('token=')) {
+        debugPrint('[VideoPlayer] URL is not a download URL, fetching download URL...');
+        
+        // Handle gs:// URLs or storage paths
+        if (videoUrl.startsWith('gs://') || 
+            videoUrl.startsWith('reels/') ||
+            !videoUrl.startsWith('http')) {
+          final storagePath = videoUrl.startsWith('gs://') 
+              ? videoUrl.replaceFirst(RegExp(r'gs://[^/]+/'), '')
+              : videoUrl;
+          
+          debugPrint('[VideoPlayer] Getting download URL for path: $storagePath');
+          
+          videoUrl = await FirebaseStorage.instance
+              .ref()
+              .child(storagePath)
+              .getDownloadURL();
+          
+          debugPrint('[VideoPlayer] Got download URL: ${videoUrl.substring(0, 50)}...');
         }
-      });
+      }
+      
+      _controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl))
+        ..setLooping(true)
+        ..setVolume(0); // Auto-play muted
+      
+      await _controller!.initialize();
+      
+      if (mounted) {
+        setState(() => _isInitialized = true);
+        if (widget.isFocused) _controller!.play();
+      }
+    } on FirebaseException catch (e) {
+      debugPrint('[VideoPlayer] Firebase error: ${e.code} - ${e.message}');
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          _errorMessage = e.code == 'object-not-found' 
+              ? 'Video not found' 
+              : 'Video unavailable';
+        });
+      }
+    } catch (e) {
+      debugPrint('[VideoPlayer] Error initializing video: $e');
+      if (mounted) {
+        setState(() {
+          _hasError = true;
+          _errorMessage = 'Video unavailable';
+        });
+      }
+    }
   }
 
   @override
   void didUpdateWidget(_ReelItem oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_isInitialized) {
+    if (_isInitialized && _controller != null) {
       if (widget.isFocused) {
-        _controller.play();
+        _controller!.play();
       } else {
-        _controller.pause();
+        _controller!.pause();
       }
     }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
@@ -171,14 +232,37 @@ class _ReelItemState extends State<_ReelItem> {
                   ),
                 ),
                 
-              // Video
-              if (_isInitialized)
+              // Video (only if initialized and no error)
+              if (_isInitialized && !_hasError && _controller != null)
                 FittedBox(
                   fit: BoxFit.cover,
                   child: SizedBox(
-                    width: _controller.value.size.width,
-                    height: _controller.value.size.height,
-                    child: VideoPlayer(_controller),
+                    width: _controller!.value.size.width,
+                    height: _controller!.value.size.height,
+                    child: VideoPlayer(_controller!),
+                  ),
+                ),
+              
+              // Error state - show graceful fallback
+              if (_hasError)
+                Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.videocam_off_rounded,
+                        color: Colors.white.withOpacity(0.6),
+                        size: 48,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _errorMessage ?? 'Video unavailable',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.6),
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 
@@ -240,7 +324,7 @@ class _ReelItemState extends State<_ReelItem> {
               ),
 
               // Loading shimmer-like effect
-              if (!_isInitialized)
+              if (!_isInitialized && !_hasError)
                 const Center(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
             ],
           ),
