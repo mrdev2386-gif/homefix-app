@@ -5,6 +5,7 @@ class HomeService {
   final String key;
   final String title;
   final String imageAssetPath;
+  final String? _imageUrl;
   final String description;
   final double basePrice;
   final bool isActive;
@@ -20,10 +21,45 @@ class HomeService {
   // Aliases for user requested fields
   String get name => title;
   double get price => basePrice;
-  String get imageUrl => getEffectiveImageUrl();
 
-  String getEffectiveImageUrl() {
-    return imageAssetPath;
+  /// Get effective image URL with fallback chain:
+  /// 1. imageUrl (from Firestore)
+  /// 2. imageAssetPath (legacy)
+  /// 3. null (will show placeholder)
+  String? get imageUrl {
+    if (_imageUrl != null && _imageUrl!.isNotEmpty) {
+      return _imageUrl;
+    }
+    if (imageAssetPath.isNotEmpty && !imageAssetPath.startsWith('assets/')) {
+      return imageAssetPath;
+    }
+    return null;
+  }
+
+  /// Get service-specific fallback image URL based on category
+  String getFallbackImageUrl() {
+    final categoryLower = category.toLowerCase();
+    final titleLower = title.toLowerCase();
+
+    if (categoryLower.contains('ac') || titleLower.contains('ac') || titleLower.contains('air')) {
+      return 'https://images.unsplash.com/photo-1631545806609-5adb40c6e3eb?w=400&q=80';
+    } else if (categoryLower.contains('plumb') || titleLower.contains('plumb') || titleLower.contains('pipe')) {
+      return 'https://images.unsplash.com/photo-1585704032915-c3400ca199e7?w=400&q=80';
+    } else if (categoryLower.contains('electric') || titleLower.contains('electric') || titleLower.contains('wiring')) {
+      return 'https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=400&q=80';
+    } else if (categoryLower.contains('clean') || titleLower.contains('clean')) {
+      return 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=400&q=80';
+    } else if (categoryLower.contains('appliance') || titleLower.contains('appliance') || titleLower.contains('washing') || titleLower.contains('fridge')) {
+      return 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?w=400&q=80';
+    } else if (categoryLower.contains('repair') || titleLower.contains('repair') || titleLower.contains('fix')) {
+      return 'https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=400&q=80';
+    } else if (categoryLower.contains('paint') || titleLower.contains('paint')) {
+      return 'https://images.unsplash.com/photo-1562259949-e8e7689d7828?w=400&q=80';
+    } else if (categoryLower.contains('carpenter') || titleLower.contains('carpenter') || titleLower.contains('wood')) {
+      return 'https://images.unsplash.com/photo-1611486212557-88be5ff6f941?w=400&q=80';
+    }
+    // Default service placeholder
+    return 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=400&q=80';
   }
 
   HomeService({
@@ -31,6 +67,7 @@ class HomeService {
     required this.key,
     required this.title,
     required this.imageAssetPath,
+    String? imageUrl,
     this.description = '',
     required this.basePrice,
     required this.isActive,
@@ -42,7 +79,7 @@ class HomeService {
     this.isTrending = false,
     this.duration = '1 hour',
     required this.createdAt,
-  });
+  }) : _imageUrl = imageUrl;
 
   factory HomeService.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
@@ -52,7 +89,15 @@ class HomeService {
     // Map Firestore fields with fallbacks
     final String key = (data['id'] ?? data['serviceId'] ?? data['key'] ?? id).toString();
     final String title = (data['name'] ?? data['title'] ?? 'Service').toString();
-    final String image = (data['imageUrl'] ?? data['image'] ?? data['imageAssetPath'] ?? '').toString();
+    
+    // Parse imageUrl - primary field from Firestore
+    final String? imageUrl = data['imageUrl'] != null 
+        ? (data['imageUrl'] as String).trim()
+        : null;
+    
+    // Legacy field support
+    final String legacyImage = (data['image'] ?? data['imageAssetPath'] ?? '').toString();
+    
     final String description = (data['description'] ?? '').toString();
     
     // SAFE NUMBER PARSING
@@ -104,7 +149,8 @@ class HomeService {
       id: id,
       key: key,
       title: title,
-      imageAssetPath: image,
+      imageAssetPath: legacyImage,
+      imageUrl: imageUrl,
       description: description,
       basePrice: price,
       isActive: isActive,
@@ -123,7 +169,7 @@ class HomeService {
     return {
       'id': key,
       'name': title,
-      'imageUrl': imageAssetPath,
+      'imageUrl': imageUrl ?? imageAssetPath,
       'description': description,
       'price': basePrice,
       'isActive': isActive,
@@ -137,5 +183,11 @@ class HomeService {
       'createdAt': Timestamp.fromDate(createdAt),
     };
   }
-}
 
+  /// Check if service has valid image URL
+  bool get hasValidImageUrl {
+    if (imageUrl == null) return false;
+    final url = imageUrl!.trim();
+    return url.startsWith('http://') || url.startsWith('https://');
+  }
+}
