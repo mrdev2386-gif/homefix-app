@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import '../../../core/widgets/safe_cached_image.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../services/presentation/service_details_screen.dart';
@@ -166,11 +166,9 @@ class ServiceSpotlightSection extends StatelessWidget {
                         child: (imageUrl?.isNotEmpty ?? false)
                             ? (() {
                                 print("IMAGE URL => $imageUrl");
-                                return CachedNetworkImage(
-                                  imageUrl: imageUrl ?? '',
+                                return SafeCachedImage(
+                                  imageUrl: imageUrl,
                                   fit: BoxFit.cover,
-                                  placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                                  errorWidget: (context, url, error) => const Icon(Icons.image_not_supported, size: 40),
                                 );
                               }())
                             : Icon(Icons.home_repair_service_rounded, size: 40, color: AppTheme.primaryColor.withOpacity(0.3)),

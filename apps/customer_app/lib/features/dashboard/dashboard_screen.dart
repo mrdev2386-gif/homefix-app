@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import '../../core/widgets/safe_cached_image.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/firestore_service.dart';
 import '../../core/providers/cart_provider.dart';
@@ -637,13 +637,11 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
             ),
           ),
           const SizedBox(width: 16),
-          CachedNetworkImage(
+          SafeCachedImage(
             imageUrl: 'https://cdn-icons-png.flaticon.com/512/4712/4712126.png',
             height: 80,
             width: 80,
             fit: BoxFit.contain,
-            placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-            errorWidget: (context, url, error) => const Icon(Icons.image_not_supported, size: 40),
           ),
         ],
       ),

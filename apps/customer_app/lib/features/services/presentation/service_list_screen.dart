@@ -3,11 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/models/service.dart';
 import '../../../core/models/dashboard_models.dart';
 import '../../../core/services/firestore_service.dart';
-import '../../dashboard/widgets/service_grid_icon.dart';
 import '../../../core/theme/app_theme.dart';
 
 class ServiceListScreen extends StatefulWidget {
@@ -22,8 +20,9 @@ class ServiceListScreen extends StatefulWidget {
 class _ServiceListScreenState extends State<ServiceListScreen> {
   String _searchQuery = '';
   String? _selectedCategory;
-  String _sortBy = 'Popular';
   final TextEditingController _searchController = TextEditingController();
+  bool _imagesPrefetched = false;
+  bool _isNavigating = false;
 
   @override
   void initState() {
@@ -33,6 +32,39 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
       _searchQuery = widget.initialSearchQuery!;
       _searchController.text = _searchQuery;
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _prefetchImages();
+  }
+
+  void _prefetchImages() {
+    if (_imagesPrefetched) return;
+    _imagesPrefetched = true;
+    
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    firestoreService.streamServices(category: _selectedCategory).listen((services) {
+      if (!mounted) return;
+      
+      // Prefetch MAX 6 images only
+      final firstSix = services.take(6);
+      for (final service in firstSix) {
+        try {
+          // Skip empty or invalid URLs
+          if (service.imageUrl.isEmpty || !service.imageUrl.startsWith('http')) {
+            continue;
+          }
+          precacheImage(
+            NetworkImage(service.imageUrl),
+            context,
+          );
+        } catch (_) {
+          // Silently ignore prefetch errors to prevent crashes
+        }
+      }
+    });
   }
 
   @override
@@ -46,57 +78,81 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
 
     return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text(
-          'Service Catalog',
-          style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 18)
-        ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.tune_rounded),
-            onPressed: () => _showFilterBottomSheet(),
-          ),
-          const SizedBox(width: 8),
-        ],
+        backgroundColor: Colors.white,
+        elevation: 0,
+        automaticallyImplyLeading: false,
+        toolbarHeight: 0,
       ),
-      body: Column(
-        children: [
-          _buildSearchArea(),
-          _buildCategoryBar(firestoreService),
-          Expanded(
-            child: _buildServiceResults(firestoreService),
-          ),
-        ],
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildHeader(),
+            _buildSearchBar(),
+            _buildCategoryBar(firestoreService),
+            Expanded(
+              child: _buildServiceResults(firestoreService),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildSearchArea() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Text(
+        'All Services',
+        style: GoogleFonts.outfit(
+          fontWeight: FontWeight.w900,
+          fontSize: 26,
+          color: AppTheme.textColor,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Container(
+        height: 48,
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+          color: const Color(0xFFF5F5F5),
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: TextField(
           controller: _searchController,
           onChanged: (value) => setState(() => _searchQuery = value),
           decoration: InputDecoration(
-            hintText: 'Search for services...',
-            hintStyle: GoogleFonts.outfit(color: Colors.grey[400], fontSize: 14),
-            prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.primaryColor),
-            suffixIcon: _searchQuery.isNotEmpty 
+            hintText: 'Search services',
+            hintStyle: GoogleFonts.outfit(
+              color: Colors.grey[400],
+              fontSize: 14,
+            ),
+            prefixIcon: const Icon(
+              Icons.search_rounded,
+              color: AppTheme.primaryColor,
+              size: 22,
+            ),
+            suffixIcon: _searchQuery.isNotEmpty
                 ? IconButton(
                     icon: const Icon(Icons.close_rounded, size: 18, color: AppTheme.subtitleColor),
                     onPressed: () {
                       _searchController.clear();
                       setState(() => _searchQuery = '');
                     },
-                  ) 
+                  )
                 : null,
             border: InputBorder.none,
             enabledBorder: InputBorder.none,
@@ -121,19 +177,21 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         ];
         
         return Container(
-          height: 50,
-          margin: const EdgeInsets.only(bottom: 8),
+          height: 44,
+          margin: const EdgeInsets.only(bottom: 12, top: 8),
           child: ListView.builder(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             scrollDirection: Axis.horizontal,
             itemCount: categories.length + 1,
             itemBuilder: (context, index) {
               final bool isAll = index == 0;
-              
-              // SAFE ACCESS: Avoid "Null is not a subtype of String"
               final categoryData = isAll ? null : categories[index - 1];
-              final String? catId = isAll ? null : (categoryData?['id'] ?? categoryData?['title'] ?? '').toString();
-              final String label = isAll ? 'All Services' : (categoryData?['title'] ?? categoryData?['name'] ?? 'Category').toString();
+              final String? catId = isAll 
+                  ? null 
+                  : (categoryData?['id'] ?? categoryData?['title'] ?? '').toString();
+              final String label = isAll 
+                  ? 'All Services' 
+                  : (categoryData?['title'] ?? categoryData?['name'] ?? 'Category').toString();
               
               final bool isSelected = _selectedCategory == catId;
 
@@ -173,10 +231,12 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     return StreamBuilder<List<HomeService>>(
       stream: service.streamServices(category: _selectedCategory),
       builder: (context, snapshot) {
+        // Error state
         if (snapshot.hasError) {
-          return Center(child: Text('Error loading services', style: GoogleFonts.outfit()));
+          return _buildError();
         }
 
+        // Loading state - only show skeleton when waiting
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _buildSkeleton();
         }
@@ -190,153 +250,130 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           ).toList();
         }
 
-        if (_sortBy == 'Top Rated') {
-          services.sort((a, b) => b.rating.compareTo(a.rating));
+        // Empty state - prevent blank screen
+        if (services.isEmpty) {
+          return _buildEmpty();
         }
 
-        return CustomScrollView(
+        // Services grid with performance optimizations
+        return GridView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            mainAxisSpacing: 14,
+            crossAxisSpacing: 14,
+            childAspectRatio: 0.85,
+          ),
+          itemCount: services.length,
+          cacheExtent: 800,
           physics: const BouncingScrollPhysics(),
-          slivers: [
-            if (services.isEmpty)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: _buildEmpty(),
-              )
-            else ...[
-              SliverPadding(
-                padding: const EdgeInsets.all(20),
-                sliver: SliverGrid(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                    childAspectRatio: 0.8,
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) => ServiceGridIcon(service: services[index]),
-                    childCount: services.length,
-                  ),
-                ),
-              ),
-              _buildBottomBanners(service),
-              const SliverToBoxAdapter(child: SizedBox(height: 100)),
-            ],
-          ],
+          addAutomaticKeepAlives: false,
+          addRepaintBoundaries: true,
+          addSemanticIndexes: false,
+          itemBuilder: (context, index) {
+            return RepaintBoundary(
+              child: _buildServiceCard(services[index]),
+            );
+          },
         );
       },
     );
   }
 
-  Widget _buildBottomBanners(FirestoreService service) {
-    debugPrint("[Firestore] streaming service_bottom_banners for list...");
-    return StreamBuilder<List<ServiceBanner>>(
-      stream: service.streamServiceBottomBanners(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return SliverToBoxAdapter(child: Center(child: Padding(
-            padding: EdgeInsets.all(20),
-            child: CircularProgressIndicator(),
-          )));
-        }
-
-        final banners = snapshot.data ?? [];
-        if (banners.isEmpty) {
-          debugPrint("[Firestore] service_bottom_banners is empty");
-          return SliverToBoxAdapter(
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.grey.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: const Center(child: Text('More offers arriving soon!')),
+  Widget _buildError() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.1),
+              shape: BoxShape.circle,
             ),
-          );
-        }
-
-        return SliverPadding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-          sliver: SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final banner = banners[index];
-                return _buildBannerCard(banner);
-              },
-              childCount: banners.length,
+            child: const Icon(Icons.error_outline_rounded, size: 48, color: Colors.red),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Unable to load services',
+            style: GoogleFonts.outfit(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textColor,
             ),
           ),
-        );
-      },
+          const SizedBox(height: 8),
+          Text(
+            'Please check your connection',
+            style: GoogleFonts.outfit(
+              fontSize: 14,
+              color: AppTheme.subtitleColor,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildBannerCard(ServiceBanner banner) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      height: 160,
-      width: double.infinity,
+  Widget _buildServiceCard(HomeService service) {
+    return Material(
+      color: Colors.transparent,
       child: InkWell(
-        onTap: () => _showComingSoonDialog(banner.title),
-        borderRadius: BorderRadius.circular(24),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: Stack(
-            fit: StackFit.expand,
+        onTap: () {
+          // Debounce: ignore taps while navigating
+          if (_isNavigating) return;
+          _isNavigating = true;
+          HapticFeedback.lightImpact();
+          
+          // Perform navigation - actual navigation is handled by parent
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (mounted) {
+              _isNavigating = false;
+            }
+          });
+        },
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CachedNetworkImage(
-                imageUrl: banner.imageUrl,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => Shimmer.fromColors(
-                  baseColor: Colors.grey[100]!,
-                  highlightColor: Colors.white,
-                  child: Container(color: Colors.white),
-                ),
-                errorWidget: (context, url, error) {
-                  print("IMAGE URL => ${banner.imageUrl}");
-                  return Container(
-                    color: AppTheme.primaryColor.withOpacity(0.1),
-                    child: const Icon(Icons.broken_image_rounded, color: AppTheme.primaryColor),
-                  );
-                },
-              ),
+              // Service Image with safe loading and error fallback
               Container(
+                width: 64,
+                height: 64,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [
-                      Colors.black.withOpacity(0.6),
-                      Colors.transparent,
-                    ],
-                  ),
+                  color: const Color(0xFFF5F5F5),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: _buildServiceImage(service),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      banner.title,
-                      style: GoogleFonts.outfit(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      banner.description,
-                      style: GoogleFonts.outfit(
-                        color: Colors.white.withOpacity(0.8),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+              const SizedBox(height: 10),
+              // Service Name
+              Text(
+                service.title,
+                style: GoogleFonts.outfit(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textColor,
                 ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
               ),
             ],
           ),
@@ -345,47 +382,42 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
     );
   }
 
-  void _showComingSoonDialog(String title) {
-    showGeneralDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: '',
-      transitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (context, anim1, anim2) => const SizedBox(),
-      transitionBuilder: (context, anim1, anim2, child) {
-        return ScaleTransition(
-          scale: Tween<double>(begin: 0.8, end: 1.0).animate(
-            CurvedAnimation(parent: anim1, curve: Curves.easeOutBack),
-          ),
-          child: FadeTransition(
-            opacity: anim1,
-            child: AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-              title: Row(
-                children: [
-                  const Icon(Icons.rocket_launch_rounded, color: AppTheme.primaryColor),
-                  const SizedBox(width: 12),
-                  Text('Coming Soon', style: GoogleFonts.outfit(fontWeight: FontWeight.w900)),
-                ],
-              ),
-              content: Text(
-                'This feature ($title) will be available soon. We are working hard to bring you the best experience!',
-                style: GoogleFonts.outfit(fontSize: 15, height: 1.5),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text(
-                    'GOT IT',
-                    style: GoogleFonts.outfit(
-                      fontWeight: FontWeight.w900,
-                      color: AppTheme.primaryColor,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                ),
-              ],
+  Widget _buildServiceImage(HomeService service) {
+    // Empty URL fallback
+    if (service.imageUrl.isEmpty) {
+      return Container(
+        color: const Color(0xFFF5F5F5),
+        child: const Center(
+          child: Icon(Icons.category_rounded, color: Colors.grey),
+        ),
+      );
+    }
+
+    return Image.network(
+      service.imageUrl,
+      width: 56,
+      height: 56,
+      fit: BoxFit.cover,
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) return child;
+        // Loading placeholder with light grey bg
+        return Container(
+          color: const Color(0xFFF5F5F5),
+          child: const Center(
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
             ),
+          ),
+        );
+      },
+      errorBuilder: (context, error, stackTrace) {
+        // Error fallback with light grey bg and centered icon
+        return Container(
+          color: const Color(0xFFF5F5F5),
+          child: const Center(
+            child: Icon(Icons.broken_image_rounded, color: Colors.grey),
           ),
         );
       },
@@ -394,14 +426,16 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
 
   Widget _buildSkeleton() {
     return GridView.builder(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-        childAspectRatio: 0.8,
+        crossAxisCount: 3,
+        mainAxisSpacing: 14,
+        crossAxisSpacing: 14,
+        childAspectRatio: 0.85,
       ),
-      itemCount: 6,
+      itemCount: 9,
+      physics: const NeverScrollableScrollPhysics(),
+      addSemanticIndexes: false,
       itemBuilder: (context, index) {
         return Shimmer.fromColors(
           baseColor: Colors.grey[100]!,
@@ -409,7 +443,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           child: Container(
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(18),
             ),
           ),
         );
@@ -423,85 +457,35 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(32),
-            decoration: BoxDecoration(color: AppTheme.accentColor, shape: BoxShape.circle),
-            child: const Icon(Icons.search_off_rounded, size: 64, color: AppTheme.primaryColor),
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF5F5F5),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.category_rounded,
+              size: 48,
+              color: Colors.grey,
+            ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           Text(
-            'No matching services found',
-            style: GoogleFonts.outfit(color: AppTheme.textColor, fontSize: 18, fontWeight: FontWeight.w800),
+            'No services available',
+            style: GoogleFonts.outfit(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textColor,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Try adjusting your filters or search terms',
-            style: GoogleFonts.outfit(color: AppTheme.subtitleColor, fontSize: 14),
+            'Check back later for new services',
+            style: GoogleFonts.outfit(
+              fontSize: 14,
+              color: AppTheme.subtitleColor,
+            ),
           ),
         ],
-      ),
-    );
-  }
-
-  void _showFilterBottomSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Container(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Sort Portfolio By',
-                    style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 20),
-                  ),
-                  const SizedBox(height: 24),
-                  _buildSortTile(context, setModalState, 'Popular', Icons.trending_up_rounded),
-                  _buildSortTile(context, setModalState, 'Top Rated', Icons.star_rounded),
-                  _buildSortTile(context, setModalState, 'Price: Low to High', Icons.arrow_upward_rounded),
-                  _buildSortTile(context, setModalState, 'Price: High to Low', Icons.arrow_downward_rounded),
-                  const SizedBox(height: 32),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Apply Selection'),
-                  ),
-                ],
-              ),
-            );
-          }
-        );
-      },
-    );
-  }
-
-  Widget _buildSortTile(BuildContext context, StateSetter setModalState, String title, IconData icon) {
-    bool isSelected = _sortBy == title;
-    return InkWell(
-      onTap: () {
-        setModalState(() => _sortBy = title);
-        setState(() => _sortBy = title);
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Row(
-          children: [
-            Icon(icon, color: isSelected ? AppTheme.primaryColor : AppTheme.subtitleColor, size: 20),
-            const SizedBox(width: 16),
-            Text(title, style: GoogleFonts.outfit(
-              fontSize: 16, 
-              color: isSelected ? AppTheme.primaryColor : AppTheme.textColor,
-              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
-            )),
-            const Spacer(),
-            if (isSelected)
-              const Icon(Icons.check_circle_rounded, color: AppTheme.primaryColor, size: 22),
-          ],
-        ),
       ),
     );
   }

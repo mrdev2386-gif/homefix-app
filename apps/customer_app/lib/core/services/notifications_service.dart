@@ -19,6 +19,9 @@ class NotificationsService {
         'High Importance Notifications', // title
         description: 'This channel is used for important notifications.',
         importance: Importance.max,
+        priority: Priority.high,
+        playSound: true,
+        enableVibration: true,
       );
 
       await _localNotif
@@ -27,7 +30,6 @@ class NotificationsService {
     }
 
     // 2. Request permissions
-    // On web, this requests browser permission
     NotificationSettings settings = await _messaging.requestPermission(
       alert: true,
       badge: true,
@@ -51,10 +53,10 @@ class NotificationsService {
       saveNotification(message);
     });
 
-    // 5. Interaction Handlers
+    // 5. Background tap handler
     FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationClick);
     
-    // Background handling of initial message
+    // 6. Terminated state - getInitialMessage
     _messaging.getInitialMessage().then((RemoteMessage? message) {
       if (message != null) {
         _handleNotificationClick(message);
@@ -66,11 +68,8 @@ class NotificationsService {
     FirebaseAuth.instance.authStateChanges().listen((user) async {
       if (user != null) {
         try {
-          // getToken() requires a vapidKey on web or a service worker file
-          // If we don't have it, we skip to avoid crash
           String? token;
           if (kIsWeb) {
-            // token = await _messaging.getToken(vapidKey: '...');
             debugPrint("FCM token retrieval skipped on web (requires vapidKey & service worker)");
           } else {
             token = await _messaging.getToken();
@@ -104,7 +103,6 @@ class NotificationsService {
       else if (defaultTargetPlatform == TargetPlatform.iOS) platform = 'ios';
     }
 
-    // Use callable function for secure token write
     try {
       final functions = FirebaseFunctions.instance;
       final callable = functions.httpsCallable('saveFCMToken');
@@ -115,14 +113,11 @@ class NotificationsService {
       debugPrint('FCM token saved via callable function');
     } catch (e) {
       debugPrint('Failed to save FCM token via callable: $e');
-      // Fallback to direct write only if callable fails (for development)
-      // In production, this should always use the callable function
       _fallbackTokenWrite(user.uid, token, platform);
     }
   }
 
   /// Fallback direct write - ONLY use for development/debugging
-  /// In production, always use callable function
   static Future<void> _fallbackTokenWrite(String uid, String token, String platform) async {
     try {
       await FirebaseFirestore.instance
@@ -142,7 +137,6 @@ class NotificationsService {
   }
 
   static void _showLocalNotification(RemoteMessage message) async {
-    // Skip local notifications on web for now as they are handled by browser/worker
     if (kIsWeb) return;
 
     RemoteNotification? notification = message.notification;
@@ -159,8 +153,16 @@ class NotificationsService {
             'High Importance Notifications',
             channelDescription: 'This channel is used for important notifications.',
             icon: '@mipmap/ic_launcher',
+            importance: Importance.max,
+            priority: Priority.high,
+            playSound: true,
+            enableVibration: true,
           ) : null,
-          iOS: const DarwinNotificationDetails(),
+          iOS: const DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+          ),
         ),
         payload: message.data.toString(),
       );
@@ -173,7 +175,7 @@ class NotificationsService {
     final referenceId = data['bookingId'] ?? data['id'];
 
     debugPrint('Notification clicked: $type -> $referenceId');
-    // Logic for deep linking goes here
+    // Logic for deep linking goes here - handle based on 'type'
   }
 
   static Future<void> saveNotification(RemoteMessage message) async {

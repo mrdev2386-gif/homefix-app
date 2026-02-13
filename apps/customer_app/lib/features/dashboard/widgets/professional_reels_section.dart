@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../../../core/models/dashboard_models.dart';
-import '../../../core/widgets/safe_network_image.dart';
+import '../../../core/widgets/safe_cached_image.dart';
 
 class ProfessionalReelsSection extends StatefulWidget {
   final List<ProfessionalReel> reels;
@@ -40,7 +40,7 @@ class _ProfessionalReelsSectionState extends State<ProfessionalReelsSection> {
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
           ),
         ),
-      );
+      ),
     }
 
     return Column(
@@ -67,6 +67,8 @@ class _ProfessionalReelsSectionState extends State<ProfessionalReelsSection> {
           height: 480, 
           child: PageView.builder(
             controller: _pageController,
+            physics: const BouncingScrollPhysics(),
+            pageSnapping: true,
             onPageChanged: (index) => setState(() => _currentIndex = index),
             itemCount: displayReels.length,
             itemBuilder: (context, index) {
@@ -78,7 +80,7 @@ class _ProfessionalReelsSectionState extends State<ProfessionalReelsSection> {
           ),
         ),
       ],
-    );
+    ),
   }
 }
 
@@ -96,6 +98,7 @@ class _ReelItemState extends State<_ReelItem> {
   VideoPlayerController? _controller;
   bool _isInitialized = false;
   bool _hasError = false;
+  bool _isPlaying = false;
   String? _errorMessage;
 
   @override
@@ -104,10 +107,19 @@ class _ReelItemState extends State<_ReelItem> {
     _initializeController();
   }
 
-  /// CRITICAL FIX: Get proper download URL before initializing video player
-  /// Direct storage URLs cause 403 errors with App Check enabled
+  /// Get proper download URL before initializing video player
+  /// Videos are NOT autoplayed - only load controller
   Future<void> _initializeController() async {
     try {
+      // Check if this is a video or image
+      if (!widget.reel.isVideo) {
+        // Image-only mode - no video initialization needed
+        if (mounted) {
+          setState(() => _isInitialized = true);
+        }
+        return;
+      }
+      
       String videoUrl = widget.reel.videoUrl;
       
       // Skip if URL is empty
@@ -119,8 +131,7 @@ class _ReelItemState extends State<_ReelItem> {
         return;
       }
       
-      // CRITICAL FIX: If URL is a storage path (not a download URL), get the download URL
-      // Download URLs contain 'firebasestorage.googleapis.com' and 'token='
+      // If URL is not a download URL, get the download URL
       if (!videoUrl.contains('firebasestorage.googleapis.com') || 
           !videoUrl.contains('token=')) {
         debugPrint('[VideoPlayer] URL is not a download URL, fetching download URL...');
@@ -146,13 +157,12 @@ class _ReelItemState extends State<_ReelItem> {
       
       _controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl))
         ..setLooping(true)
-        ..setVolume(0); // Auto-play muted
+        ..setVolume(0);
       
       await _controller!.initialize();
       
       if (mounted) {
         setState(() => _isInitialized = true);
-        if (widget.isFocused) _controller!.play();
       }
     } on FirebaseException catch (e) {
       debugPrint('[VideoPlayer] Firebase error: ${e.code} - ${e.message}');
@@ -175,16 +185,25 @@ class _ReelItemState extends State<_ReelItem> {
     }
   }
 
+  /// Play video on tap - NOT autoplayed
+  void _togglePlay() {
+    if (_controller == null || !_isInitialized) return;
+    
+    if (_isPlaying) {
+      _controller!.pause();
+    } else {
+      _controller!.play();
+    }
+    
+    if (mounted) {
+      setState(() => _isPlaying = !_isPlaying);
+    }
+  }
+
   @override
   void didUpdateWidget(_ReelItem oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_isInitialized && _controller != null) {
-      if (widget.isFocused) {
-        _controller!.play();
-      } else {
-        _controller!.pause();
-      }
-    }
+    // Don't autoplay on focus - only on tap
   }
 
   @override
@@ -198,138 +217,159 @@ class _ReelItemState extends State<_ReelItem> {
     return AnimatedScale(
       scale: widget.isFocused ? 1.0 : 0.92,
       duration: const Duration(milliseconds: 300),
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(32),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.15),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            )
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(32),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Thumbnail/Vibrant Fallback
-              if (widget.reel.thumbnailUrl.isNotEmpty)
-                SafeNetworkImage(
-                  imageUrl: widget.reel.thumbnailUrl,
-                  fit: BoxFit.cover,
-                )
-              else
-                Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Color(0xFF6366F1), Color(0xFF4338CA)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+      child: GestureDetector(
+        onTap: widget.reel.isVideo ? _togglePlay : null,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(32),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              )
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(32),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Thumbnail/Image - show for both video and image modes
+                if (widget.reel.thumbnailUrl.isNotEmpty)
+                  SafeCachedImage(
+                    imageUrl: widget.reel.thumbnailUrl,
+                    fit: BoxFit.cover,
+                  )
+                else if (!widget.reel.isVideo)
+                  Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF6366F1), Color(0xFF4338CA)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                     ),
                   ),
-                ),
                 
-              // Video (only if initialized and no error)
-              if (_isInitialized && !_hasError && _controller != null)
-                FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
-                    width: _controller!.value.size.width,
-                    height: _controller!.value.size.height,
-                    child: VideoPlayer(_controller!),
+                // Video (only if isVideo=true, initialized, and no error)
+                if (widget.reel.isVideo && _isInitialized && !_hasError && _controller != null)
+                  FittedBox(
+                    fit: BoxFit.cover,
+                    child: SizedBox(
+                      width: _controller!.value.size.width,
+                      height: _controller!.value.size.height,
+                      child: VideoPlayer(_controller!),
+                    ),
                   ),
-                ),
-              
-              // Error state - show graceful fallback
-              if (_hasError)
-                Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.videocam_off_rounded,
-                        color: Colors.white.withOpacity(0.6),
+                
+                // Play icon overlay for videos (only show if not playing)
+                if (widget.reel.isVideo && _isInitialized && !_hasError && !_isPlaying)
+                  Center(
+                    child: Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.5),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.play_arrow_rounded,
+                        color: Colors.white,
                         size: 48,
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _errorMessage ?? 'Video unavailable',
-                        style: TextStyle(
+                    ),
+                  ),
+                
+                // Error state - show graceful fallback
+                if (_hasError)
+                  Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.videocam_off_rounded,
                           color: Colors.white.withOpacity(0.6),
-                          fontSize: 14,
+                          size: 48,
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 8),
+                        Text(
+                          _errorMessage ?? 'Video unavailable',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.6),
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                // Non-clickable Overlay
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withOpacity(0.3),
+                        Colors.black.withOpacity(0.8),
+                      ],
+                      stops: const [0.6, 0.8, 1.0],
+                    ),
                   ),
                 ),
                 
-              // Non-clickable Overlay
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withOpacity(0.3),
-                      Colors.black.withOpacity(0.8),
-                    ],
-                    stops: const [0.6, 0.8, 1.0],
-                  ),
-                ),
-              ),
-              
-              // Content
-              Positioned(
-                bottom: 30,
-                left: 20,
-                right: 20,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (widget.reel.title.isNotEmpty)
-                      Text(
-                        widget.reel.title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
+                // Content
+                Positioned(
+                  bottom: 30,
+                  left: 20,
+                  right: 20,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (widget.reel.title.isNotEmpty)
+                        Text(
+                          widget.reel.title,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.white.withOpacity(0.3)),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.verified_user_rounded, color: Color(0xFF10B981), size: 16),
+                            SizedBox(width: 6),
+                            Text(
+                              'PRO VERIFIED',
+                              style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1),
+                            ),
+                          ],
                         ),
                       ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withOpacity(0.3)),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.verified_user_rounded, color: Color(0xFF10B981), size: 16),
-                          SizedBox(width: 6),
-                          Text(
-                            'PRO VERIFIED',
-                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
 
-              // Loading shimmer-like effect
-              if (!_isInitialized && !_hasError)
-                const Center(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
-            ],
+                // Loading shimmer-like effect
+                if (!_isInitialized && !_hasError)
+                  const Center(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
+              ],
+            ),
           ),
         ),
       ),
-    );
+    ),
   }
 }

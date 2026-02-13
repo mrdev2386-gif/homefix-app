@@ -7,6 +7,7 @@ class ProfessionalReel {
   final String thumbnailUrl;
   final String title;
   final bool isActive;
+  final bool isVideo; // NEW: Toggle between video and image
   final int order;
 
   ProfessionalReel({
@@ -15,6 +16,7 @@ class ProfessionalReel {
     required this.thumbnailUrl,
     this.title = '',
     this.isActive = true,
+    this.isVideo = true, // Default to video
     this.order = 0,
   });
 
@@ -26,6 +28,7 @@ class ProfessionalReel {
       thumbnailUrl: (data['thumbnailUrl'] ?? data['thumbnail'] ?? data['imageUrl'] ?? '').toString(),
       title: (data['title'] ?? '').toString(),
       isActive: data['isActive'] ?? true,
+      isVideo: data['isVideo'] ?? true, // Default to video for backward compatibility
       order: int.tryParse((data['order'] ?? 0).toString()) ?? 0,
     );
   }
@@ -37,6 +40,7 @@ class ProfessionalReel {
       thumbnailUrl: (data['thumbnailUrl'] ?? data['thumbnail'] ?? data['imageUrl'] ?? '').toString(),
       title: (data['title'] ?? '').toString(),
       isActive: data['isActive'] ?? true,
+      isVideo: data['isVideo'] ?? true,
       order: int.tryParse((data['order'] ?? 0).toString()) ?? 0,
     );
   }

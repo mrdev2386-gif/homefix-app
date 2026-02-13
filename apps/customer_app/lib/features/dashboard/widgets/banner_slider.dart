@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shimmer/shimmer.dart';
+import '../../../core/widgets/safe_cached_image.dart';
 import '../../../core/models/banner_model.dart';
 
 class BannerSlider extends StatefulWidget {
@@ -18,6 +18,21 @@ class _BannerSliderState extends State<BannerSlider> {
   Timer? _timer;
   List<BannerModel> _banners = [];
   bool _isUserInteracting = false;
+  bool _isInitialized = false;
+  
+  late final Stream<QuerySnapshot> _bannerStream;
+
+  @override
+  void initState() {
+    super.initState();
+    // Stream created ONCE in initState, not in build
+    _bannerStream = FirebaseFirestore.instance
+        .collection('service_bottom_banners')
+        .where('isActive', isEqualTo: true)
+        .orderBy('order')
+        .snapshots();
+    _startAutoSlide();
+  }
 
   @override
   void dispose() {
@@ -29,7 +44,7 @@ class _BannerSliderState extends State<BannerSlider> {
   void _startAutoSlide() {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 4), (timer) {
-      if (_banners.isEmpty || _isUserInteracting) return;
+      if (!mounted || _banners.isEmpty || _isUserInteracting) return;
       
       if (_currentPage < _banners.length - 1) {
         _currentPage++;
@@ -37,7 +52,7 @@ class _BannerSliderState extends State<BannerSlider> {
         _currentPage = 0;
       }
       
-      if (_pageController.hasClients) {
+      if (_pageController.hasClients && mounted) {
         _pageController.animateToPage(
           _currentPage,
           duration: const Duration(milliseconds: 500),
@@ -48,28 +63,41 @@ class _BannerSliderState extends State<BannerSlider> {
   }
 
   void _onUserInteractionStart() {
+    if (!mounted) return;
     setState(() {
       _isUserInteracting = true;
     });
   }
 
   void _onUserInteractionEnd() {
+    if (!mounted) return;
     setState(() {
       _isUserInteracting = false;
     });
   }
 
+  Widget _buildShimmer({double height = 180}) {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey[300]!,
+      highlightColor: Colors.grey[100]!,
+      child: Container(
+        height: height,
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('service_bottom_banners')
-          .where('isActive', isEqualTo: true)
-          .orderBy('order')
-          .snapshots(),
+      stream: _bannerStream,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-           return _buildShimmer();
+        if (snapshot.connectionState == ConnectionState.waiting && !_isInitialized) {
+          return _buildShimmer();
         }
 
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
@@ -77,30 +105,29 @@ class _BannerSliderState extends State<BannerSlider> {
         }
 
         // Map Firestore data to BannerModel
-        // Note: Check if BannerModel matches 'service_bottom_banners' structure
-        // Assuming BannerModel has fromFirestore or we map manually if diverse
         try {
-          _banners = snapshot.data!.docs.map((doc) {
-             final data = doc.data() as Map<String, dynamic>;
-             return BannerModel(
-               id: doc.id,
-               imageUrl: data['imageUrl'] ?? '',
-               targetScreen: 'service', // Default or from data
-               targetId: data['id'] ?? '',
-               order: data['order'] ?? 0,
-               active: data['isActive'] ?? true,
-             );
+          final banners = snapshot.data!.docs.map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            return BannerModel(
+              id: doc.id,
+              imageUrl: data['imageUrl'] ?? '',
+              targetScreen: data['targetScreen'] ?? 'service',
+              targetId: data['id'] ?? '',
+              order: data['order'] ?? 0,
+              active: data['isActive'] ?? true,
+            );
           }).toList();
+          
+          if (mounted) {
+            _banners = banners;
+            _isInitialized = true;
+          }
         } catch (e) {
-          // Fallback or debug print
           debugPrint("Error parsing banners: $e");
           return const SizedBox.shrink();
         }
 
         if (_banners.isEmpty) return const SizedBox.shrink();
-
-        // Only start timer once
-        if (_timer == null) _startAutoSlide();
 
         return Column(
           children: [
@@ -112,7 +139,10 @@ class _BannerSliderState extends State<BannerSlider> {
                 onPointerCancel: (_) => _onUserInteractionEnd(),
                 child: PageView.builder(
                   controller: _pageController,
+                  physics: const BouncingScrollPhysics(),
+                  pageSnapping: true,
                   onPageChanged: (index) {
+                    if (!mounted) return;
                     setState(() {
                       _currentPage = index;
                     });
@@ -123,26 +153,18 @@ class _BannerSliderState extends State<BannerSlider> {
                     return GestureDetector(
                       onTap: () {
                         // Handle navigation
+                        debugPrint('Banner tapped: ${banner.id}');
                       },
                       child: Container(
                         margin: const EdgeInsets.symmetric(horizontal: 16),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(16),
-                          image: DecorationImage(
-                            image: CachedNetworkImageProvider(banner.imageUrl),
-                            fit: BoxFit.cover,
-                          ),
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(16),
-                          child: CachedNetworkImage(
+                          child: SafeCachedImage(
                             imageUrl: banner.imageUrl,
                             fit: BoxFit.cover,
-                            placeholder: (context, url) => _buildShimmer(height: 180),
-                            errorWidget: (context, url, error) => Container(
-                              color: Colors.grey[300],
-                              child: const Icon(Icons.broken_image, size: 50, color: Colors.grey),
-                            ),
                           ),
                         ),
                       ),
@@ -170,21 +192,6 @@ class _BannerSliderState extends State<BannerSlider> {
           ],
         );
       },
-    );
-  }
-
-  Widget _buildShimmer({double height = 180}) {
-    return Shimmer.fromColors(
-      baseColor: Colors.grey[300]!,
-      highlightColor: Colors.grey[100]!,
-      child: Container(
-        height: height,
-        margin: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-        ),
-      ),
     );
   }
 }
