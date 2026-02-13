@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:provider/provider.dart';
 import '../../../core/models/category.dart';
 import '../../../core/models/service.dart';
 import '../../../core/firestore/category_service.dart';
@@ -9,6 +11,7 @@ import '../../../core/firestore/matching_service.dart';
 import '../../../core/widgets/safe_network_image.dart';
 import '../../../core/widgets/no_technicians_popup.dart';
 import '../../../core/widgets/matching_loading_overlay.dart';
+import '../../../core/providers/favorites_provider.dart';
 import 'sub_service_screen.dart';
 import 'technician_selection_screen.dart';
 import '../../../../core/theme/app_theme.dart';
@@ -301,11 +304,21 @@ class _ServiceCard extends StatelessWidget {
               borderRadius: const BorderRadius.horizontal(
                 left: Radius.circular(16),
               ),
-              child: SafeNetworkImage(
-                imageUrl: effectiveImageUrl,
-                width: 100,
-                height: 100,
-                fit: BoxFit.cover,
+              child: Stack(
+                children: [
+                  SafeNetworkImage(
+                    imageUrl: effectiveImageUrl,
+                    width: 100,
+                    height: 100,
+                    fit: BoxFit.cover,
+                  ),
+                  // Favorite button overlay
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: _SmallFavoriteButton(serviceId: service.id),
+                  ),
+                ],
               ),
             ),
             // Service info
@@ -356,6 +369,52 @@ class _ServiceCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Compact favorite button for list cards
+class _SmallFavoriteButton extends StatelessWidget {
+  final String serviceId;
+
+  const _SmallFavoriteButton({required this.serviceId});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          context.read<FavoritesProvider>().toggleFavorite(serviceId);
+        },
+        borderRadius: BorderRadius.circular(16),
+        splashColor: Colors.red.withOpacity(0.2),
+        child: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.9),
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Consumer<FavoritesProvider>(
+            builder: (context, favorites, _) {
+              final isFavorite = favorites.isFavorite(serviceId);
+              return Icon(
+                isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                size: 16,
+                color: isFavorite ? Colors.red : Colors.grey[600],
+              );
+            },
+          ),
         ),
       ),
     );

@@ -9,10 +9,23 @@
  * - Technician offline recovery
  * - Crash-safe atomicity
  * - Structured logging
+ * - Unified notifications
  */
 
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import {
+  sendUserNotification,
+  notifyCustomerBookingConfirmed,
+  notifyCustomerTechnicianEnRoute,
+  notifyCustomerTechnicianArrived,
+  notifyCustomerJobCompleted,
+  notifyCustomerBookingCancelled,
+  notifyCustomerPaymentSuccess,
+  notifyTechnicianNewRequest,
+  notifyTechnicianNewInstantBooking,
+  notifyTechnicianNewReview,
+} from '../shared/notification_helper';
 
 const db = admin.firestore();
 
@@ -302,7 +315,7 @@ export const createBookingWithAssignment = functions.https.onCall(
       });
 
       // Step 4: Send notification
-      await sendTechnicianNotification(
+      await notifyTechnicianNewBooking(
         result.technicianId!,
         result.bookingId!,
         data.customerLocation.address
@@ -648,11 +661,10 @@ async function acceptBooking(
 
   // Notify customer
   const booking = (await bookingRef.get()).data() as BookingDocument;
-  await sendCustomerNotification(
+  await notifyCustomerBookingStatus(
     booking.customerId,
     bookingId,
-    'Technician Accepted!',
-    'Your technician is confirmed.'
+    'confirmed'
   );
 
   logger.info('booking_confirmed', { bookingId, technicianId });
@@ -805,7 +817,7 @@ async function triggerReassignment(bookingId: string): Promise<void> {
       });
     });
 
-    await sendTechnicianNotification(newTech.id, bookingId, booking.customerLocation.address);
+    await notifyTechnicianNewBooking(newTech.id, bookingId, booking.customerLocation.address);
     logger.info('reassignment_success', { bookingId, newTechnicianId: newTech.id });
   } else {
     await handleNoTechnicianAvailable(booking);
@@ -842,11 +854,11 @@ async function handleNoTechnicianAvailable(booking: BookingDocument): Promise<vo
   await triggerIdempotentRefund(booking.paymentId, booking.amount);
 
   // Notify customer
-  await sendCustomerNotification(
+  await notifyCustomerBookingStatus(
     booking.customerId,
     bookingId,
-    'No Technicians Available',
-    'Full refund initiated.'
+    'cancelled',
+    'No technicians available. Full refund initiated.'
   );
 
   logger.info('no_technician_available', { bookingId });
@@ -1038,11 +1050,10 @@ export const updateBookingStatus = functions.https.onCall(
 
     // Notify customer
     const booking = (await bookingRef.get()).data() as BookingDocument;
-    await sendCustomerNotification(
+    await notifyCustomerBookingStatus(
       booking.customerId,
       bookingId,
-      getStatusTitle(status),
-      getStatusBody(status, reason)
+      status
     );
 
     logger.info('status_updated', { bookingId, status });
@@ -1153,36 +1164,53 @@ async function getServicePriceServerSide(serviceId: string): Promise<number> {
   return serviceDoc.data()!.basePrice || serviceDoc.data()!.price || 0;
 }
 
-async function sendTechnicianNotification(
+/**
+ * Send notification to technician about new booking using unified helper
+ */
+async function notifyTechnicianNewBooking(
   technicianId: string,
   bookingId: string,
   address: string
 ): Promise<void> {
   try {
-    const { sendPushNotification } = await import('../shared/notifications');
-    await sendPushNotification(technicianId, 'technicians', {
-      title: '🔔 New Job Request!',
-      body: `Booking at ${address.substring(0, 50)}...`,
-      data: { bookingId, type: 'job_request' },
-    });
+    await notifyTechnicianNewInstantBooking(
+      technicianId,
+      bookingId,
+      'Service',
+      address
+    );
   } catch (e) {
     logger.warn('notification_failed', { technicianId, error: e });
   }
 }
 
-async function sendCustomerNotification(
+/**
+ * Send notification to customer about booking status using unified helper
+ */
+async function notifyCustomerBookingStatus(
   customerId: string,
   bookingId: string,
-  title: string,
-  body: string
+  status: string,
+  reason?: string
 ): Promise<void> {
   try {
-    const { sendPushNotification } = await import('../shared/notifications');
-    await sendPushNotification(customerId, 'customers', {
-      title,
-      body,
-      data: { bookingId, type: 'booking_update' },
-    });
+    switch (status) {
+      case 'confirmed':
+        await notifyCustomerBookingConfirmed(customerId, bookingId, 'Technician');
+        break;
+      case 'en_route':
+        await notifyCustomerTechnicianEnRoute(customerId, bookingId, 'Technician');
+        break;
+      case 'technician_arrived':
+        await notifyCustomerTechnicianArrived(customerId, bookingId, 'Technician');
+        break;
+      case 'completed':
+        await notifyCustomerJobCompleted(customerId, bookingId, 'Technician');
+        break;
+      case 'cancelled':
+        await notifyCustomerBookingCancelled(customerId, bookingId, reason || 'Booking cancelled');
+        break;
+    }
   } catch (e) {
     logger.warn('notification_failed', { customerId, error: e });
   }

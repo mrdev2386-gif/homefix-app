@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../../core/models/service.dart';
 import '../../../../core/widgets/safe_network_image.dart';
 import '../../../../core/providers/cart_provider.dart';
+import '../../../../core/providers/favorites_provider.dart';
 import '../../../../core/models/cart_item.dart';
 import '../../booking/presentation/slot_selection_screen.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../cart/presentation/cart_screen.dart';
 
 class ServiceDetailsScreen extends StatefulWidget {
   final String serviceId;
@@ -23,6 +26,7 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
   HomeService? _service;
   bool _isLoading = true;
   int _techCount = 0;
+  bool _isAddingToCart = false; // Track loading state for add to cart
 
   @override
   void initState() {
@@ -198,16 +202,8 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
         ),
       ),
       actions: [
-        Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: CircleAvatar(
-            backgroundColor: Colors.white.withOpacity(0.9),
-            child: IconButton(
-              icon: const Icon(Icons.favorite_border_rounded, color: Colors.black, size: 20),
-              onPressed: () {},
-            ),
-          ),
-        ),
+        // Favorite Button with animation and proper gesture handling
+        _FavoriteActionButton(serviceId: widget.serviceId),
         const SizedBox(width: 8),
       ],
     );
@@ -409,35 +405,233 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
           Expanded(
             flex: 2,
             child: ElevatedButton(
-              onPressed: () async {
-                final cart = Provider.of<CartProvider>(context, listen: false);
-                await cart.addItem(CartItem(
-                  id: '',
-                  serviceId: service.id,
-                  serviceName: service.title,
-                  serviceImage: service.imageUrl ?? '',
-                  price: service.basePrice,
-                  quantity: 1,
-                  totalPrice: service.basePrice,
-                ));
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('${service.title} added to cart'),
-                      action: SnackBarAction(
-                        label: 'VIEW CART',
-                        onPressed: () {
-                          // Navigate to cart
-                        },
+              onPressed: _isAddingToCart ? null : () => _handleAddToCart(context, service),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                disabledBackgroundColor: const Color(0xFF6366F1).withOpacity(0.6),
+              ),
+              child: _isAddingToCart
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                       ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        Icon(Icons.shopping_cart_rounded, size: 18),
+                        SizedBox(width: 8),
+                        Text('Add to Cart', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                      ],
                     ),
-                  );
-                }
-              },
-              child: const Text('Add to Cart'),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Handle add to cart with loading state, haptic feedback, and navigation
+  Future<void> _handleAddToCart(BuildContext context, HomeService service) async {
+    if (_isAddingToCart || !mounted) return;
+    
+    setState(() {
+      _isAddingToCart = true;
+    });
+
+    try {
+      final cart = Provider.of<CartProvider>(context, listen: false);
+      await cart.addItem(CartItem(
+        id: '',
+        serviceId: service.id,
+        serviceName: service.title,
+        serviceImage: service.imageUrl ?? '',
+        price: service.basePrice,
+        quantity: 1,
+        totalPrice: service.basePrice,
+      ));
+      
+      // Haptic feedback on success
+      HapticFeedback.mediumImpact();
+      
+      if (!mounted) return;
+      
+      // Show success snackbar with navigation
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '${service.title} added to cart',
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppTheme.successColor,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          duration: const Duration(seconds: 2),
+          action: SnackBarAction(
+            label: 'VIEW CART',
+            textColor: Colors.white,
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const CartScreen(),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      
+      // Navigate to cart after short delay
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      if (!mounted) return;
+      
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const CartScreen(),
+        ),
+      );
+      
+    } catch (e) {
+      debugPrint('Error adding to cart: $e');
+      
+      if (!mounted) return;
+      
+      // Show error snackbar
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Failed to add to cart. Please try again.',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAddingToCart = false;
+        });
+      }
+    }
+  }
+}
+
+/// Animated favorite action button for the app bar
+/// Uses InkWell for splash effect and scale animation on tap
+class _FavoriteActionButton extends StatefulWidget {
+  final String serviceId;
+
+  const _FavoriteActionButton({required this.serviceId});
+
+  @override
+  State<_FavoriteActionButton> createState() => _FavoriteActionButtonState();
+}
+
+class _FavoriteActionButtonState extends State<_FavoriteActionButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 150),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  void _handleTap() {
+    // Trigger scale animation
+    _animationController.forward().then((_) {
+      _animationController.reverse();
+    });
+    
+    // Toggle favorite
+    context.read<FavoritesProvider>().toggleFavorite(widget.serviceId);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: CircleAvatar(
+        backgroundColor: Colors.white.withOpacity(0.9),
+        child: AnimatedBuilder(
+          animation: _scaleAnimation,
+          builder: (context, child) {
+            return Transform.scale(
+              scale: _scaleAnimation.value,
+              child: child,
+            );
+          },
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _handleTap,
+              borderRadius: BorderRadius.circular(20),
+              splashColor: Colors.red.withOpacity(0.2),
+              child: Consumer<FavoritesProvider>(
+                builder: (context, favorites, _) {
+                  final isFavorite = favorites.isFavorite(widget.serviceId);
+                  return AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    transitionBuilder: (child, animation) {
+                      return FadeTransition(opacity: animation, child: child);
+                    },
+                    child: Icon(
+                      isFavorite
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                      key: ValueKey(isFavorite),
+                      color: isFavorite ? Colors.red : Colors.black,
+                      size: 20,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

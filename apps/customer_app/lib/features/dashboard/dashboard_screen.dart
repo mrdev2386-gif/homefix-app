@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../core/widgets/safe_cached_image.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/firestore_service.dart';
 import '../../core/providers/cart_provider.dart';
@@ -14,6 +13,7 @@ import '../notifications/presentation/notification_screen.dart';
 import '../profile/presentation/saved_addresses_screen.dart';
 import '../profile/presentation/add_edit_address_screen.dart';
 import '../services/presentation/service_request_screen.dart';
+import '../services/presentation/instant_booking_screen.dart';
 import '../services/presentation/service_list_screen.dart';
 import '../support/presentation/support_screen.dart';
 import 'widgets/home_banner_carousel.dart';
@@ -21,6 +21,7 @@ import 'widgets/service_section.dart';
 import 'widgets/upcoming_booking_widget.dart';
 import 'widgets/category_grid.dart';
 import 'widgets/service_spotlight_section.dart';
+import 'widgets/professional_home_service.dart';
 import 'widgets/professional_reels_section.dart';
 import 'widgets/cleaning_essentials_section.dart';
 import 'widgets/service_bottom_banners_section.dart';
@@ -39,6 +40,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   Stream<List<CleaningEssential>>? _essentialsStream;
   Stream<List<ServiceBanner>>? _bannersStream;
   Stream<List<Booking>>? _bookingsStream;
+  Stream<List<HomeService>>? _servicesStream;
   
   @override
   bool get wantKeepAlive => true;
@@ -50,6 +52,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
     _reelsStream = firestore.streamProfessionalReels();
     _essentialsStream = firestore.streamCleaningEssentials();
     _bannersStream = firestore.streamServiceBottomBanners();
+    _servicesStream = firestore.streamServices();
 
     final auth = Provider.of<AuthService>(context, listen: false);
     if (auth.currentUser != null) {
@@ -92,32 +95,35 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildSearchBar(context),
-                  const HomeBannerCarousel(),
-                  const SizedBox(height: 32),
+                  // Custom Request & Verified Technician (TOP)
+                  _buildQuickActions(context),
+                  const SizedBox(height: 24),
+                  
+                  // What are you looking for?
                   _buildSectionHeader('What are you looking for?', null),
                   const CategoryGrid(),
                   const SizedBox(height: 24),
+                  
+                  // Professional Home Service (NEW 2x2 layout)
+                  _buildProfessionalHomeService(context),
+                  const SizedBox(height: 24),
+                  
+                  // Cleaning Essentials
+                  _buildCleaningEssentials(context),
+                  const SizedBox(height: 24),
+                  
+                  // Recommended for You
+                  const ServiceListSection(title: 'Recommended For You', category: 'cleaning', isHorizontal: true),
+                  const SizedBox(height: 24),
+                  
+                  // Need Assistance
+                  _buildSupportCard(context),
+                  const SizedBox(height: 24),
+                  
+                  // Celebration Professional (moved to bottom)
                   _buildProfessionalReels(context),
                   const SizedBox(height: 32),
-                  _buildCleaningEssentials(context),
-                  const SizedBox(height: 32),
-                  _buildUpcomingBooking(context),
-                  _buildQuickActions(context),
-                  const SizedBox(height: 32),
-                  const ServiceListSection(title: 'Top Rated Services', isHorizontal: true, isTopOnly: true),
-                  const SizedBox(height: 32),
-                  const ServiceSpotlightSection(),
-                  const SizedBox(height: 32),
-                  _buildSupportCard(context),
-                  const SizedBox(height: 32),
-                  const ServiceListSection(title: 'Professional Home Services', isHorizontal: false),
-                  const SizedBox(height: 32),
-                  const ServiceListSection(title: 'Recommended For You', category: 'cleaning', isHorizontal: true),
-                  const SizedBox(height: 32),
-                  _buildServiceBottomBanners(context),
-                  const SizedBox(height: 32),
-                  const ServiceListSection(title: 'Recently Viewed', isHorizontal: true),
+                  
                   const SizedBox(height: 100),
                 ],
               ),
@@ -551,15 +557,65 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
           ),
           const SizedBox(width: 16),
           Expanded(
-            child: _buildActionCard(
-              context,
-              'Verified\nTechnicians',
-              Icons.verified_user_rounded,
-              const Color(0xFF10B981),
-              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ServiceListScreen())),
-            ),
+            child: _buildInstantBookingCard(context),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildInstantBookingCard(BuildContext context) {
+    return InkWell(
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const InstantBookingScreen())),
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF6366F1).withOpacity(0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.bolt_rounded, color: Colors.white, size: 20),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Instant\nBooking',
+              style: GoogleFonts.outfit(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+                fontSize: 13,
+                height: 1.2,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Get service within 60 mins',
+              style: GoogleFonts.outfit(
+                color: Colors.white.withOpacity(0.8),
+                fontSize: 11,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -637,14 +693,40 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
             ),
           ),
           const SizedBox(width: 16),
-          SafeCachedImage(
-            imageUrl: 'https://cdn-icons-png.flaticon.com/512/4712/4712126.png',
-            height: 80,
-            width: 80,
-            fit: BoxFit.contain,
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Icon(
+              Icons.headset_mic_rounded,
+              color: Colors.white,
+              size: 40,
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildProfessionalHomeService(BuildContext context) {
+    return StreamBuilder<List<HomeService>>(
+      stream: _servicesStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: CircularProgressIndicator(),
+          ));
+        }
+        
+        final services = snapshot.data ?? [];
+        if (services.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return ProfessionalHomeServiceSection(services: services.take(6).toList());
+      },
     );
   }
 

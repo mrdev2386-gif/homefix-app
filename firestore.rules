@@ -123,6 +123,12 @@ service cloud.firestore {
         allow write: if isOwner(customerId);
       }
       
+      // Favorites - user can only read/write their own favorites
+      match /favorites/{favoriteId} {
+        allow read: if isOwner(customerId);
+        allow write: if isOwner(customerId);
+      }
+      
       match /addresses/{addressId} {
         allow read: if isOwner(customerId);
         allow write: if isOwner(customerId);
@@ -133,18 +139,49 @@ service cloud.firestore {
         allow write: if isAdmin();
       }
       
-      match /fcmTokens/{tokenId} {
-        allow read: if isOwner(customerId);
-        allow write: if isOwner(customerId);
-      }
-      
-      match /settings/{settingId} {
-        allow read: if isOwner(customerId);
-        allow write: if isOwner(customerId);
-      }
-    }
+      // ==========================================
+    // FCM TOKENS (Both Apps)
+    // ==========================================
     
-    // Users legacy
+    match /fcmTokens/{tokenId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+  }
+  
+  // Users legacy
+  match /users/{userId} {
+    allow read: if isOwner(userId) || isAdmin();
+    allow write: if isOwner(userId) || isAdmin();
+  }
+  
+  // ==========================================
+  // UNIFIED NOTIFICATIONS COLLECTION
+  // ==========================================
+  
+  match /notifications/{notificationId} {
+    // User can read only their own notifications
+    allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    
+    // Only Cloud Functions can create notifications
+    allow create: if false;
+    
+    // User can update isRead for their own notifications
+    allow update: if isAuthenticated() && 
+      resource.data.userId == request.auth.uid &&
+      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead', 'readAt']);
+    
+    // Only owner or admin can delete
+    allow delete: if isAuthenticated() && 
+      (resource.data.userId == request.auth.uid || isAdmin());
+  }
+
+  // Users legacy
+  match /users/{userId} {
+    allow read: if isOwner(userId) || isAdmin();
+    allow write: if isOwner(userId) || isAdmin();
+  }
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow write: if isOwner(userId) || isAdmin();
@@ -332,6 +369,64 @@ service cloud.firestore {
       }
     }
     
+    // ==========================================
+    // CUSTOM REQUESTS
+    // ==========================================
+    
+    match /custom_requests/{requestId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.customerId == request.auth.uid ||
+        resource.data.technicianAssigned == request.auth.uid
+      );
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+    
+    // Technician Notifications
+    match /technician_notifications/{notificationId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.technicianId == request.auth.uid
+      );
+      allow write: if false;
+    }
+
+    // ==========================================
+    // CHAT SYSTEM
+    // ==========================================
+    
+    // Chats collection - stores chat metadata
+    match /chats/{chatId} {
+      // Only participants (customer or technician) can read
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.customerId == request.auth.uid ||
+        resource.data.technicianId == request.auth.uid
+      );
+      
+      // Only Cloud Functions can create/update (no direct client writes)
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+      
+      // Messages subcollection
+      match /messages/{messageId} {
+        // Only chat participants can read
+        allow read: if isAuthenticated() && (
+          isAdmin() ||
+          get(/databases/$(database)/documents/chats/$(chatId)).data.customerId == request.auth.uid ||
+          get(/databases/$(database)/documents/chats/$(chatId)).data.technicianId == request.auth.uid
+        );
+        
+        // Only Cloud Functions can write
+        allow create: if false;
+        allow update: if false;
+        allow delete: if false;
+      }
+    }
+
     // ==========================================
     // DENY ALL UNSPECIFIED PATHS
     // ==========================================

@@ -32,6 +32,9 @@ import * as technicianPayouts from './payments/payouts';
 // Partner Applications
 import * as partnerApplications from './partner/applications';
 
+// Chat System
+import * as chat from './chat/chat';
+
 
 if (!admin.apps.length) {
     admin.initializeApp();
@@ -248,6 +251,19 @@ export const submitSupportRequest = customerFeatures.submitSupportRequest;
 // Partner Applications
 export const submitPartnerApplication = partnerApplications.submitPartnerApplication;
 
+// Custom Request Features
+import * as customRequest from './custom_request';
+export const createCustomRequest = customRequest.createCustomRequest;
+export const acceptCustomRequest = customRequest.acceptCustomRequest;
+export const getMyCustomRequests = customRequest.getMyCustomRequests;
+export const cancelCustomRequest = customRequest.cancelCustomRequest;
+export const getTechnicianInbox = customRequest.getTechnicianInbox;
+export const getCustomRequestDetail = customRequest.getCustomRequestDetail;
+
+// Instant Booking Features
+import * as instantBooking from './instant_booking';
+export const getInstantServices = instantBooking.getInstantServices;
+
 
 
 // ==========================================
@@ -336,21 +352,171 @@ export const assignTechnicianToBooking = functions.https.onCall(async (data, con
 
 export const respondToAssignment = handleAssignmentResponse;
 
-// FCM Token Management
+// ==========================================
+// FCM TOKEN MANAGEMENT
+// ==========================================
+
+/**
+ * Saves FCM token for a user (customer or technician)
+ * Supports multiple devices by storing tokens in a subcollection
+ */
 export const saveFcmToken = functions.https.onCall(async (data, context) => {
     const uid = context.auth?.uid;
     if (!uid) {
         throw new functions.https.HttpsError("unauthenticated", "User not logged in");
     }
 
-    const { token } = data;
+    const { token, platform = 'unknown', userType = 'customer' } = data;
 
-    await admin.firestore()
-        .collection("users")
-        .doc(uid)
-        .set({ fcmToken: token }, { merge: true });
+    if (!token) {
+        throw new functions.https.HttpsError("invalid-argument", "Token is required");
+    }
 
-    return { success: true };
+    try {
+        // Determine the correct collection based on userType
+        const collectionPath = userType === 'technician' ? 'technicians' : 'customers';
+        const userDocRef = db.collection(collectionPath).doc(uid);
+        
+        // Check if user document exists
+        const userDoc = await userDocRef.get();
+        if (!userDoc.exists) {
+            // Try the other collection
+            const otherCollection = userType === 'technician' ? 'customers' : 'technicians';
+            const otherUserDoc = await db.collection(otherCollection).doc(uid).get();
+            if (!otherUserDoc.exists) {
+                throw new functions.https.HttpsError("not-found", "User not found");
+            }
+            // Use the correct collection
+        }
+
+        // Generate a unique token ID (using hash of token + platform for consistency)
+        const tokenId = `${platform}_${token.substring(0, 8)}_${Date.now()}`;
+
+        // Save token to subcollection
+        await userDocRef.collection('fcmTokens').doc(tokenId).set({
+            token,
+            platform,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastUsedAt: admin.firestore.FieldValue.serverTimestamp(),
+            invalidCount: 0,
+            isActive: true,
+        }, { merge: true });
+
+        console.log(`[FCM] Token saved for ${userType}:${uid}`);
+        return { success: true, tokenId };
+    } catch (error: any) {
+        console.error(`[FCM] Failed to save token for ${uid}:`, error);
+        throw new functions.https.HttpsError("internal", "Failed to save token");
+    }
+});
+
+/**
+ * Removes FCM token for a user
+ * Called on logout or token refresh
+ */
+export const removeFcmToken = functions.https.onCall(async (data, context) => {
+    const uid = context.auth?.uid;
+    if (!uid) {
+        throw new functions.https.HttpsError("unauthenticated", "User not logged in");
+    }
+
+    const { token, userType = 'customer' } = data;
+
+    if (!token) {
+        throw new functions.https.HttpsError("invalid-argument", "Token is required");
+    }
+
+    try {
+        const collectionPath = userType === 'technician' ? 'technicians' : 'customers';
+        
+        // Find and delete the token
+        const tokensSnapshot = await db.collection(collectionPath)
+            .doc(uid)
+            .collection('fcmTokens')
+            .where('token', '==', token)
+            .limit(1)
+            .get();
+
+        if (!tokensSnapshot.empty) {
+            await tokensSnapshot.docs[0].ref.delete();
+            console.log(`[FCM] Token removed for ${userType}:${uid}`);
+        }
+
+        return { success: true };
+    } catch (error: any) {
+        console.error(`[FCM] Failed to remove token for ${uid}:`, error);
+        throw new functions.https.HttpsError("internal", "Failed to remove token");
+    }
+});
+
+/**
+ * Removes all FCM tokens for a user
+ * Called on complete logout
+ */
+export const removeAllFcmTokens = functions.https.onCall(async (data, context) => {
+    const uid = context.auth?.uid;
+    if (!uid) {
+        throw new functions.https.HttpsError("unauthenticated", "User not logged in");
+    }
+
+    const { userType = 'customer' } = data;
+
+    try {
+        const collectionPath = userType === 'technician' ? 'technicians' : 'customers';
+        
+        // Delete all tokens
+        const tokensSnapshot = await db.collection(collectionPath)
+            .doc(uid)
+            .collection('fcmTokens')
+            .get();
+
+        const batch = db.batch();
+        tokensSnapshot.docs.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+        
+        if (!tokensSnapshot.empty) {
+            await batch.commit();
+            console.log(`[FCM] All tokens removed for ${userType}:${uid}`);
+        }
+
+        return { success: true, deletedCount: tokensSnapshot.size };
+    } catch (error: any) {
+        console.error(`[FCM] Failed to remove all tokens for ${uid}:`, error);
+        throw new functions.https.HttpsError("internal", "Failed to remove tokens");
+    }
+});
+
+/**
+ * Gets all FCM tokens for a user (admin use only)
+ */
+export const getFcmTokens = functions.https.onCall(async (data, context) => {
+    const uid = context.auth?.uid;
+    if (!uid) {
+        throw new functions.https.HttpsError("unauthenticated", "User not logged in");
+    }
+
+    const { userType = 'customer' } = data;
+
+    try {
+        const collectionPath = userType === 'technician' ? 'technicians' : 'customers';
+        
+        const tokensSnapshot = await db.collection(collectionPath)
+            .doc(uid)
+            .collection('fcmTokens')
+            .where('isActive', '==', true)
+            .get();
+
+        const tokens = tokensSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+
+        return { success: true, tokens };
+    } catch (error: any) {
+        console.error(`[FCM] Failed to get tokens for ${uid}:`, error);
+        throw new functions.https.HttpsError("internal", "Failed to get tokens");
+    }
 });
 
 
@@ -773,4 +939,13 @@ export const putPayoutOnHold = technicianPayouts.putPayoutOnHold;
 export const releasePayoutFromHold = technicianPayouts.releasePayoutFromHold;
 export const bulkMarkPayoutsPaid = technicianPayouts.bulkMarkPayoutsPaid;
 export const getPayoutAnalytics = technicianPayouts.getPayoutAnalytics;
+
+// ==========================================
+// 6. CHAT SYSTEM
+// ==========================================
+
+export const getOrCreateChat = chat.getOrCreateChat;
+export const sendChatMessage = chat.sendChatMessage;
+export const markMessagesRead = chat.markMessagesRead;
+export const getChatDetails = chat.getChatDetails;
 

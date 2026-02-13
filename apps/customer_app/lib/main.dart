@@ -14,6 +14,7 @@ import 'core/services/functions_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/notifications_service.dart';
 import 'core/providers/cart_provider.dart';
+import 'core/providers/favorites_provider.dart';
 import 'core/providers/auth_provider.dart';
 import 'core/providers/category_provider.dart';
 import 'core/providers/service_provider.dart';
@@ -135,6 +136,10 @@ class HomeFixApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => CategoryProvider()),
         ChangeNotifierProvider(create: (_) => ServiceProvider()),
+        ChangeNotifierProxyProvider<AuthProvider, FavoritesProvider>(
+          create: (_) => FavoritesProvider(),
+          update: (_, auth, favorites) => favorites!..updateUserId(auth.user?.uid),
+        ),
         ChangeNotifierProxyProvider<AuthProvider, CartProvider>(
           create: (_) => CartProvider(),
           update: (_, auth, cart) => cart!..updateUserId(auth.user?.uid),

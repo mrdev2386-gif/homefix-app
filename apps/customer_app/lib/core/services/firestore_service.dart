@@ -349,8 +349,14 @@ class FirestoreService {
   // --- Favorites ---
   Future<void> toggleFavorite(String userId, String serviceId, bool isFavorite) async {
     final docRef = _db.collection('customers').doc(userId).collection('favorites').doc(serviceId);
-    if (isFavorite) await docRef.set({'addedAt': FieldValue.serverTimestamp()});
-    else await docRef.delete();
+    if (isFavorite) {
+      await docRef.set({
+        'serviceId': serviceId,
+        'addedAt': FieldValue.serverTimestamp()
+      });
+    } else {
+      await docRef.delete();
+    }
   }
 
   Stream<List<String>> streamFavoriteIds(String userId) {

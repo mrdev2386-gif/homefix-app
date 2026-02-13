@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../core/models/dashboard_models.dart';
-import '../../../core/widgets/safe_network_image.dart';
+import '../../../core/widgets/safe_cached_image.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/functions_service.dart';
 import '../../../core/providers/location_provider.dart';
@@ -133,9 +133,14 @@ class _CleaningEssentialsSectionState extends State<CleaningEssentialsSection> {
           child: PageView.builder(
             itemCount: widget.essentials.length,
             controller: PageController(viewportFraction: 0.92),
+            primary: false,
+            addSemanticIndexes: false,
+            pageStorageKey: const PageStorageKey('cleaning_essentials'),
             itemBuilder: (context, index) {
               final essential = widget.essentials[index];
-              return _buildLargeCard(context, essential);
+              return RepaintBoundary(
+                child: _buildLargeCard(context, essential),
+              );
             },
           ),
         ),
@@ -144,6 +149,8 @@ class _CleaningEssentialsSectionState extends State<CleaningEssentialsSection> {
   }
 
   Widget _buildLargeCard(BuildContext context, CleaningEssential essential) {
+    final double cacheWidth = (380 * 2).round();
+    
     return GestureDetector(
       onTap: _isLoading ? null : () => _handleCategoryTap(context, essential),
       child: Container(
@@ -163,9 +170,11 @@ class _CleaningEssentialsSectionState extends State<CleaningEssentialsSection> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              SafeNetworkImage(
+              // Background image with memory optimization
+              SafeCachedImage(
                 imageUrl: essential.imageUrl,
                 fit: BoxFit.cover,
+                cacheWidth: cacheWidth,
               ),
               // Gradient Overlay
               Container(

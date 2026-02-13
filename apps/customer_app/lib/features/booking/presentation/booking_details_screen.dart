@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../../core/models/booking.dart';
 import '../../../core/services/firestore_service.dart';
+import 'chat_screen.dart';
 
 class BookingDetailsScreen extends StatelessWidget {
   final String bookingId;
@@ -171,6 +172,14 @@ class BookingDetailsScreen extends StatelessWidget {
 
   Widget _buildTechnicianCard(Booking booking) {
     final techId = booking.technicianId;
+    // Chat is available ONLY when:
+    // - booking status is 'accepted' OR 'in_progress' (matches backend exactly)
+    // - technician is assigned
+    final bool isChatAvailable = (
+        booking.status == 'accepted' ||
+        booking.status == 'in_progress'
+    ) && techId != null && techId.isNotEmpty;
+    
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
@@ -188,7 +197,7 @@ class BookingDetailsScreen extends StatelessWidget {
               children: [
                 Text(
                   (techId != null && techId.isNotEmpty) 
-                      ? 'Technician ID: ${techId.substring(0, 8)}' 
+                      ? booking.technicianName ?? 'Technician' 
                       : 'Assigning...',
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
@@ -200,6 +209,27 @@ class BookingDetailsScreen extends StatelessWidget {
             IconButton(
               icon: const Icon(Icons.phone, color: Color(0xFF6366F1)),
               onPressed: () {},
+            ),
+          // Chat button - ONLY visible when booking is accepted/in_progress/scheduled and technician is assigned
+          if (isChatAvailable)
+            Container(
+              margin: const EdgeInsets.only(left: 4),
+              child: IconButton(
+                icon: const Icon(Icons.chat, color: Color(0xFF6366F1)),
+                tooltip: 'Chat with Technician',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ChatScreen(
+                        bookingId: booking.id,
+                        technicianName: booking.technicianName ?? 'Technician',
+                        serviceName: booking.serviceTitle,
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
         ],
       ),
