@@ -128,4 +128,15 @@ class UserService {
     });
   }
 
+  /// Update default location directly (for location picker updates)
+  /// This bypasses the address management flow and directly updates the customer's defaultLocation
+  Future<void> updateDefaultLocation(String uid, String address, double latitude, double longitude) async {
+    final callable = FirebaseFunctions.instance.httpsCallable('updateUserProfile');
+    await callable.call({
+      'defaultAddress': address,
+      'latitude': latitude,
+      'longitude': longitude,
+    });
+  }
+
 }

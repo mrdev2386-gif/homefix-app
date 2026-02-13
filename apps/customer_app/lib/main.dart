@@ -114,6 +114,10 @@ void main() async {
     debugPrint("Firebase initialization failed: $e");
   }
   
+  // Image cache tuning for better performance
+  PaintingBinding.instance.imageCache.maximumSize = 100;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 50 << 20; // 50 MB
+
   runApp(const HomeFixApp());
 }
 
@@ -173,45 +177,74 @@ class HomeFixApp extends StatelessWidget {
   }
 }
 
-class AuthWrapper extends StatelessWidget {
+class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeAuth();
+  }
+
+  Future<void> _initializeAuth() async {
     final authService = Provider.of<AuthService>(context, listen: false);
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
     final localeProvider = Provider.of<LocaleProvider>(context, listen: false);
 
-    return StreamBuilder(
-      stream: authService.authStateChanges,
+    // Listen to auth state changes
+    authService.authStateChanges.listen((user) async {
+      if (user != null) {
+        localeProvider.setUserId(user.uid);
+
+        // Wait for user data to load
+        firestoreService.streamUserModel(user.uid).listen((userData) {
+          if (mounted) {
+            setState(() {
+              _isInitialized = true;
+            });
+          }
+        });
+      } else {
+        if (mounted) {
+          setState(() {
+            _isInitialized = true;
+          });
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Show splash while initializing
+    if (!_isInitialized) {
+      return const SplashScreen();
+    }
+
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final user = authService.currentUser;
+
+    if (user == null) {
+      return const LoginScreen();
+    }
+
+    // Check if user data is loaded
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    return StreamBuilder<UserModel>(
+      stream: firestoreService.streamUserModel(user.uid),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SplashScreen();
+        final userData = snapshot.data;
+        if (userData == null || !userData.isOnboarded) {
+          return const OnboardingScreen();
         }
-        
-        final user = snapshot.data;
-        if (user != null) {
-          // Set user ID for locale sync
-          localeProvider.setUserId(user.uid);
-          
-          return StreamBuilder<UserModel>(
-            stream: firestoreService.streamUserModel(user.uid),
-            builder: (context, userSnapshot) {
-              if (userSnapshot.connectionState == ConnectionState.waiting) {
-                return const SplashScreen();
-              }
-              
-              final userData = userSnapshot.data;
-              if (userData == null || !userData.isOnboarded) {
-                return const OnboardingScreen();
-              }
-              
-              return const MainWrapperScreen();
-            },
-          );
-        }
-        
-        return const LoginScreen();
+        return const MainWrapperScreen();
       },
     );
   }

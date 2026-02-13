@@ -63,11 +63,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       String? photoUrl = authProvider.customer!.photoUrl;
 
       // 1. Upload new photo if selected
+      // FIX: Use path that matches storage.rules: users/{userId}/profile/profile.jpg
       if (_imageFile != null) {
         final ref = FirebaseStorage.instance
             .ref()
-            .child('profile_photos')
-            .child('$userId.jpg');
+            .child('users')
+            .child(userId)
+            .child('profile')
+            .child('profile.jpg');
         await ref.putFile(_imageFile!);
         photoUrl = await ref.getDownloadURL();
       }

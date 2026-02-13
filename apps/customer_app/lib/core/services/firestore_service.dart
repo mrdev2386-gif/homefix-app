@@ -112,8 +112,11 @@ class FirestoreService {
     final callable = FirebaseFunctions.instance.httpsCallable('manageAddress');
     await callable.call({
       'action': address.id.isEmpty ? 'add' : 'edit',
-      'addressId': address.id.isEmpty ? null : address.id,
-      'addressData': address.toMap(),
+      if (address.id.isNotEmpty) 'addressId': address.id,
+      'label': address.label ?? "",
+      'address': address.address ?? "",
+      'latitude': address.latitude ?? 0.0,
+      'longitude': address.longitude ?? 0.0,
     });
   }
 

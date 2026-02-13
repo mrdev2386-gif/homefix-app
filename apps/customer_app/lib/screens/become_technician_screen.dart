@@ -166,10 +166,18 @@ class _BecomeTechnicianScreenState extends State<BecomeTechnicianScreen> {
     }
   }
 
-  Future<String?> _uploadFile(XFile file, String path) async {
+  Future<String?> _uploadFile(XFile file, String path, {String? userId}) async {
     try {
       final ref = FirebaseStorage.instance.ref().child(path);
-      final uploadTask = await ref.putData(await file.readAsBytes());
+      // FIX: Add required metadata for storage.rules validation
+      final metadata = SettableMetadata(
+        contentType: 'image/jpeg',
+        customMetadata: {
+          'uploadedAt': DateTime.now().toIso8601String(),
+          if (userId != null) 'userId': userId,
+        },
+      );
+      final uploadTask = await ref.putData(await file.readAsBytes(), metadata);
       return await uploadTask.ref.getDownloadURL();
     } catch (e) {
       debugPrint('Upload error: $e');
@@ -293,11 +301,11 @@ class _BecomeTechnicianScreenState extends State<BecomeTechnicianScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw 'User not logged in';
 
-      // Upload documents
-      final idProofUrl = await _uploadFile(_idProof!, 'technician_docs/${user.uid}/id_proof.jpg');
+      // Upload documents with userId metadata for storage.rules validation
+      final idProofUrl = await _uploadFile(_idProof!, 'technician_docs/${user.uid}/id_proof.jpg', userId: user.uid);
       String? profilePhotoUrl;
       if (_profilePhoto != null) {
-        profilePhotoUrl = await _uploadFile(_profilePhoto!, 'technician_docs/${user.uid}/profile_photo.jpg');
+        profilePhotoUrl = await _uploadFile(_profilePhoto!, 'technician_docs/${user.uid}/profile_photo.jpg', userId: user.uid);
       }
 
       // Flatten selected services for easy querying

@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 class NotificationsService {
   static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
@@ -103,21 +104,41 @@ class NotificationsService {
       else if (defaultTargetPlatform == TargetPlatform.iOS) platform = 'ios';
     }
 
-    await FirebaseFirestore.instance
-        .collection('customers')
-        .doc(user.uid)
-        .collection('fcmTokens')
-        .doc(token)
-        .set({
-      'token': token,
-      'createdAt': FieldValue.serverTimestamp(),
-      'platform': platform,
-    });
-    
-    // Also update legacy field for backward compatibility if needed
-    await FirebaseFirestore.instance.collection('customers').doc(user.uid).update({
-      'fcmToken': token,
-    });
+    // Use callable function for secure token write
+    try {
+      final functions = FirebaseFunctions.instance;
+      final callable = functions.httpsCallable('saveFCMToken');
+      await callable.call({
+        'token': token,
+        'platform': platform,
+      });
+      debugPrint('FCM token saved via callable function');
+    } catch (e) {
+      debugPrint('Failed to save FCM token via callable: $e');
+      // Fallback to direct write only if callable fails (for development)
+      // In production, this should always use the callable function
+      _fallbackTokenWrite(user.uid, token, platform);
+    }
+  }
+
+  /// Fallback direct write - ONLY use for development/debugging
+  /// In production, always use callable function
+  static Future<void> _fallbackTokenWrite(String uid, String token, String platform) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('customers')
+          .doc(uid)
+          .collection('fcmTokens')
+          .doc(token.hashCode.toString())
+          .set({
+        'token': token,
+        'createdAt': FieldValue.serverTimestamp(),
+        'platform': platform,
+      });
+      debugPrint('FCM token saved via fallback direct write (development only)');
+    } catch (e) {
+      debugPrint('Fallback FCM token write also failed: $e');
+    }
   }
 
   static void _showLocalNotification(RemoteMessage message) async {

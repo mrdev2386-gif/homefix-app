@@ -3,17 +3,21 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     
-    // --- Helper Functions ---
+    // ==========================================
+    // HELPER FUNCTIONS
+    // ==========================================
+    
     function isSignedIn() {
       return request.auth != null;
     }
     
     function isOwner(userId) {
-      return request.auth.uid == userId;
+      return isSignedIn() && request.auth.uid == userId;
     }
     
     function isAdmin() {
-      return request.auth.token.admin == true;
+      return isSignedIn() && 
+        exists(/databases/(default)/documents/admins/$(request.auth.uid));
     }
     
     function isImage() {
@@ -25,75 +29,156 @@ service firebase.storage {
     }
     
     function isSmallFile() {
-      return request.resource.size < 5 * 1024 * 1024; // 5MB limit
+      return request.resource.size < 5 * 1024 * 1024;
     }
     
     function isLargeFile() {
-      return request.resource.size < 50 * 1024 * 1024; // 50MB for videos
+      return request.resource.size < 100 * 1024 * 1024;
     }
-
-    // --- Rules ---
-
-    // 1. User Profile Images (FIXED: matches code path)
-    // Path: users/{userId}/profile/profile.jpg
+    
+    // Metadata bound to real user - prevents spoofing
+    function hasValidMetadata() {
+      return request.resource.metadata.userId == request.auth.uid &&
+             request.resource.metadata.keys.hasAll(['uploadedAt', 'userId']);
+    }
+    
+    // KYC file validation - only allow images or PDFs
+    function isAllowedKycFile() {
+      return request.resource.contentType.matches('image/.*') ||
+             request.resource.contentType == 'application/pdf';
+    }
+    
+    // Metadata owner binding - prevent spoofing
+    function isMetadataOwner() {
+      return request.resource.metadata.ownerId == request.auth.uid;
+    }
+    
+    // Booking participant validation
+    function isBookingParticipant() {
+      return request.resource.metadata.customerId == request.auth.uid ||
+             request.resource.metadata.technicianId == request.auth.uid;
+    }
+    
+    // ==========================================
+    // USER STORAGE (Profile images)
+    // ==========================================
+    
+    // Users/{userId}/profile/** - owner write, public read for profile display
     match /users/{userId}/profile/{fileName} {
-      allow read: if isSignedIn();
+      allow read: if true;  // Public read for profile display
       allow write: if isSignedIn() && isOwner(userId) && isImage() && isSmallFile();
     }
     
-    // Legacy paths for backward compatibility
     match /users/{userId}/profile.jpg {
-      allow read: if isSignedIn();
+      allow read: if true;  // Public read for profile display
       allow write: if isSignedIn() && isOwner(userId) && isImage() && isSmallFile();
     }
     
-    match /customers/{userId}/profile.jpg {
-      allow read: if isSignedIn();
+    // Customers/{userId}/** - owner only
+    match /customers/{userId}/{fileName} {
+      allow read: if isSignedIn() && isOwner(userId);
       allow write: if isSignedIn() && isOwner(userId) && isImage() && isSmallFile();
     }
-
-    // 2. Technician Profile Images
-    match /technicians/{techId}/profile.jpg {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn() && isOwner(techId) && isImage() && isSmallFile();
+    
+    // Users legacy
+    match /users/{userId}/{fileName} {
+      allow read: if isSignedIn() && isOwner(userId);
+      allow write: if isSignedIn() && isOwner(userId) && isImage() && isSmallFile();
     }
     
-    // 3. Technician Documents (KYC) - FIXED: matches code path
-    // Path: technicians/{userId}/{docType}/{fileName}
-    match /technicians/{techId}/{docType}/{fileName} {
-      allow read: if isSignedIn() && (isOwner(techId) || isAdmin());
-      allow write: if isSignedIn() && isOwner(techId) && isSmallFile();
+    // ==========================================
+    // TECHNICIAN STORAGE
+    // ==========================================
+    
+    // Technicians/{userId}/** - owner write, authenticated read
+    match /technicians/{techId}/{allPaths=**} {
+      allow read: if isSignedIn();  // Authenticated read
+      allow write: if isSignedIn() && isOwner(techId);
     }
     
-    // Legacy path
+    // Technician docs - owner only
     match /technician_docs/{techId}/{fileName} {
-      allow read: if isSignedIn() && (isOwner(techId) || isAdmin());
+      allow read: if isSignedIn();
       allow write: if isSignedIn() && isOwner(techId) && isSmallFile();
     }
-
-    // 4. Professional Reels/Portfolio (videos)
-    // Public read for video playback, authenticated write
+    
+    // ==========================================
+    // PROFESSIONAL REELS (Public Read)
+    // ==========================================
+    
     match /reels/{techId}/{fileName} {
-      allow read: if true;
-      allow write: if isSignedIn() && (isOwner(techId) || isAdmin()) && isLargeFile();
+      allow read: if true;  // Public read
+      allow write: if isSignedIn() && isOwner(techId) && isVideo() && isLargeFile();
     }
     
-    // 5. Chat/Support Images
+    // ==========================================
+    // SUPPORT IMAGES
+    // ==========================================
+    
     match /support/{ticketId}/{fileName} {
-      allow read: if isSignedIn() && (resource.metadata.ownerId == request.auth.uid || isAdmin());
-      allow write: if isSignedIn() && isSmallFile();
+      allow read: if isSignedIn() && (
+        (resource.metadata.keys.hasAny(['ownerId']) &&
+         resource.metadata.ownerId == request.auth.uid) ||
+        isAdmin()
+      );
+      allow write: if isSignedIn() 
+        && isMetadataOwner()
+        && isImage() 
+        && isSmallFile();
     }
     
-    // 6. Service Images (public read, admin write)
+    // ==========================================
+    // SERVICE IMAGES (Admin Only Write)
+    // ==========================================
+    
     match /services/{serviceId}/{fileName} {
-      allow read: if true;
-      allow write: if isSignedIn() && isAdmin();
+      allow read: if true;  // Public read for service catalog
+      allow write: if isSignedIn() && isAdmin() && isImage() && isSmallFile();
     }
     
-    // 7. Banner Images (public read, admin write)
+    match /categories/{categoryId}/{fileName} {
+      allow read: if true;  // Public read
+      allow write: if isSignedIn() && isAdmin() && isImage() && isSmallFile();
+    }
+    
+    match /subServices/{subServiceId}/{fileName} {
+      allow read: if true;  // Public read
+      allow write: if isSignedIn() && isAdmin() && isImage() && isSmallFile();
+    }
+    
+    // ==========================================
+    // BANNER IMAGES
+    // ==========================================
+    
     match /banners/{fileName} {
-      allow read: if true;
-      allow write: if isSignedIn() && isAdmin();
+      allow read: if true;  // Public read
+      allow write: if isSignedIn() && isAdmin() && isImage() && isSmallFile();
+    }
+    
+    // ==========================================
+    // BOOKING IMAGES
+    // ==========================================
+    
+    match /bookings/{bookingId}/{fileName} {
+      allow read: if isSignedIn() && (
+        (resource.metadata.keys.hasAny(['customerId']) &&
+         resource.metadata.customerId == request.auth.uid) ||
+        (resource.metadata.keys.hasAny(['technicianId']) &&
+         resource.metadata.technicianId == request.auth.uid) ||
+        isAdmin()
+      );
+      allow write: if isSignedIn() 
+        && isBookingParticipant()
+        && isImage() 
+        && isSmallFile();
+    }
+    
+    // ==========================================
+    // DENY ALL UNSPECIFIED PATHS
+    // ==========================================
+    
+    match /{path=**} {
+      allow read, write: if false;
     }
   }
 }

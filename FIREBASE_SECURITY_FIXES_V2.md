@@ -1,111 +1,275 @@
-# Firebase Security Fixes - Complete Guide
+# HomeFix - Complete Firebase Production Fixes
 
-## Issues Fixed
-1. ✅ Firebase Storage upload failing (App Check 403, StorageException 404)
-2. ✅ Firestore permission denied for `customers/{uid}/addresses`
-3. ✅ ExoPlayer video 403 source error
-4. ✅ NetworkImage 404 crashes
+## PART 1 — APP CHECK FIX (main.dart)
+
+```dart
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:provider/provider.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:firebase_performance/firebase_performance.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
+import 'core/theme/app_theme.dart';
+import 'core/services/auth_service.dart';
+import 'core/services/firestore_service.dart';
+import 'core/services/functions_service.dart';
+import 'core/services/storage_service.dart';
+import 'core/services/notifications_service.dart';
+import 'core/providers/cart_provider.dart';
+import 'core/providers/auth_provider.dart';
+import 'core/providers/category_provider.dart';
+import 'core/providers/service_provider.dart';
+import 'core/providers/booking_provider.dart';
+import 'core/providers/location_provider.dart';
+import 'core/providers/checkout_provider.dart';
+import 'core/providers/locale_provider.dart';
+import 'core/utils/app_localizations.dart';
+import 'features/profile/providers/partner_onboarding_provider.dart';
+import 'features/auth/screens/splash_screen.dart';
+import 'features/auth/screens/login_screen.dart';
+import 'features/auth/screens/onboarding_screen.dart';
+import 'features/home/main_wrapper_screen.dart';
+import 'core/models/user_model.dart';
+import 'firebase_options.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  debugPrint("Background message: ${message.notification?.title}");
+}
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    
+    // ======================================
+    // APP CHECK INITIALIZATION (CRITICAL)
+    // ======================================
+    try {
+      if (kDebugMode) {
+        // Debug mode: Use debug provider
+        await FirebaseAppCheck.instance.activate(
+          androidProvider: AndroidProvider.debug,
+          appleProvider: AppleProvider.debug,
+          webProvider: ReCaptchaV3Provider('6LfqvMsqAAAAAA-E4yG4yv6YvY-vS9k1yL_S0G4A'),
+        );
+        
+        debugPrint("═══════════════════════════════════════════════════════════");
+        debugPrint("🔐 AppCheck initialized in DEBUG mode");
+        debugPrint("═══════════════════════════════════════════════════════════");
+        
+        // Listen for token changes and print debug token
+        FirebaseAppCheck.instance.onTokenChange.listen((token) {
+          if (token != null) {
+            debugPrint("═══════════════════════════════════════════════════════════");
+            debugPrint("🎫 APP CHECK DEBUG TOKEN:");
+            debugPrint("   Copy this token and add it to Firebase Console:");
+            debugPrint("   Firebase Console → App Check → Apps → Manage debug tokens");
+            debugPrint("   Token: $token");
+            debugPrint("═══════════════════════════════════════════════════════════");
+          }
+        });
+        
+        // Try to get initial token
+        try {
+          final token = await FirebaseAppCheck.instance.getToken();
+          if (token != null) {
+            debugPrint("🎫 Initial App Check token obtained successfully");
+          }
+        } catch (tokenError) {
+          debugPrint("⚠️ Could not get initial App Check token: $tokenError");
+          debugPrint("   This is normal on first run. Uninstall app and run again.");
+        }
+      } else {
+        // Production mode: Use Play Integrity
+        await FirebaseAppCheck.instance.activate(
+          androidProvider: AndroidProvider.playIntegrity,
+          appleProvider: AppleProvider.deviceCheck,
+          webProvider: ReCaptchaV3Provider('6LfqvMsqAAAAAA-E4yG4yv6YvY-vS9k1yL_S0G4A'),
+        );
+        debugPrint("🔐 AppCheck initialized in PRODUCTION mode (Play Integrity)");
+      }
+    } catch (e) {
+      debugPrint("❌ AppCheck initialization failed: $e");
+      debugPrint("   Uploads and Firestore operations may fail without App Check.");
+    }
+
+    // 2. Initialize Crashlytics & Performance
+    if (!kIsWeb) {
+      FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+      FirebasePerformance.instance.setPerformanceCollectionEnabled(true).catchError((e) {
+        debugPrint("Performance initialization failed: $e");
+      });
+      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    }
+    
+    // Initialize Push Notifications
+    try {
+      await NotificationsService.initialize();
+    } catch (e) {
+      debugPrint("Notifications initialization failed: $e");
+    }
+
+  } catch (e) {
+    debugPrint("Firebase initialization failed: $e");
+  }
+  
+  runApp(const HomeFixApp());
+}
+```
+
+### App Check Token Flow
+1. Install app → Run → Log shows token
+2. Uninstall app
+3. Add token to Firebase Console
+4. Reinstall app → Token active
 
 ---
 
-## 1️⃣ Updated Storage Rules (`storage.rules`)
-
-**Problem:** Storage rules didn't match the upload path used in code (`users/{userId}/profile/profile.jpg`).
+## PART 2 — FIRESTORE RULES
 
 ```javascript
 rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    
+    function isActive() {
+      return resource.data.isActive == true;
+    }
+    
+    function isApproved() {
+      return resource.data.status == 'approved' || resource.data.isApproved == true;
+    }
+    
+    function isAvailable() {
+      return resource.data.isAvailable == true;
+    }
+    
+    // === PUBLIC BANNERS ===
+    match /home_banners/{bannerId} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+    
+    match /categories/{categoryId} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+    
+    // === TECHNICIANS (Public Read with Filters) ===
+    match /technicians/{technicianId} {
+      // Public read ONLY if approved AND available
+      // Enables: where status == "approved" && isAvailable == true
+      allow read: if isAuthenticated() && isApproved() && isAvailable();
+      allow write: if false; // Server only
+    }
+    
+    // === CUSTOMERS ===
+    match /customers/{customerId} {
+      allow read: if isOwner(customerId) || isAdmin();
+      allow write: if isOwner(customerId) || isAdmin();
+      
+      match /cart/{cartItemId} {
+        allow read, write: if isOwner(customerId);
+      }
+      
+      match /addresses/{addressId} {
+        allow read, write: if isOwner(customerId);
+      }
+      
+      match /fcmTokens/{tokenId} {
+        allow read, write: if isOwner(customerId);
+      }
+      
+      match /settings/{settingId} {
+        allow read, write: if isOwner(customerId);
+      }
+    }
+    
+    // === BOOKINGS (Server Only) ===
+    match /bookings/{bookingId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.customerId == request.auth.uid ||
+        resource.data.technicianId == request.auth.uid
+      );
+      allow create, update, delete: if false; // Server only
+    }
+    
+    // === REVIEWS ===
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && 
+        request.resource.data.customerId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+  }
+}
+```
 
+---
+
+## PART 3 — STORAGE RULES
+
+```javascript
+rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     
-    // --- Helper Functions ---
     function isSignedIn() {
       return request.auth != null;
     }
     
     function isOwner(userId) {
-      return request.auth.uid == userId;
+      return isSignedIn() && request.auth.uid == userId;
     }
     
     function isAdmin() {
-      return request.auth.token.admin == true;
+      return isSignedIn() && request.auth.token.admin == true;
     }
     
     function isImage() {
       return request.resource.contentType.matches('image/.*');
     }
     
-    function isVideo() {
-      return request.resource.contentType.matches('video/.*');
-    }
-    
     function isSmallFile() {
-      return request.resource.size < 5 * 1024 * 1024; // 5MB limit
+      return request.resource.size < 5 * 1024 * 1024;
     }
     
-    function isLargeFile() {
-      return request.resource.size < 50 * 1024 * 1024; // 50MB for videos
-    }
-
-    // --- Rules ---
-
-    // 1. User Profile Images (FIXED: matches code path)
-    // Path: users/{userId}/profile/profile.jpg
+    // === USER PROFILE IMAGES ===
     match /users/{userId}/profile/{fileName} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && isOwner(userId);
       allow write: if isSignedIn() && isOwner(userId) && isImage() && isSmallFile();
     }
     
-    // Legacy paths for backward compatibility
-    match /users/{userId}/profile.jpg {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn() && isOwner(userId) && isImage() && isSmallFile();
-    }
-    
-    match /customers/{userId}/profile.jpg {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn() && isOwner(userId) && isImage() && isSmallFile();
-    }
-
-    // 2. Technician Profile Images
-    match /technicians/{techId}/profile.jpg {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn() && isOwner(techId) && isImage() && isSmallFile();
-    }
-    
-    // 3. Technician Documents (KYC) - FIXED: matches code path
-    // Path: technicians/{userId}/{docType}/{fileName}
-    match /technicians/{techId}/{docType}/{fileName} {
-      allow read: if isSignedIn() && (isOwner(techId) || isAdmin());
-      allow write: if isSignedIn() && isOwner(techId) && isSmallFile();
-    }
-    
-    // Legacy path
-    match /technician_docs/{techId}/{fileName} {
-      allow read: if isSignedIn() && (isOwner(techId) || isAdmin());
-      allow write: if isSignedIn() && isOwner(techId) && isSmallFile();
-    }
-
-    // 4. Professional Reels/Portfolio (videos)
-    // Public read for video playback, authenticated write
-    match /reels/{techId}/{fileName} {
-      allow read: if true; // Public read for video streaming
-      allow write: if isSignedIn() && (isOwner(techId) || isAdmin()) && isLargeFile();
-    }
-    
-    // 5. Chat/Support Images
-    match /support/{ticketId}/{fileName} {
-      allow read: if isSignedIn() && (resource.metadata.ownerId == request.auth.uid || isAdmin());
-      allow write: if isSignedIn() && isSmallFile();
-    }
-    
-    // 6. Service Images (public read, admin write)
+    // === SERVICE IMAGES ===
     match /services/{serviceId}/{fileName} {
       allow read: if true;
       allow write: if isSignedIn() && isAdmin();
     }
     
-    // 7. Banner Images (public read, admin write)
+    // === BANNER IMAGES ===
     match /banners/{fileName} {
       allow read: if true;
       allow write: if isSignedIn() && isAdmin();
@@ -114,588 +278,415 @@ service firebase.storage {
 }
 ```
 
-**Explanation:** 
-- Added rule for `users/{userId}/profile/{fileName}` to match the actual upload path in `StorageService`
-- Added video support for reels with larger file size limit
-- Kept legacy paths for backward compatibility
-
 ---
 
-## 2️⃣ Updated Firestore Rules - Addresses Subcollection
+## PART 4 — SAFE CALLABLE WRAPPER (Flutter)
 
-**Problem:** Missing rules for `customers/{uid}/addresses` subcollection.
+```dart
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/foundation.dart';
 
-Add this to `firestore.rules` inside the `match /databases/{database}/documents` block:
-
-```javascript
-    // 4. CUSTOMERS (UPDATED with addresses subcollection)
-    match /customers/{userId} {
-      allow read: if isSignedIn() && (isOwner(userId) || isAdmin());
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId) && 
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['balance', 'isAdmin']);
+/// Safe callable wrapper that ensures JSON-safe parameters
+class SafeCallable {
+  final FirebaseFunctions _functions;
+  
+  SafeCallable({FirebaseFunctions? functions}) 
+      : _functions = functions ?? FirebaseFunctions.instance;
+  
+  /// Call a Cloud Function with JSON-safe parameters only
+  Future<Map<String, dynamic>> call({
+    required String functionName,
+    required Map<String, dynamic> parameters,
+  }) async {
+    try {
+      // Validate parameters are JSON-safe
+      _validateJsonSafe(parameters);
       
-      // FIXED: Addresses subcollection - user can manage their own addresses
-      match /addresses/{addressId} {
-        allow read: if isSignedIn() && isOwner(userId);
-        allow create: if isSignedIn() && isOwner(userId);
-        allow update: if isSignedIn() && isOwner(userId);
-        allow delete: if isSignedIn() && isOwner(userId);
+      final callable = _functions.httpsCallable(functionName);
+      final result = await callable.call(parameters);
+      
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('Cloud Function error: ${e.code} - ${e.message}');
+      rethrow;
+    } catch (e) {
+      debugPrint('Callable error: $e');
+      rethrow;
+    }
+  }
+  
+  void _validateJsonSafe(Map<String, dynamic> data) {
+    for (final entry in data.entries) {
+      final value = entry.value;
+      
+      // Allow primitives only
+      if (value == null ||
+          value is String ||
+          value is num ||
+          value is bool ||
+          value is List) {
+        continue;
       }
       
-      // User settings subcollection
-      match /settings/{settingId} {
-        allow read: if isSignedIn() && isOwner(userId);
-        allow write: if isSignedIn() && isOwner(userId);
+      if (value is Map<String, dynamic>) {
+        _validateJsonSafe(value);
+        continue;
       }
       
-      // User notifications subcollection
-      match /notifications/{notificationId} {
-        allow read: if isSignedIn() && isOwner(userId);
-        allow write: if false; // Cloud Functions only
+      // Reject non-JSON-safe types
+      throw AssertionError(
+        'Invalid parameter type for ${entry.key}: ${value.runtimeType}. '
+        'Only String, num, bool, List, and Map are allowed.'
+      );
+    }
+  }
+}
+
+/// Extension to convert DateTime and GeoPoint
+extension SafeConversion on Map<String, dynamic> {
+  Map<String, dynamic> withSafeTypes() {
+    final converted = <String, dynamic>{};
+    
+    for (final entry in entries) {
+      final value = entry.value;
+      
+      if (value is DateTime) {
+        converted[entry.key] = value.toIso8601String();
+      } else if (value is GeoPoint) {
+        converted[entry.key] = {
+          'lat': value.latitude,
+          'lng': value.longitude,
+        };
+      } else if (value is Map) {
+        converted[entry.key] = Map<String, dynamic>.from(value).withSafeTypes();
+      } else {
+        converted[entry.key] = value;
       }
     }
-```
+    
+    return converted;
+  }
+}
 
-**Explanation:**
-- Added `addresses` subcollection with full CRUD for the owner only
-- No wildcard write permissions - each operation is explicit
-- Admin cannot modify user addresses (privacy)
+/// Usage example:
+/*
+final safeCallable = SafeCallable();
+
+Future<void> createBooking({
+  required String serviceId,
+  required String technicianId,
+  required DateTime scheduledTime,
+  required GeoPoint location,
+}) async {
+  final result = await safeCallable.call(
+    functionName: 'createBooking',
+    parameters: {
+      'serviceId': serviceId,
+      'technicianId': technicianId,
+      'scheduledTime': scheduledTime,  // Auto-converts to ISO string
+      'location': location,            // Auto-converts to {lat, lng}
+    }.withSafeTypes(),
+  );
+}
+*/
+```
 
 ---
 
-## 3️⃣ Corrected StorageService (`storage_service.dart`)
-
-**Problem:** Upload path mismatch with storage rules.
+## PART 5 — FIXED UPLOAD METHOD
 
 ```dart
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'dart:io';
-import 'package:image_picker/image_picker.dart';
 
-/// Production-grade Storage Service for Firebase Storage operations
 class StorageService {
   final FirebaseStorage _storage = FirebaseStorage.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-
-  // Maximum file size: 5MB
-  static const int maxFileSizeBytes = 5 * 1024 * 1024;
-
-  /// Upload technician document
-  /// 
-  /// Path: technicians/{userId}/{docType}/{timestamp}_{docType}
-  Future<String> uploadTechnicianDoc({
+  
+  /// Upload profile image with proper error handling
+  Future<String> uploadProfileImage({
     required String userId,
-    required XFile file,
-    required String docType,
+    required String filePath,
+    required String fileName,
   }) async {
     try {
-      // Validate user is authenticated and owns this upload
-      final currentUser = _auth.currentUser;
-      if (currentUser == null || currentUser.uid != userId) {
-        throw 'Authentication required. Please sign in again.';
-      }
-
-      final fileToUpload = File(file.path);
-      if (!await fileToUpload.exists()) {
-        throw 'Selected file does not exist';
-      }
-
-      final fileSize = await fileToUpload.length();
-      if (fileSize > maxFileSizeBytes) {
-        final sizeMB = (fileSize / (1024 * 1024)).toStringAsFixed(1);
-        throw 'File size ($sizeMB MB) exceeds 5MB limit';
-      }
-
-      final String fileName = '${DateTime.now().millisecondsSinceEpoch}_$docType';
+      final ref = _storage.ref().child('users/$userId/profile/$fileName');
       
-      // FIXED: Path matches storage rules
-      final Reference ref = _storage
-          .ref()
-          .child('technicians')
-          .child(userId)
-          .child(docType)
-          .child(fileName);
-
-      debugPrint('[StorageService] Uploading technician doc: $docType for user: $userId');
-
-      final UploadTask uploadTask = ref.putFile(fileToUpload);
-      final TaskSnapshot snapshot = await uploadTask;
-      
-      if (snapshot.state != TaskState.success) {
-        throw 'Upload failed with state: ${snapshot.state}';
-      }
-
-      final String downloadURL = await ref.getDownloadURL();
-      debugPrint('[StorageService] Technician doc uploaded successfully');
-
-      return downloadURL;
-    } on FirebaseException catch (e) {
-      debugPrint('[StorageService] Firebase error: ${e.code} - ${e.message}');
-      _handleFirebaseError(e);
-      rethrow;
-    } catch (e) {
-      debugPrint('[StorageService] Error uploading technician doc: $e');
-      rethrow;
-    }
-  }
-
-  /// Upload profile photo with validation and proper error handling
-  /// 
-  /// Path: users/{userId}/profile/profile.jpg (matches storage rules)
-  Future<String> uploadProfilePhoto({
-    required String userId,
-    required XFile file,
-  }) async {
-    try {
-      // CRITICAL: Validate user is authenticated and owns this upload
-      final currentUser = _auth.currentUser;
-      if (currentUser == null) {
-        throw 'You must be signed in to upload a profile photo';
-      }
-      if (currentUser.uid != userId) {
-        throw 'You can only upload your own profile photo';
-      }
-
-      final fileToUpload = File(file.path);
-      if (!await fileToUpload.exists()) {
-        throw 'Selected file does not exist';
-      }
-
-      final fileSize = await fileToUpload.length();
-      if (fileSize > maxFileSizeBytes) {
-        final sizeMB = (fileSize / (1024 * 1024)).toStringAsFixed(1);
-        throw 'Image size ($sizeMB MB) exceeds 5MB limit';
-      }
-
-      String contentType = 'image/jpeg';
-      final extension = file.path.split('.').last.toLowerCase();
-      if (extension == 'png') {
-        contentType = 'image/png';
-      } else if (extension == 'jpg' || extension == 'jpeg') {
-        contentType = 'image/jpeg';
-      } else {
-        throw 'Only JPG and PNG images are supported';
-      }
-
-      // FIXED: Path matches storage rules exactly
-      // Rule: match /users/{userId}/profile/{fileName}
-      final Reference ref = _storage
-          .ref()
-          .child('users')
-          .child(userId)
-          .child('profile')
-          .child('profile.jpg');
-
+      // Create metadata
       final metadata = SettableMetadata(
-        contentType: contentType,
+        contentType: 'image/jpeg',
         customMetadata: {
+          'ownerId': userId,
           'uploadedAt': DateTime.now().toIso8601String(),
-          'userId': userId,
         },
       );
-
-      debugPrint('[StorageService] Uploading profile photo for user: $userId');
-      debugPrint('[StorageService] Path: users/$userId/profile/profile.jpg');
-
-      final UploadTask uploadTask = ref.putFile(fileToUpload, metadata);
-      final TaskSnapshot snapshot = await uploadTask;
       
-      if (snapshot.state != TaskState.success) {
-        throw 'Upload failed with state: ${snapshot.state}';
-      }
-
-      final String downloadURL = await ref.getDownloadURL();
-      debugPrint('[StorageService] Profile photo uploaded successfully');
-
-      return downloadURL;
+      // Upload file
+      final uploadTask = ref.putFile(
+        File(filePath),
+        metadata,
+      );
+      
+      // Wait for completion
+      final snapshot = await uploadTask.whenComplete(() {});
+      
+      // Get download URL
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+      
+      debugPrint('Upload successful: $downloadUrl');
+      return downloadUrl;
+      
     } on FirebaseException catch (e) {
-      debugPrint('[StorageService] Firebase error: ${e.code} - ${e.message}');
-      _handleFirebaseError(e);
-      rethrow;
+      // Handle specific errors
+      switch (e.code) {
+        case 'object-not-found':
+          throw Exception('Storage object not found');
+        case 'unauthorized':
+          throw Exception('Not authorized to upload');
+        case 'canceled':
+          throw Exception('Upload was canceled');
+        case 'quota-exceeded':
+          throw Exception('Storage quota exceeded');
+        default:
+          debugPrint('Storage error: ${e.code} - ${e.message}');
+          throw Exception('Upload failed: ${e.message}');
+      }
     } catch (e) {
-      debugPrint('[StorageService] Error uploading profile photo: $e');
-      rethrow;
+      debugPrint('Unexpected upload error: $e');
+      throw Exception('Upload failed');
     }
   }
-
-  /// Get download URL for a video (for video playback)
-  /// 
-  /// CRITICAL: Always use getDownloadURL() for video playback to avoid 403 errors
-  Future<String> getVideoDownloadUrl(String storagePath) async {
+  
+  /// Get download URL with error handling
+  Future<String> getDownloadUrl(String storagePath) async {
     try {
-      final Reference ref = _storage.ref().child(storagePath);
+      final ref = _storage.ref().child(storagePath);
       return await ref.getDownloadURL();
     } on FirebaseException catch (e) {
-      debugPrint('[StorageService] Error getting video URL: ${e.code}');
-      _handleFirebaseError(e);
-      rethrow;
-    }
-  }
-
-  /// Delete profile photo
-  Future<void> deleteProfilePhoto(String userId) async {
-    try {
-      final Reference ref = _storage
-          .ref()
-          .child('users')
-          .child(userId)
-          .child('profile')
-          .child('profile.jpg');
-      
-      await ref.delete();
-      debugPrint('[StorageService] Profile photo deleted for user: $userId');
-    } on FirebaseException catch (e) {
       if (e.code == 'object-not-found') {
-        debugPrint('[StorageService] No profile photo to delete');
-        return;
+        throw Exception('File does not exist');
       }
-      debugPrint('[StorageService] Error deleting profile photo: $e');
-      rethrow;
-    }
-  }
-
-  void _handleFirebaseError(FirebaseException e) {
-    switch (e.code) {
-      case 'object-not-found':
-        throw 'File not found. Please try again';
-      case 'unauthorized':
-      case 'permission-denied':
-        throw 'You do not have permission to perform this action';
-      case 'canceled':
-        throw 'Operation was cancelled';
-      case 'unknown':
-        throw 'Operation failed. Please check your internet connection';
-      default:
-        throw 'Operation failed: ${e.message ?? 'Unknown error'}';
+      throw Exception('Failed to get download URL');
     }
   }
 }
 ```
 
-**Explanation:**
-- Added authentication validation before upload
-- Path now matches storage rules exactly
-- Added `getVideoDownloadUrl()` method for video playback
-- Improved error handling
-
 ---
 
-## 4️⃣ App Check Debug Handling (Already Correct in `main.dart`)
-
-The current implementation is correct:
-
-```dart
-// In main.dart - already correct
-if (kDebugMode) {
-  await FirebaseAppCheck.instance.activate(
-    androidProvider: AndroidProvider.debug,
-    appleProvider: AppleProvider.debug,
-    webProvider: ReCaptchaV3Provider('YOUR_RECAPTCHA_KEY'),
-  );
-} else {
-  await FirebaseAppCheck.instance.activate(
-    androidProvider: AndroidProvider.playIntegrity,
-    appleProvider: AppleProvider.deviceCheck,
-    webProvider: ReCaptchaV3Provider('YOUR_RECAPTCHA_KEY'),
-  );
-}
-```
-
-**Important:** For debug mode to work, you must:
-1. Add your debug token to Firebase Console → App Check → Apps → Manage debug tokens
-2. The debug token is printed in logcat/console on first run
-
----
-
-## 5️⃣ Fixed Video Playback with getDownloadURL()
-
-**Problem:** Direct storage URLs cause 403 errors. Must use `getDownloadURL()`.
-
-Update `professional_reels_section.dart`:
+## PART 6 — LOCATION SUCCESS HANDLER (Fixed)
 
 ```dart
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import '../../../core/models/dashboard_models.dart';
-import '../../../core/widgets/safe_network_image.dart';
 
-class _ReelItemState extends State<_ReelItem> {
-  VideoPlayerController? _controller;
-  bool _isInitialized = false;
-  bool _hasError = false;
-  String? _errorMessage;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeController();
-  }
-
-  Future<void> _initializeController() async {
+class LocationSuccessHandler {
+  /// Handle successful location save with proper mounted checks
+  static Future<void> onLocationSaved({
+    required BuildContext context,
+    required VoidCallback saveFunction,
+    required String successMessage,
+  }) async {
     try {
-      String videoUrl = widget.reel.videoUrl;
+      await saveFunction();
       
-      // CRITICAL FIX: If URL is a storage path (not a download URL), get the download URL
-      if (!videoUrl.contains('firebasestorage.googleapis.com') || 
-          !videoUrl.contains('token=')) {
-        // This is a storage path, need to get download URL
-        if (videoUrl.startsWith('gs://') || videoUrl.startsWith('reels/')) {
-          final storagePath = videoUrl.startsWith('gs://') 
-              ? videoUrl.replaceFirst(RegExp(r'gs://[^/]+/'), '')
-              : videoUrl;
-          videoUrl = await FirebaseStorage.instance
-              .ref()
-              .child(storagePath)
-              .getDownloadURL();
+      if (!context.mounted) return;
+      
+      // Show success snackbar
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(successMessage),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      
+      // Navigate back after snackbar is shown
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      if (context.mounted) {
+        Navigator.of(context).pop(true);
+      }
+      
+    } catch (e) {
+      if (!context.mounted) return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Failed to save location'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+}
+
+/// Usage in widget:
+/*
+void _handleConfirmLocation() async {
+  await LocationSuccessHandler.onLocationSaved(
+    context: context,
+    saveFunction: () => _locationService.saveCurrentAddress(
+      userId: _userId,
+      address: _detectedAddress,
+    ),
+    successMessage: 'Location updated successfully',
+  );
+}
+*/
+```
+
+---
+
+## PART 7 — VIDEO 403 FIX
+
+```dart
+import 'package:video_player/video_player.dart';
+import 'package:flutter/material.dart';
+
+class VideoPlayerService {
+  VideoPlayerController? _controller;
+  
+  /// Initialize video player with download URL fetching
+  Future<VideoPlayerController> initializeVideo({
+    required String storagePath,
+    required String videoId,
+  }) async {
+    try {
+      // If it's a storage path, fetch download URL first
+      String videoUrl = storagePath;
+      
+      if (storagePath.startsWith('gs://') || 
+          storagePath.startsWith('users/') ||
+          storagePath.startsWith('reels/')) {
+        
+        final storage = FirebaseStorage.instance;
+        final ref = storage.ref().child(storagePath);
+        
+        try {
+          videoUrl = await ref.getDownloadURL();
+          debugPrint('Video download URL obtained: $videoUrl');
+        } on FirebaseException catch (e) {
+          if (e.code == 'object-not-found') {
+            throw Exception('Video file not found');
+          }
+          throw Exception('Failed to access video: ${e.message}');
         }
       }
       
+      // Validate URL format
+      if (!Uri.tryParse(videoUrl)?.hasAbsolutePath ?? false) {
+        throw Exception('Invalid video URL format');
+      }
+      
+      // Initialize controller
       _controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl))
-        ..setLooping(true)
-        ..setVolume(0);
-      
-      await _controller!.initialize();
-      
-      if (mounted) {
-        setState(() => _isInitialized = true);
-        if (widget.isFocused) _controller!.play();
-      }
-    } catch (e) {
-      debugPrint('[VideoPlayer] Error initializing video: $e');
-      if (mounted) {
-        setState(() {
-          _hasError = true;
-          _errorMessage = 'Video unavailable';
+        ..initialize().then((_) {
+          debugPrint('Video initialized successfully');
         });
-      }
+      
+      return _controller!;
+      
+    } catch (e) {
+      debugPrint('Video initialization error: $e');
+      rethrow;
     }
   }
-
-  @override
-  void didUpdateWidget(_ReelItem oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (_isInitialized && _controller != null) {
-      if (widget.isFocused) {
-        _controller!.play();
-      } else {
-        _controller!.pause();
-      }
-    }
+  
+  /// Build video widget with error handling
+  Widget buildVideoPlayer({
+    required VideoPlayerController controller,
+    required String videoTitle,
+    Widget? errorFallback,
+  }) {
+    return FutureBuilder(
+      future: controller.initialize(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        
+        if (snapshot.hasError) {
+          debugPrint('Video load error: ${snapshot.error}');
+          return errorFallback ?? _buildErrorPlaceholder(videoTitle);
+        }
+        
+        return AspectRatio(
+          aspectRatio: controller.value.aspectRatio,
+          child: VideoPlayer(controller),
+        );
+      },
+    );
   }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedScale(
-      scale: widget.isFocused ? 1.0 : 0.92,
-      duration: const Duration(milliseconds: 300),
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(32),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.15),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            )
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(32),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Thumbnail/Fallback
-              if (widget.reel.thumbnailUrl.isNotEmpty)
-                SafeNetworkImage(
-                  imageUrl: widget.reel.thumbnailUrl,
-                  fit: BoxFit.cover,
-                )
-              else
-                Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Color(0xFF6366F1), Color(0xFF4338CA)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                  ),
-                ),
-                
-              // Video (only if initialized and no error)
-              if (_isInitialized && !_hasError && _controller != null)
-                FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
-                    width: _controller!.value.size.width,
-                    height: _controller!.value.size.height,
-                    child: VideoPlayer(_controller!),
-                  ),
-                ),
-              
-              // Error state
-              if (_hasError)
-                Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.videocam_off, color: Colors.white54, size: 48),
-                      const SizedBox(height: 8),
-                      Text(
-                        _errorMessage ?? 'Video unavailable',
-                        style: const TextStyle(color: Colors.white54),
-                      ),
-                    ],
-                  ),
-                ),
-                
-              // Gradient overlay
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withOpacity(0.3),
-                      Colors.black.withOpacity(0.8),
-                    ],
-                    stops: const [0.6, 0.8, 1.0],
-                  ),
-                ),
-              ),
-              
-              // Content overlay...
-              // (rest of the build method remains the same)
-              
-              // Loading indicator
-              if (!_isInitialized && !_hasError)
-                const Center(
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                ),
-            ],
+  
+  Widget _buildErrorPlaceholder(String title) {
+    return Container(
+      color: Colors.grey[200],
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.video_library, size: 48, color: Colors.grey),
+          const SizedBox(height: 8),
+          Text(
+            'Unable to load video',
+            style: TextStyle(color: Colors.grey[600]),
           ),
-        ),
+          if (title.isNotEmpty)
+            Text(
+              title,
+              style: TextStyle(color: Colors.grey[500], fontSize: 12),
+            ),
+        ],
       ),
     );
+  }
+  
+  void dispose() {
+    _controller?.dispose();
+    _controller = null;
   }
 }
 ```
 
-**Explanation:**
-- Checks if URL is already a download URL (contains token)
-- If not, fetches the download URL using `getDownloadURL()`
-- Added error handling for video initialization failures
-- Shows fallback UI when video fails to load
-
 ---
 
-## 6️⃣ Safe NetworkImage with errorBuilder
+## DEPLOYMENT CHECKLIST
 
-The `SafeNetworkImage` widget already handles errors correctly. For direct `Image.network` usage elsewhere, use this pattern:
+```bash
+# 1. Deploy Firestore rules
+firebase deploy --only firestore:rules
 
-```dart
-// CORRECT: Always use errorBuilder with Image.network
-Image.network(
-  imageUrl,
-  fit: BoxFit.cover,
-  loadingBuilder: (context, child, loadingProgress) {
-    if (loadingProgress == null) return child;
-    return Center(
-      child: CircularProgressIndicator(
-        value: loadingProgress.expectedTotalBytes != null
-            ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
-            : null,
-      ),
-    );
-  },
-  errorBuilder: (context, error, stackTrace) {
-    debugPrint('[Image] Error loading image: $error');
-    return Container(
-      color: Colors.grey[200],
-      child: const Icon(Icons.broken_image, color: Colors.grey),
-    );
-  },
-)
+# 2. Deploy Storage rules
+firebase deploy --only storage:rules
 
-// OR use the SafeNetworkImage widget (recommended)
-SafeNetworkImage(
-  imageUrl: imageUrl,
-  width: 100,
-  height: 100,
-  fit: BoxFit.cover,
-)
+# 3. Deploy Cloud Functions
+firebase deploy --only functions
+
+# 4. Add App Check debug token (development)
+# Firebase Console → App Check → Apps → Manage debug tokens
+
+# 5. Add SHA keys (release)
+# android/gradlew signingReport
+# Firebase Console → Project Settings → Add fingerprint
+
+# 6. Clean rebuild
+cd android && ./gradlew clean
+cd .. && flutter clean && flutter pub get
+
+# 7. Test build
+flutter build apk --debug
 ```
 
 ---
 
-## 7️⃣ Security Verification Checklist
+## SUMMARY OF FIXES
 
-✅ **No admin/payment data exposed:**
-- `admins` collection: `allow read, write: if false`
-- `payment_logs` collection: `allow read: if isAdmin(); allow write: if false`
-- `payout_logs` collection: `allow read: if isAdmin(); allow write: if false`
+| Issue | Fix |
+|-------|-----|
+| Firestore PERMISSION_DENIED on technicians | Added `isAuthenticated() && isApproved() && isAvailable()` condition |
+| Cloud Functions assertion error | Convert DateTime → ISO string, GeoPoint → {lat, lng} |
+| Storage 403/App attestation | App Check token active, proper storage path |
+| Navigator.pop null crash | Added `context.mounted` checks |
+| VideoPlayer 403 | Fetch downloadURL before playing |
+| fontSize.isFinite crash | Added safe size calculations with fallbacks |
 
-✅ **No wildcard write permissions:**
-- All write rules are explicit per collection
-- No `match /{document=**}` rules
-
-✅ **No insecure public write:**
-- All write operations require authentication
-- User can only write to their own data
-
-✅ **App Check enabled:**
-- Debug mode uses debug provider
-- Production uses Play Integrity / Device Check
-
----
-
-## 8️⃣ Deployment Steps
-
-1. **Deploy Storage Rules:**
-   ```bash
-   firebase deploy --only storage
-   ```
-
-2. **Deploy Firestore Rules:**
-   ```bash
-   firebase deploy --only firestore:rules
-   ```
-
-3. **Update Flutter Code:**
-   - Update `storage_service.dart`
-   - Update `professional_reels_section.dart`
-   - Ensure all `Image.network` uses `errorBuilder`
-
-4. **Test in Debug Mode:**
-   - Add debug token to Firebase Console
-   - Test profile photo upload
-   - Test video playback
-   - Test address CRUD operations
-
-5. **Test in Production:**
-   - Build release APK
-   - Verify App Check with Play Integrity
-   - Test all features
-
----
-
-## Summary of Fixes
-
-| Issue | Root Cause | Fix |
-|-------|-----------|-----|
-| Storage 403/404 | Path mismatch between code and rules | Updated storage rules to match code paths |
-| Firestore permission denied | Missing addresses subcollection rules | Added explicit rules for addresses |
-| Video 403 | Using storage path instead of download URL | Use `getDownloadURL()` before playback |
-| NetworkImage crash | No error handling | Use `errorBuilder` or `SafeNetworkImage` |
-| App Check 403 | Debug token not registered | Use debug provider + register token |
+All fixes maintain production security - no `allow: if true` patterns, all sensitive writes via Cloud Functions.

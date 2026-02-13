@@ -43,14 +43,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           'longitude': locationProvider.currentPosition?.longitude,
         });
         
-        if (mounted) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const MainWrapperScreen()),
-          );
-        }
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const MainWrapperScreen()),
+          (route) => false,
+        );
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: ${e.toString()}')),
       );
@@ -166,32 +166,39 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 40),
+          const SizedBox(height: 24),
           Text(
             'Where do you\nneed service?',
             style: GoogleFonts.outfit(
-              fontSize: 32,
+              fontSize: 28,
               fontWeight: FontWeight.bold,
               height: 1.2,
             ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Text(
             'Enable location so we can find the best pros in your area.',
-            style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 16),
+            style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 14),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 60),
-          Center(
-            child: Container(
-              padding: const EdgeInsets.all(40),
-              decoration: BoxDecoration(
-                color: const Color(0xFF6366F1).withOpacity(0.05),
-                shape: BoxShape.circle,
+          const SizedBox(height: 32),
+          Expanded(
+            flex: 1,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6366F1).withOpacity(0.05),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.location_on_rounded, size: 64, color: Color(0xFF6366F1)),
               ),
-              child: const Icon(Icons.location_on_rounded, size: 80, color: Color(0xFF6366F1)),
             ),
           ),
-          const Spacer(),
+          const SizedBox(height: 24),
           Consumer<LocationProvider>(
             builder: (context, location, _) {
               final hasLocation = location.currentPosition != null && 
@@ -201,22 +208,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 children: [
                   if (hasLocation)
                     Container(
-                      padding: const EdgeInsets.all(16),
-                      margin: const EdgeInsets.only(bottom: 24),
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 16),
                       decoration: BoxDecoration(
                         color: Colors.green.withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: Colors.green.withOpacity(0.1)),
                       ),
                       child: Row(
                         children: [
                           const Icon(Icons.check_circle, color: Colors.green, size: 20),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              location.currentAddress,
-                              style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green[800]),
-                              maxLines: 1,
+                              location.currentAddress ?? '',
+                              style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green[800]),
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
@@ -225,7 +232,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     ),
                   SizedBox(
                     width: double.infinity,
-                    height: 56,
+                    height: 52,
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : () async {
                         if (hasLocation) {
@@ -236,28 +243,28 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: hasLocation ? const Color(0xFF6366F1) : const Color(0xFF10B981),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         elevation: 0,
                       ),
                       child: _isLoading 
-                        ? const CircularProgressIndicator(color: Colors.white)
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                         : Text(hasLocation ? 'Finish' : 'Allow Access', 
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white)),
                     ),
                   ),
                   if (!hasLocation)
-                    TextButton(
-                      onPressed: () {
-                        // Manual entry simulation or skipping with default
-                        _completeOnboarding();
-                      },
-                      child: Text('Skip for now', style: GoogleFonts.outfit(color: Colors.grey)),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: TextButton(
+                        onPressed: () => _completeOnboarding(),
+                        child: Text('Skip for now', style: GoogleFonts.outfit(color: Colors.grey, fontSize: 13)),
+                      ),
                     ),
                 ],
               );
             },
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
         ],
       ),
     );

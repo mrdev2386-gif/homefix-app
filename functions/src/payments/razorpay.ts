@@ -25,21 +25,24 @@ import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import { sendPushNotification } from '../shared/notifications';
 
-// Initialize Razorpay
-// Store keys in Firebase Functions config: firebase functions:config:set razorpay.key_id="rzp_test_xxx" razorpay.key_secret="xxx"
-const getRazorpayInstance = () => {
-    const config = functions.config().razorpay;
+// Environment variables for Razorpay configuration
+const razorpayKeyId = process.env.RAZORPAY_KEY_ID || '';
+const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || '';
+const razorpayWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || '';
 
-    if (!config || !config.key_id || !config.key_secret) {
+// Initialize Razorpay
+// Store keys in environment variables: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET
+const getRazorpayInstance = () => {
+    if (!razorpayKeyId || !razorpayKeySecret) {
         throw new functions.https.HttpsError(
             'failed-precondition',
-            'Razorpay configuration not found. Run: firebase functions:config:set razorpay.key_id="xxx" razorpay.key_secret="xxx"'
+            'Razorpay configuration not found. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET environment variables.'
         );
     }
 
     return new Razorpay({
-        key_id: config.key_id,
-        key_secret: config.key_secret
+        key_id: razorpayKeyId,
+        key_secret: razorpayKeySecret
     });
 };
 
@@ -224,7 +227,7 @@ export const razorpayWebhook = functions.https.onRequest(async (req, res) => {
 
     try {
         // Get webhook secret
-        const webhookSecret = functions.config().razorpay?.webhook_secret;
+        const webhookSecret = razorpayWebhookSecret;
 
         if (!webhookSecret) {
             console.error('Razorpay webhook secret not configured');
@@ -490,7 +493,7 @@ export const verifyPayment = functions.https.onCall(async (data, context) => {
     }
 
     // Verify signature
-    const keySecret = functions.config().razorpay?.key_secret;
+    const keySecret = razorpayKeySecret;
     const generatedSignature = crypto
         .createHmac('sha256', keySecret)
         .update(`${razorpayOrderId}|${razorpayPaymentId}`)

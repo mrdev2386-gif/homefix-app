@@ -76,7 +76,7 @@ class SafeNetworkImage extends StatelessWidget {
       height: height,
       fit: fit,
       placeholder: customPlaceholder ??
-          (context, url) => usePlaceholder ? _buildShimmer() : null,
+          (context, url) => usePlaceholder ? _buildShimmer() : const SizedBox(),
       errorWidget: customErrorWidget ??
           (context, url, error) {
             // Try fallback URL if main URL fails and fallback is provided
@@ -87,7 +87,7 @@ class SafeNetworkImage extends StatelessWidget {
                 height: height,
                 fit: fit,
                 placeholder: (context, url) =>
-                    usePlaceholder ? _buildShimmer() : null,
+                    usePlaceholder ? _buildShimmer() : const SizedBox(),
                 errorWidget: (context, url, error) =>
                     _buildFinalFallback(),
                 fadeInDuration: const Duration(milliseconds: 200),
@@ -99,6 +99,29 @@ class SafeNetworkImage extends StatelessWidget {
       memCacheWidth: 400,
       maxHeightDiskCache: 400,
     );
+  }
+
+  /// Safe icon size calculation - prevents NaN/Infinity crashes
+  double _getSafeIconSize() {
+    // Default fallback size
+    const double defaultSize = 24.0;
+    
+    // Check width is valid finite number
+    if (width == null || 
+        !width!.isFinite || 
+        width!.isNaN || 
+        width! <= 0 || 
+        width! == double.infinity) {
+      return defaultSize;
+    }
+    
+    // Calculate size but cap at reasonable max
+    final calculated = width! * 0.3;
+    if (calculated.isNaN || !calculated.isFinite || calculated <= 0) {
+      return defaultSize;
+    }
+    
+    return calculated.clamp(16.0, 80.0); // Clamp between 16-80px
   }
 
   Widget _clip(Widget child) {
@@ -144,7 +167,7 @@ class SafeNetworkImage extends StatelessWidget {
       child: Center(
         child: Icon(
           Icons.home_repair_service_rounded,
-          size: width != null ? width! * 0.3 : 40,
+          size: _getSafeIconSize(),
           color: Colors.grey[400],
         ),
       ),
@@ -185,16 +208,16 @@ class ServiceImageFallback extends StatelessWidget {
           children: [
             Icon(
               _getServiceIcon(),
-              size: (size ?? 40) * 0.4,
+              size: _getSafeServiceIconSize(),
               color: const Color(0xFF6366F1),
             ),
-            if (serviceName != null && (size ?? 60) > 50)
+            if (serviceName != null && _isSizeValidForText((size ?? 60)))
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
                   serviceName!,
                   style: TextStyle(
-                    fontSize: (size ?? 60) * 0.12,
+                    fontSize: _getSafeTextSize((size ?? 60) * 0.12),
                     color: const Color(0xFF6366F1),
                     fontWeight: FontWeight.w600,
                   ),
@@ -213,7 +236,7 @@ class ServiceImageFallback extends StatelessWidget {
     if (name.contains('ac') || name.contains('air')) {
       return Icons.ac_unit;
     } else if (name.contains('plumb') || name.contains('pipe')) {
-      Icons.plumbing;
+      return Icons.plumbing;
     } else if (name.contains('electric') || name.contains('wiring')) {
       return Icons.electrical_services;
     } else if (name.contains('clean') || name.contains('home')) {
@@ -224,5 +247,43 @@ class ServiceImageFallback extends StatelessWidget {
       return Icons.kitchen;
     }
     return Icons.home_repair_service_rounded;
+  }
+
+  /// Safe icon size for service images
+  double _getSafeServiceIconSize() {
+    const double defaultSize = 16.0;
+    
+    if (size == null || 
+        !size!.isFinite || 
+        size!.isNaN || 
+        size! <= 0 || 
+        size! == double.infinity) {
+      return defaultSize;
+    }
+    
+    final calculated = size! * 0.4;
+    if (calculated.isNaN || !calculated.isFinite || calculated <= 0) {
+      return defaultSize;
+    }
+    
+    return calculated.clamp(12.0, 60.0);
+  }
+
+  /// Safe text size calculation
+  double _getSafeTextSize(double requestedSize) {
+    const double defaultTextSize = 8.0;
+    
+    if (requestedSize.isNaN || !requestedSize.isFinite || requestedSize <= 0) {
+      return defaultTextSize;
+    }
+    
+    return requestedSize.clamp(6.0, 24.0);
+  }
+
+  /// Check if size is valid for showing text
+  bool _isSizeValidForText(double sizeValue) {
+    return sizeValue.isFinite && 
+           !sizeValue.isNaN && 
+           sizeValue > 30;
   }
 }

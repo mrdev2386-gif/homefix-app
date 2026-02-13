@@ -55,17 +55,46 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
   }
 
   Future<void> _fetchTechnicianCount() async {
-    final snapshot = await FirebaseFirestore.instance
-        .collection('technicians')
-        .where('serviceId', isEqualTo: widget.serviceId)
-        .where('status', isEqualTo: 'approved')
-        .where('isAvailable', isEqualTo: true)
-        .get();
-    
-    if (mounted) {
-      setState(() {
-        _techCount = snapshot.docs.length;
-      });
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('technicians')
+          .where('status', isEqualTo: 'approved')
+          .where('isAvailable', isEqualTo: true)
+          .where('services', arrayContains: widget.serviceId)
+          .get();
+      
+      if (mounted) {
+        setState(() {
+          _techCount = snapshot.docs.length;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching technician count: $e');
+      // Fallback to count query if index missing
+      _fetchTechnicianCountFallback();
+    }
+  }
+
+  Future<void> _fetchTechnicianCountFallback() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('technicians')
+          .where('isApproved', isEqualTo: true)
+          .where('isAvailable', isEqualTo: true)
+          .get();
+      
+      final filtered = snapshot.docs.where((doc) {
+        final services = doc.data()['services'] as List<dynamic>?;
+        return services?.contains(widget.serviceId) ?? false;
+      }).length;
+      
+      if (mounted) {
+        setState(() {
+          _techCount = filtered;
+        });
+      }
+    } catch (e) {
+      debugPrint('Fallback technician count also failed: $e');
     }
   }
 
@@ -152,7 +181,7 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
           fit: StackFit.expand,
           children: [
             SafeNetworkImage(
-              imageUrl: service.imageUrl,
+              imageUrl: service.imageUrl ?? '',
               width: double.infinity,
               height: 320,
             ),
@@ -386,7 +415,7 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
                   id: '',
                   serviceId: service.id,
                   serviceName: service.title,
-                  serviceImage: service.imageUrl,
+                  serviceImage: service.imageUrl ?? '',
                   price: service.basePrice,
                   quantity: 1,
                   totalPrice: service.basePrice,

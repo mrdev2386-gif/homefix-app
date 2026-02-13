@@ -5,6 +5,9 @@ import * as crypto from 'crypto';
 
 const db = admin.firestore();
 
+// Environment variable for encryption key
+const ENCRYPTION_KEY_SECRET = process.env.SECURITY_SECRET || 'default_secret_key_change_me_in_prod';
+
 // --- RATE LIMITING ---
 
 export async function checkRateLimit(uid: string, action: string, limit: number, windowMs: number) {
@@ -32,7 +35,7 @@ export async function checkRateLimit(uid: string, action: string, limit: number,
 // Use a fixed key from config or environment for demo purposes. 
 // In production, use Google Cloud KMS.
 // We'll use a 32-byte key derived from a config secret or default.
-const ENCRYPTION_KEY = crypto.scryptSync(functions.config().security?.secret || 'default_secret_key_change_me_in_prod', 'salt', 32);
+const ENCRYPTION_KEY = crypto.scryptSync(ENCRYPTION_KEY_SECRET, 'salt', 32);
 const IV_LENGTH = 16;
 
 export function encrypt(text: string): string {

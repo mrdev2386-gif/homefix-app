@@ -328,6 +328,17 @@ class LocationService {
           try {
             await saveCurrentAddress(userId: userId, address: address);
             if (dialogContext.mounted) {
+              // Show success message before closing
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                const SnackBar(
+                  content: Text('Location updated successfully'),
+                  backgroundColor: Colors.green,
+                  behavior: SnackBarBehavior.floating,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+              // Wait a bit for user to see the snackbar
+              await Future.delayed(const Duration(milliseconds: 500));
               Navigator.of(dialogContext).pop(true);
             }
           } catch (e) {

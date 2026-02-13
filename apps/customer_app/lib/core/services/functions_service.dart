@@ -7,7 +7,7 @@ class FunctionsService {
   // Create a new booking
   Future<Map<String, dynamic>> createBooking(Map<String, dynamic> bookingData) async {
     try {
-      HttpsCallable callable = _functions.httpsCallable('createBooking');
+      HttpsCallable callable = _functions.httpsCallable('createBookingV2');
       final result = await callable.call(bookingData);
       return Map<String, dynamic>.from(result.data);
     } catch (e) {
@@ -80,8 +80,8 @@ class FunctionsService {
   // Booking Cancellation override
   Future<void> cancelBookingExtended(String bookingId, String reason) async {
     try {
-      HttpsCallable callable = _functions.httpsCallable('cancelBooking');
-      await callable.call({'bookingId': bookingId, 'reason': reason});
+      HttpsCallable callable = _functions.httpsCallable('updateBookingStatus');
+      await callable.call({'bookingId': bookingId, 'status': 'cancelled', 'reason': reason});
     } catch (e) {
       rethrow;
     }

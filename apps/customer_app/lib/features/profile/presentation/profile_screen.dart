@@ -5,6 +5,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/models/user_model.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/safe_network_image.dart';
 import 'referral_screen.dart';
 import 'package:customer_app/features/profile/presentation/partner_onboarding_screen_v2.dart';
 import 'saved_addresses_screen.dart';
@@ -140,17 +141,14 @@ class ProfileScreen extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
       child: Row(
         children: [
-          Container(
+          // FIX: Use SafeNetworkImage for better error handling
+          SafeNetworkImage(
+            imageUrl: user.photoUrl,
             width: 80,
             height: 80,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: AppTheme.primaryColor.withOpacity(0.1), width: 4),
-              image: DecorationImage(
-                image: NetworkImage(user.photoUrl ?? 'https://ui-avatars.com/api/?name=${user.name ?? "U"}&background=6366F1&color=fff'),
-                fit: BoxFit.cover,
-              ),
-            ),
+            fit: BoxFit.cover,
+            borderRadius: BorderRadius.circular(40),
+            fallbackUrl: 'https://ui-avatars.com/api/?name=${user.name ?? "U"}&background=6366F1&color=fff',
           ),
           const SizedBox(width: 20),
           Expanded(

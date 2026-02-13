@@ -307,12 +307,22 @@ class OnboardingStepPhoto extends StatelessWidget {
                                         ClipRRect(
                                           borderRadius: BorderRadius.circular(22),
                                           child: kIsWeb
-                                              ? Image.network(
-                                                  provider.profilePhoto!.path,
-                                                  fit: BoxFit.cover,
-                                                  width: 180,
-                                                  height: 180,
-                                                )
+                                              ? (() {
+                                                  print("IMAGE URL => ${provider.profilePhoto!.path}");
+                                                  return Image.network(
+                                                    provider.profilePhoto!.path,
+                                                    fit: BoxFit.cover,
+                                                    width: 180,
+                                                    height: 180,
+                                                    loadingBuilder: (context, child, progress) {
+                                                      if (progress == null) return child;
+                                                      return const Center(child: CircularProgressIndicator());
+                                                    },
+                                                    errorBuilder: (context, error, stackTrace) {
+                                                      return const Icon(Icons.image_not_supported, size: 40);
+                                                    },
+                                                  );
+                                                }())
                                               : Image.file(
                                                   File(provider.profilePhoto!.path),
                                                   fit: BoxFit.cover,

@@ -373,7 +373,7 @@ function getSeedData(collName: string): any[] {
                     title: 'Home Cleaning',
                     basePrice: 599.0,
                     durationMins: 120,
-                    image: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952',
+                    image: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64',
                     isActive: true,
                     category: 'Cleaning',
                 },

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/firestore_service.dart';
 import '../../core/providers/cart_provider.dart';
@@ -60,6 +61,19 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
         locationProvider.initialize(auth.currentUser!.uid);
       });
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    
+    // Preload top banner image to remove first-frame lag
+    precacheImage(
+      const NetworkImage(
+        'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&q=80',
+      ),
+      context,
+    );
   }
 
   @override
@@ -334,42 +348,89 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   }
 
   Future<void> _handleCurrentLocation(BuildContext context) async {
-    Navigator.pop(context);
-    
-    final locationProvider = Provider.of<LocationProvider>(context, listen: false);
-    
+    if (!mounted) return;
+
+    // First pop the bottom sheet
+    final navigator = Navigator.maybeOf(context);
+    if (navigator != null && navigator.canPop()) {
+      navigator.pop();
+    }
+
     // Show loading indicator
+    if (!mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
+      builder: (_) => const Center(child: CircularProgressIndicator()),
     );
 
-    final success = await locationProvider.updateCurrentLocation(saveToFirestore: true);
-    
-    if (mounted) Navigator.pop(context); // Close loading dialog
+    final locationProvider = Provider.of<LocationProvider>(context, listen: false);
 
-    if (!success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            locationProvider.currentAddress == 'Location Denied'
-                ? 'Location permission denied. Please enable in settings.'
-                : 'Unable to get current location. Please try again.',
+    try {
+      // Fetch location and save to Firestore
+      final success = await locationProvider.updateCurrentLocation(saveToFirestore: true);
+
+      // Always close loader safely
+      if (!mounted) return;
+      final nav = Navigator.maybeOf(context);
+      if (nav != null && nav.canPop()) {
+        nav.pop();
+      }
+
+      if (!mounted) return;
+
+      if (success) {
+        // Success popup
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Location saved successfully'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
           ),
-          action: locationProvider.currentAddress == 'Location Denied'
-              ? SnackBarAction(
-                  label: 'Settings',
-                  onPressed: () => locationProvider.openAppSettings(),
-                )
-              : null,
+        );
+      } else {
+        // Error popup based on address state
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              locationProvider.currentAddress == 'Location Denied'
+                  ? 'Location permission denied. Please enable in settings.'
+                  : 'Unable to get current location. Please try again.',
+            ),
+            action: locationProvider.currentAddress == 'Location Denied'
+                ? SnackBarAction(
+                    label: 'Settings',
+                    onPressed: () => locationProvider.openAppSettings(),
+                  )
+                : null,
+          ),
+        );
+      }
+    } catch (e) {
+      // Always close loader on error
+      if (!mounted) return;
+      final nav = Navigator.maybeOf(context);
+      if (nav != null && nav.canPop()) {
+        nav.pop();
+      }
+
+      if (!mounted) return;
+
+      // Error popup
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to fetch location'),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
         ),
       );
     }
   }
 
   Future<void> _handleAddNewAddress(BuildContext context) async {
-    Navigator.pop(context);
+    if (mounted && Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const AddEditAddressScreen()),
@@ -377,7 +438,9 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   }
 
   Future<void> _handleSavedAddresses(BuildContext context) async {
-    Navigator.pop(context);
+    if (mounted && Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const SavedAddressesScreen()),
@@ -574,10 +637,13 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
             ),
           ),
           const SizedBox(width: 16),
-          Image.network(
-            'https://cdn-icons-png.flaticon.com/512/4712/4712126.png',
+          CachedNetworkImage(
+            imageUrl: 'https://cdn-icons-png.flaticon.com/512/4712/4712126.png',
             height: 80,
             width: 80,
+            fit: BoxFit.contain,
+            placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            errorWidget: (context, url, error) => const Icon(Icons.image_not_supported, size: 40),
           ),
         ],
       ),

@@ -1,0 +1,317 @@
+{
+  "categories": [
+    {
+      "name": "AC Services",
+      "imageUrl": "https://images.unsplash.com/photo-1631545806609-5adb40c6e3eb?w=400&q=80",
+      "order": 1,
+      "isActive": true
+    },
+    {
+      "name": "Plumbing",
+      "imageUrl": "https://images.unsplash.com/photo-1585704032915-c3400ca199e7?w=400&q=80",
+      "order": 2,
+      "isActive": true
+    },
+    {
+      "name": "Electrician",
+      "imageUrl": "https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=400&q=80",
+      "order": 3,
+      "isActive": true
+    },
+    {
+      "name": "Cleaning",
+      "imageUrl": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=80",
+      "order": 4,
+      "isActive": true
+    },
+    {
+      "name": "Appliances",
+      "imageUrl": "https://images.unsplash.com/photo-1556911220-e15b29be8c8f?w=400&q=80",
+      "order": 5,
+      "isActive": true
+    },
+    {
+      "name": "Salon",
+      "imageUrl": "https://images.unsplash.com/photo-1560066984-138dadb4c035?w=400&q=80",
+      "order": 6,
+      "isActive": true
+    },
+    {
+      "name": "Pest Control",
+      "imageUrl": "https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?w=400&q=80",
+      "order": 7,
+      "isActive": true
+    },
+    {
+      "name": "Painting",
+      "imageUrl": "https://images.unsplash.com/photo-1562259949-e8e7689d7828?w=400&q=80",
+      "order": 8,
+      "isActive": true
+    },
+    {
+      "name": "Carpentry",
+      "imageUrl": "https://images.unsplash.com/photo-1611486212557-88be5ff6f941?w=400&q=80",
+      "order": 9,
+      "isActive": true
+    },
+    {
+      "name": "RO Service",
+      "imageUrl": "https://images.unsplash.com/photo-1538300342682-cf57afb97285?w=400&q=80",
+      "order": 10,
+      "isActive": true
+    }
+  ],
+  "category_services": {
+    "ac_services": {
+      "services": [
+        {
+          "name": "AC Repair",
+          "description": "Professional AC repair services for all brands",
+          "imageUrl": "https://images.unsplash.com/photo-1631545806609-5adb40c6e3eb?w=400&q=80",
+          "basePrice": 499,
+          "hasSubServices": true,
+          "isActive": true,
+          "order": 1
+        },
+        {
+          "name": "AC Installation",
+          "description": "Expert AC installation and setup",
+          "imageUrl": "https://images.unsplash.com/photo-1631545806609-5adb40c6e3eb?w=400&q=80",
+          "basePrice": 1499,
+          "hasSubServices": false,
+          "isActive": true,
+          "order": 2
+        },
+        {
+          "name": "AC Gas Refill",
+          "description": "AC gas refill and cooling optimization",
+          "imageUrl": "https://images.unsplash.com/photo-1631545806609-5adb40c6e3eb?w=400&q=80",
+          "basePrice": 899,
+          "hasSubServices": false,
+          "isActive": true,
+          "order": 3
+        },
+        {
+          "name": "AC AMC",
+          "description": "Annual maintenance contract for AC",
+          "imageUrl": "https://images.unsplash.com/photo-1631545806609-5adb40c6e3eb?w=400&q=80",
+          "basePrice": 2999,
+          "hasSubServices": false,
+          "isActive": true,
+          "order": 4
+        }
+      ],
+      "subServices": {
+        "ac_repair": {
+          "split_ac_repair": {
+            "name": "Split AC Repair",
+            "imageUrl": "https://images.unsplash.com/photo-1631545806609-5adb40c6e3eb?w=400&q=80",
+            "price": 599,
+            "isActive": true,
+            "order": 1
+          },
+          "window_ac_repair": {
+            "name": "Window AC Repair",
+            "imageUrl": "https://images.unsplash.com/photo-1631545806609-5adb40c6e3eb?w=400&q=80",
+            "price": 499,
+            "isActive": true,
+            "order": 2
+          },
+          "central_ac_repair": {
+            "name": "Central AC Repair",
+            "imageUrl": "https://images.unsplash.com/photo-1631545806609-5adb40c6e3eb?w=400&q=80",
+            "price": 1499,
+            "isActive": true,
+            "order": 3
+          }
+        }
+      }
+    },
+    "plumbing": {
+      "services": [
+        {
+          "name": "Plumbing Repair",
+          "description": "Professional plumbing repair services",
+          "imageUrl": "https://images.unsplash.com/photo-1585704032915-c3400ca199e7?w=400&q=80",
+          "basePrice": 299,
+          "hasSubServices": true,
+          "isActive": true,
+          "order": 1
+        },
+        {
+          "name": "Pipe Installation",
+          "description": "New pipe fitting and installation",
+          "imageUrl": "https://images.unsplash.com/photo-1585704032915-c3400ca199e7?w=400&q=80",
+          "basePrice": 799,
+          "hasSubServices": false,
+          "isActive": true,
+          "order": 2
+        },
+        {
+          "name": "Drain Cleaning",
+          "description": "Professional drain cleaning services",
+          "imageUrl": "https://images.unsplash.com/photo-1585704032915-c3400ca199e7?w=400&q=80",
+          "basePrice": 399,
+          "hasSubServices": false,
+          "isActive": true,
+          "order": 3
+        }
+      ],
+      "subServices": {
+        "plumbing_repair": {
+          "leakage_repair": {
+            "name": "Leakage Repair",
+            "imageUrl": "https://images.unsplash.com/photo-1585704032915-c3400ca199e7?w=400&q=80",
+            "price": 399,
+            "isActive": true,
+            "order": 1
+          },
+          "tap_faucet_repair": {
+            "name": "Tap & Faucet Repair",
+            "imageUrl": "https://images.unsplash.com/photo-1585704032915-c3400ca199e7?w=400&q=80",
+            "price": 299,
+            "isActive": true,
+            "order": 2
+          },
+          "toilet_repair": {
+            "name": "Toilet Repair",
+            "imageUrl": "https://images.unsplash.com/photo-1585704032915-c3400ca199e7?w=400&q=80",
+            "price": 499,
+            "isActive": true,
+            "order": 3
+          }
+        }
+      }
+    },
+    "electrician": {
+      "services": [
+        {
+          "name": "Electrical Repair",
+          "description": "Professional electrical repair services",
+          "imageUrl": "https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=400&q=80",
+          "basePrice": 349,
+          "hasSubServices": true,
+          "isActive": true,
+          "order": 1
+        },
+        {
+          "name": "Wiring Work",
+          "description": "New wiring and rewiring services",
+          "imageUrl": "https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=400&q=80",
+          "basePrice": 999,
+          "hasSubServices": false,
+          "isActive": true,
+          "order": 2
+        },
+        {
+          "name": "Fan Installation",
+          "description": "Fan installation and repair",
+          "imageUrl": "https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=400&q=80",
+          "basePrice": 399,
+          "hasSubServices": false,
+          "isActive": true,
+          "order": 3
+        }
+      ],
+      "subServices": {
+        "electrical_repair": {
+          "switch_socket_repair": {
+            "name": "Switch & Socket Repair",
+            "imageUrl": "https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=400&q=80",
+            "price": 249,
+            "isActive": true,
+            "order": 1
+          },
+          "mcb_repair": {
+            "name": "MCB Repair",
+            "imageUrl": "https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=400&q=80",
+            "price": 399,
+            "isActive": true,
+            "order": 2
+          },
+          "wiring_repair": {
+            "name": "Wiring Repair",
+            "imageUrl": "https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=400&q=80",
+            "price": 499,
+            "isActive": true,
+            "order": 3
+          }
+        }
+      }
+    },
+    "cleaning": {
+      "services": [
+        {
+          "name": "Home Deep Cleaning",
+          "description": "Complete home deep cleaning services",
+          "imageUrl": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=80",
+          "basePrice": 2499,
+          "hasSubServices": true,
+          "isActive": true,
+          "order": 1
+        },
+        {
+          "name": "Kitchen Cleaning",
+          "description": "Professional kitchen cleaning",
+          "imageUrl": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=80",
+          "basePrice": 999,
+          "hasSubServices": false,
+          "isActive": true,
+          "order": 2
+        },
+        {
+          "name": "Bathroom Cleaning",
+          "description": "Deep bathroom cleaning services",
+          "imageUrl": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=80",
+          "basePrice": 699,
+          "hasSubServices": false,
+          "isActive": true,
+          "order": 3
+        }
+      ],
+      "subServices": {
+        "home_deep_cleaning": {
+          "2bhk_cleaning": {
+            "name": "2 BHK Cleaning",
+            "imageUrl": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=80",
+            "price": 1999,
+            "isActive": true,
+            "order": 1
+          },
+          "3bhk_cleaning": {
+            "name": "3 BHK Cleaning",
+            "imageUrl": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=80",
+            "price": 2999,
+            "isActive": true,
+            "order": 2
+          },
+          "4bhk_cleaning": {
+            "name": "4 BHK Cleaning",
+            "imageUrl": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=80",
+            "price": 3999,
+            "isActive": true,
+            "order": 3
+          }
+        }
+      }
+    }
+  },
+  "technician_example": {
+    "id": "technician_001",
+    "name": "John Smith",
+    "phone": "+91-9876543210",
+    "photoUrl": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&q=80",
+    "services": ["ac_repair", "ac_installation", "plumbing_repair"],
+    "subServices": ["split_ac_repair", "window_ac_repair", "leakage_repair"],
+    "location": {
+      "lat": 28.6139,
+      "lng": 77.2090
+    },
+    "isApproved": true,
+    "isOnline": true,
+    "rating": 4.7,
+    "totalReviews": 156,
+    "totalCompletedOrders": 245,
+    "totalEarnings": 125000
+  }
+}

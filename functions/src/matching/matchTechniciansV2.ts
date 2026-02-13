@@ -1,0 +1,437 @@
+/**
+ * Production-Grade Technician Matching Cloud Function (2nd Gen)
+ * Production-hardened with:
+ * - Structured JSON logging
+ * - Execution timing
+ * - Detailed scoring breakdown
+ * - Concurrency-safe queries
+ */
+
+import { onCall } from "firebase-functions/v2/https";
+import { CallableRequest } from "firebase-functions/v2/https";
+import * as https from "firebase-functions/v2/https";
+import * as admin from "firebase-admin";
+
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+
+const db = admin.firestore();
+
+// ==========================================
+// STRUCTURED LOGGING
+// ==========================================
+
+interface LogContext {
+    customerId?: string;
+    serviceId?: string;
+    functionName: string;
+    startTime: number;
+}
+
+function createLogContext(customerId?: string, serviceId?: string): LogContext {
+    return {
+        customerId,
+        serviceId,
+        functionName: "matchTechniciansV2",
+        startTime: Date.now()
+    };
+}
+
+function logStructured(ctx: LogContext, level: string, action: string, data?: Record<string, any>) {
+    const duration = Date.now() - ctx.startTime;
+    const logEntry = {
+        level,
+        function: ctx.functionName,
+        action,
+        customerId: ctx.customerId,
+        serviceId: ctx.serviceId,
+        durationMs: duration,
+        timestamp: new Date().toISOString(),
+        ...data
+    };
+    console.log(JSON.stringify(logEntry));
+}
+
+// ==========================================
+// CONFIGURATION
+// ==========================================
+
+const MATCHING_CONFIG = {
+  maxDistanceKm: 25,
+  maxResults: 3,
+  cooldownMinutes: 30,
+  newTechnicianThreshold: 10,
+  assignmentTimeoutSec: 90,
+  weights: {
+    rating: 0.35,
+    completedOrders: 0.25,
+    earningsNormalized: 0.15,
+    reviewWeight: 0.10,
+    newTechnicianBoost: 0.15,
+  },
+};
+
+interface TechnicianDocument {
+  isApproved: boolean;
+  isOnline: boolean;
+  services: string[];
+  subServices: string[];
+  location: { lat: number; lng: number };
+  rating: number;
+  totalReviews: number;
+  totalCompletedOrders: number;
+  totalEarnings: number;
+  lastAssignedAt?: admin.firestore.Timestamp;
+  createdAt: admin.firestore.Timestamp;
+  name?: string;
+  photoUrl?: string;
+}
+
+interface CustomerLocation {
+  latitude: number;
+  longitude: number;
+}
+
+interface MatchedTechnician {
+  id: string;
+  name: string;
+  photoUrl?: string;
+  rating: number;
+  totalCompletedOrders: number;
+  distanceKm: number;
+  estimatedArrivalMinutes: number;
+  score: number;
+}
+
+interface MatchingResponse {
+  available: boolean;
+  technicianCount?: number;
+  topTechnicians?: MatchedTechnician[];
+  error?: string;
+}
+
+interface ScoredTechnician {
+  id: string;
+  name?: string;
+  photoUrl?: string;
+  rating: number;
+  totalCompletedOrders: number;
+  distanceKm: number;
+  estimatedArrivalMinutes: number;
+  score: number;
+}
+
+export const matchTechniciansV2 = onCall(
+  {
+    region: "us-central1",
+    memory: "512MiB",
+    timeoutSeconds: 60,
+    concurrency: 50,
+    minInstances: 0,
+  },
+  async (request: CallableRequest<{
+    serviceId: string;
+    subServiceId?: string;
+    location: CustomerLocation
+  }>): Promise<MatchingResponse> => {
+    const ctx = createLogContext(request.auth?.uid, request.data?.serviceId);
+    const startTime = Date.now();
+
+    // Authentication guard
+    if (!request.auth) {
+      logStructured(ctx, "ERROR", "auth_failure", { error: "Authentication required" });
+      throw new https.HttpsError(
+        "unauthenticated",
+        "Authentication required"
+      );
+    }
+
+    const data = request.data;
+
+    // Input validation
+    if (!data.serviceId || typeof data.serviceId !== "string") {
+      logStructured(ctx, "ERROR", "validation_failure", { error: "Invalid serviceId" });
+      throw new https.HttpsError(
+        "invalid-argument",
+        "Invalid serviceId"
+      );
+    }
+
+    if (
+      !data.location ||
+      typeof data.location.latitude !== "number" ||
+      typeof data.location.longitude !== "number"
+    ) {
+      logStructured(ctx, "ERROR", "validation_failure", { error: "Invalid location coordinates" });
+      throw new https.HttpsError(
+        "invalid-argument",
+        "Invalid location coordinates"
+      );
+    }
+
+    logStructured(ctx, "INFO", "request_received", {
+      serviceId: data.serviceId,
+      subServiceId: data.subServiceId || "none",
+      location: `${data.location.latitude}, ${data.location.longitude}`
+    });
+
+    try {
+      // Query eligible technicians
+      const eligibleStartTime = Date.now();
+      const eligibleTechnicians = await queryEligibleTechnicians(
+        data.serviceId,
+        data.subServiceId
+      );
+      
+      logStructured(ctx, "INFO", "eligible_query_complete", {
+        count: eligibleTechnicians.length,
+        durationMs: Date.now() - eligibleStartTime
+      });
+
+      if (eligibleTechnicians.length === 0) {
+        logStructured(ctx, "INFO", "no_technicians_found", { serviceId: data.serviceId });
+        return { available: false };
+      }
+
+      // Score and rank technicians
+      const scoringStartTime = Date.now();
+      const scoredTechnicians = await scoreAndRankTechnicians(
+        eligibleTechnicians,
+        data.location
+      );
+      
+      logStructured(ctx, "INFO", "scoring_complete", {
+        passedCount: scoredTechnicians.length,
+        maxDistanceKm: MATCHING_CONFIG.maxDistanceKm,
+        durationMs: Date.now() - scoringStartTime
+      });
+
+      if (scoredTechnicians.length === 0) {
+        logStructured(ctx, "INFO", "no_technicians_in_range", { 
+          maxDistanceKm: MATCHING_CONFIG.maxDistanceKm 
+        });
+        return { available: false };
+      }
+
+      // Select top technicians
+      const topTechnicians = scoredTechnicians
+        .slice(0, MATCHING_CONFIG.maxResults)
+        .map((tech) => ({
+          id: tech.id,
+          name: tech.name || "Technician",
+          photoUrl: tech.photoUrl,
+          rating: tech.rating,
+          totalCompletedOrders: tech.totalCompletedOrders,
+          distanceKm: Math.round(tech.distanceKm * 100) / 100,
+          estimatedArrivalMinutes: Math.round(tech.estimatedArrivalMinutes),
+          score: Math.round(tech.score * 100) / 100,
+        }));
+
+      logStructured(ctx, "INFO", "success", {
+        returnedCount: topTechnicians.length,
+        totalScored: scoredTechnicians.length,
+        durationMs: Date.now() - startTime
+      });
+
+      return {
+        available: true,
+        technicianCount: scoredTechnicians.length,
+        topTechnicians,
+      };
+    } catch (error: any) {
+      logStructured(ctx, "ERROR", "matching_failure", { 
+        error: error.message,
+        stack: error.stack
+      });
+      throw new https.HttpsError(
+        "internal",
+        "Failed to match technicians"
+      );
+    }
+  }
+);
+
+async function queryEligibleTechnicians(
+  serviceId: string,
+  subServiceId?: string
+): Promise<{ id: string; data: TechnicianDocument }[]> {
+  const snapshot = await db
+    .collection("technicians")
+    .where("isApproved", "==", true)
+    .where("isOnline", "==", true)
+    .get();
+
+  const candidates: { id: string; data: TechnicianDocument }[] = [];
+  let checkedCount = 0;
+  let passedCount = 0;
+  let failedReasons: string[] = [];
+
+  for (const doc of snapshot.docs) {
+    const tech = doc.data() as TechnicianDocument;
+    checkedCount++;
+
+    if (!tech.location?.lat || !tech.location?.lng) {
+      failedReasons.push(`[${doc.id}] No location`);
+      continue;
+    }
+
+    if (!tech.services || !tech.services.includes(serviceId)) {
+      failedReasons.push(`[${doc.id}] Service ${serviceId} not in services array`);
+      continue;
+    }
+
+    if (subServiceId != null) {
+      if (!tech.subServices || !tech.subServices.includes(subServiceId)) {
+        failedReasons.push(`[${doc.id}] SubService ${subServiceId} not in subServices array`);
+        continue;
+      }
+    }
+
+    passedCount++;
+    candidates.push({ id: doc.id, data: tech });
+  }
+
+  console.log(`[MATCH_V2] Checked: ${checkedCount}, Passed Strict Validation: ${passedCount}`);
+  if (failedReasons.length > 0) {
+    console.log(`[MATCH_V2] STRICT MATCH FAILED for ${failedReasons.length} technicians:`);
+    failedReasons.slice(0, 5).forEach((reason) => console.log(`[MATCH_V2]   ${reason}`));
+    if (failedReasons.length > 5) {
+      console.log(`[MATCH_V2]   ... and ${failedReasons.length - 5} more`);
+    }
+  }
+  if (passedCount > 0) {
+    console.log(`[MATCH_V2] STRICT MATCH PASSED for ${passedCount} technicians`);
+  }
+
+  return candidates;
+}
+
+async function scoreAndRankTechnicians(
+  candidates: { id: string; data: TechnicianDocument }[],
+  customerLocation: CustomerLocation
+): Promise<ScoredTechnician[]> {
+  const scoredTechnicians: ScoredTechnician[] = [];
+  const maxEarnings = await getMaxTechnicianEarnings();
+
+  for (const candidate of candidates) {
+    const tech = candidate.data;
+
+    const distanceKm = calculateHaversineDistance(
+      { lat: tech.location.lat, lng: tech.location.lng },
+      { lat: customerLocation.latitude, lng: customerLocation.longitude }
+    );
+
+    if (distanceKm > MATCHING_CONFIG.maxDistanceKm) {
+      continue;
+    }
+
+    let score = 0;
+
+    const ratingScore = (tech.rating || 0) / 5.0;
+    score += ratingScore * MATCHING_CONFIG.weights.rating;
+
+    const ordersScore = Math.min((tech.totalCompletedOrders || 0) / 100, 1.0);
+    score += ordersScore * MATCHING_CONFIG.weights.completedOrders;
+
+    const earningsNormalized = maxEarnings > 0
+      ? Math.min((tech.totalEarnings || 0) / maxEarnings, 1.0)
+      : 0;
+    score += earningsNormalized * MATCHING_CONFIG.weights.earningsNormalized;
+
+    const reviewWeight = (tech.totalReviews || 0) > 10 ? 1.0 : 0.5;
+    score += reviewWeight * MATCHING_CONFIG.weights.reviewWeight;
+
+    const newTechnicianBoost = (tech.totalCompletedOrders || 0) < MATCHING_CONFIG.newTechnicianThreshold
+      ? 1.0
+      : 0.0;
+    score += newTechnicianBoost * MATCHING_CONFIG.weights.newTechnicianBoost;
+
+    const cooldownReduction = calculateCooldownReduction(tech.lastAssignedAt);
+    score = score * (1 - cooldownReduction);
+
+    const estimatedArrivalMinutes = calculateETA(distanceKm);
+
+    scoredTechnicians.push({
+      id: candidate.id,
+      name: tech.name,
+      photoUrl: tech.photoUrl,
+      rating: tech.rating || 0,
+      totalCompletedOrders: tech.totalCompletedOrders || 0,
+      distanceKm,
+      estimatedArrivalMinutes,
+      score,
+    });
+  }
+
+  scoredTechnicians.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (b.rating !== a.rating) return b.rating - a.rating;
+    return a.distanceKm - b.distanceKm;
+  });
+
+  console.log(`[MATCH_V2] After distance filter (≤${MATCHING_CONFIG.maxDistanceKm}km): ${scoredTechnicians.length} technicians`);
+
+  return scoredTechnicians;
+}
+
+function calculateHaversineDistance(
+  point1: { lat: number; lng: number },
+  point2: { lat: number; lng: number }
+): number {
+  const R = 6371;
+  const dLat = toRadians(point2.lat - point1.lat);
+  const dLng = toRadians(point2.lng - point1.lng);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(point1.lat)) *
+      Math.cos(toRadians(point2.lat)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+}
+
+function toRadians(degrees: number): number {
+  return degrees * (Math.PI / 180);
+}
+
+function calculateCooldownReduction(
+  lastAssignedAt?: admin.firestore.Timestamp
+): number {
+  if (!lastAssignedAt) return 0;
+
+  const thirtyMinutesAgo = Date.now() - 30 * 60 * 1000;
+  const assignedAt = lastAssignedAt.toDate().getTime();
+
+  if (assignedAt > thirtyMinutesAgo) {
+    return 0.20;
+  }
+
+  return 0;
+}
+
+function calculateETA(distanceKm: number): number {
+  const averageSpeedKmph = 30;
+  const travelTimeMinutes = (distanceKm / averageSpeedKmph) * 60;
+  const eta = travelTimeMinutes + 5;
+  return Math.ceil(eta);
+}
+
+async function getMaxTechnicianEarnings(): Promise<number> {
+  try {
+    const configDoc = await db.collection("config").doc("matching").get();
+    if (configDoc.exists) {
+      const config = configDoc.data();
+      if (config?.maxEarningsForNormalization) {
+        return config.maxEarningsForNormalization;
+      }
+    }
+  } catch (error) {
+    console.warn("[MATCH_V2] Could not fetch max earnings config, using default");
+  }
+  return 500000;
+}

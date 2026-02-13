@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/theme/app_theme.dart';
 
 class AboutScreen extends StatelessWidget {
@@ -19,9 +20,12 @@ class AboutScreen extends StatelessWidget {
         child: Column(
           children: [
             const SizedBox(height: 40),
-            Image.network(
-              'https://cdn-icons-png.flaticon.com/512/3064/3064155.png',
+            CachedNetworkImage(
+              imageUrl: 'https://cdn-icons-png.flaticon.com/512/3064/3064155.png',
               height: 120,
+              fit: BoxFit.contain,
+              placeholder: (context, url) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              errorWidget: (context, url, error) => const Icon(Icons.image_not_supported, size: 40),
             ),
             const SizedBox(height: 24),
             Text(

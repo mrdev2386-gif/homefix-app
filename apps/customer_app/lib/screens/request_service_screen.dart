@@ -163,8 +163,33 @@ class _RequestServiceScreenState extends State<RequestServiceScreen> {
                               width: 80,
                               height: 80,
                               child: kIsWeb 
-                                ? Image.network(img.path, fit: BoxFit.cover)
-                                : Image.network(img.path, fit: BoxFit.cover), // path works on mobile for XFile too usually
+                                ? (() {
+                                    print("IMAGE URL => ${img.path}");
+                                    return Image.network(
+                                      img.path,
+                                      fit: BoxFit.cover,
+                                      loadingBuilder: (context, child, progress) {
+                                        if (progress == null) return child;
+                                        return const Center(child: CircularProgressIndicator());
+                                      },
+                                      errorBuilder: (context, error, stackTrace) {
+                                        return const Icon(Icons.image_not_supported, size: 40);
+                                      },
+                                    );
+                                  }())
+                                : Image.network(
+                                    img.path,
+                                    fit: BoxFit.cover,
+                                    loadingBuilder: (context, child, progress) {
+                                      if (progress == null) return child;
+                                      print("IMAGE URL => ${img.path}");
+                                      return const Center(child: CircularProgressIndicator());
+                                    },
+                                    errorBuilder: (context, error, stackTrace) {
+                                      print("IMAGE URL => ${img.path}");
+                                      return const Icon(Icons.image_not_supported, size: 40);
+                                    },
+                                  ),
                             ),
                             Positioned(
                               right: 0,

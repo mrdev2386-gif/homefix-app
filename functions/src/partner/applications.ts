@@ -1,10 +1,10 @@
-import * as functions from 'firebase-functions';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
 
 const db = admin.firestore();
 
 /**
- * Submit Partner Application
+ * Submit Partner Application (V2)
  * 
  * CRITICAL: This is the ONLY way to submit partner applications
  * - Validates all required fields
@@ -12,17 +12,19 @@ const db = admin.firestore();
  * - Writes to technician_applications collection
  * - Sends notification to admin
  */
-export const submitPartnerApplication = functions.https.onCall(async (data, context) => {
+export const submitPartnerApplication = onCall(async (request) => {
   try {
-    // Verify authentication
-    if (!context.auth) {
-      throw new functions.https.HttpsError(
+    // V2: Auth is in request.auth, not context.auth
+    const auth = request.auth;
+    if (!auth) {
+      throw new HttpsError(
         'unauthenticated',
         'User must be authenticated to submit application'
       );
     }
 
-    const userId = context.auth.uid;
+    const userId = auth.uid;
+    const data = request.data;
 
     // Validate required fields
     const requiredFields = [
@@ -38,7 +40,7 @@ export const submitPartnerApplication = functions.https.onCall(async (data, cont
 
     for (const field of requiredFields) {
       if (!data[field]) {
-        throw new functions.https.HttpsError(
+        throw new HttpsError(
           'invalid-argument',
           `Missing required field: ${field}`
         );
@@ -47,7 +49,7 @@ export const submitPartnerApplication = functions.https.onCall(async (data, cont
 
     // Validate bank details structure
     if (!data.bankDetails.accountNumber || !data.bankDetails.ifscCode || !data.bankDetails.holderName) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'invalid-argument',
         'Bank details must include accountNumber, ifscCode, and holderName'
       );
@@ -55,14 +57,14 @@ export const submitPartnerApplication = functions.https.onCall(async (data, cont
 
     // Validate arrays
     if (!Array.isArray(data.categoryIds) || data.categoryIds.length === 0) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'invalid-argument',
         'categoryIds must be a non-empty array'
       );
     }
 
     if (!Array.isArray(data.subcategoryIds) || data.subcategoryIds.length === 0) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'invalid-argument',
         'subcategoryIds must be a non-empty array'
       );
@@ -70,7 +72,7 @@ export const submitPartnerApplication = functions.https.onCall(async (data, cont
 
     // Validate experience years
     if (typeof data.experienceYears !== 'number' || data.experienceYears <= 0) {
-      throw new functions.https.HttpsError(
+      throw new HttpsError(
         'invalid-argument',
         'experienceYears must be a positive number'
       );
@@ -85,7 +87,7 @@ export const submitPartnerApplication = functions.https.onCall(async (data, cont
     if (existingApp.exists) {
       const status = existingApp.data()?.status;
       if (status === 'pending' || status === 'approved') {
-        throw new functions.https.HttpsError(
+        throw new HttpsError(
           'already-exists',
           'You have already submitted an application'
         );
@@ -146,12 +148,12 @@ export const submitPartnerApplication = functions.https.onCall(async (data, cont
     console.error('[Partner Application] Error:', error);
     
     // Re-throw HttpsError as-is
-    if (error instanceof functions.https.HttpsError) {
+    if (error instanceof HttpsError) {
       throw error;
     }
     
     // Wrap other errors
-    throw new functions.https.HttpsError(
+    throw new HttpsError(
       'internal',
       error.message || 'Failed to submit application'
     );

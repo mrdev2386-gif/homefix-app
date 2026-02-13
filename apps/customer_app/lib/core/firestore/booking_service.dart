@@ -9,7 +9,8 @@ class BookingService {
 
   Future<Map<String, dynamic>> createBooking(Map<String, dynamic> bookingData) async {
     try {
-      final HttpsCallable callable = _functions.httpsCallable('createBooking');
+      // Use V2 function for booking creation
+      final HttpsCallable callable = _functions.httpsCallable('createBookingV2');
       final results = await callable.call(bookingData);
       return results.data as Map<String, dynamic>;
     } catch (e) {

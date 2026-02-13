@@ -95,6 +95,12 @@ class AuthProvider extends ChangeNotifier {
     await _userService.updateDefaultAddress(_customer!.uid, address);
   }
 
+  /// Update default location with coordinates (for location picker updates)
+  Future<void> updateDefaultLocation(String address, double latitude, double longitude) async {
+    if (_customer == null) return;
+    await _userService.updateDefaultLocation(_customer!.uid, address, latitude, longitude);
+  }
+
   Stream<List<Address>> get addresses {
     if (_customer == null) return const Stream.empty();
     return _userService.getAddresses(_customer!.uid);

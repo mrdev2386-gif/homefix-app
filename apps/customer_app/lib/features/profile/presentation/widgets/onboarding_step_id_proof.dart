@@ -326,12 +326,22 @@ class OnboardingStepIdProof extends StatelessWidget {
                                         ClipRRect(
                                           borderRadius: BorderRadius.circular(18),
                                           child: kIsWeb
-                                              ? Image.network(
-                                                  provider.idProof!.path,
-                                                  fit: BoxFit.cover,
-                                                  width: double.infinity,
-                                                  height: 200,
-                                                )
+                                              ? (() {
+                                                  print("IMAGE URL => ${provider.idProof!.path}");
+                                                  return Image.network(
+                                                    provider.idProof!.path,
+                                                    fit: BoxFit.cover,
+                                                    width: double.infinity,
+                                                    height: 200,
+                                                    loadingBuilder: (context, child, progress) {
+                                                      if (progress == null) return child;
+                                                      return const Center(child: CircularProgressIndicator());
+                                                    },
+                                                    errorBuilder: (context, error, stackTrace) {
+                                                      return const Icon(Icons.image_not_supported, size: 40);
+                                                    },
+                                                  );
+                                                }())
                                               : Image.file(
                                                   File(provider.idProof!.path),
                                                   fit: BoxFit.cover,

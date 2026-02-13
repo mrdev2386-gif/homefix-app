@@ -1,30 +1,42 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // --- HELPERS ---
+    // ==========================================
+    // HELPER FUNCTIONS
+    // ==========================================
     
-    function isSignedIn() {
+    function isAuthenticated() {
       return request.auth != null;
     }
     
     function isOwner(userId) {
-      return request.auth.uid == userId;
+      return isAuthenticated() && request.auth.uid == userId;
     }
     
     function isAdmin() {
-      // Check custom claim OR admin collection
-      return request.auth.token.admin == true || 
-             exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
-
-    // --- COLLECTIONS ---
-
-    // 1. MASTER SERVICE CATALOG
-    // Public read, Admin write
-    match /services/{serviceId} {
+    
+    function isActive() {
+      return !resource.data.keys.hasAny(['isActive']) || resource.data.isActive == true;
+    }
+    
+    // ==========================================
+    // PUBLIC CATALOGS (Read-only, no auth required)
+    // ==========================================
+    
+    // Home banners - public read for app display
+    match /home_banners/{id} {
       allow read: if true;
-      allow write: if false; // All writes via Cloud Functions
+      allow write: if isAdmin();
+    }
+    
+    match /service_bottom_banners/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
     
     match /celebrating_professionals/{id} {
@@ -37,175 +49,295 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     
-    match /home_banners/{id} {
-      allow read: if true;
-      allow write: if false;
-    }
-
     match /service_spotlight/{id} {
       allow read: if true;
-      allow write: if false;
+      allow write: if isAdmin();
     }
     
-    match /subServices/{subServiceId} {
+    // Technician categories - public read for partner onboarding
+    match /technician_categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // Technician subcategories - public read for partner onboarding
+    match /technician_subcategories/{subCategoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // Services - public read for service catalog
+    match /services/{serviceId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // Categories - public read
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // Coupons - public read
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // System Status - public read
+    match /systemStatus/{statusId} {
       allow read: if true;
       allow write: if false;
     }
     
-    // 2. TECHNICIAN ONBOARDING
-    // Owner read, No direct write (Functions only)
-    match /technicianApplications/{techId} {
-      allow read: if isSignedIn() && (isOwner(techId) || isAdmin());
-      allow write: if false; // All updates via Cloud Functions
-    }
+    // ==========================================
+    // TECHNICIANS (Public read only)
+    // ==========================================
     
-    // 3. TECHNICIANS
-    // Public read (filtered in query usually), No direct write
-    match /technicians/{techId} {
-      allow read: if isSignedIn(); // Customers need to see profile if assigned? 
-      // Ideally restrictive, but for search/display we allows read. 
-      // Sensitive data like 'bankDetails' should NOT be in this doc.
-      allow write: if false; // All updates via Cloud Functions
+    match /technicians/{technicianId} {
+      allow read: if true;
+      allow write: if false;
       
-      // Sub-collections
-      match /notifications/{nId} {
-        allow read: if isOwner(techId);
+      match /earnings/{earningId} {
+        allow read: if isOwner(technicianId) || isAdmin();
         allow write: if false;
       }
       
-      // Technician FCM Tokens
-      match /fcmTokens/{tokenId} {
-        allow read: if isSignedIn() && isOwner(techId);
-        allow create: if isSignedIn() && isOwner(techId);
-        allow update: if isSignedIn() && isOwner(techId);
-        allow delete: if isSignedIn() && isOwner(techId);
+      match /ledger/{entryId} {
+        allow read: if isOwner(technicianId) || isAdmin();
+        allow write: if false;
       }
     }
     
-    // 4. CUSTOMERS
-    match /customers/{userId} {
-      allow read: if isSignedIn() && (isOwner(userId) || isAdmin());
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId) &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['balance', 'isAdmin']);
+    // ==========================================
+    // AUTHENTICATED USERS
+    // ==========================================
+    
+    // Customers
+    match /customers/{customerId} {
+      allow read: if isOwner(customerId) || isAdmin();
+      allow write: if isOwner(customerId) || isAdmin();
       
-      // FIXED: Addresses subcollection - user can manage their own addresses
+      match /cart/{cartItemId} {
+        allow read: if isOwner(customerId);
+        allow write: if isOwner(customerId);
+      }
+      
       match /addresses/{addressId} {
-        allow read: if isSignedIn() && isOwner(userId);
-        allow create: if isSignedIn() && isOwner(userId);
-        allow update: if isSignedIn() && isOwner(userId);
-        allow delete: if isSignedIn() && isOwner(userId);
+        allow read: if isOwner(customerId);
+        allow write: if isOwner(customerId);
       }
       
-      // User settings subcollection
-      match /settings/{settingId} {
-        allow read: if isSignedIn() && isOwner(userId);
-        allow write: if isSignedIn() && isOwner(userId);
-      }
-      
-      // FIXED: FCM Tokens subcollection - user can manage their own tokens
-      match /fcmTokens/{tokenId} {
-        allow read: if isSignedIn() && isOwner(userId);
-        allow create: if isSignedIn() && isOwner(userId);
-        allow update: if isSignedIn() && isOwner(userId);
-        allow delete: if isSignedIn() && isOwner(userId);
-      }
-      
-      // User notifications subcollection
       match /notifications/{notificationId} {
-        allow read: if isSignedIn() && isOwner(userId);
-        allow write: if false; // Cloud Functions only
+        allow read: if isOwner(customerId);
+        allow write: if isAdmin();
+      }
+      
+      match /fcmTokens/{tokenId} {
+        allow read: if isOwner(customerId);
+        allow write: if isOwner(customerId);
+      }
+      
+      match /settings/{settingId} {
+        allow read: if isOwner(customerId);
+        allow write: if isOwner(customerId);
       }
     }
-
-    // 5. BOOKINGS
-    // Read: Customer, Assigned Tech, Admin
-    // Write: NO direct writes (Functions only)
+    
+    // Users legacy
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) || isAdmin();
+    }
+    
+    // ==========================================
+    // BOOKINGS
+    // ==========================================
+    
     match /bookings/{bookingId} {
-      allow read: if isSignedIn() && (
-        isOwner(resource.data.customerId) || 
-        isOwner(resource.data.technicianId) ||
-        isOwner(resource.data.assignedTechnicianId) ||
-        isAdmin()
+      allow read: if request.auth != null && (
+        isAdmin() ||
+        request.auth.uid == resource.data.customerId ||
+        request.auth.uid == resource.data.customerID ||
+        request.auth.uid == resource.data.userId ||
+        request.auth.uid == resource.data.uid
       );
-      allow create: if false; // createBooking Callable
-      allow update: if false; // updateBooking/respondToBooking Callables
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
     }
     
-    // 6. ALERTS
-    match /booking_alerts/{alertId} {
-      allow read: if isSignedIn() && (isOwner(resource.data.technicianId) || isAdmin());
+    // ==========================================
+    // REVIEWS
+    // ==========================================
+    
+    match /reviews/{reviewId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+        request.resource.data.keys.hasAny(['customerId']) &&
+        request.resource.data.customerId == request.auth.uid;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+    
+    // ==========================================
+    // BOOKING REQUESTS
+    // ==========================================
+    
+    match /bookingRequests/{requestId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        (resource.data.keys.hasAny(['customerId']) && 
+         resource.data.customerId == request.auth.uid)
+      );
+      allow create: if isAuthenticated() && 
+        request.resource.data.keys.hasAny(['customerId']) &&
+        request.resource.data.customerId == request.auth.uid &&
+        request.resource.data.status == 'processing';
+      allow update: if false;
+      allow delete: if false;
+    }
+    
+    // Assignment Requests
+    match /assignment_requests/{requestId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        (resource.data.keys.hasAny(['technicianId']) && 
+         resource.data.technicianId == request.auth.uid)
+      );
       allow write: if false;
     }
-
-    // 7. PUBLIC/CONFIG
-    match /app_config/{docId} {
-        allow read: if true;
-        allow write: if isAdmin();
+    
+    // ==========================================
+    // PARTNER ONBOARDING
+    // ==========================================
+    
+    // Partner Applications
+    match /partner_applications/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if false;
     }
     
-    // 8. ADMIN COLLECTIONS
+    // Technician Applications
+    match /technicianApplications/{applicationId} {
+      allow read: if isAdmin() ||
+        (resource.data.keys.hasAny(['userId']) &&
+         resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && 
+        request.resource.data.keys.hasAny(['userId']) &&
+        request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin();
+    }
+    
+    // ==========================================
+    // PAYMENTS & FINANCIAL
+    // ==========================================
+    
+    match /payments/{paymentId} {
+      allow read: if isAdmin();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+    
+    // Technician Earnings & Payouts
+    match /technicianEarnings/{techId} {
+      allow read: if isOwner(techId) || isAdmin();
+      
+      match /ledger/{entryId} {
+        allow read: if isOwner(techId) || isAdmin();
+        allow write: if false;
+      }
+    }
+    
+    match /payoutBatches/{batchId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    
+    // ==========================================
+    // ADMIN ONLY
+    // ==========================================
+    
+    match /config/{configId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
     match /admins/{adminId} {
-      allow read, write: if false; // Backend only
+      allow read: if isOwner(adminId);
+      allow write: if isAdmin();
     }
     
-    match /verification_queue/{docId} {
+    match /adminAlerts/{alertId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+    
+    // Rate Limits
+    match /rateLimits/{limitId} {
       allow read: if isAdmin();
       allow write: if false;
     }
     
-    match /audit_logs/{logId} {
+    match /rateLimitWindows/{windowId} {
       allow read: if isAdmin();
       allow write: if false;
     }
     
-    // 9. PAYMENT LOGS
-    // Admin read only, Cloud Functions write
-    match /payment_logs/{logId} {
+    // Analytics
+    match /analytics/{dayId} {
       allow read: if isAdmin();
-      allow write: if false; // Cloud Functions only
+      allow write: if false;
     }
     
-    // 10. PAYOUT LOGS
-    // Admin read only, Cloud Functions write
-    match /payout_logs/{logId} {
+    match /events/{eventId} {
       allow read: if isAdmin();
-      allow write: if false; // Cloud Functions only
+      allow write: if false;
     }
     
-    // 11. RATE LIMITS
-    // Backend only
-    match /rate_limits/{docId} {
+    // Failed Webhooks
+    match /failedWebhooks/{webhookId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    
+    // Payout Integrity
+    match /payoutIntegrityReports/{reportId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    
+    // Risk Profiles
+    match /risk_profiles/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isAdmin();
+    }
+    
+    // ==========================================
+    // USER ACTIVITY
+    // ==========================================
+    
+    match /userActivity/{userId} {
+      allow read: if isAdmin() || isOwner(userId);
+      allow create: if isOwner(userId) || isAdmin();
+      allow update: if false;
+      allow delete: if false;
+      
+      match /logs/{logId} {
+        allow read: if isAdmin() || isOwner(userId);
+        allow write: if false;
+      }
+    }
+    
+    // ==========================================
+    // DENY ALL UNSPECIFIED PATHS
+    // ==========================================
+    
+    match /{path=**} {
       allow read, write: if false;
-    }
-    
-    // 12. COUNTERS
-    // Backend only
-    match /counters/{docId} {
-      allow read, write: if false;
-    }
-
-    // 13. PAYMENT DISCREPANCIES
-    match /payment_mismatches/{id} {
-      allow read: if isAdmin();
-      allow write: if false;
-    }
-
-    // 14. SERVICE BOTTOM BANNERS
-    match /service_bottom_banners/{id} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    // 15. TECHNICIAN CATEGORIES
-    match /technician_categories/{id} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-    
-    match /technician_subcategories/{id} {
-      allow read: if true;
-      allow write: if isAdmin();
     }
   }
 }

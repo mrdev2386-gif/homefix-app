@@ -2,12 +2,18 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { db } from '../shared/config';
+
+// Environment variables for Razorpay configuration
+const razorpayKeyId = process.env.RAZORPAY_KEY_ID || '';
+const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || '';
+const razorpayPayoutAccount = process.env.RAZORPAY_PAYOUT_ACCOUNT || '';
+
 // Helper for lazy loading Razorpay
 async function getRazorpay() {
     const Razorpay = (await import('razorpay')).default;
     return new Razorpay({
-        key_id: functions.config().razorpay?.key_id || 'rzp_test_placeholder',
-        key_secret: functions.config().razorpay?.key_secret || 'placeholder_secret',
+        key_id: razorpayKeyId || 'rzp_test_placeholder',
+        key_secret: razorpayKeySecret || 'placeholder_secret',
     });
 }
 import { assertAdmin, logAdminAction } from '../admin/utils';
@@ -91,7 +97,7 @@ export const triggerTechnicianPayout = functions.https.onCall(async (data: any, 
 
         // Trigger Payout
         const payout = await (rzp as any).payouts.create({
-            account_number: functions.config().razorpay?.payout_account || 'X123456789',
+            account_number: razorpayPayoutAccount || 'X123456789',
             fund_account_id: fundAccountId,
             amount: Math.round(amount * 100),
             currency: 'INR',

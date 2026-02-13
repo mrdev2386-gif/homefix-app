@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/providers/category_provider.dart';
@@ -11,6 +12,7 @@ import '../core/providers/service_provider.dart';
 import '../core/providers/cart_provider.dart';
 import '../core/providers/booking_provider.dart';
 import '../core/models/service.dart';
+import '../core/models/category.dart';
 import '../core/models/cart_item.dart';
 import '../core/models/dashboard_models.dart';
 import '../core/services/location_service.dart';
@@ -24,6 +26,8 @@ import '../features/dashboard/widgets/cleaning_essentials_section.dart';
 import '../features/dashboard/widgets/service_spotlight_section.dart';
 import '../core/services/firestore_service.dart';
 import '../core/theme/app_theme.dart';
+import '../features/services/presentation/category_services_screen.dart';
+import '../features/services/widgets/category_grid_card.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:async';
 import 'dart:isolate';
@@ -332,15 +336,22 @@ class _ModernLocationSheetState extends State<ModernLocationSheet> with SingleTi
     });
     _animationController.forward(from: 0.0);
 
-    await authProvider.updateDefaultAddress(_cachedLocation!.address);
+    // FIX: Use updateDefaultLocation with coordinates
+    await authProvider.updateDefaultLocation(
+      _cachedLocation!.address,
+      _cachedLocation!.latitude,
+      _cachedLocation!.longitude,
+    );
 
     if (!mounted) return;
 
-    // Close after delay - with mounted check
+    // Show success BEFORE closing - FIX: Show snackbar in parent context
+    _showSuccessSnackBar(context, 'Location updated from cache');
+    
+    // Close after delay
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {
         widget.onClose();
-        _showSuccessSnackBar(context, 'Location updated from cache');
       }
     });
 
@@ -499,22 +510,28 @@ class _ModernLocationSheetState extends State<ModernLocationSheet> with SingleTi
       // Update address
       if (!mounted) return;
       setState(() {
-        _address = address;
+        _address = address ?? 'Unknown location';
         _locationState = LocationState.success;
       });
 
       _animationController.forward(from: 0.0);
 
-      // Update in auth provider
-      await authProvider.updateDefaultAddress(address);
+      // Update in auth provider with coordinates
+      await authProvider.updateDefaultLocation(
+        address,
+        position.latitude,
+        position.longitude,
+      );
 
       if (!mounted) return;
 
-      // Close after delay - with mounted check
+      // Show success BEFORE closing - FIX: Show snackbar in parent context
+      _showSuccessSnackBar(context, 'Location updated successfully');
+      
+      // Close after delay
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted) {
           widget.onClose();
-          _showSuccessSnackBar(context, 'Location updated successfully');
         }
       });
 
@@ -750,7 +767,12 @@ class _ModernLocationSheetState extends State<ModernLocationSheet> with SingleTi
             );
             if (result != null && result is Address) {
               final authProvider = context.read<AuthProvider>();
-              await authProvider.updateDefaultAddress(result.fullAddress);
+              // FIX: Use updateDefaultLocation with coordinates
+              await authProvider.updateDefaultLocation(
+                result.fullAddress,
+                result.latitude,
+                result.longitude,
+              );
               if (context.mounted) {
                 _showSuccessSnackBar(context, 'Location updated');
               }
@@ -1645,18 +1667,18 @@ class _HomeTabState extends State<HomeTab> {
           physics: const NeverScrollableScrollPhysics(),
           padding: const EdgeInsets.symmetric(horizontal: 16),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            childAspectRatio: 0.85,
+            crossAxisCount: 2,
+            childAspectRatio: 0.75,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
           ),
           itemCount: categories.length,
           itemBuilder: (context, index) {
             final category = categories[index];
-            return CategoryCard(
+            return CategoryGridCard(
               category: category,
               onTap: () {
-                _navigateToCategoryDetails(context, category.id, category.title);
+                _navigateToCategoryServices(context, category);
               },
             );
           },
@@ -1665,9 +1687,12 @@ class _HomeTabState extends State<HomeTab> {
     );
   }
 
-  void _navigateToCategoryDetails(BuildContext context, String categoryId, String categoryTitle) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Opening $categoryTitle...')),
+  void _navigateToCategoryServices(BuildContext context, Category category) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CategoryServicesScreen(category: category),
+      ),
     );
   }
 

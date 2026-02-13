@@ -4,6 +4,16 @@ import * as testing from './testing';
 import { getAppConfig } from './shared/config';
 import * as crypto from 'crypto';
 
+// v2 Firestore triggers
+import {
+    onDocumentCreated,
+    onDocumentUpdated,
+} from 'firebase-functions/v2/firestore';
+
+// Environment variables for Razorpay configuration
+const razorpayKeyId = process.env.RAZORPAY_KEY_ID || '';
+const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || '';
+
 import * as adminDashboard from './admin/dashboard';
 import * as adminUsers from './admin/users';
 import * as adminTechs from './admin/technicians';
@@ -34,8 +44,8 @@ const getDb = () => admin.firestore();
 async function getRazorpay() {
     const Razorpay = (await import('razorpay')).default;
     return new Razorpay({
-        key_id: functions.config().razorpay?.key_id || 'rzp_test_placeholder',
-        key_secret: functions.config().razorpay?.key_secret || 'placeholder_secret',
+        key_id: razorpayKeyId || 'rzp_test_placeholder',
+        key_secret: razorpayKeySecret || 'placeholder_secret',
     });
 }
 
@@ -46,6 +56,40 @@ import { sendPushNotification, NotificationPayload } from './shared/notification
 import * as customerFeatures from './customer_features';
 // Smart Matching V2
 import { matchAndAssignBooking, handleAssignmentResponse } from './matching/matching_v2';
+import { matchTechnicians as matchTechs, updateTechnicianAssignment, cleanupStaleTechnicianStatus } from './matching/technician_matching';
+export { matchTechniciansV2 } from './matching/matchTechniciansV2';
+
+export const matchTechnicians = matchTechs;
+export const matchTechniciansForService = matchTechs;
+export const updateTechnicianLastAssignment = updateTechnicianAssignment;
+export const onStaleTechnicianCleanup = cleanupStaleTechnicianStatus;
+
+// Booking Lifecycle
+export { createBookingWithAssignment, respondToBooking, updateBookingStatus, handleBookingTimeouts } from './booking/booking_lifecycle';
+
+// v2 Booking Functions
+export { createBookingV2 } from './booking/createBookingV2';
+export { razorpayWebhookV2 } from './payments/razorpayWebhookV2';
+
+// Production Hardening
+export { 
+  handlePaymentWebhook, 
+  createBookingIdempotent,
+  checkRateLimit,
+  updateTechnicianHeartbeat,
+  createPayoutLedgerEntry,
+  generateWeeklyPayoutReport,
+  getTechnicianEarnings,
+  trackAnalyticsEvent,
+  validateBookingCreation,
+  sanitizeBookingInput,
+  cleanupStaleTechnicianHeartbeats,
+  cleanupRateLimitRecords,
+  checkSystemHealth,
+  onBookingStateChange,
+  generateAnalyticsSnapshot,
+  trackTechnicianMetrics
+} from './booking/production_hardening';
 
 /**
  * Scheduled function to remind users about items in their cart.
@@ -292,6 +336,23 @@ export const assignTechnicianToBooking = functions.https.onCall(async (data, con
 
 export const respondToAssignment = handleAssignmentResponse;
 
+// FCM Token Management
+export const saveFcmToken = functions.https.onCall(async (data, context) => {
+    const uid = context.auth?.uid;
+    if (!uid) {
+        throw new functions.https.HttpsError("unauthenticated", "User not logged in");
+    }
+
+    const { token } = data;
+
+    await admin.firestore()
+        .collection("users")
+        .doc(uid)
+        .set({ fcmToken: token }, { merge: true });
+
+    return { success: true };
+});
+
 
 import * as bookingActions from './booking_actions';
 
@@ -305,8 +366,7 @@ export const completeJob = bookingActions.completeJob;
 // Customer Actions
 export const approveJobQuote = bookingActions.approveJobQuote;
 export const rejectJobQuote = bookingActions.rejectJobQuote;
-export const cancelBookingByCustomer = bookingActions.cancelBookingByCustomer;
-
+// cancelBookingByCustomer is exported from booking_lifecycle.ts
 
 // ==========================================
 // 3. TRIGGERS
@@ -319,19 +379,30 @@ export const onUserCreated = functions.auth.user().onCreate(async (user: admin.a
 });
 
 // ==========================================
-// 3. TRIGGERS & NOTIFICATIONS
+// 3. TRIGGERS & NOTIFICATIONS (V2)
 // ==========================================
 
-export const onBookingCreated = functions.firestore.document('bookings/{bookingId}')
-    .onCreate(async (snap, context) => {
+// V2 Firestore Trigger: onBookingCreated
+export const onBookingCreated = onDocumentCreated(
+    {
+        document: 'bookings/{bookingId}',
+        region: 'us-central1',
+        memory: '256MiB',
+        timeoutSeconds: 60,
+        minInstances: 1,
+    },
+    async (event: any) => {
+        const snap = event.data;
+        if (!snap) return;
+
         const booking = snap.data();
-        if (!booking) return;
+        const bookingId = event.params.bookingId;
 
         // Notify Customer
         await sendPushNotification(booking.customerId, 'customers', {
             title: 'Booking Received',
             body: `Your booking for ${booking.serviceTitle} has been received.`,
-            data: { bookingId: context.params.bookingId, type: 'booking_status' }
+            data: { bookingId, type: 'booking_status' }
         });
 
         // Notify Technician (if assigned immediately)
@@ -339,22 +410,45 @@ export const onBookingCreated = functions.firestore.document('bookings/{bookingI
             await sendPushNotification(booking.assignedTechnicianId, 'technicians', {
                 title: 'New Job Assigned!',
                 body: `You have a new booking for ${booking.serviceTitle}.`,
-                data: { bookingId: context.params.bookingId, type: 'job_request' }
+                data: { bookingId, type: 'job_request' }
             });
         }
-    });
+    }
+);
 
-export const onBookingStatusChange = functions.firestore.document('bookings/{bookingId}')
-    .onUpdate(async (change, context) => {
-        const before = change.before.data();
-        const after = change.after.data();
-        if (!before || !after) return;
+export const onBookingStatusChange = onDocumentUpdated(
+    {
+        document: 'bookings/{bookingId}',
+        region: 'us-central1',
+        memory: '256MiB',
+        timeoutSeconds: 60,
+        minInstances: 1,
+    },
+    async (event: any) => {
+        const startTime = Date.now();
+        const before = event.data.before.data();
+        const after = event.data.after.data();
+        if (!before || !after) {
+            console.log(JSON.stringify({ level: "WARN", function: "onBookingStatusChange", action: "missing_data", durationMs: Date.now() - startTime }));
+            return;
+        }
 
-        const bookingId = context.params.bookingId;
+        const bookingId = event.params.bookingId;
+        const bookingContext = { bookingId, customerId: after.customerId, technicianId: after.assignedTechnicianId };
 
-        // 1. Handle Status Change
+        // 1. Handle Status Change with guard against duplicate processing
         if (before.status !== after.status) {
             const status = after.status;
+            console.log(JSON.stringify({ 
+                level: "INFO", 
+                function: "onBookingStatusChange", 
+                action: "status_change",
+                ...bookingContext,
+                fromStatus: before.status,
+                toStatus: status,
+                durationMs: Date.now() - startTime
+            }));
+
             let customerPayload: NotificationPayload | null = null;
             let techPayload: NotificationPayload | null = null;
 
@@ -376,36 +470,66 @@ export const onBookingStatusChange = functions.firestore.document('bookings/{boo
                 case 'on_the_way':
                     customerPayload = {
                         title: 'Technician is On The Way!',
-                        body: `Get ready! Our professional is headed to your location.`,
+                        body: 'Get ready! Our professional is headed to your location.',
                         data: { bookingId, type: 'tracking' }
                     };
                     break;
                 case 'started':
                     customerPayload = {
                         title: 'Service Started',
-                        body: `The pro has started the service. Relax while we fix it!`,
+                        body: 'The pro has started the service. Relax while we fix it!',
                         data: { bookingId, type: 'booking_status' }
                     };
                     break;
                 case 'completed':
-                    customerPayload = {
-                        title: 'Service Completed!',
-                        body: `How was your experience? Please rate the service.`,
-                        data: { bookingId, type: 'rating' }
-                    };
-                    const techAmount = after.finalAmount * 0.8;
-                    techPayload = {
-                        title: 'Payment Credited',
-                        body: `₹${techAmount.toFixed(2)} has been added to your pending balance for ${after.serviceTitle}.`,
-                        data: { bookingId, type: 'earnings' }
-                    };
-                    if (after.assignedTechnicianId) {
-                        await technicianFinance.processTechnicianEarning(
-                            bookingId,
-                            after.assignedTechnicianId,
-                            after.finalAmount,
-                            after.services.map((s: any) => s.id)
-                        );
+                    // GUARD: Check if earnings already processed
+                    if (after.earningsProcessed) {
+                        console.log(JSON.stringify({ 
+                            level: "WARN", 
+                            function: "onBookingStatusChange", 
+                            action: "earnings_already_processed",
+                            ...bookingContext,
+                            durationMs: Date.now() - startTime
+                        }));
+                    } else {
+                        customerPayload = {
+                            title: 'Service Completed!',
+                            body: 'How was your experience? Please rate the service.',
+                            data: { bookingId, type: 'rating' }
+                        };
+                        const techAmount = after.finalAmount * 0.8;
+                        techPayload = {
+                            title: 'Payment Credited',
+                            body: `₹${techAmount.toFixed(2)} has been added to your pending balance for ${after.serviceTitle}.`,
+                            data: { bookingId, type: 'earnings' }
+                        };
+                        if (after.assignedTechnicianId) {
+                            try {
+                                await technicianFinance.processTechnicianEarning(
+                                    bookingId,
+                                    after.assignedTechnicianId,
+                                    after.finalAmount,
+                                    after.services.map((s: any) => s.id)
+                                );
+                                console.log(JSON.stringify({ 
+                                    level: "INFO", 
+                                    function: "onBookingStatusChange", 
+                                    action: "earnings_processed",
+                                    ...bookingContext,
+                                    amount: techAmount,
+                                    durationMs: Date.now() - startTime
+                                }));
+                            } catch (error: any) {
+                                console.error(JSON.stringify({ 
+                                    level: "ERROR", 
+                                    function: "onBookingStatusChange", 
+                                    action: "earnings_processing_failed",
+                                    ...bookingContext,
+                                    error: error.message,
+                                    durationMs: Date.now() - startTime
+                                }));
+                            }
+                        }
                     }
                     break;
                 case 'cancelled':
@@ -424,30 +548,51 @@ export const onBookingStatusChange = functions.firestore.document('bookings/{boo
                     break;
             }
 
-            if (customerPayload) await sendPushNotification(after.customerId, 'customers', customerPayload);
+            if (customerPayload) {
+                await sendPushNotification(after.customerId, 'customers', customerPayload);
+            }
             if (techPayload && after.assignedTechnicianId) {
                 await sendPushNotification(after.assignedTechnicianId, 'technicians', techPayload);
             }
         }
 
-        // 2. Handle Technician Assignment (if not already handled by status)
+        // 2. Handle Technician Assignment (guard against duplicate notifications)
         if (!before.assignedTechnicianId && after.assignedTechnicianId) {
+            console.log(JSON.stringify({ 
+                level: "INFO", 
+                function: "onBookingStatusChange", 
+                action: "technician_assigned",
+                ...bookingContext,
+                durationMs: Date.now() - startTime
+            }));
             await sendPushNotification(after.assignedTechnicianId, 'technicians', {
                 title: 'New Job Request',
                 body: `New job request for ${after.serviceTitle} at ${after.scheduledTime}.`,
                 data: { bookingId, type: 'job_request' }
             });
         }
-    });
+    }
+);
 
-export const onTechnicianApplicationUpdate = functions.firestore.document('technician_applications/{appId}')
-    .onUpdate(async (change, context) => {
-        const after = change.after.data();
-        const before = change.before.data();
+// ==========================================
+// 4. TECHNICIAN ONBOARDING (NEW)
+// ==========================================
+
+export const onTechnicianApplicationUpdate = onDocumentUpdated(
+    {
+        document: 'technician_applications/{appId}',
+        region: 'us-central1',
+        memory: '256MiB',
+        timeoutSeconds: 30,
+        minInstances: 1,
+    },
+    async (event: any) => {
+        const after = event.data.after.data();
+        const before = event.data.before.data();
         if (!after || !before) return;
 
         if (before.status !== after.status) {
-            const userId = context.params.appId; // appId is typically userId
+            const userId = event.params.appId;
             let title = 'Application Update';
             if (after.status === 'approved') title = 'Application Approved';
             else if (after.status === 'rejected') title = 'Application Rejected';
@@ -458,7 +603,8 @@ export const onTechnicianApplicationUpdate = functions.firestore.document('techn
                 data: { type: 'application_status', status: after.status }
             });
         }
-    });
+    }
+);
 
 // ==========================================
 // 4. TECHNICIAN ONBOARDING (NEW)
@@ -499,20 +645,32 @@ import { onBookingCreatedMatch } from './matching/matching_v2';
 export const onNewBookingMatch = onBookingCreatedMatch; // Trigger
 // export const respondToBooking = matchEngine.respondToBooking; // Use handleAssignmentResponse instead
 
-export const onPaymentUpdate = functions.firestore.document('bookings/{bookingId}')
-    .onUpdate(async (change, context) => {
-        const before = change.before.data();
-        const after = change.after.data();
+// ==========================================
+// V2 PAYMENT UPDATE TRIGGER
+// ==========================================
+
+export const onPaymentUpdate = onDocumentUpdated(
+    {
+        document: 'bookings/{bookingId}',
+        region: 'us-central1',
+        memory: '256MiB',
+        timeoutSeconds: 30,
+        minInstances: 0,
+    },
+    async (event: any) => {
+        const before = event.data.before.data();
+        const after = event.data.after.data();
         if (!before || !after) return;
 
         if (before.paymentStatus !== after.paymentStatus && after.paymentStatus === 'paid') {
             await sendPushNotification(after.customerId, 'customers', {
                 title: 'Payment Successful',
-                body: `Payment for booking #${context.params.bookingId.slice(-6)} was successful.`,
-                data: { bookingId: context.params.bookingId, type: 'payment' }
+                body: `Payment for booking #${event.params.bookingId.slice(-6)} was successful.`,
+                data: { bookingId: event.params.bookingId, type: 'payment' }
             });
         }
-    });
+    }
+);
 
 export const migrateDatabaseReq = functions.https.onRequest(async (req: any, res: any) => {
     console.log('Starting migration via Request...');
@@ -528,7 +686,7 @@ export const migrateDatabaseReq = functions.https.onRequest(async (req: any, res
         if (d.title && !d.name) { update.name = d.title; update.title = admin.firestore.FieldValue.delete(); }
         if (d.basePrice !== undefined && d.price === undefined) { update.price = Number(d.basePrice); update.basePrice = admin.firestore.FieldValue.delete(); }
         if (d.category && !d.categoryId) { update.categoryId = d.category; update.category = admin.firestore.FieldValue.delete(); }
-        const img = d.image || d.imageUrl || d.imageAssetPath || "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=800&q=80";
+        const img = d.image || d.imageUrl || d.imageAssetPath || "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80";
         update.image = img;
         if (d.imageUrl) update.imageUrl = admin.firestore.FieldValue.delete();
         if (d.imageAssetPath) update.imageAssetPath = admin.firestore.FieldValue.delete();

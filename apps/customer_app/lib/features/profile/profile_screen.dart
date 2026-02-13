@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io';
 import 'package:customer_app/core/services/storage_service.dart';
 
@@ -248,40 +249,37 @@ class _ProfileContentState extends State<_ProfileContent> {
                               ),
                               child: ClipOval(
                                 child: widget.user.photoUrl != null && widget.user.photoUrl!.isNotEmpty
-                                    ? Image.network(
-                                        widget.user.photoUrl!,
-                                        fit: BoxFit.cover,
-                                        loadingBuilder: (context, child, loadingProgress) {
-                                          if (loadingProgress == null) return child;
-                                          return Container(
+                                    ? (() {
+                                        print("IMAGE URL => ${widget.user.photoUrl}");
+                                        return CachedNetworkImage(
+                                          imageUrl: widget.user.photoUrl ?? '',
+                                          fit: BoxFit.cover,
+                                          placeholder: (context, url) => Container(
                                             color: AppTheme.accentColor,
                                             child: Center(
                                               child: CircularProgressIndicator(
-                                                value: loadingProgress.expectedTotalBytes != null
-                                                    ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
-                                                    : null,
                                                 color: AppTheme.primaryColor,
                                               ),
                                             ),
-                                          );
-                                        },
-                                        errorBuilder: (context, error, stackTrace) {
-                                          debugPrint('[ProfileScreen] Error loading profile image: $error');
-                                          return Container(
-                                            color: AppTheme.primaryColor,
-                                            child: Center(
-                                              child: Text(
-                                                initials,
-                                                style: GoogleFonts.outfit(
-                                                  fontSize: 40,
-                                                  fontWeight: FontWeight.w900,
-                                                  color: Colors.white,
+                                          ),
+                                          errorWidget: (context, url, error) {
+                                            debugPrint('[ProfileScreen] Error loading profile image: $error');
+                                            return Container(
+                                              color: AppTheme.primaryColor,
+                                              child: Center(
+                                                child: Text(
+                                                  initials,
+                                                  style: GoogleFonts.outfit(
+                                                    fontSize: 40,
+                                                    fontWeight: FontWeight.w900,
+                                                    color: Colors.white,
+                                                  ),
                                                 ),
                                               ),
-                                            ),
-                                          );
-                                        },
-                                      )
+                                            );
+                                          },
+                                        );
+                                      }())
                                     : Container(
                                         color: AppTheme.primaryColor,
                                         child: Center(

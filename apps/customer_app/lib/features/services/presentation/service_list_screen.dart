@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/models/service.dart';
 import '../../../core/models/dashboard_models.dart';
 import '../../../core/services/firestore_service.dart';
@@ -283,19 +284,19 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Image.network(
-                banner.imageUrl,
+              CachedNetworkImage(
+                imageUrl: banner.imageUrl,
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  color: AppTheme.primaryColor.withOpacity(0.1),
-                  child: const Icon(Icons.broken_image_rounded, color: AppTheme.primaryColor),
+                placeholder: (context, url) => Shimmer.fromColors(
+                  baseColor: Colors.grey[100]!,
+                  highlightColor: Colors.white,
+                  child: Container(color: Colors.white),
                 ),
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return Shimmer.fromColors(
-                    baseColor: Colors.grey[100]!,
-                    highlightColor: Colors.white,
-                    child: Container(color: Colors.white),
+                errorWidget: (context, url, error) {
+                  print("IMAGE URL => ${banner.imageUrl}");
+                  return Container(
+                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    child: const Icon(Icons.broken_image_rounded, color: AppTheme.primaryColor),
                   );
                 },
               ),
