@@ -150,7 +150,7 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.fromSeed(seedSeed: AppTheme.primaryColor),
+            colorScheme: ColorScheme.fromSeed(seedColor: AppTheme.primaryColor),
           ),
           child: child!,
         );
@@ -242,6 +242,9 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
   }
 
   Future<void> _submitRequest() async {
+    // Dismiss keyboard before submitting
+    FocusScope.of(context).unfocus();
+    
     if (!_validateForm()) return;
     if (!_formKey.currentState!.validate()) return;
 
@@ -267,6 +270,9 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
       final result = await functionsService.createCustomRequest(requestData);
 
       if (mounted) {
+        // Clear form after successful submission
+        _clearForm();
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(result['message'] ?? 'Request submitted successfully!'),
@@ -278,8 +284,10 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}')),
-          backgroundColor: Colors.red,
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -287,6 +295,22 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
         setState(() => _isSubmitting = false);
       }
     }
+  }
+
+  void _clearForm() {
+    _titleController.clear();
+    _descriptionController.clear();
+    _budgetMinController.clear();
+    _budgetMaxController.clear();
+    setState(() {
+      _selectedCategory = null;
+      _preferredDate = '';
+      _preferredTime = '';
+      _selectedAddress = null;
+      _urgency = Urgency.normal;
+      _selectedImages = [];
+      _imageBase64 = [];
+    });
   }
 
   @override
@@ -385,8 +409,8 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
                     value: category,
                     child: Row(
                       children: [
-                        if (category.iconUrl != null)
-                          Image.network(category.iconUrl!, width: 24, height: 24),
+                        if (category.imageUrl != null)
+                          Image.network(category.imageUrl!, width: 24, height: 24),
                         const SizedBox(width: 8),
                         Text(
                           category.name,
@@ -766,7 +790,7 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            DropdownButtonFormField<UserAddress>(
+            DropdownButtonFormField<Address>(
               value: _selectedAddress,
               hint: Text(
                 'Select an address',
@@ -781,14 +805,14 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            address.label ?? 'Address',
+                            address.label,
                             style: GoogleFonts.poppins(
                               fontSize: 14,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
                           Text(
-                            address.address,
+                            address.fullAddress,
                             style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[600]),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,

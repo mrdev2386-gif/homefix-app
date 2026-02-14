@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/firestore_service.dart';
+import '../../core/models/service.dart';
 import '../../core/providers/cart_provider.dart';
 import '../../core/models/booking.dart';
 import '../../core/providers/location_provider.dart';
@@ -15,6 +16,7 @@ import '../profile/presentation/add_edit_address_screen.dart';
 import '../services/presentation/service_request_screen.dart';
 import '../services/presentation/instant_booking_screen.dart';
 import '../services/presentation/service_list_screen.dart';
+import '../custom_request/presentation/custom_request_screen.dart';
 import '../support/presentation/support_screen.dart';
 import 'widgets/home_banner_carousel.dart';
 import 'widgets/service_section.dart';
@@ -41,6 +43,16 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   Stream<List<ServiceBanner>>? _bannersStream;
   Stream<List<Booking>>? _bookingsStream;
   Stream<List<HomeService>>? _servicesStream;
+  
+  // Debounce guard for location button - prevents multiple parallel calls
+  bool _isLocationUpdating = false;
+  DateTime? _lastLocationUpdateTime;
+  static const _locationDebounceDuration = Duration(seconds: 2);
+  
+  // Debounce guard for Custom Request navigation
+  bool _isNavigatingToCustomRequest = false;
+  DateTime? _lastCustomRequestNavigationTime;
+  static const _customRequestDebounceDuration = Duration(milliseconds: 500);
   
   @override
   bool get wantKeepAlive => true;
@@ -356,6 +368,20 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   Future<void> _handleCurrentLocation(BuildContext context) async {
     if (!mounted) return;
 
+    // Debounce guard - prevent multiple parallel calls within 2 seconds
+    if (_isLocationUpdating) {
+      debugPrint('[Location] Location update already in progress, ignoring request');
+      return;
+    }
+    final now = DateTime.now();
+    if (_lastLocationUpdateTime != null && 
+        now.difference(_lastLocationUpdateTime!) < _locationDebounceDuration) {
+      debugPrint('[Location] Location update debounced, please wait');
+      return;
+    }
+    _isLocationUpdating = true;
+    _lastLocationUpdateTime = now;
+
     // First pop the bottom sheet
     final navigator = Navigator.maybeOf(context);
     if (navigator != null && navigator.canPop()) {
@@ -376,7 +402,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
       // Fetch location and save to Firestore
       final success = await locationProvider.updateCurrentLocation(saveToFirestore: true);
 
-      // Always close loader safely
+      // Always close loader safely - check mounted first
       if (!mounted) return;
       final nav = Navigator.maybeOf(context);
       if (nav != null && nav.canPop()) {
@@ -386,34 +412,54 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
       if (!mounted) return;
 
       if (success) {
-        // Success popup
+        // Success snackbar
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Location saved successfully'),
+            content: Text('Location updated successfully'),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
           ),
         );
       } else {
-        // Error popup based on address state
+        // Get error message from provider
+        final errorMsg = locationProvider.errorMessage ?? 'Unable to get current location. Please try again.';
+        
+        // Determine appropriate error message
+        String displayMessage;
+        VoidCallback? settingsAction;
+        
+        if (errorMsg.contains('permission') || errorMsg.contains('denied')) {
+          displayMessage = 'Location permission denied. Please enable in settings.';
+          settingsAction = () => locationProvider.openAppSettings();
+        } else if (errorMsg.contains('disabled') || errorMsg.contains('service')) {
+          displayMessage = 'Location service is disabled. Please enable GPS.';
+          settingsAction = () => locationProvider.openLocationSettings();
+        } else if (errorMsg.contains('timeout') || errorMsg.contains('timed out')) {
+          displayMessage = 'Location request timed out. Please try again.';
+        } else {
+          displayMessage = errorMsg;
+        }
+
+        // Error snackbar with optional action
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              locationProvider.currentAddress == 'Location Denied'
-                  ? 'Location permission denied. Please enable in settings.'
-                  : 'Unable to get current location. Please try again.',
-            ),
-            action: locationProvider.currentAddress == 'Location Denied'
+            content: Text(displayMessage),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            action: settingsAction != null
                 ? SnackBarAction(
                     label: 'Settings',
-                    onPressed: () => locationProvider.openAppSettings(),
+                    textColor: Colors.white,
+                    onPressed: settingsAction,
                   )
                 : null,
+            duration: Duration(seconds: settingsAction != null ? 4 : 3),
           ),
         );
       }
     } catch (e) {
-      // Always close loader on error
+      // Always close loader on error - check mounted first
       if (!mounted) return;
       final nav = Navigator.maybeOf(context);
       if (nav != null && nav.canPop()) {
@@ -422,14 +468,18 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
 
       if (!mounted) return;
 
-      // Error popup
+      // Error snackbar
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Failed to fetch location'),
+        SnackBar(
+          content: Text('Failed to fetch location: ${e.toString()}'),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
         ),
       );
+    } finally {
+      // Always reset the debounce flag
+      _isLocationUpdating = false;
     }
   }
 
@@ -550,9 +600,9 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
             child: _buildActionCard(
               context,
               'Custom\nRequest',
-              Icons.bolt_rounded,
+              Icons.handyman_rounded,
               const Color(0xFFF59E0B),
-              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ServiceRequestScreen())),
+              _navigateToCustomRequest,
             ),
           ),
           const SizedBox(width: 16),
@@ -562,6 +612,36 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
         ],
       ),
     );
+  }
+
+  // Debounced navigation to Custom Request screen - fully async safe
+  Future<void> _navigateToCustomRequest() async {
+    final now = DateTime.now();
+    
+    // Early return if already navigating
+    if (_isNavigatingToCustomRequest) return;
+    
+    // Time-based debounce check (500ms)
+    if (_lastCustomRequestNavigationTime != null &&
+        now.difference(_lastCustomRequestNavigationTime!) < _customRequestDebounceDuration) {
+      return;
+    }
+    
+    // Final guard - ensure widget is still mounted before setting flag and navigating
+    if (!mounted) return;
+    
+    _isNavigatingToCustomRequest = true;
+    _lastCustomRequestNavigationTime = now;
+    
+    try {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => const CustomRequestScreen()));
+    } catch (e) {
+      // Handle any navigation errors safely
+      debugPrint('Navigation error: $e');
+    } finally {
+      // Reset flag directly - no setState needed (flag doesn't affect UI)
+      _isNavigatingToCustomRequest = false;
+    }
   }
 
   Widget _buildInstantBookingCard(BuildContext context) {
@@ -627,22 +707,55 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.05),
+          gradient: LinearGradient(
+            colors: [
+              color.withOpacity(0.1),
+              color.withOpacity(0.05),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: color.withOpacity(0.1)),
+          border: Border.all(color: color.withOpacity(0.2)),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.1),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)),
-              child: Icon(icon, color: Colors.white, size: 20),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [color, color.withOpacity(0.8)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withOpacity(0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Icon(icon, color: Colors.white, size: 22),
             ),
             const SizedBox(height: 16),
             Text(
               title, 
               style: GoogleFonts.outfit(color: AppTheme.textColor, fontWeight: FontWeight.w800, fontSize: 13, height: 1.2)
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Custom service request',
+              style: GoogleFonts.outfit(color: AppTheme.subtitleColor, fontSize: 11, fontWeight: FontWeight.w500),
             ),
           ],
         ),

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/services/notifications_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -12,7 +14,7 @@ import '../../../core/theme/app_text_styles.dart';
 // HAPTIC FEEDBACK HELPER
 // ==========================================
 
-class HapticFeedback {
+class HapticHelper {
   Future<void> lightImpact() async {
     if (defaultTargetPlatform == TargetPlatform.android) {
       await HapticFeedback.vibrate();
@@ -53,7 +55,7 @@ class CustomerNotificationsScreen extends StatefulWidget {
 
 class _CustomerNotificationsScreenState extends State<CustomerNotificationsScreen> {
   final ScrollController _scrollController = ScrollController();
-  final HapticFeedback _haptic = HapticFeedback();
+  final HapticHelper _haptic = HapticHelper();
   bool _isLoadingMore = false;
   static const int _pageSize = 20;
   List<NotificationModel> _allNotifications = [];
@@ -284,14 +286,14 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
           const SizedBox(height: 16),
           Text(
             'No notifications yet',
-            style: AppTextStyles.headline6.copyWith(
+            style: AppTextStyles.headlineSmall.copyWith(
               color: Colors.grey[600],
             ),
           ),
           const SizedBox(height: 8),
           Text(
             'We\'ll notify you when something arrives',
-            style: AppTextStyles.body2.copyWith(
+            style: TextStyle(
               color: Colors.grey[500],
             ),
           ),
@@ -383,7 +385,7 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
                         Expanded(
                           child: Text(
                             notification.title,
-                            style: AppTextStyles.subtitle1.copyWith(
+                            style: AppTextStyles.bodyMedium.copyWith(
                               fontWeight: notification.isRead 
                                   ? FontWeight.normal 
                                   : FontWeight.w600,
@@ -417,7 +419,7 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
                     const SizedBox(height: 4),
                     Text(
                       notification.body,
-                      style: AppTextStyles.body2.copyWith(
+                      style: TextStyle(
                         color: Colors.grey[600],
                       ),
                       maxLines: 2,
@@ -487,7 +489,7 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
         backgroundColor = Colors.green;
         break;
       case 'payment_failed':
-        iconData = Icons.payment_failed;
+        iconData = Icons.cancel;
         backgroundColor = Colors.red;
         break;
       default:
@@ -685,6 +687,3 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
     super.dispose();
   }
 }
-
-// Import for DocumentSnapshot
-import 'package:cloud_firestore/cloud_firestore.dart';

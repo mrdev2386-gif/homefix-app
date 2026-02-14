@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/models/service.dart';
-import '../../../core/models/dashboard_models.dart';
+import '../../../core/models/category.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/theme/app_theme.dart';
+import 'sub_service_screen.dart';
 
 class ServiceListScreen extends StatefulWidget {
   final String? category;
@@ -53,11 +55,12 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
       for (final service in firstSix) {
         try {
           // Skip empty or invalid URLs
-          if (service.imageUrl.isEmpty || !service.imageUrl.startsWith('http')) {
+          final imageUrl = service.imageUrl;
+          if (imageUrl == null || imageUrl.isEmpty || !imageUrl.startsWith('http')) {
             continue;
           }
           precacheImage(
-            NetworkImage(service.imageUrl),
+            NetworkImage(imageUrl),
             context,
           );
         } catch (_) {
@@ -325,8 +328,27 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           _isNavigating = true;
           HapticFeedback.lightImpact();
           
-          // Perform navigation - actual navigation is handled by parent
-          Future.delayed(const Duration(milliseconds: 300), () {
+          // Create Category from HomeService for navigation
+          final category = Category(
+            id: service.category,
+            name: service.category,
+            order: service.order,
+            isActive: service.isActive,
+          );
+          
+          // Navigate to sub-services screen with hero animation
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => SubServiceScreen(
+                category: category,
+                service: service,
+              ),
+            ),
+          );
+          
+          // Reset flag after navigation
+          Future.delayed(const Duration(milliseconds: 500), () {
             if (mounted) {
               _isNavigating = false;
             }
@@ -349,17 +371,20 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Service Image with safe loading and error fallback
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF5F5F5),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: _buildServiceImage(service),
+              // Service Image with hero animation, shimmer placeholder, and error fallback
+              Hero(
+                tag: 'service_image_${service.id}',
+                child: Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: _buildServiceImage(service),
+                  ),
                 ),
               ),
               const SizedBox(height: 10),
@@ -383,44 +408,40 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   }
 
   Widget _buildServiceImage(HomeService service) {
-    // Empty URL fallback
-    if (service.imageUrl.isEmpty) {
-      return Container(
-        color: const Color(0xFFF5F5F5),
-        child: const Center(
-          child: Icon(Icons.category_rounded, color: Colors.grey),
-        ),
-      );
+    // Get the effective image URL with fallback
+    String? imageUrl = service.imageUrl;
+    
+    // Skip invalid URLs safely
+    if (imageUrl == null || imageUrl.isEmpty || !imageUrl.startsWith('http')) {
+      // Use fallback image from service model
+      imageUrl = service.getFallbackImageUrl();
     }
 
-    return Image.network(
-      service.imageUrl,
+    return CachedNetworkImage(
+      imageUrl: imageUrl ?? '',
       width: 56,
       height: 56,
       fit: BoxFit.cover,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
-        // Loading placeholder with light grey bg
-        return Container(
-          color: const Color(0xFFF5F5F5),
-          child: const Center(
-            child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          ),
-        );
-      },
-      errorBuilder: (context, error, stackTrace) {
-        // Error fallback with light grey bg and centered icon
-        return Container(
-          color: const Color(0xFFF5F5F5),
-          child: const Center(
-            child: Icon(Icons.broken_image_rounded, color: Colors.grey),
-          ),
-        );
-      },
+      // Memory-safe sizing
+      memCacheWidth: 128,
+      memCacheHeight: 128,
+      // Shimmer placeholder while loading
+      placeholder: (context, url) => Shimmer.fromColors(
+        baseColor: Colors.grey[200]!,
+        highlightColor: Colors.white,
+        child: Container(
+          width: 56,
+          height: 56,
+          color: Colors.white,
+        ),
+      ),
+      // Error fallback icon
+      errorWidget: (context, url, error) => Container(
+        color: const Color(0xFFF5F5F5),
+        child: const Center(
+          child: Icon(Icons.broken_image_rounded, color: Colors.grey, size: 28),
+        ),
+      ),
     );
   }
 

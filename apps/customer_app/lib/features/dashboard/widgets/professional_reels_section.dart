@@ -40,7 +40,7 @@ class _ProfessionalReelsSectionState extends State<ProfessionalReelsSection> {
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
           ),
         ),
-      ),
+      );
     }
 
     return Column(
@@ -80,7 +80,7 @@ class _ProfessionalReelsSectionState extends State<ProfessionalReelsSection> {
           ),
         ),
       ],
-    ),
+    );
   }
 }
 
@@ -108,7 +108,7 @@ class _ReelItemState extends State<_ReelItem> {
   }
 
   /// Get proper download URL before initializing video player
-  /// Videos are NOT autoplayed - only load controller
+  /// Videos are autoplayed when focused (muted), loop enabled
   Future<void> _initializeController() async {
     try {
       // Check if this is a video or image
@@ -157,12 +157,17 @@ class _ReelItemState extends State<_ReelItem> {
       
       _controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl))
         ..setLooping(true)
-        ..setVolume(0);
+        ..setVolume(0); // Muted for autoplay
       
       await _controller!.initialize();
       
       if (mounted) {
         setState(() => _isInitialized = true);
+        // Autoplay when focused and initialized
+        if (widget.isFocused) {
+          _controller!.play();
+          _isPlaying = true;
+        }
       }
     } on FirebaseException catch (e) {
       debugPrint('[VideoPlayer] Firebase error: ${e.code} - ${e.message}');
@@ -185,7 +190,7 @@ class _ReelItemState extends State<_ReelItem> {
     }
   }
 
-  /// Play video on tap - NOT autoplayed
+  /// Play video on tap - toggle play/pause
   void _togglePlay() {
     if (_controller == null || !_isInitialized) return;
     
@@ -203,11 +208,22 @@ class _ReelItemState extends State<_ReelItem> {
   @override
   void didUpdateWidget(_ReelItem oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Don't autoplay on focus - only on tap
+    // Autoplay/pause based on focus
+    if (widget.isFocused != oldWidget.isFocused && _controller != null && _isInitialized) {
+      if (widget.isFocused) {
+        _controller!.play();
+        if (mounted) setState(() => _isPlaying = true);
+      } else {
+        _controller!.pause();
+        if (mounted) setState(() => _isPlaying = false);
+      }
+    }
   }
 
   @override
   void dispose() {
+    // Pause and dispose to prevent memory leak
+    _controller?.pause();
     _controller?.dispose();
     super.dispose();
   }
@@ -242,7 +258,7 @@ class _ReelItemState extends State<_ReelItem> {
                     imageUrl: widget.reel.thumbnailUrl,
                     fit: BoxFit.cover,
                   )
-                else if (!widget.reel.isVideo)
+                else
                   Container(
                     decoration: const BoxDecoration(
                       gradient: LinearGradient(
@@ -255,12 +271,17 @@ class _ReelItemState extends State<_ReelItem> {
                 
                 // Video (only if isVideo=true, initialized, and no error)
                 if (widget.reel.isVideo && _isInitialized && !_hasError && _controller != null)
-                  FittedBox(
-                    fit: BoxFit.cover,
-                    child: SizedBox(
-                      width: _controller!.value.size.width,
-                      height: _controller!.value.size.height,
-                      child: VideoPlayer(_controller!),
+                  AspectRatio(
+                    aspectRatio: _controller!.value.aspectRatio > 0 
+                        ? _controller!.value.aspectRatio 
+                        : 16 / 9, // Safe fallback to 16:9
+                    child: FittedBox(
+                      fit: BoxFit.cover,
+                      child: SizedBox(
+                        width: _controller!.value.size.width,
+                        height: _controller!.value.size.height,
+                        child: VideoPlayer(_controller!),
+                      ),
                     ),
                   ),
                 
@@ -370,6 +391,6 @@ class _ReelItemState extends State<_ReelItem> {
           ),
         ),
       ),
-    ),
+    );
   }
 }

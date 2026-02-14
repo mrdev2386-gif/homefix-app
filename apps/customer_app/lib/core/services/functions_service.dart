@@ -172,7 +172,13 @@ class FunctionsService {
   Future<Map<String, dynamic>> createCustomRequest(Map<String, dynamic> requestData) async {
     try {
       HttpsCallable callable = _functions.httpsCallable('createCustomRequest');
-      final result = await callable.call(requestData);
+      // Add timeout for production safety (15 seconds as per requirement)
+      final result = await callable.call(requestData).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          throw Exception('Request timed out. Please try again.');
+        },
+      );
       return Map<String, dynamic>.from(result.data);
     } catch (e) {
       rethrow;

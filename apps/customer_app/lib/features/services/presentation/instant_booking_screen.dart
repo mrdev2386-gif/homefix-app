@@ -111,15 +111,16 @@ class _InstantBookingScreenState extends State<InstantBookingScreen> {
     try {
       final locationProvider = Provider.of<LocationProvider>(context, listen: false);
       final currentAddress = locationProvider.currentAddress;
-      final latitude = locationProvider.latitude;
-      final longitude = locationProvider.longitude;
+      final selectedAddress = locationProvider.selectedAddress;
+      final latitude = selectedAddress?.latitude ?? locationProvider.currentPosition?.latitude;
+      final longitude = selectedAddress?.longitude ?? locationProvider.currentPosition?.longitude;
 
       // Build request payload
       final Map<String, dynamic> request = {
         'city': currentAddress.isNotEmpty ? _extractCity(currentAddress) : '',
         'area': _extractArea(currentAddress),
-        'latitude': latitude != 0 ? latitude : null,
-        'longitude': longitude != 0 ? longitude : null,
+        'latitude': latitude ?? 0.0,
+        'longitude': longitude ?? 0.0,
         'categoryId': _selectedCategory?.id,
         'availableNow': _availableNow,
         'sortBy': _sortOption.toString().split('.').last,
@@ -664,12 +665,11 @@ class _InstantBookingScreenState extends State<InstantBookingScreen> {
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                 child: CachedNetworkImage(
-                  imageUrl: service.imageUrl,
+                  imageUrl: service.imageUrl ?? '',
                   height: 160,
                   width: double.infinity,
                   fit: BoxFit.cover,
                   filterQuality: FilterQuality.low,
-                  cacheWidth: 400,
                   placeholder: (context, url) => Container(
                     color: Colors.grey.shade200,
                     child: const Center(child: CircularProgressIndicator()),
@@ -722,6 +722,15 @@ class _InstantBookingScreenState extends State<InstantBookingScreen> {
                 Positioned(
                   top: 12,
                   left: 12,
+                  child: Text(
+                    '${service.distanceKm!.toStringAsFixed(1)} km',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      backgroundColor: Colors.black54,
+                    ),
+                  ),
                 ),
               // Verified badge
               if (service.isVerified)

@@ -6,6 +6,7 @@ class SafeCachedImage extends StatelessWidget {
   final BoxFit fit;
   final double? width;
   final double? height;
+  final double? cacheWidth;
   final BorderRadius? borderRadius;
 
   const SafeCachedImage({
@@ -14,6 +15,7 @@ class SafeCachedImage extends StatelessWidget {
     this.fit = BoxFit.cover,
     this.width,
     this.height,
+    this.cacheWidth,
     this.borderRadius,
   });
 
@@ -29,7 +31,12 @@ class SafeCachedImage extends StatelessWidget {
     Widget child;
 
     if (!_isValidUrl) {
-      child = const Icon(Icons.broken_image, color: Colors.grey);
+      child = Container(
+        width: width,
+        height: height,
+        color: const Color(0xFFF5F5F5),
+        child: const Icon(Icons.broken_image, color: Colors.grey),
+      );
     } else {
       child = CachedNetworkImage(
         imageUrl: imageUrl!,
@@ -37,13 +44,28 @@ class SafeCachedImage extends StatelessWidget {
         width: width,
         height: height,
         // Performance tuning
-        memCacheWidth: 600,
+        memCacheWidth: cacheWidth?.toInt() ?? 600,
         memCacheHeight: 600,
         fadeInDuration: const Duration(milliseconds: 200),
-        placeholder: (context, url) =>
-            const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-        errorWidget: (context, url, error) =>
-            const Icon(Icons.broken_image, color: Colors.grey),
+        // Shimmer placeholder while loading
+        placeholder: (context, url) => Container(
+          width: width,
+          height: height,
+          color: const Color(0xFFF5F5F5),
+          child: const Center(
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
+            ),
+          ),
+        ),
+        // Error fallback icon
+        errorWidget: (context, url, error) => Container(
+          width: width,
+          height: height,
+          color: const Color(0xFFF5F5F5),
+          child: const Icon(Icons.broken_image, color: Colors.grey),
+        ),
       );
     }
 

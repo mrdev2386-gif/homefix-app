@@ -114,7 +114,7 @@ class FirestoreService {
       'action': address.id.isEmpty ? 'add' : 'edit',
       if (address.id.isNotEmpty) 'addressId': address.id,
       'label': address.label ?? "",
-      'address': address.address ?? "",
+      'fullAddress': address.fullAddress ?? "",
       'latitude': address.latitude ?? 0.0,
       'longitude': address.longitude ?? 0.0,
     });

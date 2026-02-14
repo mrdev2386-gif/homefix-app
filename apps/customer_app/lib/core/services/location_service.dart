@@ -236,7 +236,15 @@ class LocationService {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (dialogContext) => const LocationLoadingDialog(),
+        builder: (dialogContext) => const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 20),
+              Text('Detecting location...'),
+            ],
+          ),
+        ),
       );
       isLoadingDialogShown = true;
 
@@ -302,11 +310,18 @@ class LocationService {
   }) async {
     return showDialog(
       context: context,
-      builder: (context) => LocationErrorDialog(
-        title: title,
-        message: message,
-        actionButtonText: actionButtonText,
-        onAction: onAction,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              onAction?.call();
+            },
+            child: Text(actionButtonText ?? 'OK'),
+          ),
+        ],
       ),
     );
   }
@@ -321,45 +336,52 @@ class LocationService {
     final result = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => LocationSuccessDialog(
-        address: address.formattedAddress,
-        onUseLocation: () async {
-          // Save to Firestore ONLY when user confirms
-          try {
-            await saveCurrentAddress(userId: userId, address: address);
-            if (dialogContext.mounted) {
-              // Show success message before closing
-              ScaffoldMessenger.of(dialogContext).showSnackBar(
-                const SnackBar(
-                  content: Text('Location updated successfully'),
-                  backgroundColor: Colors.green,
-                  behavior: SnackBarBehavior.floating,
-                  duration: Duration(seconds: 2),
-                ),
-              );
-              // Wait a bit for user to see the snackbar
-              await Future.delayed(const Duration(milliseconds: 500));
-              Navigator.of(dialogContext).pop(true);
-            }
-          } catch (e) {
-            _logDebug('Failed to save address: $e');
-            if (dialogContext.mounted) {
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Confirm Location'),
+        content: Text('Use this address?\n\n${address.formattedAddress}'),
+        actions: [
+          TextButton(
+            onPressed: () {
               Navigator.of(dialogContext).pop(false);
-              // Show error
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Failed to save location. Please try again.'),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            }
-          }
-        },
-        onCancel: () {
-          if (dialogContext.mounted) {
-            Navigator.of(dialogContext).pop(false);
-          }
-        },
+            },
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              // Save to Firestore ONLY when user confirms
+              try {
+                await saveCurrentAddress(userId: userId, address: address);
+                if (dialogContext.mounted) {
+                  // Show success message before closing
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('Location updated successfully'),
+                      backgroundColor: Colors.green,
+                      behavior: SnackBarBehavior.floating,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                  // Wait a bit for user to see the snackbar
+                  await Future.delayed(const Duration(milliseconds: 500));
+                  Navigator.of(dialogContext).pop(true);
+                }
+              } catch (e) {
+                _logDebug('Failed to save address: $e');
+                if (dialogContext.mounted) {
+                  Navigator.of(dialogContext).pop(false);
+                  // Show error
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Failed to save location. Please try again.'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('Confirm'),
+          ),
+        ],
       ),
     );
     

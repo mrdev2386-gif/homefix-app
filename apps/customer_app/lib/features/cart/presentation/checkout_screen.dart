@@ -8,7 +8,7 @@ import '../../../core/providers/cart_provider.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/services/functions_service.dart';
 import '../../../core/models/address.dart';
-import '../../../screens/addresses_screen.dart';
+import '../../profile/presentation/saved_addresses_screen.dart';
 import '../../home/main_wrapper_screen.dart';
 import 'booking_status_screen.dart';
 import '../../payment/presentation/payment_screen.dart';
@@ -314,7 +314,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Future<void> _pickAddress() async {
     final address = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => const AddressesScreen(isSelectionMode: true)),
+      MaterialPageRoute(builder: (context) => SavedAddressesScreen(isSelectionMode: true)),
     );
     if (address != null && mounted) {
       Provider.of<CheckoutProvider>(context, listen: false).setAddress(address as Address);

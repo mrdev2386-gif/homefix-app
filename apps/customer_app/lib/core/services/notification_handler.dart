@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -105,7 +106,6 @@ class NotificationHandler {
       'Booking Updates',
       description: 'Real-time updates about your bookings, technician arrival, and job status.',
       importance: Importance.high,
-      priority: Priority.high,
       playSound: true,
       enableVibration: true,
       showBadge: true,
@@ -117,7 +117,6 @@ class NotificationHandler {
       'General Notifications',
       description: 'Payment confirmations, reviews, and other updates.',
       importance: Importance.defaultImportance,
-      priority: Priority.defaultPriority,
       playSound: true,
       enableVibration: true,
       showBadge: true,
@@ -284,15 +283,10 @@ class NotificationHandler {
           channelDescription: _getChannelDescription(type),
           icon: '@mipmap/ic_launcher',
           importance: isHighPriority ? Importance.high : Importance.defaultImportance,
-          priority: isHighPriority ? Priority.high : Priority.defaultPriority,
           playSound: true,
           enableVibration: isHighPriority,
           showWhen: true,
           when: DateTime.now().millisecondsSinceEpoch,
-          largeIcon: android?.imageUrl,
-          largeIconBitmapSource: android?.imageUrl != null 
-              ? BitmapSource.fromUrl 
-              : BitmapSource.defaultSource,
         ),
         iOS: const DarwinNotificationDetails(
           presentAlert: true,

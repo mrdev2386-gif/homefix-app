@@ -133,9 +133,7 @@ class _CleaningEssentialsSectionState extends State<CleaningEssentialsSection> {
           child: PageView.builder(
             itemCount: widget.essentials.length,
             controller: PageController(viewportFraction: 0.92),
-            primary: false,
-            addSemanticIndexes: false,
-            pageStorageKey: const PageStorageKey('cleaning_essentials'),
+            key: const PageStorageKey('cleaning_essentials'),
             itemBuilder: (context, index) {
               final essential = widget.essentials[index];
               return RepaintBoundary(
@@ -149,7 +147,7 @@ class _CleaningEssentialsSectionState extends State<CleaningEssentialsSection> {
   }
 
   Widget _buildLargeCard(BuildContext context, CleaningEssential essential) {
-    final double cacheWidth = (380 * 2).round();
+    final double cacheWidth = (380 * 2).toDouble();
     
     return GestureDetector(
       onTap: _isLoading ? null : () => _handleCategoryTap(context, essential),

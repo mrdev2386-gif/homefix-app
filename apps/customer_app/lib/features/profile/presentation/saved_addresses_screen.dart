@@ -9,7 +9,9 @@ import '../../../core/theme/app_theme.dart';
 import 'add_edit_address_screen.dart';
 
 class SavedAddressesScreen extends StatelessWidget {
-  const SavedAddressesScreen({super.key});
+  final bool isSelectionMode;
+
+  const SavedAddressesScreen({super.key, this.isSelectionMode = false});
 
   @override
   Widget build(BuildContext context) {

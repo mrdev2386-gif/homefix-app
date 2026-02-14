@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:geolocator/geolocator.dart';
 import '../models/matched_technician.dart';
-import '../location/location_service.dart';
+import '../services/location_service.dart';
 
 /// Edge case protection for matching operations
 class MatchingService {
@@ -32,7 +33,7 @@ class MatchingService {
     // Edge case: Prevent duplicate matching requests
     if (_isMatchingInProgress) {
       developer.log('[MATCH] Matching already in progress, ignoring duplicate request');
-      return MatchingResponse(
+      return const MatchingResponse(
         available: false,
         error: 'Matching already in progress. Please wait.',
       );
@@ -41,7 +42,7 @@ class MatchingService {
     // Edge case: Too many failed attempts
     if (_matchingAttempts >= _maxMatchingAttempts) {
       developer.log('[MATCH] Too many matching attempts, reset needed');
-      return MatchingResponse(
+      return const MatchingResponse(
         available: false,
         error: 'Multiple matching attempts failed. Please try again later.',
       );
@@ -49,34 +50,36 @@ class MatchingService {
 
     _isMatchingInProgress = true;
     
+    Position? location;
     try {
       // Edge case: Get customer location with timeout
-      final location = await _locationService.getCurrentPosition().timeout(
+      location = await _locationService.getCurrentPosition().timeout(
         const Duration(seconds: 10),
         onTimeout: () {
           developer.log('[MATCH] Location fetch timed out');
-          return null;
+          throw Exception('Location fetch timed out');
         },
       );
-      
-      if (location == null) {
-        _isMatchingInProgress = false;
-        return MatchingResponse(
-          available: false,
-          error: 'Unable to get your location. Please enable location services.',
-        );
-      }
+    } catch (e) {
+      developer.log('[MATCH] Location fetch failed: $e');
+      _isMatchingInProgress = false;
+      return const MatchingResponse(
+        available: false,
+        error: 'Unable to get your location. Please enable location services.',
+      );
+    }
 
-      // Edge case: Validate location coordinates
-      if (location.latitude == 0 && location.longitude == 0) {
-        _isMatchingInProgress = false;
-        return MatchingResponse(
-          available: false,
-          error: 'Invalid location. Please try again.',
-        );
-      }
+    // Edge case: Validate location coordinates
+    if (location.latitude == 0 && location.longitude == 0) {
+      _isMatchingInProgress = false;
+      return const MatchingResponse(
+        available: false,
+        error: 'Invalid location. Please try again.',
+      );
+    }
 
-      // Call the Cloud Function V2 with timeout
+    // Call the Cloud Function V2 with timeout
+    try {
       final callable = _functions.httpsCallable('matchTechniciansV2');
       final result = await callable.call(<String, dynamic>{
         'serviceId': serviceId,
@@ -98,7 +101,7 @@ class MatchingService {
       // Edge case: Validate response
       if (data == null || !data.containsKey('available')) {
         _isMatchingInProgress = false;
-        return MatchingResponse(
+        return const MatchingResponse(
           available: false,
           error: 'Invalid response from server.',
         );
@@ -107,30 +110,23 @@ class MatchingService {
       _matchingAttempts = 0; // Reset on success
       _isMatchingInProgress = false;
       return MatchingResponse.fromMap(data);
-
-    } on TimeoutException catch (e) {
-      developer.log('[MATCH] Timeout: $e');
-      _matchingAttempts++;
-      _isMatchingInProgress = false;
-      return MatchingResponse(
-        available: false,
-        error: 'Request timed out. Please try again.',
-      );
-    } on FirebaseFunctionsException catch (e) {
-      developer.log('[MATCH] Firebase error: ${e.message}');
-      _matchingAttempts++;
-      _isMatchingInProgress = false;
-      return MatchingResponse(
-        available: false,
-        error: e.message ?? 'Service temporarily unavailable. Please try again.',
-      );
     } catch (e) {
-      developer.log('[MATCH] Unexpected error: $e');
+      if (e is TimeoutException) {
+        developer.log('[MATCH] Timeout: $e');
+      } else if (e is FirebaseFunctionsException) {
+        developer.log('[MATCH] Firebase error: ${e.message}');
+      } else {
+        developer.log('[MATCH] Unexpected error: $e');
+      }
       _matchingAttempts++;
       _isMatchingInProgress = false;
       return MatchingResponse(
         available: false,
-        error: 'An error occurred. Please try again.',
+        error: e is TimeoutException 
+          ? 'Request timed out. Please try again.'
+          : e is FirebaseFunctionsException
+            ? (e.message ?? 'Service temporarily unavailable. Please try again.')
+            : 'An error occurred. Please try again.',
       );
     }
   }

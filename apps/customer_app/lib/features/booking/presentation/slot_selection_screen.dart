@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'booking_confirmation_screen.dart';
-import '../../../screens/addresses_screen.dart';
+import '../../profile/presentation/saved_addresses_screen.dart';
 import '../../../core/models/address.dart';
 import '../../../core/models/service.dart';
 import '../../../core/theme/app_theme.dart';
@@ -236,7 +236,7 @@ class _SlotSelectionScreenState extends State<SlotSelectionScreen> {
                     // Force address selection if not already provided or to confirm
                     final selectedAddress = await Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const AddressesScreen(isSelectionMode: true)),
+                      MaterialPageRoute(builder: (context) => SavedAddressesScreen(isSelectionMode: true)),
                     );
 
                     if (selectedAddress != null && context.mounted) {

@@ -131,7 +131,6 @@ class FcmService {
         'High Importance Notifications',
         description: 'This channel is used for important notifications.',
         importance: Importance.max,
-        priority: Priority.high,
         playSound: true,
         enableVibration: true,
       );
@@ -368,6 +367,28 @@ class FcmService {
 
 class NotificationsService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  /// Initialize push notifications - request permission and setup handlers
+  static Future<void> initialize() async {
+    try {
+      final messaging = FirebaseMessaging.instance;
+      
+      // Request permission
+      final settings = await messaging.requestPermission();
+      if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+        // Get token
+        final token = await messaging.getToken();
+        debugPrint('FCM Token: $token');
+      }
+      
+      // Handle foreground messages
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        debugPrint('Foreground message: ${message.notification?.title}');
+      });
+    } catch (e) {
+      debugPrint('Notifications initialization error: $e');
+    }
+  }
 
   // Stream notifications from unified collection
   static Stream<List<NotificationModel>> streamNotifications(String userId) {

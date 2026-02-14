@@ -61,7 +61,6 @@ class ProfessionalHomeServiceSection extends StatelessWidget {
             shrinkWrap: false,
             physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
             addSemanticIndexes: false,
-            pageStorageKey: const PageStorageKey('professional_home_service'),
             itemBuilder: (context, rowIndex) {
               final firstIndex = rowIndex * 2;
               final secondIndex = firstIndex + 1;
@@ -92,7 +91,16 @@ class ProfessionalHomeServiceSection extends StatelessWidget {
   }
 
   Widget _buildLargeServiceCard(HomeService service) {
-    final double cacheWidth = (180 * 2).round();
+    final double cacheWidth = (180 * 2).toDouble();
+
+    // Get effective image URL with fallback chain
+    String? imageUrl = service.imageUrl;
+    
+    // Validate URL - must start with http
+    if (imageUrl == null || imageUrl.isEmpty || !imageUrl.startsWith('http')) {
+      // Use fallback image from service model
+      imageUrl = service.getFallbackImageUrl();
+    }
 
     return Material(
       color: Colors.transparent,
@@ -119,9 +127,9 @@ class ProfessionalHomeServiceSection extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                // Background image with memory optimization
+                // Background image with memory optimization and shimmer
                 SafeCachedImage(
-                  imageUrl: service.imageUrl,
+                  imageUrl: imageUrl,
                   fit: BoxFit.cover,
                   cacheWidth: cacheWidth,
                 ),

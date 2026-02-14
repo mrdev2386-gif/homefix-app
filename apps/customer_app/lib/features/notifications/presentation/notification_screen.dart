@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import '../../../core/services/notifications_service.dart';
+import '../../../core/services/notifications_service.dart' show NotificationsService, NotificationModel;
 import '../../../core/services/auth_service.dart';
 
 class NotificationScreen extends StatelessWidget {
@@ -30,7 +30,7 @@ class NotificationScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: StreamBuilder<List<Map<String, dynamic>>>(
+      body: StreamBuilder<List<NotificationModel>>(
         stream: NotificationsService.streamNotifications(userId),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -66,14 +66,14 @@ class NotificationScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildNotificationItem(BuildContext context, Map<String, dynamic> info) {
-    final bool isRead = info['isRead'] ?? false;
-    final String type = info['type'] ?? 'general';
-    final DateTime createdAt = (info['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+  Widget _buildNotificationItem(BuildContext context, NotificationModel info) {
+    final bool isRead = info.isRead;
+    final String type = info.type;
+    final DateTime createdAt = info.createdAt ?? DateTime.now();
 
     return InkWell(
       onTap: () {
-        NotificationsService.markAsRead(info['id']);
+        NotificationsService.markAsRead(info.id);
       },
       child: Container(
         padding: const EdgeInsets.all(16),
@@ -93,7 +93,7 @@ class NotificationScreen extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(info['title'] ?? 'New Notification', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      Text(info.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                       Text(
                         DateFormat('MMM d, h:mm a').format(createdAt),
                         style: TextStyle(color: Colors.grey[400], fontSize: 10),
@@ -102,7 +102,7 @@ class NotificationScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    info['body'] ?? '',
+                    info.body,
                     style: TextStyle(color: Colors.grey[600], fontSize: 13, height: 1.4),
                   ),
                 ],
