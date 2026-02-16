@@ -4,19 +4,35 @@ import '../../../../core/widgets/safe_network_image.dart';
 import '../../technicians/presentation/technician_list_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-class ServiceCardGrid extends StatelessWidget {
+class ServiceCardGrid extends StatefulWidget {
   final HomeService service;
 
   const ServiceCardGrid({super.key, required this.service});
 
   @override
+  State<ServiceCardGrid> createState() => _ServiceCardGridState();
+}
+
+class _ServiceCardGridState extends State<ServiceCardGrid> {
+  bool _isNavigating = false;
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => TechnicianListScreen(service: service)),
-        );
+      onTap: () async {
+        if (_isNavigating) return;
+        _isNavigating = true;
+
+        try {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => TechnicianListScreen(service: widget.service)),
+          );
+        } finally {
+          if (mounted) {
+            _isNavigating = false;
+          }
+        }
       },
       child: Container(
         decoration: BoxDecoration(
@@ -37,13 +53,13 @@ class ServiceCardGrid extends StatelessWidget {
               child: Stack(
                 children: [
                    SafeNetworkImage(
-                    imageUrl: service.imageUrl, 
+                    imageUrl: widget.service.imageUrl, 
                     width: double.infinity,
                     height: double.infinity,
                     fit: BoxFit.cover,
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                   ),
-                  if(service.isTopService)
+                  if(widget.service.isTopService)
                     Positioned(
                       top: 8, left: 8,
                       child: Container(
@@ -71,7 +87,7 @@ class ServiceCardGrid extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    service.title,
+                    widget.service.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13),
@@ -82,7 +98,7 @@ class ServiceCardGrid extends StatelessWidget {
                       const Icon(Icons.star_rounded, size: 14, color: Colors.orange),
                       const SizedBox(width: 4),
                       Text(
-                        service.rating.toString(),
+                        widget.widget.service.rating.toString(),
                         style: GoogleFonts.outfit(
                           fontWeight: FontWeight.bold, 
                           fontSize: 12,

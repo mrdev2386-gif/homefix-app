@@ -94,6 +94,33 @@ export const submitPartnerApplication = onCall(async (request) => {
       }
     }
 
+    // Build skills mapping if selectedServices provided
+    const selectedServices = data.selectedServices;
+    const skills: { [key: string]: any } = {};
+    const serviceIds: string[] = [];
+
+    if (Array.isArray(selectedServices) && selectedServices.length > 0) {
+      console.log(`[Partner Application] Processing ${selectedServices.length} mapped services for user: ${userId}`);
+
+      selectedServices.forEach((s: any) => {
+        if (s.serviceId && typeof s.serviceId === 'string') {
+          // Standardize serviceId format and prevent duplicates
+          const sId = s.serviceId.trim();
+          if (!skills[sId]) {
+            skills[sId] = {
+              serviceId: sId,
+              serviceName: s.serviceName || 'Service',
+              subServiceIds: Array.isArray(s.subServiceIds) ? s.subServiceIds : [],
+              addedAt: admin.firestore.FieldValue.serverTimestamp(),
+            };
+            serviceIds.push(sId);
+          }
+        }
+      });
+    } else {
+      console.warn(`[Partner Application] No selectedServices provided for user: ${userId}. Backwards compatibility active.`);
+    }
+
     // Create application document
     const applicationData = {
       userId,
@@ -102,6 +129,8 @@ export const submitPartnerApplication = onCall(async (request) => {
       email: data.email,
       categoryIds: data.categoryIds,
       subcategoryIds: data.subcategoryIds,
+      serviceIds, // Flat array for fast matching
+      skills,     // Structured mapping
       experienceYears: data.experienceYears,
       experienceDescription: data.experienceDescription || '',
       profilePhotoUrl: data.profilePhotoUrl || null,
@@ -137,21 +166,22 @@ export const submitPartnerApplication = onCall(async (request) => {
       // Don't fail the application if notification fails
     }
 
-    console.log(`[Partner Application] Application submitted successfully for user: ${userId}`);
+    console.log(`[Partner Application] Application submitted successfully for user: ${userId} with ${serviceIds.length} services.`);
 
     return {
       success: true,
       message: 'Application submitted successfully',
       applicationId: userId,
+      mappedServices: serviceIds.length
     };
   } catch (error: any) {
     console.error('[Partner Application] Error:', error);
-    
+
     // Re-throw HttpsError as-is
     if (error instanceof HttpsError) {
       throw error;
     }
-    
+
     // Wrap other errors
     throw new HttpsError(
       'internal',

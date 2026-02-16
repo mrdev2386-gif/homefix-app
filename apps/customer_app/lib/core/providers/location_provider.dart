@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
-import 'package:permission_handler/permission_handler.dart';
 import '../models/address.dart';
 import '../services/address_service.dart';
 
@@ -133,9 +132,6 @@ class LocationProvider extends ChangeNotifier {
         desiredAccuracy: LocationAccuracy.high,
         timeLimit: const Duration(seconds: 10),
       );
-      
-      _currentPosition = position;
-      debugPrint('[LocationProvider] ✅ Position fetched: ${position.latitude}, ${position.longitude}');
 
       // Step 4: Reverse geocode
       debugPrint('[LocationProvider] Step 4: Reverse geocoding...');

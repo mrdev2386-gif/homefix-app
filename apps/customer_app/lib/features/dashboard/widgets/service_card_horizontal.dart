@@ -4,19 +4,35 @@ import '../../../../core/widgets/safe_network_image.dart';
 import '../../technicians/presentation/technician_list_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-class ServiceCardHorizontal extends StatelessWidget {
+class ServiceCardHorizontal extends StatefulWidget {
   final HomeService service;
 
   const ServiceCardHorizontal({super.key, required this.service});
 
   @override
+  State<ServiceCardHorizontal> createState() => _ServiceCardHorizontalState();
+}
+
+class _ServiceCardHorizontalState extends State<ServiceCardHorizontal> {
+  bool _isNavigating = false;
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => TechnicianListScreen(service: service)),
-        );
+      onTap: () async {
+        if (_isNavigating) return;
+        _isNavigating = true;
+
+        try {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => TechnicianListScreen(service: widget.service)),
+          );
+        } finally {
+          if (mounted) {
+            _isNavigating = false;
+          }
+        }
       },
       child: Container(
         width: 160,
@@ -40,7 +56,7 @@ class ServiceCardHorizontal extends StatelessWidget {
               child: Stack(
                 children: [
                   SafeNetworkImage(
-                    imageUrl: service.imageUrl,
+                    imageUrl: widget.service.imageUrl,
                     width: 160,
                     height: 100,
                     fit: BoxFit.cover,
@@ -55,7 +71,7 @@ class ServiceCardHorizontal extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    service.title,
+                    widget.service.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13),
@@ -66,7 +82,7 @@ class ServiceCardHorizontal extends StatelessWidget {
                       const Icon(Icons.star_rounded, size: 14, color: Colors.orange),
                       const SizedBox(width: 4),
                       Text(
-                        service.rating.toString(),
+                        widget.service.rating.toString(),
                         style: GoogleFonts.outfit(
                           fontWeight: FontWeight.bold, 
                           fontSize: 12,

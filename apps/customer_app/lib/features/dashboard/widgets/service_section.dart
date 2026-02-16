@@ -14,6 +14,7 @@ class ServiceListSection extends StatefulWidget {
   final bool isHorizontal;
   final bool isTopOnly;
   final String? category;
+  final int? limit;
 
   const ServiceListSection({
     super.key,
@@ -21,6 +22,7 @@ class ServiceListSection extends StatefulWidget {
     this.isHorizontal = true,
     this.isTopOnly = false,
     this.category,
+    this.limit,
   });
 
   @override
@@ -28,6 +30,7 @@ class ServiceListSection extends StatefulWidget {
 }
 
 class _ServiceListSectionState extends State<ServiceListSection> {
+  bool _isNavigating = false;
   late Stream<QuerySnapshot> _serviceStream;
 
   @override
@@ -35,11 +38,13 @@ class _ServiceListSectionState extends State<ServiceListSection> {
     super.initState();
     Query query = FirebaseFirestore.instance.collection('services').where('isActive', isEqualTo: true);
     
-    if (widget.category != null) {
+    if (widget.category != null && widget.category!.isNotEmpty && widget.category != 'all') {
       query = query.where('category', isEqualTo: widget.category);
     }
     
-    if (widget.isTopOnly) {
+    if (widget.limit != null) {
+      query = query.limit(widget.limit!);
+    } else if (widget.isTopOnly) {
       query = query.limit(5); // Simulated top services
     }
     _serviceStream = query.snapshots();
@@ -64,7 +69,18 @@ class _ServiceListSectionState extends State<ServiceListSection> {
                 ),
               ),
               GestureDetector(
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ServiceListScreen(category: widget.category))),
+                onTap: () async {
+                  if (_isNavigating) return;
+                  _isNavigating = true;
+
+                  try {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => ServiceListScreen(category: widget.category)));
+                  } finally {
+                    if (mounted) {
+                      _isNavigating = false;
+                    }
+                  }
+                },
                 child: Text(
                   'View all',
                   style: GoogleFonts.outfit(
@@ -148,14 +164,34 @@ class ServiceSection extends StatelessWidget {
   }
 }
 
-class _HorizontalServiceCard extends StatelessWidget {
+class _HorizontalServiceCard extends StatefulWidget {
   final QueryDocumentSnapshot service;
   const _HorizontalServiceCard({required this.service});
 
   @override
+  State<_HorizontalServiceCard> createState() => _HorizontalServiceCardState();
+}
+
+class _HorizontalServiceCardState extends State<_HorizontalServiceCard> {
+  bool _isNavigating = false;
+
+  @override
   Widget build(BuildContext context) {
+    final service = widget.service;
+    final data = service.data() as Map<String, dynamic>?;
     return GestureDetector(
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ServiceDetailsScreen(serviceId: service.id))),
+      onTap: () async {
+        if (_isNavigating) return;
+        _isNavigating = true;
+
+        try {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => ServiceDetailsScreen(serviceId: widget.service.id)));
+        } finally {
+          if (mounted) {
+            _isNavigating = false;
+          }
+        }
+      },
       child: Container(
         width: 140,
         margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -166,7 +202,7 @@ class _HorizontalServiceCard extends StatelessWidget {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
                 child: SafeNetworkImage(
-                  imageUrl: service['image'],
+                  imageUrl: widget.service['image'],
                   width: double.infinity,
                   height: double.infinity,
                 ),
@@ -174,7 +210,7 @@ class _HorizontalServiceCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              service['title'],
+              data?['title'] ?? 'Service',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.textColor),
@@ -197,14 +233,34 @@ class _HorizontalServiceCard extends StatelessWidget {
   }
 }
 
-class _VerticalServiceCard extends StatelessWidget {
+class _VerticalServiceCard extends StatefulWidget {
   final QueryDocumentSnapshot service;
   const _VerticalServiceCard({required this.service});
 
   @override
+  State<_VerticalServiceCard> createState() => _VerticalServiceCardState();
+}
+
+class _VerticalServiceCardState extends State<_VerticalServiceCard> {
+  bool _isNavigating = false;
+
+  @override
   Widget build(BuildContext context) {
+    final service = widget.service;
+    final data = service.data() as Map<String, dynamic>?;
     return GestureDetector(
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ServiceDetailsScreen(serviceId: service.id))),
+      onTap: () async {
+        if (_isNavigating) return;
+        _isNavigating = true;
+
+        try {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => ServiceDetailsScreen(serviceId: widget.service.id)));
+        } finally {
+          if (mounted) {
+            _isNavigating = false;
+          }
+        }
+      },
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -222,7 +278,7 @@ class _VerticalServiceCard extends StatelessWidget {
                   ClipRRect(
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
                     child: SafeNetworkImage(
-                      imageUrl: service['image'],
+                      imageUrl: widget.service['image'],
                       width: double.infinity,
                       height: double.infinity,
                     ),
@@ -237,19 +293,23 @@ class _VerticalServiceCard extends StatelessWidget {
                       child: InkWell(
                         onTap: () async {
                           final cart = Provider.of<CartProvider>(context, listen: false);
+                          final data = widget.service.data() as Map<String, dynamic>?;
+                          // Ultra-safe price parsing - prevents type cast crash
+                          final rawPrice = data?['basePrice'];
+                          final double price = (rawPrice is num) ? rawPrice.toDouble() : 0.0;
                           await cart.addItem(CartItem(
                             id: '',
-                            serviceId: service.id,
-                            serviceName: service['title'],
-                            serviceImage: service['image'],
-                            price: (service['basePrice'] ?? 0.0).toDouble(),
+                            serviceId: widget.service.id,
+                            serviceName: data?['title'] ?? 'Service',
+                            serviceImage: data?['image'] ?? '',
+                            price: price,
                             quantity: 1,
-                            totalPrice: (service['basePrice'] ?? 0.0).toDouble(),
+                            totalPrice: price,
                           ));
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('${service['title']} added to cart'),
+                                content: Text('${data?['title'] ?? 'Service'} added to cart'),
                                 duration: const Duration(seconds: 1),
                               ),
                             );
@@ -272,7 +332,7 @@ class _VerticalServiceCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    service['title'],
+                    data?['title'] ?? 'Service',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 14, color: AppTheme.textColor),

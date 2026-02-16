@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/providers/location_provider.dart';
+import '../../../core/providers/checkout_provider.dart';
 import '../../../core/models/address.dart';
 import '../../../core/theme/app_theme.dart';
 import 'add_edit_address_screen.dart';
@@ -46,7 +47,7 @@ class SavedAddressesScreen extends StatelessWidget {
             physics: const BouncingScrollPhysics(),
             itemBuilder: (context, index) {
               final address = addresses[index];
-              return _buildAddressCard(context, address, firestoreService, userId);
+              return _buildAddressCard(context, address, firestoreService, userId, isSelectionMode);
             },
           );
         },
@@ -86,7 +87,7 @@ class SavedAddressesScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildAddressCard(BuildContext context, Address address, FirestoreService service, String userId) {
+  Widget _buildAddressCard(BuildContext context, Address address, FirestoreService service, String userId, bool isSelectionMode) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
@@ -97,10 +98,18 @@ class SavedAddressesScreen extends StatelessWidget {
       ),
       child: InkWell(
         onTap: () async {
+          // Set in LocationProvider
           final locationProvider = Provider.of<LocationProvider>(context, listen: false);
           await locationProvider.setSelectedAddress(address);
+          
+          // Also set in CheckoutProvider if in selection mode (for checkout flow)
+          if (isSelectionMode) {
+            final checkoutProvider = Provider.of<CheckoutProvider>(context, listen: false);
+            checkoutProvider.setAddress(address);
+          }
+          
           if (context.mounted) {
-            Navigator.pop(context);
+            Navigator.pop(context, address);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('Delivering to ${address.label}'),

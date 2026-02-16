@@ -8,7 +8,6 @@ import '../../../../core/widgets/safe_network_image.dart';
 import '../../../../core/providers/cart_provider.dart';
 import '../../../../core/providers/favorites_provider.dart';
 import '../../../../core/models/cart_item.dart';
-import '../../booking/presentation/slot_selection_screen.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../cart/presentation/cart_screen.dart';
 

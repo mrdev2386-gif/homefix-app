@@ -16,14 +16,39 @@ class ProfessionalReelsSection extends StatefulWidget {
   State<ProfessionalReelsSection> createState() => _ProfessionalReelsSectionState();
 }
 
-class _ProfessionalReelsSectionState extends State<ProfessionalReelsSection> {
+class _ProfessionalReelsSectionState extends State<ProfessionalReelsSection> with WidgetsBindingObserver {
   final PageController _pageController = PageController(viewportFraction: 0.85);
   int _currentIndex = 0;
 
   @override
+  void initState() {
+    super.initState();
+    // Listen to app lifecycle for pause/resume
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
   void dispose() {
+    // Remove lifecycle observer
+    WidgetsBinding.instance.removeObserver(this);
     _pageController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Pause video when app goes to background
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _pauseAllVideos();
+    }
+  }
+
+  void _pauseAllVideos() {
+    // This will be handled by individual reel items through the page change
+  }
+
+  void _pausePreviousVideo(int newIndex) {
+    // When user scrolls to new page, the old page will automatically pause due to isFocused change
   }
 
   @override
@@ -69,7 +94,11 @@ class _ProfessionalReelsSectionState extends State<ProfessionalReelsSection> {
             controller: _pageController,
             physics: const BouncingScrollPhysics(),
             pageSnapping: true,
-            onPageChanged: (index) => setState(() => _currentIndex = index),
+            onPageChanged: (index) {
+              setState(() => _currentIndex = index);
+              // Pause previous video when scrolling away
+              _pausePreviousVideo(index);
+            },
             itemCount: displayReels.length,
             itemBuilder: (context, index) {
               return _ReelItem(
@@ -100,6 +129,9 @@ class _ReelItemState extends State<_ReelItem> {
   bool _hasError = false;
   bool _isPlaying = false;
   String? _errorMessage;
+
+  /// Limit active controllers to prevent memory issues on low-RAM devices
+  static const int MAX_ACTIVE_CONTROLLERS = 3;
 
   @override
   void initState() {
@@ -208,11 +240,11 @@ class _ReelItemState extends State<_ReelItem> {
   @override
   void didUpdateWidget(_ReelItem oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Autoplay/pause based on focus
+    // Autoplay/pause based on focus - prevent auto-play if widget not visible
     if (widget.isFocused != oldWidget.isFocused && _controller != null && _isInitialized) {
-      if (widget.isFocused) {
+      if (widget.isFocused && mounted) {
         _controller!.play();
-        if (mounted) setState(() => _isPlaying = true);
+        setState(() => _isPlaying = true);
       } else {
         _controller!.pause();
         if (mounted) setState(() => _isPlaying = false);

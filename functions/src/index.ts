@@ -61,6 +61,7 @@ import * as customerFeatures from './customer_features';
 import { matchAndAssignBooking, handleAssignmentResponse } from './matching/matching_v2';
 import { matchTechnicians as matchTechs, updateTechnicianAssignment, cleanupStaleTechnicianStatus } from './matching/technician_matching';
 export { matchTechniciansV2 } from './matching/matchTechniciansV2';
+export { getEligibleTechnicians } from './matching/engine';
 
 export const matchTechnicians = matchTechs;
 export const matchTechniciansForService = matchTechs;
@@ -75,23 +76,23 @@ export { createBookingV2 } from './booking/createBookingV2';
 export { razorpayWebhookV2 } from './payments/razorpayWebhookV2';
 
 // Production Hardening
-export { 
-  handlePaymentWebhook, 
-  createBookingIdempotent,
-  checkRateLimit,
-  updateTechnicianHeartbeat,
-  createPayoutLedgerEntry,
-  generateWeeklyPayoutReport,
-  getTechnicianEarnings,
-  trackAnalyticsEvent,
-  validateBookingCreation,
-  sanitizeBookingInput,
-  cleanupStaleTechnicianHeartbeats,
-  cleanupRateLimitRecords,
-  checkSystemHealth,
-  onBookingStateChange,
-  generateAnalyticsSnapshot,
-  trackTechnicianMetrics
+export {
+    handlePaymentWebhook,
+    createBookingIdempotent,
+    checkRateLimit,
+    updateTechnicianHeartbeat,
+    createPayoutLedgerEntry,
+    generateWeeklyPayoutReport,
+    getTechnicianEarnings,
+    trackAnalyticsEvent,
+    validateBookingCreation,
+    sanitizeBookingInput,
+    cleanupStaleTechnicianHeartbeats,
+    cleanupRateLimitRecords,
+    checkSystemHealth,
+    onBookingStateChange,
+    generateAnalyticsSnapshot,
+    trackTechnicianMetrics
 } from './booking/production_hardening';
 
 /**
@@ -294,6 +295,9 @@ export const updatePricingConfig = adminServices.updatePricingConfig;
 export const deleteSubService = adminServices.deleteSubService;
 export const getSubServicePriceHistory = adminServices.getSubServicePriceHistory;
 
+// Service Nesting Migration (PHASE 12)
+export const migrateServicesToNested = adminServices.migrateServicesToNested;
+
 export const admin_manageBooking = adminBookings.adminManageBooking;
 
 import * as adminImages from './admin/images';
@@ -315,13 +319,18 @@ import {
     admin_manageTechnicianSubcategories
 } from './admin/dynamic_content';
 
-import { admin_initializeHomeContent } from './admin/system_initialization';
+import { admin_initializeHomeContent, admin_backfillImages } from './admin/system_initialization';
+import { admin_auditServiceCatalog } from './admin/catalog_audit';
+export { temp_recovery_diag } from './temp_audit';
+
 
 export {
     admin_manageProfessionalVideos,
     admin_manageCleaningEssentials,
     admin_manageServiceBanners,
     admin_initializeHomeContent,
+    admin_backfillImages,
+    admin_auditServiceCatalog,
     admin_manageTechnicianCategories,
     admin_manageTechnicianSubcategories
 };
@@ -376,7 +385,7 @@ export const saveFcmToken = functions.https.onCall(async (data, context) => {
         // Determine the correct collection based on userType
         const collectionPath = userType === 'technician' ? 'technicians' : 'customers';
         const userDocRef = db.collection(collectionPath).doc(uid);
-        
+
         // Check if user document exists
         const userDoc = await userDocRef.get();
         if (!userDoc.exists) {
@@ -428,7 +437,7 @@ export const removeFcmToken = functions.https.onCall(async (data, context) => {
 
     try {
         const collectionPath = userType === 'technician' ? 'technicians' : 'customers';
-        
+
         // Find and delete the token
         const tokensSnapshot = await db.collection(collectionPath)
             .doc(uid)
@@ -463,7 +472,7 @@ export const removeAllFcmTokens = functions.https.onCall(async (data, context) =
 
     try {
         const collectionPath = userType === 'technician' ? 'technicians' : 'customers';
-        
+
         // Delete all tokens
         const tokensSnapshot = await db.collection(collectionPath)
             .doc(uid)
@@ -474,7 +483,7 @@ export const removeAllFcmTokens = functions.https.onCall(async (data, context) =
         tokensSnapshot.docs.forEach(doc => {
             batch.delete(doc.ref);
         });
-        
+
         if (!tokensSnapshot.empty) {
             await batch.commit();
             console.log(`[FCM] All tokens removed for ${userType}:${uid}`);
@@ -500,7 +509,7 @@ export const getFcmTokens = functions.https.onCall(async (data, context) => {
 
     try {
         const collectionPath = userType === 'technician' ? 'technicians' : 'customers';
-        
+
         const tokensSnapshot = await db.collection(collectionPath)
             .doc(uid)
             .collection('fcmTokens')
@@ -605,9 +614,9 @@ export const onBookingStatusChange = onDocumentUpdated(
         // 1. Handle Status Change with guard against duplicate processing
         if (before.status !== after.status) {
             const status = after.status;
-            console.log(JSON.stringify({ 
-                level: "INFO", 
-                function: "onBookingStatusChange", 
+            console.log(JSON.stringify({
+                level: "INFO",
+                function: "onBookingStatusChange",
                 action: "status_change",
                 ...bookingContext,
                 fromStatus: before.status,
@@ -650,9 +659,9 @@ export const onBookingStatusChange = onDocumentUpdated(
                 case 'completed':
                     // GUARD: Check if earnings already processed
                     if (after.earningsProcessed) {
-                        console.log(JSON.stringify({ 
-                            level: "WARN", 
-                            function: "onBookingStatusChange", 
+                        console.log(JSON.stringify({
+                            level: "WARN",
+                            function: "onBookingStatusChange",
                             action: "earnings_already_processed",
                             ...bookingContext,
                             durationMs: Date.now() - startTime
@@ -677,18 +686,18 @@ export const onBookingStatusChange = onDocumentUpdated(
                                     after.finalAmount,
                                     after.services.map((s: any) => s.id)
                                 );
-                                console.log(JSON.stringify({ 
-                                    level: "INFO", 
-                                    function: "onBookingStatusChange", 
+                                console.log(JSON.stringify({
+                                    level: "INFO",
+                                    function: "onBookingStatusChange",
                                     action: "earnings_processed",
                                     ...bookingContext,
                                     amount: techAmount,
                                     durationMs: Date.now() - startTime
                                 }));
                             } catch (error: any) {
-                                console.error(JSON.stringify({ 
-                                    level: "ERROR", 
-                                    function: "onBookingStatusChange", 
+                                console.error(JSON.stringify({
+                                    level: "ERROR",
+                                    function: "onBookingStatusChange",
                                     action: "earnings_processing_failed",
                                     ...bookingContext,
                                     error: error.message,
@@ -724,9 +733,9 @@ export const onBookingStatusChange = onDocumentUpdated(
 
         // 2. Handle Technician Assignment (guard against duplicate notifications)
         if (!before.assignedTechnicianId && after.assignedTechnicianId) {
-            console.log(JSON.stringify({ 
-                level: "INFO", 
-                function: "onBookingStatusChange", 
+            console.log(JSON.stringify({
+                level: "INFO",
+                function: "onBookingStatusChange",
                 action: "technician_assigned",
                 ...bookingContext,
                 durationMs: Date.now() - startTime

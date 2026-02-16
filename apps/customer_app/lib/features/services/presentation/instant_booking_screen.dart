@@ -7,7 +7,6 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/providers/location_provider.dart';
 import '../../../core/models/category.dart';
 import '../../../core/firestore/category_service.dart';
-import '../../../core/models/address.dart';
 import 'service_request_screen.dart';
 
 /// DTO for instant service from cloud function
@@ -39,18 +38,37 @@ class InstantService {
   });
 
   factory InstantService.fromMap(Map<String, dynamic> map) {
+    // Ultra-safe parsing - prevents type cast crash
+    final rawRating = map['rating'];
+    final double rating = (rawRating is num) ? rawRating.toDouble() : 0.0;
+    
+    final rawReviewCount = map['reviewCount'];
+    final int reviewCount = (rawReviewCount is num) ? rawReviewCount.toInt() : 0;
+    
+    final rawPrice = map['priceStarting'];
+    final double priceStarting = (rawPrice is num) ? rawPrice.toDouble() : 0.0;
+    
+    final rawArrival = map['estimatedArrivalMinutes'];
+    final int estimatedArrivalMinutes = (rawArrival is num) ? rawArrival.toInt() : 30;
+    
+    final rawIsVerified = map['isVerified'];
+    final bool isVerified = (rawIsVerified is bool) ? rawIsVerified : false;
+    
+    final rawDistance = map['distanceKm'];
+    final double? distanceKm = (rawDistance is num) ? rawDistance.toDouble() : null;
+    
     return InstantService(
       serviceId: map['serviceId'] ?? '',
       serviceName: map['serviceName'] ?? '',
       technicianId: map['technicianId'] ?? '',
       technicianName: map['technicianName'] ?? '',
-      rating: ((map['rating'] ?? 0.0) as num).toDouble(),
-      reviewCount: (map['reviewCount'] ?? 0) as int,
-      priceStarting: ((map['priceStarting'] ?? 0.0) as num).toDouble(),
+      rating: rating,
+      reviewCount: reviewCount,
+      priceStarting: priceStarting,
       imageUrl: map['imageUrl'] ?? '',
-      estimatedArrivalMinutes: (map['estimatedArrivalMinutes'] ?? 30) as int,
-      isVerified: (map['isVerified'] ?? false) as bool,
-      distanceKm: map['distanceKm'] != null ? ((map['distanceKm']) as num).toDouble() : null,
+      estimatedArrivalMinutes: estimatedArrivalMinutes,
+      isVerified: isVerified,
+      distanceKm: distanceKm,
     );
   }
 }

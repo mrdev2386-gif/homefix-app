@@ -4,7 +4,7 @@ import '../../../core/widgets/safe_network_image.dart';
 import '../../technicians/presentation/technician_list_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-class PremiumServiceCard extends StatelessWidget {
+class PremiumServiceCard extends StatefulWidget {
   final HomeService service;
   final VoidCallback? onTap;
 
@@ -13,6 +13,13 @@ class PremiumServiceCard extends StatelessWidget {
     required this.service,
     this.onTap,
   });
+
+  @override
+  State<PremiumServiceCard> createState() => _PremiumServiceCardState();
+}
+
+class _PremiumServiceCardState extends State<PremiumServiceCard> {
+  bool _isNavigating = false;
 
   @override
   Widget build(BuildContext context) {
@@ -31,11 +38,20 @@ class PremiumServiceCard extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap ?? () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => TechnicianListScreen(service: service)),
-            );
+          onTap: widget.onTap ?? () async {
+            if (_isNavigating) return;
+            _isNavigating = true;
+
+            try {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => TechnicianListScreen(service: widget.service)),
+              );
+            } finally {
+              if (mounted) {
+                _isNavigating = false;
+              }
+            }
           },
           borderRadius: BorderRadius.circular(16),
           child: Column(
@@ -46,13 +62,13 @@ class PremiumServiceCard extends StatelessWidget {
                 child: Stack(
                   children: [
                     SafeNetworkImage(
-                      imageUrl: service.imageUrl,
+                      imageUrl: widget.service.imageUrl,
                       width: double.infinity,
                       height: double.infinity,
                       fit: BoxFit.cover,
                       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                     ),
-                    if (service.isTrending)
+                    if (widget.service.isTrending)
                       Positioned(
                         top: 8,
                         left: 8,
@@ -91,7 +107,7 @@ class PremiumServiceCard extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        service.title,
+                        widget.service.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.outfit(
@@ -107,7 +123,7 @@ class PremiumServiceCard extends StatelessWidget {
                           const Icon(Icons.star, size: 12, color: Color(0xFFFFB800)),
                           const SizedBox(width: 4),
                           Text(
-                            service.rating.toString(),
+                            widget.service.rating.toString(),
                             style: GoogleFonts.outfit(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,

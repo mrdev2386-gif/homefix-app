@@ -222,6 +222,7 @@ class TechnicianCategory {
 class TechnicianSubcategory {
   final String id;
   final String categoryId;
+  final String? serviceId;
   final String name;
   final bool isActive;
   final int order;
@@ -229,6 +230,7 @@ class TechnicianSubcategory {
   TechnicianSubcategory({
     required this.id,
     required this.categoryId,
+    this.serviceId,
     required this.name,
     this.isActive = true,
     this.order = 0
@@ -239,6 +241,7 @@ class TechnicianSubcategory {
     return TechnicianSubcategory(
       id: doc.id,
       categoryId: (data['categoryId'] ?? '').toString(),
+      serviceId: data['serviceId']?.toString(),
       name: (data['name'] ?? '').toString(),
       isActive: data['isActive'] ?? true,
       order: int.tryParse((data['order'] ?? 0).toString()) ?? 0,

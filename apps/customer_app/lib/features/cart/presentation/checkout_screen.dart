@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/providers/checkout_provider.dart';
 import '../../../core/providers/cart_provider.dart';
 import '../../../core/providers/auth_provider.dart';
+import '../../../core/providers/location_provider.dart';
 import '../../../core/services/functions_service.dart';
 import '../../../core/models/address.dart';
 import '../../profile/presentation/saved_addresses_screen.dart';
@@ -25,6 +26,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool _isProcessing = false;
 
   final List<String> _steps = ['Address', 'Schedule', 'Summary'];
+
+  @override
+  void initState() {
+    super.initState();
+    // Auto-select first saved address if none selected
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _autoSelectFirstAddress();
+    });
+  }
+
+  void _autoSelectFirstAddress() {
+    final checkout = Provider.of<CheckoutProvider>(context, listen: false);
+    final locationProvider = Provider.of<LocationProvider>(context, listen: false);
+    
+    // If no address selected but location provider has one, use it
+    if (checkout.selectedAddress == null && locationProvider.selectedAddress != null) {
+      checkout.setAddress(locationProvider.selectedAddress!);
+    }
+  }
 
   void _nextStep() {
     if (_currentStep < _steps.length - 1) {

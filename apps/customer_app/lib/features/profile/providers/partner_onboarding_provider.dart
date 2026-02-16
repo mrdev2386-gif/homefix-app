@@ -29,6 +29,7 @@ class PartnerOnboardingProvider extends ChangeNotifier {
     'email': '',
     'categoryIds': <String>[],
     'subcategoryIds': <String>[],
+    'selectedServices': <Map<String, dynamic>>[],
     'experienceYears': '',
     'experienceDescription': '',
     'address': '',
@@ -40,6 +41,9 @@ class PartnerOnboardingProvider extends ChangeNotifier {
   
   XFile? _profilePhoto;
   XFile? _idProof;
+
+  // Cache of subcategory metadata to build selectedServices payload
+  final Map<String, Map<String, dynamic>> _subcategoryMetadata = {};
 
   // Validation state per step
   final Map<int, bool> _stepValidation = {
@@ -65,6 +69,7 @@ class PartnerOnboardingProvider extends ChangeNotifier {
   String get email => _formData['email'] ?? '';
   List<String> get categoryIds => List<String>.from(_formData['categoryIds'] ?? []);
   List<String> get subcategoryIds => List<String>.from(_formData['subcategoryIds'] ?? []);
+  List<Map<String, dynamic>> get selectedServices => List<Map<String, dynamic>>.from(_formData['selectedServices'] ?? []);
   String get experienceYears => _formData['experienceYears'] ?? '';
   String get experienceDescription => _formData['experienceDescription'] ?? '';
   String get address => _formData['address'] ?? '';
@@ -108,16 +113,54 @@ class PartnerOnboardingProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleSubcategory(String subcategoryId) {
+  void toggleSubcategory(String subcategoryId, {Map<String, dynamic>? metadata}) {
     final subcategories = List<String>.from(_formData['subcategoryIds'] ?? []);
+    
+    if (metadata != null) {
+      _subcategoryMetadata[subcategoryId] = metadata;
+    }
+
     if (subcategories.contains(subcategoryId)) {
       subcategories.remove(subcategoryId);
     } else {
       subcategories.add(subcategoryId);
     }
     _formData['subcategoryIds'] = subcategories;
+    
+    _rebuildSelectedServices();
     _validateCurrentStep();
     notifyListeners();
+  }
+
+  void _rebuildSelectedServices() {
+    final List<String> currentSubs = List<String>.from(_formData['subcategoryIds'] ?? []);
+    final Map<String, Map<String, dynamic>> serviceGroups = {};
+
+    for (var subId in currentSubs) {
+      final meta = _subcategoryMetadata[subId];
+      if (meta == null) continue;
+
+      final String? serviceId = meta['serviceId'];
+      
+      if (serviceId == null || serviceId.isEmpty) {
+        debugPrint('❌ [Migration Check] Subcategory $subId is missing serviceId mapping. Using legacy mode.');
+        continue;
+      }
+
+      if (!serviceGroups.containsKey(serviceId)) {
+        serviceGroups[serviceId] = {
+          'serviceId': serviceId,
+          'serviceName': meta['serviceName'] ?? 'Service',
+          'subServiceIds': <String>[],
+        };
+      }
+      
+      final List<String> subServiceIds = List<String>.from(serviceGroups[serviceId]!['subServiceIds']);
+      subServiceIds.add(subId);
+      serviceGroups[serviceId]!['subServiceIds'] = subServiceIds;
+    }
+
+    _formData['selectedServices'] = serviceGroups.values.toList();
   }
 
   void setExperienceYears(String value) {
@@ -351,6 +394,7 @@ class PartnerOnboardingProvider extends ChangeNotifier {
         'email': email.trim(),
         'categoryIds': categoryIds,
         'subcategoryIds': subcategoryIds,
+        'selectedServices': selectedServices,
         'experienceYears': int.parse(experienceYears.trim()),
         'experienceDescription': experienceDescription.trim(),
         'profilePhotoUrl': profilePhotoUrl,

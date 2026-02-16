@@ -123,6 +123,8 @@ class _OnboardingStepCategoriesState extends State<OnboardingStepCategories> {
             _subcategories[categoryId]!.add({
               'id': doc.id,
               'name': doc.data()['name'] ?? '',
+              'serviceId': doc.data()['serviceId'],
+              'serviceName': doc.data()['name'], // Base name for the service grouping
             });
           }
         }
@@ -462,7 +464,10 @@ class _OnboardingStepCategoriesState extends State<OnboardingStepCategories> {
                       
                       return GestureDetector(
                         onTap: () {
-                          provider.toggleSubcategory(subId);
+                          provider.toggleSubcategory(subId, metadata: {
+                            'serviceId': sub['serviceId'],
+                            'serviceName': sub['name'],
+                          });
                           // Auto-select parent category if not selected
                           if (!provider.categoryIds.contains(categoryId)) {
                             provider.toggleCategory(categoryId);

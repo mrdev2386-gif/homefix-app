@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/user_settings_service.dart';
-import '../models/user_settings.dart';
 
 class LocaleProvider extends ChangeNotifier {
   Locale _locale = const Locale('en');

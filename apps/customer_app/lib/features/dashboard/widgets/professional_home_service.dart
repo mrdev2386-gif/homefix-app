@@ -4,8 +4,10 @@ import '../../../core/models/service.dart';
 import '../../../core/models/dashboard_models.dart';
 import '../../../core/widgets/safe_cached_image.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../services/presentation/sub_service_screen.dart';
+import '../../../core/models/category.dart';
 
-class ProfessionalHomeServiceSection extends StatelessWidget {
+class ProfessionalHomeServiceSection extends StatefulWidget {
   final List<HomeService> services;
 
   const ProfessionalHomeServiceSection({
@@ -14,8 +16,15 @@ class ProfessionalHomeServiceSection extends StatelessWidget {
   });
 
   @override
+  State<ProfessionalHomeServiceSection> createState() => _ProfessionalHomeServiceSectionState();
+}
+
+class _ProfessionalHomeServiceSectionState extends State<ProfessionalHomeServiceSection> {
+  bool _isNavigating = false;
+
+  @override
   Widget build(BuildContext context) {
-    if (services.isEmpty) {
+    if (widget.services.isEmpty) {
       return const SizedBox.shrink();
     }
 
@@ -56,7 +65,7 @@ class ProfessionalHomeServiceSection extends StatelessWidget {
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: (services.length / 2).ceil(),
+            itemCount: (widget.services.length / 2).ceil(),
             primary: false,
             shrinkWrap: false,
             physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
@@ -64,8 +73,8 @@ class ProfessionalHomeServiceSection extends StatelessWidget {
             itemBuilder: (context, rowIndex) {
               final firstIndex = rowIndex * 2;
               final secondIndex = firstIndex + 1;
-              final firstService = services[firstIndex];
-              final secondService = secondIndex < services.length ? services[secondIndex] : null;
+              final firstService = widget.services[firstIndex];
+              final secondService = secondIndex < widget.services.length ? widget.services[secondIndex] : null;
 
               return RepaintBoundary(
                 child: _buildRowCard(firstService, secondService),
@@ -96,17 +105,42 @@ class ProfessionalHomeServiceSection extends StatelessWidget {
     // Get effective image URL with fallback chain
     String? imageUrl = service.imageUrl;
     
-    // Validate URL - must start with http
+    // Validate URL - must start with http - show placeholder if not
     if (imageUrl == null || imageUrl.isEmpty || !imageUrl.startsWith('http')) {
-      // Use fallback image from service model
-      imageUrl = service.getFallbackImageUrl();
+      // Use placeholder asset
+      imageUrl = 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=80';
     }
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () {
-          // Navigate to service details
+        onTap: () async {
+          if (_isNavigating) return;
+          _isNavigating = true;
+
+          try {
+            // Navigate to service details - use SubServiceScreen which shows sub-services
+            if (!mounted) return;
+            final cat = Category(
+              id: service.category,
+              name: service.category,
+              order: 0,
+              isActive: true,
+            );
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => SubServiceScreen(
+                  category: cat,
+                  service: service,
+                ),
+              ),
+            );
+          } finally {
+            if (mounted) {
+              _isNavigating = false;
+            }
+          }
         },
         borderRadius: BorderRadius.circular(20),
         child: Container(

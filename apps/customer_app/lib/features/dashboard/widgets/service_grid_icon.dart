@@ -7,20 +7,36 @@ import '../../../core/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../technicians/presentation/technician_list_screen.dart';
 
-class ServiceGridIcon extends StatelessWidget {
+class ServiceGridIcon extends StatefulWidget {
   final HomeService service;
 
   const ServiceGridIcon({super.key, required this.service});
 
   @override
+  State<ServiceGridIcon> createState() => _ServiceGridIconState();
+}
+
+class _ServiceGridIconState extends State<ServiceGridIcon> {
+  bool _isNavigating = false;
+
+  @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => TechnicianListScreen(service: service)),
-        );
+      onTap: () async {
+        if (_isNavigating) return;
+        _isNavigating = true;
+
+        try {
+          HapticFeedback.lightImpact();
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => TechnicianListScreen(service: widget.service)),
+          );
+        } finally {
+          if (mounted) {
+            _isNavigating = false;
+          }
+        }
       },
       borderRadius: BorderRadius.circular(24),
       child: Container(
@@ -43,7 +59,7 @@ class ServiceGridIcon extends StatelessWidget {
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
                 child: SafeNetworkImage(
-                  imageUrl: service.imageUrl,
+                  imageUrl: widget.service.imageUrl,
                   width: double.infinity,
                   height: double.infinity,
                 ),
@@ -55,7 +71,7 @@ class ServiceGridIcon extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    service.title,
+                    widget.service.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.outfit(
@@ -69,7 +85,7 @@ class ServiceGridIcon extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        '₹${service.basePrice.toStringAsFixed(0)}',
+                        '₹${widget.service.basePrice.toStringAsFixed(0)}',
                         style: GoogleFonts.outfit(
                           fontWeight: FontWeight.w900,
                           fontSize: 14,
@@ -88,7 +104,7 @@ class ServiceGridIcon extends StatelessWidget {
                             const Icon(Icons.star_rounded, size: 12, color: Colors.orange),
                             const SizedBox(width: 2),
                             Text(
-                              service.rating.toStringAsFixed(1),
+                              widget.widget.service.rating.toStringAsFixed(1),
                               style: GoogleFonts.outfit(
                                 fontWeight: FontWeight.w900,
                                 fontSize: 10,

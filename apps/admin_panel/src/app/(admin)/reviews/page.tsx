@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, query, orderBy, onSnapshot, updateDoc, doc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { adminApi } from '@/lib/admin-api';
 import {
     Star, MessageSquare, User, Wrench, Calendar, Search,
     Trash2, Flag, AlertTriangle, Tag, MoreHorizontal,
@@ -18,6 +19,7 @@ export default function ReviewsPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(true);
     const [ratingFilter, setRatingFilter] = useState<number | null>(null);
+    const [processingId, setProcessingId] = useState<string | null>(null);
 
     useEffect(() => {
         const q = query(collection(db, 'reviews'), orderBy('createdAt', 'desc'));
@@ -39,25 +41,26 @@ export default function ReviewsPage() {
 
     const handleDeleteReview = async (id: string) => {
         if (!confirm('Are you sure you want to soft-delete this review?')) return;
+        setProcessingId(id);
         try {
-            await updateDoc(doc(db, 'reviews', id), {
-                status: 'deleted',
-                updatedAt: new Date(),
-            });
+            await adminApi.manageReview(id, 'hide');
         } catch (e: any) {
             console.error(e);
             alert(`Failed: ${e.message}`);
+        } finally {
+            setProcessingId(null);
         }
     };
 
     const handleFlagReview = async (id: string) => {
+        setProcessingId(id);
         try {
-            await updateDoc(doc(db, 'reviews', id), {
-                flagged: true,
-                updatedAt: new Date(),
-            });
+            await adminApi.manageReview(id, 'flag');
         } catch (e: any) {
             console.error(e);
+            alert(`Failed: ${e.message}`);
+        } finally {
+            setProcessingId(null);
         }
     };
 
@@ -190,12 +193,14 @@ export default function ReviewsPage() {
 
                                 <div className="p-6 bg-slate-950/20 md:w-64 flex flex-col justify-center items-center gap-3">
                                     <Button
+                                        disabled={processingId === review.id}
                                         onClick={() => handleFlagReview(review.id)}
                                         className="w-full bg-slate-800/50 border-slate-700 text-slate-400 h-10 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-amber-500/10 hover:text-amber-500 hover:border-amber-500/20 transition-all"
                                     >
                                         <Flag size={14} className="mr-2" /> Mark Flag
                                     </Button>
                                     <Button
+                                        disabled={processingId === review.id}
                                         onClick={() => handleDeleteReview(review.id)}
                                         className="w-full bg-slate-800/50 border-slate-700 text-slate-400 h-10 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20 transition-all"
                                     >

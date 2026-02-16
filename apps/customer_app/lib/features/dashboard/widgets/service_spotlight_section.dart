@@ -101,8 +101,12 @@ class ServiceSpotlightSection extends StatelessWidget {
 
   Widget _buildSpotlightCard(BuildContext context, Map<String, dynamic> data) {
     final availableTechs = data['availableTechnicians'] ?? 0;
-    final price = data['basePrice'] ?? data['price'] ?? 0.0;
-    final rating = data['rating'] ?? 0.0;
+    // Ultra-safe price parsing - prevents type cast crash
+    final rawPrice = data['price'] ?? data['basePrice'] ?? 0;
+    final double price = (rawPrice is num) ? rawPrice.toDouble() : 0.0;
+    // Ultra-safe rating parsing
+    final rawRating = data['rating'] ?? 0;
+    final double rating = (rawRating is num) ? rawRating.toDouble() : 0.0;
     final String serviceId = data['serviceId'] ?? data['id'] ?? '';
     final String title = data['serviceName'] ?? data['title'] ?? 'Service';
     final String? imageUrl = data['imageUrl'];
@@ -121,8 +125,8 @@ class ServiceSpotlightSection extends StatelessWidget {
                 imageAssetPath: imageUrl ?? '',
                 description: data['description'] ?? '',
                 category: data['category'] ?? '',
-                basePrice: price.toDouble(),
-                rating: rating.toDouble(),
+                basePrice: price,
+                rating: rating,
                 reviewCount: data['reviewCount'] ?? 0,
                 isActive: true,
                 isTopService: true,

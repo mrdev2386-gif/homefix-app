@@ -23,6 +23,10 @@ export default function BookingsPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState('all');
     const [processingId, setProcessingId] = useState<string | null>(null);
+    const [selectedBooking, setSelectedBooking] = useState<any>(null);
+    const [isActionModalOpen, setActionModalOpen] = useState(false);
+    const [actionType, setActionType] = useState<string>('');
+    const [actionPayload, setActionPayload] = useState<any>({});
 
     useEffect(() => {
         const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'));
@@ -42,20 +46,21 @@ export default function BookingsPage() {
     });
 
     const handleAction = async (bookingId: string, action: string) => {
-        let payload = {};
-        if (action === 'assign' || action === 'reassign') {
-            const technicianId = prompt('Enter Technician UID:');
-            if (!technicianId) return;
-            payload = { technicianId };
-        } else if (action === 'cancel') {
-            const reason = prompt('Enter cancellation reason:');
-            if (!reason) return;
-            payload = { reason };
-        }
+        // Open modal instead of using prompt
+        setSelectedBooking(bookings.find(b => b.id === bookingId));
+        setActionType(action);
+        setActionPayload({});
+        setActionModalOpen(true);
+    };
 
-        setProcessingId(bookingId);
+    const executeAction = async () => {
+        if (!selectedBooking) return;
+        
+        setProcessingId(selectedBooking.id);
         try {
-            await adminApi.manageBooking(bookingId, action, payload);
+            await adminApi.manageBooking(selectedBooking.id, actionType, actionPayload);
+            alert('Action completed successfully!');
+            setActionModalOpen(false);
         } catch (e: any) {
             console.error('Action failed:', e);
             alert(`Action failed: ${e.message}`);
@@ -232,6 +237,68 @@ export default function BookingsPage() {
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Action Modal */}
+            {isActionModalOpen && selectedBooking && (
+                <div className="fixed inset-0 bg-[#0f172a]/95 backdrop-blur-xl flex items-center justify-center z-[100] p-4 animate-in fade-in duration-300">
+                    <Card className="w-full max-w-lg bg-slate-900 border-slate-800 shadow-2xl shadow-black/50 overflow-hidden rounded-3xl">
+                        <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+                            <div>
+                                <h2 className="text-xl font-black text-white uppercase">
+                                    {actionType === 'assign' ? 'Assign Technician' : 
+                                     actionType === 'reassign' ? 'Reassign Technician' :
+                                     actionType === 'cancel' ? 'Cancel Booking' :
+                                     'Complete Booking'}
+                                </h2>
+                                <p className="text-slate-500 text-xs mt-1">Booking: #{selectedBooking.id.substring(0, 8).toUpperCase()}</p>
+                            </div>
+                            <Button variant="ghost" onClick={() => setActionModalOpen(false)} className="text-slate-500 hover:text-white">
+                                <XCircle size={20} />
+                            </Button>
+                        </div>
+                        <CardContent className="p-6 space-y-4">
+                            {(actionType === 'assign' || actionType === 'reassign') && (
+                                <div className="space-y-2">
+                                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Technician UID</label>
+                                    <Input
+                                        placeholder="Enter technician UID"
+                                        value={actionPayload.technicianId || ''}
+                                        onChange={(e) => setActionPayload({ ...actionPayload, technicianId: e.target.value })}
+                                        className="bg-slate-800/50 border-slate-700 text-white"
+                                    />
+                                </div>
+                            )}
+                            {(actionType === 'cancel' || actionType === 'complete') && (
+                                <div className="space-y-2">
+                                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Reason / Notes</label>
+                                    <textarea
+                                        className="flex min-h-[80px] w-full rounded-xl border border-slate-700 bg-slate-800/50 px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none"
+                                        placeholder="Enter reason or notes..."
+                                        value={actionPayload.reason || ''}
+                                        onChange={(e) => setActionPayload({ ...actionPayload, reason: e.target.value })}
+                                    />
+                                </div>
+                            )}
+                            <div className="flex gap-3 pt-2">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setActionModalOpen(false)}
+                                    className="flex-1 border-slate-700 text-slate-400 hover:text-white"
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    onClick={executeAction}
+                                    disabled={processingId === selectedBooking.id}
+                                    className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white"
+                                >
+                                    {processingId === selectedBooking.id ? 'Processing...' : 'Confirm'}
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
         </div>
     );
 }

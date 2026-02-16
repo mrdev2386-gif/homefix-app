@@ -175,3 +175,63 @@ export const respondToBooking = functions.https.onCall(async (data, context) => 
         return { success: true, message: action === 'accept' ? 'Booking Accepted' : 'Booking Rejected' };
     });
 });
+
+/**
+ * Helper to fetch technicians eligible for a specific service
+ * Security: Requires authentication
+ */
+export const getEligibleTechnicians = functions.https.onCall(async (data, context) => {
+    // 1. Security Check
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Authentication required to fetch technicians.');
+    }
+
+    const { serviceId } = data;
+
+    // 2. Validate Input
+    if (!serviceId || typeof serviceId !== 'string') {
+        throw new functions.https.HttpsError('invalid-argument', 'Valid serviceId is required.');
+    }
+
+    // Standardize slug format check if needed
+    if (!/^[a-zA-Z0-9_-]+$/.test(serviceId)) {
+        throw new functions.https.HttpsError('invalid-argument', 'Invalid serviceId format.');
+    }
+
+    try {
+        console.log(`[Matching] Fetching eligible technicians for service: ${serviceId} (Requested by: ${context.auth.uid})`);
+
+        // 3. Query approved technicians who have the serviceId in their flat array
+        const snapshot = await db.collection('technicians')
+            .where('status', '==', 'approved')
+            .where('serviceIds', 'array-contains', serviceId)
+            .limit(50) // Safeguard payload size
+            .get();
+
+        // 4. Transform to minimal safe fields
+        const technicians = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                name: data.name,
+                rating: data.rating || 5.0,
+                totalJobs: data.totalJobs || 0,
+                isOnline: data.isOnline || false,
+                // Do NOT return sensitive fields like phone, email, or full skills map here
+            };
+        });
+
+        console.log(`[Matching] Found ${technicians.length} eligible technicians for ${serviceId}`);
+
+        return {
+            success: true,
+            totalFound: technicians.length,
+            technicians
+        };
+
+    } catch (error: any) {
+        console.error(`[Matching] Error fetching technicians for ${serviceId}:`, error);
+        throw new functions.https.HttpsError('internal', 'Failed to retrieve eligible technicians.');
+    }
+});
+

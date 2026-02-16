@@ -525,3 +525,114 @@ export const manageService = functions.https.onCall(async (data, context) => {
     }
 });
 
+// ============================================================================
+// SERVICE NESTING MIGRATION (PHASE 12)
+// ============================================================================
+
+/**
+ * Migrate root services to nested categories/{categoryId}/services structure
+ * 
+ * RULES:
+ * - DO NOT delete root services
+ * - DO NOT overwrite existing nested services
+ * - Preserve ALL original fields
+ * - Add migratedAt timestamp
+ * - Idempotent (safe to run multiple times)
+ */
+export const migrateServicesToNested = functions.https.onCall(async (data, context) => {
+    await assertAdmin(context);
+    
+    const DRY_RUN = data.dryRun ?? false;
+    const BATCH_SIZE = 400;
+    
+    console.log(`[SERVICE_MIGRATION] Starting migration...`);
+    console.log(`[SERVICE_MIGRATION] DRY_RUN: ${DRY_RUN}`);
+    
+    // Get all root services
+    const servicesSnapshot = await db.collection('services').get();
+    const totalRootServices = servicesSnapshot.size;
+    
+    console.log(`[SERVICE_MIGRATION] Found ${totalRootServices} root services`);
+    
+    let totalMigrated = 0;
+    let totalSkippedAlreadyExists = 0;
+    let totalErrors = 0;
+    const errors: string[] = [];
+    
+    // Process in batches
+    const batch = db.batch();
+    let batchOpCount = 0;
+    
+    for (const serviceDoc of servicesSnapshot.docs) {
+        const serviceData = serviceDoc.data();
+        const serviceId = serviceDoc.id;
+        
+        // Get category from service - this is the categoryId for nesting
+        const categoryId = serviceData.category || serviceData.categoryId;
+        
+        if (!categoryId) {
+            console.log(`[SERVICE_MIGRATION] Skipping service ${serviceId} - no category`);
+            totalErrors++;
+            errors.push(`Service ${serviceId}: no category field`);
+            continue;
+        }
+        
+        // Check if nested service already exists
+        const nestedPath = `categories/${categoryId}/services/${serviceId}`;
+        const nestedDocRef = db.doc(nestedPath);
+        const nestedDoc = await nestedDocRef.get();
+        
+        if (nestedDoc.exists) {
+            console.log(`[SERVICE_MIGRATION] Skipping ${serviceId} - already exists at ${nestedPath}`);
+            totalSkippedAlreadyExists++;
+            continue;
+        }
+        
+        if (DRY_RUN) {
+            console.log(`[DRY_RUN] Would migrate: ${serviceId} -> ${nestedPath}`);
+            totalMigrated++;
+            continue;
+        }
+        
+        // Create nested service with ALL original fields + migratedAt
+        const nestedData = {
+            ...serviceData,
+            migratedAt: admin.firestore.FieldValue.serverTimestamp(),
+            originalServiceId: serviceId
+        };
+        
+        batch.set(nestedDocRef, nestedData);
+        batchOpCount++;
+        
+        console.log(`[SERVICE_MIGRATION] Queueing migration: ${serviceId} -> ${nestedPath}`);
+        totalMigrated++;
+        
+        // Commit batch if reaching limit
+        if (batchOpCount >= BATCH_SIZE) {
+            await batch.commit();
+            console.log(`[SERVICE_MIGRATION] Committed batch of ${batchOpCount}`);
+            batchOpCount = 0;
+        }
+    }
+    
+    // Commit remaining batch
+    if (batchOpCount > 0) {
+        await batch.commit();
+        console.log(`[SERVICE_MIGRATION] Committed final batch of ${batchOpCount}`);
+    }
+    
+    const summary = {
+        success: true,
+        dryRun: DRY_RUN,
+        totalRootServices,
+        totalMigrated,
+        totalSkippedAlreadyExists,
+        totalErrors,
+        errors: errors.slice(0, 10) // Limit errors in response
+    };
+    
+    console.log(`[SERVICE_MIGRATION] Migration complete:`, summary);
+    
+    return summary;
+});
+

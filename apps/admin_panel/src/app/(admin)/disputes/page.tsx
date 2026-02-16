@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { adminApi } from '@/lib/admin-api';
 import StatusBadge from '@/components/ui/StatusBadge';
 import {
     AlertTriangle, MessageSquare, Scale, Calendar, User,
@@ -19,6 +20,34 @@ export default function DisputesPage() {
     const [disputes, setDisputes] = useState<any[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(true);
+    const [processingId, setProcessingId] = useState<string | null>(null);
+    const [selectedDispute, setSelectedDispute] = useState<any>(null);
+    const [isModalOpen, setModalOpen] = useState(false);
+    const [actionType, setActionType] = useState<string>('');
+    const [actionPayload, setActionPayload] = useState<any>({});
+
+    const handleAction = async (disputeId: string, action: string) => {
+        setSelectedDispute(disputes.find(d => d.id === disputeId));
+        setActionType(action);
+        setActionPayload({});
+        setModalOpen(true);
+    };
+
+    const executeAction = async () => {
+        if (!selectedDispute) return;
+        
+        setProcessingId(selectedDispute.id);
+        try {
+            await adminApi.manageDispute(selectedDispute.id, actionType, actionPayload);
+            alert('Action completed successfully!');
+            setModalOpen(false);
+        } catch (e: any) {
+            console.error('Action failed:', e);
+            alert(`Action failed: ${e.message}`);
+        } finally {
+            setProcessingId(null);
+        }
+    };
 
     useEffect(() => {
         const q = query(collection(db, 'disputes'), orderBy('createdAt', 'desc'));
@@ -133,22 +162,41 @@ export default function DisputesPage() {
                             </div>
 
                             <div className="p-8 bg-slate-950/20 lg:w-96 flex flex-col justify-center gap-4">
-                                <Button className="w-full bg-indigo-600 hover:bg-indigo-500 text-white h-14 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-indigo-600/10 transition-all border-none">
+                                <Button 
+                                    onClick={() => handleAction(dispute.id, 'resolve')}
+                                    disabled={processingId === dispute.id || dispute.status === 'resolved'}
+                                    className="w-full bg-indigo-600 hover:bg-indigo-500 text-white h-14 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-indigo-600/10 transition-all border-none"
+                                >
                                     <Gavel size={18} className="mr-3" /> Execute Arbitrage
                                 </Button>
 
                                 <div className="grid grid-cols-2 gap-3">
-                                    <Button variant="outline" className="h-14 rounded-2xl border-slate-800 bg-slate-900/50 hover:bg-emerald-500/10 hover:border-emerald-500/30 hover:text-emerald-400 text-slate-500 font-black uppercase text-[9px] tracking-[0.15em] transition-all">
+                                    <Button 
+                                        variant="outline" 
+                                        onClick={() => handleAction(dispute.id, 'approve')}
+                                        disabled={processingId === dispute.id || dispute.status === 'resolved'}
+                                        className="h-14 rounded-2xl border-slate-800 bg-slate-900/50 hover:bg-emerald-500/10 hover:border-emerald-500/30 hover:text-emerald-400 text-slate-500 font-black uppercase text-[9px] tracking-[0.15em] transition-all"
+                                    >
                                         <CheckCircle2 size={16} className="mb-1 block mx-auto" strokeWidth={3} />
                                         Authorize
                                     </Button>
-                                    <Button variant="outline" className="h-14 rounded-2xl border-slate-800 bg-slate-900/50 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400 text-slate-500 font-black uppercase text-[9px] tracking-[0.15em] transition-all">
+                                    <Button 
+                                        variant="outline" 
+                                        onClick={() => handleAction(dispute.id, 'reject')}
+                                        disabled={processingId === dispute.id || dispute.status === 'resolved'}
+                                        className="h-14 rounded-2xl border-slate-800 bg-slate-900/50 hover:bg-red-500/10 hover:border-red-500/30 hover:text-red-400 text-slate-500 font-black uppercase text-[9px] tracking-[0.15em] transition-all"
+                                    >
                                         <XCircle size={16} className="mb-1 block mx-auto" strokeWidth={3} />
                                         Dismiss
                                     </Button>
                                 </div>
 
-                                <Button variant="ghost" className="w-full h-12 text-slate-600 hover:text-amber-500 hover:bg-amber-500/5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">
+                                <Button 
+                                    variant="ghost" 
+                                    onClick={() => handleAction(dispute.id, 'refund')}
+                                    disabled={processingId === dispute.id || dispute.status === 'resolved'}
+                                    className="w-full h-12 text-slate-600 hover:text-amber-500 hover:bg-amber-500/5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all"
+                                >
                                     <IndianRupee size={14} className="mr-2" strokeWidth={3} />
                                     Initiate Reversal
                                 </Button>
@@ -164,6 +212,67 @@ export default function DisputesPage() {
                     </Card>
                 ))}
             </div>
+
+            {/* Action Modal */}
+            {isModalOpen && selectedDispute && (
+                <div className="fixed inset-0 bg-[#0f172a]/95 backdrop-blur-xl flex items-center justify-center z-[100] p-4 animate-in fade-in duration-300">
+                    <Card className="w-full max-w-lg bg-slate-900 border-slate-800 shadow-2xl shadow-black/50 overflow-hidden rounded-3xl">
+                        <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+                            <div>
+                                <h2 className="text-xl font-black text-white uppercase">
+                                    {actionType === 'resolve' ? 'Resolve Dispute' : 
+                                     actionType === 'approve' ? 'Approve Resolution' :
+                                     actionType === 'reject' ? 'Reject Dispute' :
+                                     'Initiate Refund'}
+                                </h2>
+                                <p className="text-slate-500 text-xs mt-1">Dispute: #{selectedDispute.id.substring(0, 8).toUpperCase()}</p>
+                            </div>
+                            <Button variant="ghost" onClick={() => setModalOpen(false)} className="text-slate-500 hover:text-white">
+                                <XCircle size={20} />
+                            </Button>
+                        </div>
+                        <CardContent className="p-6 space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Resolution Notes</label>
+                                <textarea
+                                    className="flex min-h-[100px] w-full rounded-xl border border-slate-700 bg-slate-800/50 px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none"
+                                    placeholder="Enter resolution notes or reason..."
+                                    value={actionPayload.notes || ''}
+                                    onChange={(e) => setActionPayload({ ...actionPayload, notes: e.target.value })}
+                                />
+                            </div>
+                            {actionType === 'refund' && (
+                                <div className="space-y-2">
+                                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Refund Amount (₹)</label>
+                                    <Input
+                                        type="number"
+                                        placeholder="Enter refund amount"
+                                        value={actionPayload.amount || ''}
+                                        onChange={(e) => setActionPayload({ ...actionPayload, amount: Number(e.target.value) })}
+                                        className="bg-slate-800/50 border-slate-700 text-white"
+                                    />
+                                </div>
+                            )}
+                            <div className="flex gap-3 pt-2">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setModalOpen(false)}
+                                    className="flex-1 border-slate-700 text-slate-400 hover:text-white"
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    onClick={executeAction}
+                                    disabled={processingId === selectedDispute.id}
+                                    className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white"
+                                >
+                                    {processingId === selectedDispute.id ? 'Processing...' : 'Confirm'}
+                                </Button>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
         </div>
     );
 }

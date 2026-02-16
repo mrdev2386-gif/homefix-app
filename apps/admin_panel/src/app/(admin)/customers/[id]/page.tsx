@@ -37,11 +37,16 @@ export default function UserDetailPage() {
     const fetchUserDetails = async () => {
         setLoading(true);
         try {
-            const data = await adminApi.getUserById(userId);
+            const data = await adminApi.getUserById(userId) as any;
+            if (!data) {
+                console.warn('User not found');
+                setLoading(false);
+                return;
+            }
             setUser(data);
             setFormData({
-                name: data.name || '',
-                role: data.role || 'customer',
+                name: data?.name || '',
+                role: data?.role || 'customer',
             });
         } catch (e: any) {
             console.error('Failed to fetch user:', e);

@@ -11,7 +11,6 @@ import '../../core/services/auth_service.dart';
 import '../../core/services/firestore_service.dart';
 import '../../core/models/user_model.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/safe_network_image.dart';
 import '../../core/utils/app_localizations.dart';
 import '../../shared/widgets/app_widgets.dart';
 import '../bookings/presentation/booking_history_screen.dart';

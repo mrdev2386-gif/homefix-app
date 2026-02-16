@@ -317,76 +317,142 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(
-          'Custom Request',
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: Colors.black,
-          ),
-        ),
-        centerTitle: true,
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Form(
-              key: _formKey,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildCategorySection(),
-                    const SizedBox(height: 16),
-                    _buildTitleSection(),
-                    const SizedBox(height: 16),
-                    _buildDescriptionSection(),
-                    const SizedBox(height: 16),
-                    _buildImagesSection(),
-                    const SizedBox(height: 16),
-                    _buildScheduleSection(),
-                    const SizedBox(height: 16),
-                    _buildAddressSection(),
-                    const SizedBox(height: 16),
-                    _buildBudgetSection(),
-                    const SizedBox(height: 16),
-                    _buildUrgencySection(),
-                    const SizedBox(height: 100), // Space for bottom button
-                  ],
-                ),
-              ),
+      resizeToAvoidBottomInset: true,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildHeader(),
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : Form(
+                      key: _formKey,
+                      child: SingleChildScrollView(
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          20,
+                          16,
+                          20 + MediaQuery.of(context).viewInsets.bottom,
+                        ),
+                        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildCategorySection(),
+                            const SizedBox(height: 20),
+                            _buildTitleSection(),
+                            const SizedBox(height: 20),
+                            _buildDescriptionSection(),
+                            const SizedBox(height: 20),
+                            _buildImagesSection(),
+                            const SizedBox(height: 20),
+                            _buildScheduleSection(),
+                            const SizedBox(height: 20),
+                            _buildAddressSection(),
+                            const SizedBox(height: 20),
+                            _buildBudgetSection(),
+                            const SizedBox(height: 20),
+                            _buildUrgencySection(),
+                            const SizedBox(height: 100),
+                          ],
+                        ),
+                      ),
+                    ),
             ),
-      bottomSheet: _buildSubmitButton(),
+          ],
+        ),
+      ),
+      bottomNavigationBar: _buildSubmitButton(),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.arrow_back, color: Colors.black, size: 20),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Custom Request',
+                  style: GoogleFonts.poppins(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black,
+                  ),
+                ),
+                Text(
+                  'Tell us what you need done',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildCategorySection() {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey[300]!),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.category, color: AppTheme.primaryColor, size: 20),
-                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.category, color: AppTheme.primaryColor, size: 18),
+                ),
+                const SizedBox(width: 12),
                 Text(
                   'Service Category',
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
+                    fontSize: 15,
                     fontWeight: FontWeight.w600,
                     color: Colors.grey[800],
                   ),
@@ -398,23 +464,29 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             DropdownButtonFormField<Category>(
               value: _selectedCategory,
               hint: Text(
                 'Select a category',
-                style: GoogleFonts.poppins(fontSize: 14),
+                style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[500]),
               ),
               items: _categories.map((category) => DropdownMenuItem(
                     value: category,
                     child: Row(
                       children: [
                         if (category.imageUrl != null)
-                          Image.network(category.imageUrl!, width: 24, height: 24),
-                        const SizedBox(width: 8),
-                        Text(
-                          category.name,
-                          style: GoogleFonts.poppins(fontSize: 14),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: Image.network(category.imageUrl!, width: 28, height: 28, fit: BoxFit.cover),
+                          ),
+                        if (category.imageUrl != null) const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            category.name,
+                            style: GoogleFonts.poppins(fontSize: 14),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),
@@ -425,11 +497,25 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
                 return null;
               },
               decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.grey[50],
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.grey[300]!),
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[200]!),
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[200]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppTheme.primaryColor, width: 1.5),
+                ),
+                errorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.red[300]!),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               ),
             ),
           ],
@@ -439,25 +525,38 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
   }
 
   Widget _buildTitleSection() {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey[300]!),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.title, color: AppTheme.primaryColor, size: 20),
-                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.title, color: AppTheme.primaryColor, size: 18),
+                ),
+                const SizedBox(width: 12),
                 Text(
                   'Problem Title',
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
+                    fontSize: 15,
                     fontWeight: FontWeight.w600,
                     color: Colors.grey[800],
                   ),
@@ -469,19 +568,34 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _titleController,
               decoration: InputDecoration(
                 hintText: 'Brief description of the issue',
                 hintStyle: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[500]),
+                filled: true,
+                fillColor: Colors.grey[50],
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.grey[300]!),
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[200]!),
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[200]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppTheme.primaryColor, width: 1.5),
+                ),
+                errorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.red[300]!),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               ),
               maxLength: 100,
+              style: GoogleFonts.poppins(fontSize: 15),
               validator: (value) {
                 if (value == null || value.trim().length < 5) {
                   return 'Title must be at least 5 characters';
@@ -496,25 +610,38 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
   }
 
   Widget _buildDescriptionSection() {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey[300]!),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.description, color: AppTheme.primaryColor, size: 20),
-                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.description, color: AppTheme.primaryColor, size: 18),
+                ),
+                const SizedBox(width: 12),
                 Text(
                   'Detailed Description',
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
+                    fontSize: 15,
                     fontWeight: FontWeight.w600,
                     color: Colors.grey[800],
                   ),
@@ -526,20 +653,36 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _descriptionController,
               decoration: InputDecoration(
                 hintText: 'Describe your problem in detail. Include any relevant information that might help the technician.',
                 hintStyle: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[500]),
+                filled: true,
+                fillColor: Colors.grey[50],
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.grey[300]!),
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[200]!),
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[200]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppTheme.primaryColor, width: 1.5),
+                ),
+                errorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.red[300]!),
+                ),
+                contentPadding: const EdgeInsets.all(16),
               ),
               maxLines: 5,
+              minLines: 4,
               maxLength: 1000,
+              style: GoogleFonts.poppins(fontSize: 15),
               validator: (value) {
                 if (value == null || value.trim().length < 20) {
                   return 'Description must be at least 20 characters';
@@ -554,98 +697,130 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
   }
 
   Widget _buildImagesSection() {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey[300]!),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.photo_camera, color: AppTheme.primaryColor, size: 20),
-                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.photo_camera, color: AppTheme.primaryColor, size: 18),
+                ),
+                const SizedBox(width: 12),
                 Text(
                   'Photos (Optional)',
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
+                    fontSize: 15,
                     fontWeight: FontWeight.w600,
                     color: Colors.grey[800],
                   ),
                 ),
                 const Spacer(),
-                Text(
-                  '${_selectedImages.length}/5',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: Colors.grey[600],
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${_selectedImages.length}/5',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[600],
+                    ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             if (_selectedImages.isNotEmpty)
               SizedBox(
                 height: 100,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   itemCount: _selectedImages.length,
-                  itemBuilder: (context, index) => Stack(
-                    children: [
-                      Container(
-                        margin: const EdgeInsets.only(right: 8),
-                        width: 100,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          image: DecorationImage(
-                            image: FileImage(_selectedImages[index]),
-                            fit: BoxFit.cover,
+                  itemBuilder: (context, index) => Container(
+                    margin: const EdgeInsets.only(right: 12),
+                    child: Stack(
+                      children: [
+                        Container(
+                          width: 100,
+                          height: 100,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            image: DecorationImage(
+                              image: FileImage(_selectedImages[index]),
+                              fit: BoxFit.cover,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                      Positioned(
-                        top: 4,
-                        right: 4,
-                        child: GestureDetector(
-                          onTap: () => _removeImage(index),
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: const BoxDecoration(
-                              color: Colors.black54,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.close,
-                              size: 16,
-                              color: Colors.white,
+                        Positioned(
+                          top: 6,
+                          right: 6,
+                          child: GestureDetector(
+                            onTap: () => _removeImage(index),
+                            child: Container(
+                              padding: const EdgeInsets.all(5),
+                              decoration: const BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.close,
+                                size: 14,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _pickImages,
-              icon: const Icon(Icons.add_photo_alternate),
-              label: Text(
-                _selectedImages.isEmpty ? 'Add Photos' : 'Add More Photos',
-                style: GoogleFonts.poppins(),
-              ),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                side: BorderSide(color: AppTheme.primaryColor),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+            if (_selectedImages.isNotEmpty) const SizedBox(height: 16),
+            if (_selectedImages.length < 5)
+              OutlinedButton.icon(
+                onPressed: _pickImages,
+                icon: const Icon(Icons.add_photo_alternate, size: 20),
+                label: Text(
+                  _selectedImages.isEmpty ? 'Add Photos' : 'Add More Photos',
+                  style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w500),
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  side: BorderSide(color: AppTheme.primaryColor, width: 1.5),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -653,25 +828,38 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
   }
 
   Widget _buildScheduleSection() {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey[300]!),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.calendar_today, color: AppTheme.primaryColor, size: 20),
-                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.calendar_today, color: AppTheme.primaryColor, size: 18),
+                ),
+                const SizedBox(width: 12),
                 Text(
                   'Preferred Schedule',
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
+                    fontSize: 15,
                     fontWeight: FontWeight.w600,
                     color: Colors.grey[800],
                   ),
@@ -683,32 +871,34 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             Row(
               children: [
                 Expanded(
                   child: GestureDetector(
                     onTap: _selectDate,
                     child: Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey[300]!),
-                        borderRadius: BorderRadius.circular(8),
-                        color: _preferredDate.isEmpty ? Colors.grey[100] : Colors.white,
+                        border: Border.all(color: Colors.grey[200]!),
+                        borderRadius: BorderRadius.circular(12),
+                        color: _preferredDate.isEmpty ? Colors.grey[50] : Colors.white,
                       ),
                       child: Row(
                         children: [
                           Icon(
                             Icons.event,
                             size: 20,
-                            color: _preferredDate.isEmpty ? Colors.grey[500] : AppTheme.primaryColor,
+                            color: _preferredDate.isEmpty ? Colors.grey[400] : AppTheme.primaryColor,
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _preferredDate.isEmpty ? 'Select Date' : _preferredDate,
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              color: _preferredDate.isEmpty ? Colors.grey[500] : Colors.black,
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _preferredDate.isEmpty ? 'Select Date' : _preferredDate,
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                color: _preferredDate.isEmpty ? Colors.grey[500] : Colors.black87,
+                              ),
                             ),
                           ),
                         ],
@@ -721,26 +911,26 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
                   child: GestureDetector(
                     onTap: _selectTimeSlot,
                     child: Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey[300]!),
-                        borderRadius: BorderRadius.circular(8),
-                        color: _preferredTime.isEmpty ? Colors.grey[100] : Colors.white,
+                        border: Border.all(color: Colors.grey[200]!),
+                        borderRadius: BorderRadius.circular(12),
+                        color: _preferredTime.isEmpty ? Colors.grey[50] : Colors.white,
                       ),
                       child: Row(
                         children: [
                           Icon(
                             Icons.access_time,
                             size: 20,
-                            color: _preferredTime.isEmpty ? Colors.grey[500] : AppTheme.primaryColor,
+                            color: _preferredTime.isEmpty ? Colors.grey[400] : AppTheme.primaryColor,
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: Text(
                               _preferredTime.isEmpty ? 'Time Slot' : _preferredTime,
                               style: GoogleFonts.poppins(
                                 fontSize: 13,
-                                color: _preferredTime.isEmpty ? Colors.grey[500] : Colors.black,
+                                color: _preferredTime.isEmpty ? Colors.grey[500] : Colors.black87,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -759,25 +949,38 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
   }
 
   Widget _buildAddressSection() {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey[300]!),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.location_on, color: AppTheme.primaryColor, size: 20),
-                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.location_on, color: AppTheme.primaryColor, size: 18),
+                ),
+                const SizedBox(width: 12),
                 Text(
                   'Service Address',
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
+                    fontSize: 15,
                     fontWeight: FontWeight.w600,
                     color: Colors.grey[800],
                   ),
@@ -789,12 +992,12 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             DropdownButtonFormField<Address>(
               value: _selectedAddress,
               hint: Text(
                 'Select an address',
-                style: GoogleFonts.poppins(fontSize: 14),
+                style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[500]),
               ),
               items: _addresses.map((address) => DropdownMenuItem(
                     value: address,
@@ -827,23 +1030,36 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
                 return null;
               },
               decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.grey[50],
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.grey[300]!),
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[200]!),
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[200]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppTheme.primaryColor, width: 1.5),
+                ),
+                errorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.red[300]!),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               ),
             ),
             if (_addresses.isEmpty)
               Padding(
-                padding: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.only(top: 12),
                 child: TextButton.icon(
                   onPressed: () {
-                    // Navigate to address management
                     Navigator.pushNamed(context, '/addresses');
                   },
-                  icon: const Icon(Icons.add),
-                  label: Text('Add a new address', style: GoogleFonts.poppins()),
+                  icon: const Icon(Icons.add, size: 20),
+                  label: Text('Add a new address', style: GoogleFonts.poppins(fontWeight: FontWeight.w500)),
                 ),
               ),
           ],
@@ -853,32 +1069,45 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
   }
 
   Widget _buildBudgetSection() {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey[300]!),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.attach_money, color: AppTheme.primaryColor, size: 20),
-                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.attach_money, color: AppTheme.primaryColor, size: 18),
+                ),
+                const SizedBox(width: 12),
                 Text(
                   'Budget Range (Optional)',
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
+                    fontSize: 15,
                     fontWeight: FontWeight.w600,
                     color: Colors.grey[800],
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Row(
               children: [
                 Expanded(
@@ -888,13 +1117,24 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
                       hintText: 'Min',
                       hintStyle: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[500]),
                       prefixIcon: const Icon(Icons.currency_rupee, size: 20),
+                      filled: true,
+                      fillColor: Colors.grey[50],
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: Colors.grey[300]!),
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey[200]!),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey[200]!),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: AppTheme.primaryColor, width: 1.5),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                     ),
                     keyboardType: TextInputType.number,
+                    style: GoogleFonts.poppins(fontSize: 15),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -910,13 +1150,24 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
                       hintText: 'Max',
                       hintStyle: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[500]),
                       prefixIcon: const Icon(Icons.currency_rupee, size: 20),
+                      filled: true,
+                      fillColor: Colors.grey[50],
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: Colors.grey[300]!),
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey[200]!),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey[200]!),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: AppTheme.primaryColor, width: 1.5),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                     ),
                     keyboardType: TextInputType.number,
+                    style: GoogleFonts.poppins(fontSize: 15),
                   ),
                 ),
               ],
@@ -928,32 +1179,45 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
   }
 
   Widget _buildUrgencySection() {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.grey[300]!),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.priority_high, color: AppTheme.primaryColor, size: 20),
-                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.priority_high, color: AppTheme.primaryColor, size: 18),
+                ),
+                const SizedBox(width: 12),
                 Text(
                   'Urgency',
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
+                    fontSize: 15,
                     fontWeight: FontWeight.w600,
                     color: Colors.grey[800],
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Row(
               children: Urgency.values.map((urgency) {
                 final isSelected = _urgency == urgency;
@@ -962,14 +1226,14 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
                     onTap: () => setState(() => _urgency = urgency),
                     child: Container(
                       margin: const EdgeInsets.symmetric(horizontal: 4),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
                       decoration: BoxDecoration(
-                        color: isSelected ? urgency.color.withOpacity(0.1) : Colors.grey[100],
+                        color: isSelected ? urgency.color.withOpacity(0.1) : Colors.grey[50],
                         border: Border.all(
-                          color: isSelected ? urgency.color : Colors.grey[300]!,
+                          color: isSelected ? urgency.color : Colors.grey[200]!,
                           width: isSelected ? 2 : 1,
                         ),
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: Column(
                         children: [
@@ -979,10 +1243,10 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
                                 : urgency == Urgency.urgent
                                     ? Icons.access_time_filled
                                     : Icons.emergency,
-                            color: isSelected ? urgency.color : Colors.grey[500],
-                            size: 24,
+                            color: isSelected ? urgency.color : Colors.grey[400],
+                            size: 26,
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 6),
                           Text(
                             urgency.displayName,
                             style: GoogleFonts.poppins(
@@ -1005,46 +1269,57 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
   }
 
   Widget _buildSubmitButton() {
-    return Container(
-      padding: const EdgeInsets.all(16),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        16,
+        20,
+        20 + MediaQuery.of(context).viewInsets.bottom,
+      ),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 20,
             offset: const Offset(0, -5),
           ),
         ],
       ),
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton(
-          onPressed: _isSubmitting ? null : _submitRequest,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppTheme.primaryColor,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          width: double.infinity,
+          height: 54,
+          child: ElevatedButton(
+            onPressed: _isSubmitting ? null : _submitRequest,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: AppTheme.primaryColor.withOpacity(0.6),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
             ),
+            child: _isSubmitting
+                ? SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: Colors.white.withOpacity(0.9),
+                    ),
+                  )
+                : Text(
+                    'Submit Request',
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
           ),
-          child: _isSubmitting
-              ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : Text(
-                  'Submit Request',
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
         ),
       ),
     );

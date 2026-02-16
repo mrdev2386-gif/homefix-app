@@ -92,7 +92,7 @@ class AppTheme {
           foregroundColor: Colors.white,
           minimumSize: const Size(double.infinity, 56),
           elevation: 0,
-          shadowColor: primaryColor.withOpacity(0.3),
+          shadowColor: primaryColor.withValues(alpha: 0.3),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -147,8 +147,8 @@ class AppTheme {
         backgroundColor: Colors.white,
         elevation: 10,
         height: 80,
-        indicatorColor: primaryColor.withOpacity(0.1),
-        labelTextStyle: MaterialStateProperty.resolveWith((states) {
+        indicatorColor: primaryColor.withValues(alpha: 0.1),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(MaterialState.selected)) {
             return GoogleFonts.outfit(
               color: primaryColor,

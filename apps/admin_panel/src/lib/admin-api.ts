@@ -183,5 +183,46 @@ export const adminApi = {
     manageService: async (data: any) => {
         const fn = httpsCallable(functions, 'admin_manageService');
         return await fn(data);
+    },
+
+    /**
+     * Manage Bookings (assign, cancel, complete)
+     */
+    manageBooking: async (bookingId: string, action: string, payload: any = {}) => {
+        const fn = httpsCallable(functions, 'admin_manageBooking');
+        return await fn({ bookingId, action, ...payload });
+    },
+
+    /**
+     * Manage Reviews (hide, flag, delete)
+     */
+    manageReview: async (reviewId: string, action: string, reason?: string) => {
+        const fn = httpsCallable(functions, 'admin_manageReview');
+        return await fn({ reviewId, action, reason });
+    },
+
+    /**
+     * Manage Disputes (resolve, reject, refund)
+     */
+    manageDispute: async (disputeId: string, action: string, payload: any = {}) => {
+        const fn = httpsCallable(functions, 'admin_manageDispute');
+        return await fn({ disputeId, action, ...payload });
+    },
+
+    /**
+     * Get Finance Data
+     */
+    getFinanceData: async (params: { limit?: number; startDate?: string; endDate?: string }) => {
+        const fn = httpsCallable(functions, 'admin_getFinanceData');
+        const result = await fn(params);
+        return result.data;
+    },
+
+    /**
+     * Process Refund
+     */
+    processRefund: async (bookingId: string, amount?: number, reason?: string) => {
+        const fn = httpsCallable(functions, 'admin_processRefund');
+        return await fn({ bookingId, amount, reason });
     }
 };

@@ -6,8 +6,8 @@ import { auth } from '@/lib/firebase';
 import { signInWithGoogle, verifyAdminClaim, handleAuthError, signOutUser } from '@/lib/auth';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Shield, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
-import Button from '@/components/ui/Button';
-import Input from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/components/AuthProvider';
 
 

@@ -1,5 +1,6 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
+import { Loader2 } from "lucide-react"
 // import { Slot } from "@radix-ui/react-slot" // Probably not installed
 // So I will just support default button props
 
@@ -25,13 +26,11 @@ export interface ButtonProps
     variant?: keyof typeof buttonVariants
     size?: keyof typeof buttonSizes
     asChild?: boolean
+    isLoading?: boolean
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-    ({ className, variant = "default", size = "default", asChild = false, ...props }, ref) => {
-        // If asChild is true, we should render children but here we assume button element for simplicity
-        // unless radix slot is available.
-
+    ({ className, variant = "default", size = "default", asChild = false, isLoading, children, ...props }, ref) => {
         return (
             <button
                 className={cn(
@@ -41,8 +40,12 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
                     className
                 )}
                 ref={ref}
+                disabled={isLoading || props.disabled}
                 {...props}
-            />
+            >
+                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {children}
+            </button>
         )
     }
 )

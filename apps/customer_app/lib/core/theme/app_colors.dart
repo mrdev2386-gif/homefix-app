@@ -40,9 +40,9 @@ class AppColors {
   static const Color borderLight = Color(0xFFF3F4F6);
   
   // Shadows
-  static Color shadowLight = Colors.black.withOpacity(0.04);
-  static Color shadowMedium = Colors.black.withOpacity(0.08);
-  static Color shadowDark = Colors.black.withOpacity(0.12);
+  static Color shadowLight = Colors.black.withValues(alpha: 0.04);
+  static Color shadowMedium = Colors.black.withValues(alpha: 0.08);
+  static Color shadowDark = Colors.black.withValues(alpha: 0.12);
   
   // Gradients
   static const LinearGradient primaryGradient = LinearGradient(

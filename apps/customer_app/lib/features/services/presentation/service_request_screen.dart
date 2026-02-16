@@ -3,9 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../../core/services/auth_service.dart';
-import '../../../core/services/firestore_service.dart';
 import '../../../core/services/functions_service.dart';
-import '../../../core/models/service_request.dart';
 import '../../../core/providers/location_provider.dart';
 import '../../profile/presentation/saved_addresses_screen.dart';
 

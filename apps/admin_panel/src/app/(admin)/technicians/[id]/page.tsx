@@ -40,13 +40,18 @@ export default function TechnicianDetailPage() {
     const fetchTechDetails = async () => {
         setLoading(true);
         try {
-            const data = await adminApi.getTechnicianById(techId);
-            setTech(data);
+            const data = await adminApi.getTechnicianById(techId) as any;
+            if (!data) {
+                console.warn('Technician not found');
+                setLoading(false);
+                return;
+            }
+            setTech(data as any);
             setFormData({
-                name: data.name || '',
-                email: data.email || '',
-                phone: data.phone || '',
-                city: data.city || '',
+                name: data?.name || '',
+                email: data?.email || '',
+                phone: data?.phone || '',
+                city: data?.city || '',
             });
         } catch (e: any) {
             console.error('Failed to fetch technician:', e);
@@ -170,7 +175,7 @@ export default function TechnicianDetailPage() {
                                 <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
                                     <Wrench size={20} />
                                 </div>
-                                CardTitle className="text-xl font-black text-white uppercase tracking-tight">Professional Dossier</CardTitle>
+                                <CardTitle className="text-xl font-black text-white uppercase tracking-tight">Professional Dossier</CardTitle>
                         </div>
                         <Button
                             variant="outline"

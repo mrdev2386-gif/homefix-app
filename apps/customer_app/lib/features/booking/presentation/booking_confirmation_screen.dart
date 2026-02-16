@@ -31,10 +31,14 @@ class _BookingConfirmationScreenState extends State<BookingConfirmationScreen> {
   Future<void> _confirmBooking() async {
     setState(() => _isLoading = true);
     try {
+      // Ultra-safe price parsing - prevents type cast crash
+      final rawPrice = widget.service['price'] ?? widget.service['basePrice'] ?? 0;
+      final double price = (rawPrice is num) ? rawPrice.toDouble() : 0.0;
+      
       final success = await Provider.of<FunctionsService>(context, listen: false).createBooking({
         'serviceId': widget.service['id'] ?? widget.service['key'] ?? widget.service['serviceId'] ?? '',
         'serviceTitle': widget.service['name'] ?? widget.service['title'] ?? 'Service',
-        'price': (widget.service['price'] ?? widget.service['basePrice'] ?? 0).toDouble(),
+        'price': price,
         'technicianId': widget.slot['techId'],
         'slotId': widget.slot['id'],
         'scheduledDate': widget.date.toIso8601String(),

@@ -27,6 +27,7 @@ import 'widgets/professional_home_service.dart';
 import 'widgets/professional_reels_section.dart';
 import 'widgets/cleaning_essentials_section.dart';
 import 'widgets/service_bottom_banners_section.dart';
+import 'widgets/horizontal_service_section.dart';
 import '../../core/models/dashboard_models.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -83,12 +84,14 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
     super.didChangeDependencies();
     
     // Preload top banner image to remove first-frame lag
-    precacheImage(
-      const NetworkImage(
-        'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&q=80',
-      ),
-      context,
-    );
+    try {
+      precacheImage(
+        const NetworkImage(
+          'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?auto=format&fit=crop&q=80',
+        ),
+        context,
+      );
+    } catch (_) {}
   }
 
   @override
@@ -122,6 +125,50 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                   
                   // Cleaning Essentials
                   _buildCleaningEssentials(context),
+                  const SizedBox(height: 24),
+                  
+                  // Home Repair & Installation (NEW)
+                  HorizontalServiceSection(
+                    title: 'Home Repair & Installation',
+                    serviceFilter: (cat) =>
+                        cat.contains('appliance') ||
+                        cat.contains('repair') ||
+                        cat.contains('electronics') ||
+                        cat.contains('tv') ||
+                        cat.contains('fridge') ||
+                        cat.contains('washing') ||
+                        cat.contains('ac') ||
+                        cat.contains('install'),
+                    viewAllCategory: 'appliance',
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Electrician Services (NEW)
+                  HorizontalServiceSection(
+                    title: 'Electrician',
+                    serviceFilter: (cat) =>
+                        cat.contains('electric') ||
+                        cat.contains('wiring') ||
+                        cat.contains('electrical'),
+                    viewAllCategory: 'electrician',
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Trending Near You - based on highest bookings
+                  HorizontalServiceSection(
+                    title: 'Trending Near You',
+                    serviceFilter: (cat) =>
+                        cat.contains('clean') ||
+                        cat.contains('plumb') ||
+                        cat.contains('ac') ||
+                        cat.contains('electric'),
+                    maxItems: 6,
+                    viewAllCategory: 'trending',
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Recently Added Services - order by createdAt desc
+                  const ServiceListSection(title: 'Recently Added', isHorizontal: true, limit: 8),
                   const SizedBox(height: 24),
                   
                   // Recommended for You
@@ -383,6 +430,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
     _lastLocationUpdateTime = now;
 
     // First pop the bottom sheet
+    if (!context.mounted) return;
     final navigator = Navigator.maybeOf(context);
     if (navigator != null && navigator.canPop()) {
       navigator.pop();
@@ -404,6 +452,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
 
       // Always close loader safely - check mounted first
       if (!mounted) return;
+      if (!context.mounted) return;
       final nav = Navigator.maybeOf(context);
       if (nav != null && nav.canPop()) {
         nav.pop();
