@@ -116,8 +116,8 @@ export const createBookingV2 = onCall(
         const customerId = request.auth.uid;
         ctx.customerId = customerId;
 
-        logInfo(ctx, "request_received", { 
-            hasData: !!request.data 
+        logInfo(ctx, "request_received", {
+            hasData: !!request.data
         });
 
         const data = request.data;
@@ -137,9 +137,9 @@ export const createBookingV2 = onCall(
         const finalStatus = "pending_payment";
         const idempotencyKey = generateIdempotencyKey(customerId);
 
-        logInfo(ctx, "transaction_start", { 
+        logInfo(ctx, "transaction_start", {
             bookingId,
-            status: finalStatus 
+            status: finalStatus
         });
 
         try {
@@ -159,6 +159,63 @@ export const createBookingV2 = onCall(
                     }
                 }
 
+                // SECURE PRICE VALIDATION (Step 5 Requirement)
+                let serverCalculatedTotal = 0;
+                const validatedServices: any[] = [];
+
+                for (const item of services) {
+                    const categoryId = item.categoryId || item.category;
+                    const serviceId = item.id || item.serviceId;
+
+                    if (!categoryId || !serviceId) {
+                        throw new https.HttpsError("invalid-argument", `Missing location data for service: ${item.name}`);
+                    }
+
+                    const serviceRef = db.collection("categories").doc(categoryId).collection("services").doc(serviceId);
+                    const serviceDoc = await transaction.get(serviceRef);
+
+                    if (!serviceDoc.exists) {
+                        throw new https.HttpsError("not-found", `Service not found: ${item.name}`);
+                    }
+
+                    const serviceData = serviceDoc.data()!;
+                    if (!serviceData.isActive) {
+                        throw new https.HttpsError("failed-precondition", `Service is no longer active: ${item.name}`);
+                    }
+
+                    const masterPrice = Number(serviceData.price || serviceData.basePrice || 0);
+                    const quantity = Number(item.quantity || 1);
+                    serverCalculatedTotal += masterPrice * quantity;
+
+                    validatedServices.push({
+                        id: serviceId,
+                        categoryId: categoryId,
+                        name: serviceData.name || serviceData.title,
+                        price: masterPrice,
+                        quantity: quantity,
+                        image: serviceData.imageUrl || serviceData.image || item.image,
+                    });
+                }
+
+                // If a coupon code is provided, apply it (Security: Server-side validation)
+                let discountAmount = 0;
+                if (couponCode) {
+                    const couponRef = db.collection("coupons").doc(couponCode);
+                    const couponDoc = await transaction.get(couponRef);
+                    if (couponDoc.exists) {
+                        const couponData = couponDoc.data()!;
+                        if (couponData.isActive && (!couponData.expiry || couponData.expiry.toDate() > new Date())) {
+                            if (couponData.type === 'percentage') {
+                                discountAmount = (serverCalculatedTotal * (couponData.value / 100));
+                            } else {
+                                discountAmount = couponData.value;
+                            }
+                        }
+                    }
+                }
+
+                const finalTotal = Math.max(0, serverCalculatedTotal - discountAmount);
+
                 // Check for existing booking with same idempotency key
                 const existingBookings = await transaction.get(
                     db.collection("bookings")
@@ -168,8 +225,8 @@ export const createBookingV2 = onCall(
                 );
 
                 if (!existingBookings.empty) {
-                    logInfo(ctx, "idempotency_duplicate", { 
-                        bookingId: existingBookings.docs[0].id 
+                    logInfo(ctx, "idempotency_duplicate", {
+                        bookingId: existingBookings.docs[0].id
                     });
                     return; // Skip creation if already exists
                 }
@@ -183,12 +240,14 @@ export const createBookingV2 = onCall(
                     addressSnapshot: address,
                     status: finalStatus,
                     paymentStatus: "pending",
-                    price: totalAmount,
-                    finalAmount: totalAmount,
+                    price: finalTotal,
+                    finalAmount: finalTotal,
+                    discountAmount: discountAmount,
+                    originalPrice: serverCalculatedTotal,
                     createdAt: admin.firestore.FieldValue.serverTimestamp(),
                     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                    services,
-                    serviceTitle: services[0].name + (services.length > 1 ? ` (+${services.length - 1} more)` : ""),
+                    services: validatedServices,
+                    serviceTitle: validatedServices[0].name + (validatedServices.length > 1 ? ` (+${validatedServices.length - 1} more)` : ""),
                     scheduledDate,
                     scheduledTime,
                     scheduledAt: admin.firestore.Timestamp.fromDate(new Date(scheduledDate)),
@@ -198,10 +257,10 @@ export const createBookingV2 = onCall(
             });
 
             const duration = Date.now() - startTime;
-            logInfo(ctx, "success", { 
-                bookingId, 
+            logInfo(ctx, "success", {
+                bookingId,
                 totalAmount,
-                durationMs: duration 
+                durationMs: duration
             });
 
             return { success: true, bookingId, totalAmount };

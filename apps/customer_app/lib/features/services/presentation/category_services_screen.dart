@@ -314,7 +314,7 @@ class _ServiceCard extends StatelessWidget {
                   Positioned(
                     top: 8,
                     right: 8,
-                    child: _SmallFavoriteButton(serviceId: service.id),
+                    child: _SmallFavoriteButton(service: service),
                   ),
                 ],
               ),
@@ -375,9 +375,9 @@ class _ServiceCard extends StatelessWidget {
 
 /// Compact favorite button for list cards
 class _SmallFavoriteButton extends StatelessWidget {
-  final String serviceId;
+  final HomeService service;
 
-  const _SmallFavoriteButton({required this.serviceId});
+  const _SmallFavoriteButton({required this.service});
 
   @override
   Widget build(BuildContext context) {
@@ -386,7 +386,7 @@ class _SmallFavoriteButton extends StatelessWidget {
       child: InkWell(
         onTap: () {
           HapticFeedback.lightImpact();
-          context.read<FavoritesProvider>().toggleFavorite(serviceId);
+          context.read<FavoritesProvider>().toggleFavorite(service.id, service.category);
         },
         borderRadius: BorderRadius.circular(16),
         splashColor: Colors.red.withOpacity(0.2),
@@ -405,7 +405,7 @@ class _SmallFavoriteButton extends StatelessWidget {
           ),
           child: Consumer<FavoritesProvider>(
             builder: (context, favorites, _) {
-              final isFavorite = favorites.isFavorite(serviceId);
+              final isFavorite = favorites.isFavorite(service.id);
               return Icon(
                 isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                 size: 16,

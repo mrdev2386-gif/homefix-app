@@ -6,11 +6,14 @@ class ServiceCatalogService {
 
   Stream<List<HomeService>> getActiveServices() {
     return _db
-        .collection('services')
+        .collectionGroup('services') // AUDIT: Fixed root collection read
         .where('isActive', isEqualTo: true)
+        .orderBy('order')
         .snapshots()
-        .map((snapshot) =>
-            snapshot.docs.map((doc) => HomeService.fromFirestore(doc)).toList());
+        .map((snapshot) => snapshot.docs
+            .map((doc) => HomeService.fromFirestore(doc))
+            .whereType<HomeService>()
+            .toList());
   }
 
   // Seed initial services if collection is empty

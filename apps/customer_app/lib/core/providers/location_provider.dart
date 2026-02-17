@@ -92,6 +92,9 @@ class LocationProvider extends ChangeNotifier {
     if (permission == LocationPermission.deniedForever) {
       _currentAddress = 'Location permission denied permanently';
       _errorMessage = 'Please enable location permission in app settings';
+      // Open app settings for the user to manually enable
+      await Geolocator.openAppSettings();
+      debugPrint('[LocationProvider] Opened app settings for permanently denied permission');
       return false;
     }
 
@@ -99,7 +102,7 @@ class LocationProvider extends ChangeNotifier {
     return permission == LocationPermission.always || permission == LocationPermission.whileInUse;
   }
 
-  /// Fetch current location with comprehensive error handling
+  /// Fetch current location with HARD safety flow
   Future<LocationResult> fetchCurrentLocation() async {
     if (_userId == null) {
       return LocationResult.error('Please login to use location services');
@@ -110,41 +113,71 @@ class LocationProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Step 1: Check location service
-      debugPrint('[LocationProvider] Step 1: Checking location service...');
-      if (!await _checkLocationService()) {
+      // 1. Check if location services are enabled
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        debugPrint('❌ LOCATION FAILED — service disabled');
+        _errorMessage = 'Please enable location services in your device settings';
         _isLoading = false;
         notifyListeners();
-        return LocationResult.error(_errorMessage ?? 'Location service disabled');
+        return LocationResult.error(_errorMessage!);
       }
 
-      // Step 2: Check permission
-      debugPrint('[LocationProvider] Step 2: Checking permission...');
-      if (!await _checkLocationPermission()) {
+      // 2. Permission flow
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        debugPrint('❌ LOCATION FAILED — permission denied forever');
+        _errorMessage = 'Location permission is permanently denied. Please enable it in app settings.';
         _isLoading = false;
         notifyListeners();
-        return LocationResult.error(_errorMessage ?? 'Location permission denied');
+        // Optionally open app settings
+        return LocationResult.error(_errorMessage!);
       }
 
-      // Step 3: Get position
-      debugPrint('[LocationProvider] Step 3: Fetching position...');
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 10),
-      );
+      if (permission == LocationPermission.denied) {
+        debugPrint('❌ LOCATION FAILED — permission denied');
+        _errorMessage = 'Location permission is required.';
+        _isLoading = false;
+        notifyListeners();
+        return LocationResult.error(_errorMessage!);
+      }
 
-      // Step 4: Reverse geocode
-      debugPrint('[LocationProvider] Step 4: Reverse geocoding...');
-      List<Placemark> placemarks = await placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          debugPrint('[LocationProvider] ⚠️ Geocoding timeout, using coordinates only');
-          return [];
-        },
-      );
+      // 3. Safe fetch with 15s timeout
+      Position? position;
+      try {
+        position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+        ).timeout(const Duration(seconds: 15));
+      } catch (e) {
+        debugPrint('⚠️ CURRENT POSITION TIMEOUT/FAILED ($e) — trying last known...');
+        position = await Geolocator.getLastKnownPosition();
+      }
+
+      // 4. FINAL GUARD
+      if (position == null) {
+        debugPrint('❌ LOCATION FAILED — no position available');
+        _errorMessage = 'Could not determine location. Please try again.';
+        _isLoading = false;
+        notifyListeners();
+        return LocationResult.error(_errorMessage!);
+      }
+      
+      debugPrint('✅ LOCATION SUCCESS — position obtained');
+      _currentPosition = position;
+
+      // 5. Reverse geocode (Best effort)
+      List<Placemark> placemarks = [];
+      try {
+        placemarks = await placemarkFromCoordinates(
+          position.latitude,
+          position.longitude,
+        ).timeout(const Duration(seconds: 10));
+      } catch (e) {
+        debugPrint('⚠️ GEOCODING FAILED: $e');
+      }
 
       String addressText;
       if (placemarks.isNotEmpty) {
@@ -158,11 +191,8 @@ class LocationProvider extends ChangeNotifier {
         addressText = addressParts.isNotEmpty 
             ? addressParts.join(', ') 
             : 'Lat: ${position.latitude.toStringAsFixed(4)}, Lng: ${position.longitude.toStringAsFixed(4)}';
-        
-        debugPrint('[LocationProvider] ✅ Address: $addressText');
       } else {
         addressText = 'Lat: ${position.latitude.toStringAsFixed(4)}, Lng: ${position.longitude.toStringAsFixed(4)}';
-        debugPrint('[LocationProvider] ⚠️ No address found, using coordinates');
       }
 
       _currentAddress = addressText;
@@ -172,32 +202,8 @@ class LocationProvider extends ChangeNotifier {
 
       return LocationResult.success(position, addressText);
 
-    } on TimeoutException catch (e) {
-      debugPrint('[LocationProvider] ❌ Timeout: $e');
-      _currentAddress = 'Location request timed out';
-      _errorMessage = 'Location request took too long. Please try again.';
-      _isLoading = false;
-      notifyListeners();
-      return LocationResult.error(_errorMessage!);
-      
-    } on PermissionDeniedException catch (e) {
-      debugPrint('[LocationProvider] ❌ Permission denied: $e');
-      _currentAddress = 'Location permission denied';
-      _errorMessage = 'Location permission is required';
-      _isLoading = false;
-      notifyListeners();
-      return LocationResult.error(_errorMessage!);
-      
-    } on LocationServiceDisabledException catch (e) {
-      debugPrint('[LocationProvider] ❌ Service disabled: $e');
-      _currentAddress = 'Location service disabled';
-      _errorMessage = 'Please enable location services';
-      _isLoading = false;
-      notifyListeners();
-      return LocationResult.error(_errorMessage!);
-      
     } catch (e) {
-      debugPrint('[LocationProvider] ❌ Unexpected error: $e');
+      debugPrint('❌ UNEXPECTED LOCATION ERROR: $e');
       _currentAddress = 'Location unavailable';
       _errorMessage = 'Unable to fetch location. Please try again.';
       _isLoading = false;

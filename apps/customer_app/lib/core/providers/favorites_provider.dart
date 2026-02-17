@@ -11,16 +11,16 @@ import '../services/firestore_service.dart';
 class FavoritesProvider with ChangeNotifier {
   final FirestoreService _firestoreService = FirestoreService();
   
-  Set<String> _favoriteIds = {};
+  Map<String, String> _favoriteServices = {}; // serviceId -> categoryId
   String? _userId;
   StreamSubscription? _favoritesSubscription;
   bool _isLoading = false;
   
   /// Optimistic UI - immediately reflects changes
-  Set<String> get favoriteIds => _favoriteIds;
+  Set<String> get favoriteIds => _favoriteServices.keys.toSet();
   
   /// Check if a service is favorited - O(1) lookup
-  bool isFavorite(String serviceId) => _favoriteIds.contains(serviceId);
+  bool isFavorite(String serviceId) => _favoriteServices.containsKey(serviceId);
   
   bool get isLoading => _isLoading;
   
@@ -34,9 +34,11 @@ class FavoritesProvider with ChangeNotifier {
       _isLoading = true;
       notifyListeners();
       
-      _favoritesSubscription = _firestoreService.streamFavoriteIds(userId).listen(
-        (ids) {
-          _favoriteIds = ids.toSet();
+      _favoritesSubscription = _firestoreService.streamFavoriteIdsWithCategory(userId).listen(
+        (items) {
+          _favoriteServices = {
+            for (var item in items) item['serviceId']!: item['categoryId']!
+          };
           _isLoading = false;
           notifyListeners();
         },
@@ -47,88 +49,38 @@ class FavoritesProvider with ChangeNotifier {
         },
       );
     } else {
-      _favoriteIds = {};
+      _favoriteServices = {};
       _isLoading = false;
       notifyListeners();
     }
   }
   
   /// Toggle favorite with optimistic UI update and haptic feedback
-  /// 
-  /// Steps:
-  /// 1. Immediately update local state (optimistic)
-  /// 2. Trigger haptic feedback
-  /// 3. Sync with Firestore
-  /// 4. Revert on failure
-  Future<void> toggleFavorite(String serviceId) async {
+  Future<void> toggleFavorite(String serviceId, String categoryId) async {
     if (_userId == null) return;
     
-    final wasFavorite = _favoriteIds.contains(serviceId);
+    final wasFavorite = _favoriteServices.containsKey(serviceId);
     
-    // Optimistic update - immediate UI change
+    // Optimistic update
     if (wasFavorite) {
-      _favoriteIds.remove(serviceId);
+      _favoriteServices.remove(serviceId);
     } else {
-      _favoriteIds.add(serviceId);
+      _favoriteServices[serviceId] = categoryId;
     }
     notifyListeners();
     
-    // Haptic feedback
     HapticFeedback.lightImpact();
     
     try {
-      // Sync with Firestore
-      await _firestoreService.toggleFavorite(_userId!, serviceId, !wasFavorite);
-      // Success - no need to notify as stream will update us
+      await _firestoreService.toggleFavorite(_userId!, categoryId, serviceId, !wasFavorite);
     } catch (error) {
       debugPrint('Error toggling favorite: $error');
-      
       // Revert on failure
       if (wasFavorite) {
-        _favoriteIds.add(serviceId);
+        _favoriteServices[serviceId] = categoryId;
       } else {
-        _favoriteIds.remove(serviceId);
+        _favoriteServices.remove(serviceId);
       }
-      notifyListeners();
-    }
-  }
-  
-  /// Add to favorites (alias for toggleFavorite with known state)
-  Future<void> addFavorite(String serviceId) async {
-    if (_userId == null) return;
-    if (_favoriteIds.contains(serviceId)) return; // Idempotent - already favorited
-    
-    // Optimistic update
-    _favoriteIds.add(serviceId);
-    notifyListeners();
-    
-    HapticFeedback.lightImpact();
-    
-    try {
-      await _firestoreService.toggleFavorite(_userId!, serviceId, true);
-    } catch (error) {
-      debugPrint('Error adding favorite: $error');
-      _favoriteIds.remove(serviceId);
-      notifyListeners();
-    }
-  }
-  
-  /// Remove from favorites
-  Future<void> removeFavorite(String serviceId) async {
-    if (_userId == null) return;
-    if (!_favoriteIds.contains(serviceId)) return; // Idempotent
-    
-    // Optimistic update
-    _favoriteIds.remove(serviceId);
-    notifyListeners();
-    
-    HapticFeedback.lightImpact();
-    
-    try {
-      await _firestoreService.toggleFavorite(_userId!, serviceId, false);
-    } catch (error) {
-      debugPrint('Error removing favorite: $error');
-      _favoriteIds.add(serviceId);
       notifyListeners();
     }
   }

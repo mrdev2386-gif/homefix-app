@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../core/widgets/safe_cached_image.dart';
+// SafeCachedImage removed
 import '../../../core/services/auth_service.dart';
 import '../../../core/widgets/safe_network_image.dart';
 import 'otp_screen.dart';
@@ -188,10 +188,11 @@ class _LoginScreenState extends State<LoginScreen> {
                     height: 56,
                     child: OutlinedButton.icon(
                       onPressed: _isLoading ? null : _handleGoogleSignIn,
-                      icon: SafeCachedImage(
+                      icon: const SafeNetworkImage(
                         imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1200px-Google_%22G%22_logo.svg.png',
                         width: 24,
                         fit: BoxFit.contain,
+                        usePlaceholder: false,
                       ),
                       label: Text('Continue with Google', style: GoogleFonts.outfit(color: const Color(0xFF1E293B), fontWeight: FontWeight.bold)),
                       style: OutlinedButton.styleFrom(

@@ -1,11 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import '../constants/app_constants.dart';
 
 class HomeService {
   final String id;
   final String key;
   final String title;
   final String imageAssetPath;
-  final String? _imageUrl;
+  final String imageUrl;
   final String description;
   final double basePrice;
   final bool isActive;
@@ -22,52 +24,12 @@ class HomeService {
   String get name => title;
   double get price => basePrice;
 
-  /// Get effective image URL with fallback chain:
-  /// 1. imageUrl (from Firestore)
-  /// 2. imageAssetPath (legacy)
-  /// 3. null (will show placeholder)
-  String? get imageUrl {
-    if (_imageUrl != null && _imageUrl!.isNotEmpty) {
-      return _imageUrl;
-    }
-    if (imageAssetPath.isNotEmpty && !imageAssetPath.startsWith('assets/')) {
-      return imageAssetPath;
-    }
-    return null;
-  }
-
-  /// Get service-specific fallback image URL based on category
-  String getFallbackImageUrl() {
-    final categoryLower = category.toLowerCase();
-    final titleLower = title.toLowerCase();
-
-    if (categoryLower.contains('ac') || titleLower.contains('ac') || titleLower.contains('air')) {
-      return 'https://images.unsplash.com/photo-1631545806609-5adb40c6e3eb?w=400&q=80';
-    } else if (categoryLower.contains('plumb') || titleLower.contains('plumb') || titleLower.contains('pipe')) {
-      return 'https://images.unsplash.com/photo-1585704032915-c3400ca199e7?w=400&q=80';
-    } else if (categoryLower.contains('electric') || titleLower.contains('electric') || titleLower.contains('wiring')) {
-      return 'https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=400&q=80';
-    } else if (categoryLower.contains('clean') || titleLower.contains('clean')) {
-      return 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=400&q=80';
-    } else if (categoryLower.contains('appliance') || titleLower.contains('appliance') || titleLower.contains('washing') || titleLower.contains('fridge')) {
-      return 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?w=400&q=80';
-    } else if (categoryLower.contains('repair') || titleLower.contains('repair') || titleLower.contains('fix')) {
-      return 'https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=400&q=80';
-    } else if (categoryLower.contains('paint') || titleLower.contains('paint')) {
-      return 'https://images.unsplash.com/photo-1562259949-e8e7689d7828?w=400&q=80';
-    } else if (categoryLower.contains('carpenter') || titleLower.contains('carpenter') || titleLower.contains('wood')) {
-      return 'https://images.unsplash.com/photo-1611486212557-88be5ff6f941?w=400&q=80';
-    }
-    // Default service placeholder
-    return 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=400&q=80';
-  }
-
   HomeService({
     required this.id,
     required this.key,
     required this.title,
     required this.imageAssetPath,
-    String? imageUrl,
+    this.imageUrl = AppConstants.fallbackServiceImage,
     this.description = '',
     required this.basePrice,
     required this.isActive,
@@ -79,26 +41,41 @@ class HomeService {
     this.isTrending = false,
     this.duration = '1 hour',
     required this.createdAt,
-  }) : _imageUrl = imageUrl;
+  });
 
-  factory HomeService.fromFirestore(DocumentSnapshot doc) {
+  static HomeService? fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
-    
-    // SAFE PARSING - MANDATORY NULL SAFETY
     final String id = doc.id;
-    // Map Firestore fields with fallbacks
+
+    // MANDATORY CATEGORY CHECK - FIX FOR SERVICE_COUNT 0
+    final categoryId = data['category'] ?? data['categoryId'];
+    if (categoryId == null || categoryId.toString().isEmpty) {
+      if (kDebugMode) {
+        debugPrint('⚠️ SERVICE SKIPPED — missing categoryId → $id');
+      }
+      return null;
+    }
+
+    // DEBUG (Temporary as requested)
+    if (kDebugMode) {
+      debugPrint(
+        'SERVICE DEBUG → id=$id category=$categoryId name=${data['name'] ?? data['title']}',
+      );
+    }
+
+    // Map Firestore fields with fallbacks - Ensure ONLY imageUrl is used for UI
     final String key = (data['id'] ?? data['serviceId'] ?? data['key'] ?? id).toString();
     final String title = (data['name'] ?? data['title'] ?? 'Service').toString();
     
-    // Parse imageUrl - primary field from Firestore
-    final String? imageUrl = data['imageUrl'] != null 
-        ? (data['imageUrl'] as String).trim()
-        : null;
+    // AUDIT: Strict mapping - never allow null
+    String? imageUrl = (data['imageUrl'] ?? data['image'] ?? data['thumbnail'] ?? data['bannerUrl'] ?? data['imageAssetPath'])?.toString().trim();
     
-    // Legacy field support
-    final String legacyImage = (data['image'] ?? data['imageAssetPath'] ?? '').toString();
-    
-    final String description = (data['description'] ?? '').toString();
+    if (imageUrl == null || imageUrl.isEmpty) {
+      if (kDebugMode) {
+        debugPrint('⚠️ [HomeService Model] No image found for $id (title: $title). Using global fallback.');
+      }
+      imageUrl = AppConstants.fallbackServiceImage;
+    }
     
     // SAFE NUMBER PARSING
     double price = 0.0;
@@ -110,7 +87,7 @@ class HomeService {
     }
 
     final bool isActive = data['isActive'] ?? true;
-    final String category = (data['category'] ?? data['categoryId'] ?? 'general').toString();
+    final String finalCategory = categoryId.toString();
     final bool isTop = data['isTopService'] ?? false;
     
     int order = 0;
@@ -149,12 +126,12 @@ class HomeService {
       id: id,
       key: key,
       title: title,
-      imageAssetPath: legacyImage,
+      imageAssetPath: '', // Deprecated: No longer used for network images
       imageUrl: imageUrl,
-      description: description,
+      description: (data['description'] ?? '').toString(),
       basePrice: price,
       isActive: isActive,
-      category: category,
+      category: finalCategory,
       isTopService: isTop,
       order: order,
       rating: rating,
@@ -169,7 +146,7 @@ class HomeService {
     return {
       'id': key,
       'name': title,
-      'imageUrl': imageUrl ?? imageAssetPath,
+      'imageUrl': imageUrl,
       'description': description,
       'price': basePrice,
       'isActive': isActive,
@@ -186,8 +163,7 @@ class HomeService {
 
   /// Check if service has valid image URL
   bool get hasValidImageUrl {
-    if (imageUrl == null) return false;
-    final url = imageUrl!.trim();
-    return url.startsWith('http://') || url.startsWith('https://');
+    final url = imageUrl.trim();
+    return url.startsWith('http://') || url.startsWith('https://') || url.startsWith('assets/');
   }
 }

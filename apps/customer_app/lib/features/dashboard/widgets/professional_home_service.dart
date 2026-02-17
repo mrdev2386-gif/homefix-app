@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/models/service.dart';
 import '../../../core/models/dashboard_models.dart';
-import '../../../core/widgets/safe_cached_image.dart';
+import '../../../core/widgets/safe_network_image.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../services/presentation/sub_service_screen.dart';
+import '../../services/presentation/service_details_screen.dart';
 import '../../../core/models/category.dart';
 
 class ProfessionalHomeServiceSection extends StatefulWidget {
@@ -59,7 +59,6 @@ class _ProfessionalHomeServiceSectionState extends State<ProfessionalHomeService
             ],
           ),
         ),
-        // 2 rows of 2 cards each - horizontal swipe with hardened performance
         SizedBox(
           height: 200,
           child: ListView.builder(
@@ -100,39 +99,25 @@ class _ProfessionalHomeServiceSectionState extends State<ProfessionalHomeService
   }
 
   Widget _buildLargeServiceCard(HomeService service) {
-    final double cacheWidth = (180 * 2).toDouble();
-
-    // Get effective image URL with fallback chain
-    String? imageUrl = service.imageUrl;
-    
-    // Validate URL - must start with http - show placeholder if not
-    if (imageUrl == null || imageUrl.isEmpty || !imageUrl.startsWith('http')) {
-      // Use placeholder asset
-      imageUrl = 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=80';
-    }
-
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () async {
           if (_isNavigating) return;
+          if (service.id.isEmpty) {
+            debugPrint('❌ Navigation blocked: Missing serviceId');
+            return;
+          }
           _isNavigating = true;
 
           try {
-            // Navigate to service details - use SubServiceScreen which shows sub-services
-            if (!mounted) return;
-            final cat = Category(
-              id: service.category,
-              name: service.category,
-              order: 0,
-              isActive: true,
-            );
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => SubServiceScreen(
-                  category: cat,
-                  service: service,
+                builder: (_) => ServiceDetailsScreen(
+                  serviceId: service.id,
+                  serviceName: service.title,
+                  serviceData: service,
                 ),
               ),
             );
@@ -161,13 +146,11 @@ class _ProfessionalHomeServiceSectionState extends State<ProfessionalHomeService
             child: Stack(
               fit: StackFit.expand,
               children: [
-                // Background image with memory optimization and shimmer
-                SafeCachedImage(
-                  imageUrl: imageUrl,
+                SafeNetworkImage(
+                  imageUrl: service.imageUrl,
                   fit: BoxFit.cover,
-                  cacheWidth: cacheWidth,
+                  serviceName: service.title,
                 ),
-                // Gradient overlay
                 Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -182,7 +165,6 @@ class _ProfessionalHomeServiceSectionState extends State<ProfessionalHomeService
                     ),
                   ),
                 ),
-                // Content
                 Positioned(
                   bottom: 16,
                   left: 16,

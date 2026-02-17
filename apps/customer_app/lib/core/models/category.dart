@@ -1,28 +1,43 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import '../constants/app_constants.dart';
 
 class Category {
   final String id;
   final String name;
-  final String? imageUrl;
+  final String imageUrl;
   final int order;
   final bool isActive;
 
   const Category({
     required this.id,
     required this.name,
-    this.imageUrl,
+    this.imageUrl = AppConstants.fallbackServiceImage,
     this.order = 0,
     this.isActive = true,
   });
+
+  // Aliases for user requested fields and legacy code compatibility
+  String get title => name;
+  String get iconUrl => imageUrl ?? '';
+  bool get isNew => (order == 0); // Logic for 'New' badge: lowest order or recent
 
   factory Category.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
     
     final String id = doc.id;
     final String name = (data['name'] ?? data['title'] ?? 'Category').toString();
-    final String? imageUrl = data['imageUrl'] != null 
-        ? (data['imageUrl'] as String).trim()
-        : null;
+    
+    // AUDIT: Prioritize imageUrl, fallback to legacy 'iconUrl', 'image', or 'thumbnail'
+    // AUDIT: Strict mapping - never allow null
+    String? imageUrl = (data['imageUrl'] ?? data['iconUrl'] ?? data['image'] ?? data['thumbnail'])?.toString().trim();
+    
+    if (imageUrl == null || imageUrl.isEmpty) {
+      if (kDebugMode) {
+        debugPrint('⚠️ [Category Model] No image for ${doc.id} (name: $name). Using global fallback.');
+      }
+      imageUrl = AppConstants.fallbackServiceImage;
+    }
     
     int order = 0;
     final dynamic orderData = data['order'] ?? 0;
@@ -52,32 +67,9 @@ class Category {
     };
   }
 
-  /// Get fallback image URL based on category name
-  String getFallbackImageUrl() {
-    final nameLower = name.toLowerCase();
-    
-    if (nameLower.contains('ac') || nameLower.contains('air')) {
-      return 'https://images.unsplash.com/photo-1631545806609-5adb40c6e3eb?w=400&q=80';
-    } else if (nameLower.contains('plumb')) {
-      return 'https://images.unsplash.com/photo-1585704032915-c3400ca199e7?w=400&q=80';
-    } else if (nameLower.contains('electric')) {
-      return 'https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=400&q=80';
-    } else if (nameLower.contains('clean') || nameLower.contains('house')) {
-      return 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=400&q=80';
-    } else if (nameLower.contains('appliance') || nameLower.contains('repair')) {
-      return 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?w=400&q=80';
-    } else if (nameLower.contains('salon') || nameLower.contains('beauty')) {
-      return 'https://images.unsplash.com/photo-1560066984-138dadb4c035?w=400&q=80';
-    } else if (nameLower.contains('pest')) {
-      return 'https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?w=400&q=80';
-    } else if (nameLower.contains('paint')) {
-      return 'https://images.unsplash.com/photo-1562259949-e8e7689d7828?w=400&q=80';
-    } else if (nameLower.contains('carpenter') || nameLower.contains('wood')) {
-      return 'https://images.unsplash.com/photo-1611486212557-88be5ff6f941?w=400&q=80';
-    } else if (nameLower.contains('water') || nameLower.contains('ro')) {
-      return 'https://images.unsplash.com/photo-1538300342682-cf57afb97285?w=400&q=80';
-    }
-    // Default category placeholder
-    return 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=400&q=80';
+  /// Get fallback image URL - returns null to show local placeholder
+  /// DO NOT use hardcoded network URLs - violates unique image requirement
+  String? getFallbackImageUrl() {
+    return null;
   }
 }

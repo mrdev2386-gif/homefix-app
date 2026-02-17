@@ -104,7 +104,7 @@ class _ServiceGridIconState extends State<ServiceGridIcon> {
                             const Icon(Icons.star_rounded, size: 12, color: Colors.orange),
                             const SizedBox(width: 2),
                             Text(
-                              widget.widget.service.rating.toStringAsFixed(1),
+                              widget.service.rating.toStringAsFixed(1),
                               style: GoogleFonts.outfit(
                                 fontWeight: FontWeight.w900,
                                 fontSize: 10,

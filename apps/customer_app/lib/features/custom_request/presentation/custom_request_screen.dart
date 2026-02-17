@@ -58,7 +58,10 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
   }
 
   Future<void> _fetchCategories() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
     try {
+      // AUDIT: Ensure all main active categories are fetched
       final snapshot = await FirebaseFirestore.instance
           .collection('categories')
           .where('isActive', isEqualTo: true)
@@ -68,10 +71,13 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
       if (mounted) {
         setState(() {
           _categories = snapshot.docs.map((doc) => Category.fromFirestore(doc)).toList();
+          _isLoading = false;
         });
+        debugPrint('✅ [CustomRequest] Fetched ${_categories.length} categories');
       }
     } catch (e) {
-      debugPrint('Error fetching categories: $e');
+      debugPrint('❌ [CustomRequest] Error fetching categories: $e');
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -157,7 +163,7 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
       },
     );
 
-    if (picked != null) {
+    if (picked != null && mounted) {
       setState(() {
         _preferredDate = picked.toIso8601String().split('T').first;
       });
@@ -206,14 +212,21 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
   bool _validateForm() {
     final errors = <String>[];
 
+    final title = _titleController.text.trim();
+    final description = _descriptionController.text.trim();
+
     if (_selectedCategory == null) {
       errors.add('Please select a service category');
     }
-    if (_titleController.text.trim().length < 5) {
+    if (title.isEmpty) {
+      errors.add('Title cannot be empty');
+    } else if (title.length < 5) {
       errors.add('Title must be at least 5 characters');
     }
-    if (_descriptionController.text.trim().length < 20) {
-      errors.add('Description must be at least 20 characters');
+    if (description.isEmpty) {
+      errors.add('Description cannot be empty');
+    } else if (description.length < 20) {
+      errors.add('Description must be at least 20 characters (currently ${description.length})');
     }
     if (_preferredDate.isEmpty) {
       errors.add('Please select a preferred date');
@@ -221,8 +234,15 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
     if (_preferredTime.isEmpty) {
       errors.add('Please select a time slot');
     }
+    
+    // AUDIT: Robust address validation
     if (_selectedAddress == null) {
-      errors.add('Please select an address');
+      errors.add('Please select a service address');
+    } else {
+      final String fullAddress = _selectedAddress!.fullAddress.trim();
+      if (fullAddress.isEmpty || fullAddress.length < 8) {
+        errors.add('Selected address is too short or incomplete. Please provide more details.');
+      }
     }
 
     if (errors.isNotEmpty) {
@@ -230,9 +250,18 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
         SnackBar(
           content: Column(
             mainAxisSize: MainAxisSize.min,
-            children: errors.map((e) => Text(e)).toList(),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: errors.map((e) => Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white, size: 16),
+                const SizedBox(width: 8),
+                Expanded(child: Text(e, style: const TextStyle(fontSize: 13))),
+              ],
+            )).toList(),
           ),
-          backgroundColor: Colors.red,
+          backgroundColor: Colors.red[700],
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
       return false;
@@ -251,13 +280,11 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
     setState(() => _isSubmitting = true);
 
     try {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-
       final requestData = {
         'categoryId': _selectedCategory!.id,
         'title': _titleController.text.trim(),
         'description': _descriptionController.text.trim(),
-        'imageUrls': _imageBase64,
+        'imageUrls': _imageBase64, // Already contains base64 strings
         'preferredDate': _preferredDate,
         'preferredTime': _preferredTime,
         'addressId': _selectedAddress!.id,
@@ -270,23 +297,57 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
       final result = await functionsService.createCustomRequest(requestData);
 
       if (mounted) {
-        // Clear form after successful submission
         _clearForm();
-        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(result['message'] ?? 'Request submitted successfully!'),
-            backgroundColor: Colors.green,
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_outline, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                Expanded(child: Text(result['message'] ?? 'Request submitted successfully!')),
+              ],
+            ),
+            backgroundColor: Colors.green[600],
+            behavior: SnackBarBehavior.floating,
           ),
         );
         Navigator.of(context).pop(true);
       }
+    } on FirebaseFunctionsException catch (fe) {
+      if (kDebugMode) {
+        debugPrint('❌ [CustomRequest] Firebase error: ${fe.code} - ${fe.message}');
+      }
+      
+      String displayError = 'Could not submit request. Please try again.';
+      
+      // UX Hardening: Handle rate limits (expected backend error)
+      if (fe.code == 'resource-exhausted' || 
+          (fe.message?.toLowerCase().contains('too many requests') ?? false) ||
+          (fe.message?.toLowerCase().contains('rate limit') ?? false)) {
+        displayError = 'You have reached the hourly limit (3 requests). Please try again later.';
+      } else if (fe.code == 'deadline-exceeded') {
+        displayError = 'Request timed out due to slow network. Check your internet.';
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(displayError),
+            backgroundColor: Colors.orange[800],
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ [CustomRequest] General error: $e');
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red,
+            backgroundColor: Colors.red[700],
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -302,15 +363,17 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
     _descriptionController.clear();
     _budgetMinController.clear();
     _budgetMaxController.clear();
-    setState(() {
-      _selectedCategory = null;
-      _preferredDate = '';
-      _preferredTime = '';
-      _selectedAddress = null;
-      _urgency = Urgency.normal;
-      _selectedImages = [];
-      _imageBase64 = [];
-    });
+    if (mounted) {
+      setState(() {
+        _selectedCategory = null;
+        _preferredDate = '';
+        _preferredTime = '';
+        _selectedAddress = null;
+        _urgency = Urgency.normal;
+        _selectedImages = [];
+        _imageBase64 = [];
+      });
+    }
   }
 
   @override
@@ -475,12 +538,14 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
                     value: category,
                     child: Row(
                       children: [
-                        if (category.imageUrl != null)
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(6),
-                            child: Image.network(category.imageUrl!, width: 28, height: 28, fit: BoxFit.cover),
-                          ),
-                        if (category.imageUrl != null) const SizedBox(width: 10),
+                        SafeNetworkImage(
+                          imageUrl: category.imageUrl,
+                          width: 28,
+                          height: 28,
+                          fit: BoxFit.cover,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: Text(
                             category.name,

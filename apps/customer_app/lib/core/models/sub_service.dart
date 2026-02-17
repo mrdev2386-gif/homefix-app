@@ -1,9 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import '../constants/app_constants.dart';
 
 class SubService {
   final String id;
   final String name;
-  final String? imageUrl;
+  final String imageUrl;
   final double price;
   final int order;
   final bool isActive;
@@ -11,7 +13,7 @@ class SubService {
   const SubService({
     required this.id,
     required this.name,
-    this.imageUrl,
+    this.imageUrl = AppConstants.fallbackServiceImage,
     this.price = 0,
     this.order = 0,
     this.isActive = true,
@@ -22,9 +24,16 @@ class SubService {
     
     final String id = doc.id;
     final String name = (data['name'] ?? data['title'] ?? 'Sub Service').toString();
-    final String? imageUrl = data['imageUrl'] != null 
-        ? (data['imageUrl'] as String).trim()
-        : null;
+    
+    // AUDIT: Strict mapping - never allow null
+    String? imageUrl = (data['imageUrl'] ?? data['image'] ?? data['thumbnail'])?.toString().trim();
+    
+    if (imageUrl == null || imageUrl.isEmpty) {
+      if (kDebugMode) {
+        debugPrint('⚠️ [SubService Model] No image found for $id (name: $name). Using global fallback.');
+      }
+      imageUrl = AppConstants.fallbackServiceImage;
+    }
     
     double price = 0.0;
     final dynamic priceData = data['price'] ?? data['basePrice'] ?? 0;
@@ -65,10 +74,7 @@ class SubService {
   }
 
   /// Get effective image URL with fallback
-  String? getEffectiveImageUrl() {
-    if (imageUrl != null && imageUrl!.isNotEmpty) {
-      return imageUrl;
-    }
-    return null;
+  String getEffectiveImageUrl() {
+    return imageUrl;
   }
 }

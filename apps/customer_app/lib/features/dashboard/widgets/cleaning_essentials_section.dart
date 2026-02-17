@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../core/models/dashboard_models.dart';
-import '../../../core/widgets/safe_cached_image.dart';
+import '../../../core/widgets/safe_network_image.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/functions_service.dart';
 import '../../../core/providers/location_provider.dart';
@@ -169,10 +169,10 @@ class _CleaningEssentialsSectionState extends State<CleaningEssentialsSection> {
             fit: StackFit.expand,
             children: [
               // Background image with memory optimization
-              SafeCachedImage(
+              SafeNetworkImage(
                 imageUrl: essential.imageUrl,
                 fit: BoxFit.cover,
-                cacheWidth: cacheWidth,
+                serviceName: essential.title,
               ),
               // Gradient Overlay
               Container(

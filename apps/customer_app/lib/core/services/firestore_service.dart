@@ -38,39 +38,70 @@ class FirestoreService {
         .map((doc) => Booking.fromFirestore(doc));
   }
   
-  // Create a new booking
+  // Create a new booking (Harden: Use FunctionsService instead of direct write)
+  // This method is now legacy, all callers should move to FunctionsService.createBooking
   Future<String> createBooking(Booking booking) async {
-    final docRef = _db.collection('bookings').doc();
-    final bookingData = booking.toMap();
-    await docRef.set(bookingData);
-    return docRef.id;
+    final callable = FirebaseFunctions.instance.httpsCallable('createBookingV2');
+    final result = await callable.call(booking.toMap());
+    return result.data['bookingId'] ?? "";
   }
 
-  // Get Services - supports simple filtering
-  Stream<List<HomeService>> streamServices({bool isTopOnly = false, String? category, int? limit}) {
-    Query query = _db.collection('services').where('isActive', isEqualTo: true);
+  // Get Services - supports simple filtering (UNIFIED: Now uses collectionGroup to support nested categories as source)
+  Stream<List<HomeService>> streamServices({
+    bool isTopOnly = false, 
+    String? category, 
+    int limit = 20,
+    DocumentSnapshot? startAfter,
+  }) {
+    // Single source of truth is nested: categories/{catId}/services
+    // We use collectionGroup to fetch them all globally
+    Query query = _db.collectionGroup('services')
+        .where('isActive', isEqualTo: true)
+        .orderBy('order') // MANDATORY: Proper ordering for index consistency
+        .limit(limit);
     
-    if (limit != null) {
-      query = query.limit(limit);
+    if (startAfter != null) {
+      query = query.startAfterDocument(startAfter);
     }
+
     if (isTopOnly) {
-      // If it's for the top rated section, we filter by rating > 4.5
+      // Note: This would require a composite index (collectionGroup + isActive + order + rating)
+      // If index is missing, it will throw an error with the link to create it.
       query = query.where('rating', isGreaterThanOrEqualTo: 4.5);
     }
     
     if (category != null && category.isNotEmpty) {
-      query = query.where('category', isEqualTo: category);
+      // Note: Filter by category field must still exist on the service document
+      query = query.where('categoryId', isEqualTo: category);
     }
     
     return query.snapshots().map((snapshot) {
-      final services = snapshot.docs.map((doc) => HomeService.fromFirestore(doc)).toList();
-      // Sort by rating descending for top ones, or by order
-      if (isTopOnly) {
-        services.sort((a, b) => b.rating.compareTo(a.rating));
-      } else {
-        services.sort((a, b) => a.order.compareTo(b.order));
+      final List<HomeService> services = [];
+      
+      for (var doc in snapshot.docs) {
+        try {
+          final service = HomeService.fromFirestore(doc);
+          if (service == null) continue;
+          
+          // AUDIT: Defensive check for imageUrl
+          if (service.imageUrl == null || service.imageUrl!.isEmpty) {
+            debugPrint('⚠️ [FirestoreService] Skipping service ${doc.id} due to missing imageUrl');
+            continue;
+          }
+          services.add(service);
+        } catch (e) {
+          debugPrint('❌ [FirestoreService] Error parsing service ${doc.id}: $e');
+        }
       }
+
+      // We maintain the Firestore order (by 'order' field)
       return services;
+    }).handleError((error) {
+       if (error.toString().contains('failed-precondition')) {
+         debugPrint('🚨 [FirestoreService] MISSING INDEX ERROR. Please create the required index using the link in the Firebase console.');
+       }
+       debugPrint('❌ [FirestoreService] Stream error: $error');
+       return <HomeService>[];
     });
   }
   
@@ -79,9 +110,22 @@ class FirestoreService {
     return _db.collection('home_banners')
         .snapshots()
         .map((snapshot) {
-          final banners = snapshot.docs.map((doc) => BannerModel.fromFirestore(doc))
-            .where((b) => b.active)
-            .toList();
+          final List<BannerModel> banners = [];
+          for (var doc in snapshot.docs) {
+            try {
+              final banner = BannerModel.fromFirestore(doc);
+              if (banner.active) {
+                // AUDIT: Defensive check for imageUrl
+                if (banner.imageUrl.isEmpty) {
+                  debugPrint('⚠️ [FirestoreService] Skipping banner ${doc.id} due to missing imageUrl');
+                  continue;
+                }
+                banners.add(banner);
+              }
+            } catch (e) {
+              debugPrint('❌ [FirestoreService] Error parsing banner ${doc.id}: $e');
+            }
+          }
           // Sort by order field in-memory
           banners.sort((a, b) => (a.order).compareTo(b.order));
           return banners;
@@ -145,6 +189,18 @@ class FirestoreService {
   }
 
   Future<void> addToCart(String userId, CartItem item) async {
+    // SECURITY: Verify serviceId existence before adding to cart
+    final serviceDoc = await _db
+        .collection('categories')
+        .doc(item.categoryId)
+        .collection('services')
+        .doc(item.serviceId)
+        .get();
+
+    if (!serviceDoc.exists) {
+      throw 'Service no longer exists';
+    }
+
     final cartRef = _db.collection('customers').doc(userId).collection('cart');
     
     // Check if item already exists
@@ -227,41 +283,13 @@ class FirestoreService {
             .toList());
   }
 
+  // --- Proposals (Quotes) --- Harden: Moved to Cloud Functions
   Future<void> acceptProposal(Proposal proposal, ServiceRequest request) async {
-    final batch = _db.batch();
-    batch.update(_db.collection('proposals').doc(proposal.id), {'status': 'accepted'});
-    batch.update(_db.collection('service_requests').doc(request.id), {'status': 'accepted'});
-
-    final bookingRef = _db.collection('bookings').doc();
-    final booking = Booking(
-      id: bookingRef.id,
-      customerId: request.customerId,
-      technicianId: proposal.technicianId,
-      services: [],
-      serviceId: 'custom',
-      serviceTitle: request.title,
-      scheduledAt: proposal.proposedDateTime,
-      addressSnapshot: request.address ?? {},
-      status: 'accepted',
-      price: proposal.quotedPrice,
-      finalAmount: proposal.quotedPrice,
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-    );
-    batch.set(bookingRef, booking.toMap());
-
-    final notifRef = _db.collection('notifications').doc();
-    batch.set(notifRef, {
-      'userId': proposal.technicianId,
-      'title': 'Proposal Accepted!',
-      'body': 'Your quote for ${request.title} was accepted.',
-      'type': 'booking',
-      'referenceId': bookingRef.id,
-      'createdAt': FieldValue.serverTimestamp(),
-      'isRead': false,
+    final callable = FirebaseFunctions.instance.httpsCallable('acceptProposal');
+    await callable.call({
+      'proposalId': proposal.id,
+      'requestId': request.id,
     });
-
-    await batch.commit();
   }
 
   // --- Referrals ---
@@ -346,12 +374,13 @@ class FirestoreService {
     });
   }
 
-  // --- Favorites ---
-  Future<void> toggleFavorite(String userId, String serviceId, bool isFavorite) async {
+  // --- Favorites --- Harden: Added categoryId to ensure correct service lookup in nested structure
+  Future<void> toggleFavorite(String userId, String categoryId, String serviceId, bool isFavorite) async {
     final docRef = _db.collection('customers').doc(userId).collection('favorites').doc(serviceId);
     if (isFavorite) {
       await docRef.set({
         'serviceId': serviceId,
+        'categoryId': categoryId,
         'addedAt': FieldValue.serverTimestamp()
       });
     } else {
@@ -359,15 +388,33 @@ class FirestoreService {
     }
   }
 
-  Stream<List<String>> streamFavoriteIds(String userId) {
-    return _db.collection('customers').doc(userId).collection('favorites').snapshots().map((snapshot) => snapshot.docs.map((doc) => doc.id).toList());
+  Stream<List<Map<String, String>>> streamFavoriteIdsWithCategory(String userId) {
+    return _db.collection('customers').doc(userId).collection('favorites').snapshots().map((snapshot) => 
+      snapshot.docs.map((doc) => {
+        'serviceId': doc.id,
+        'categoryId': (doc.data()['categoryId'] ?? '').toString(),
+      }).toList()
+    );
   }
 
   Stream<List<HomeService>> streamFavoriteServices(String userId) {
-    return streamFavoriteIds(userId).asyncMap((ids) async {
-      if (ids.isEmpty) return [];
-      final snapshot = await _db.collection('services').where(FieldPath.documentId, whereIn: ids).get();
-      return snapshot.docs.map((doc) => HomeService.fromFirestore(doc)).toList();
+    return streamFavoriteIdsWithCategory(userId).asyncMap((items) async {
+      if (items.isEmpty) return [];
+      
+      final services = <HomeService>[];
+      for (const item in items) {
+        final categoryId = item['categoryId'];
+        final serviceId = item['serviceId'];
+        
+        if (categoryId != null && categoryId.isNotEmpty && serviceId != null && serviceId.isNotEmpty) {
+           final doc = await _db.collection('categories').doc(categoryId).collection('services').doc(serviceId).get();
+           if (doc.exists) {
+             final service = HomeService.fromFirestore(doc);
+             if (service != null) services.add(service);
+           }
+        }
+      }
+      return services;
     });
   }
 
@@ -426,9 +473,20 @@ class FirestoreService {
         .snapshots()
         .map((snapshot) {
           debugPrint("[Firestore] service_bottom_banners docs: ${snapshot.docs.length}");
-          final banners = snapshot.docs.map((doc) => ServiceBanner.fromFirestore(doc)).toList();
-          banners.sort((a, b) => a.order.compareTo(b.order));
-// ... (existing content)
+          final List<ServiceBanner> banners = [];
+          for (var doc in snapshot.docs) {
+            try {
+              final banner = ServiceBanner.fromFirestore(doc);
+              // AUDIT: Defensive check for imageUrl
+              if (banner.imageUrl.isEmpty) {
+                debugPrint('⚠️ [FirestoreService] Skipping bottom banner ${doc.id} due to missing imageUrl');
+                continue;
+              }
+              banners.add(banner);
+            } catch (e) {
+              debugPrint('❌ [FirestoreService] Error parsing bottom banner ${doc.id}: $e');
+            }
+          }
           banners.sort((a, b) => a.order.compareTo(b.order));
           return banners;
         });

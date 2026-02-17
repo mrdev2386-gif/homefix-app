@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/models/service.dart';
 import '../../../../core/widgets/safe_network_image.dart';
-import '../../technicians/presentation/technician_list_screen.dart';
+import '../../services/presentation/service_details_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class ServiceCardHorizontal extends StatefulWidget {
@@ -26,7 +26,13 @@ class _ServiceCardHorizontalState extends State<ServiceCardHorizontal> {
         try {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => TechnicianListScreen(service: widget.service)),
+            MaterialPageRoute(
+              builder: (_) => ServiceDetailsScreen(
+                serviceId: widget.service.id,
+                serviceName: widget.service.title,
+                serviceData: widget.service,
+              ),
+            ),
           );
         } finally {
           if (mounted) {

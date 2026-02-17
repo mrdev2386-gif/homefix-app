@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 import '../firestore/user_service.dart';
-import '../models/customer.dart';
+import '../models/user_model.dart';
 import '../models/address.dart';
 import '../models/payment_method.dart';
 import '../models/wallet_transaction.dart';
@@ -12,8 +12,8 @@ class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
   final UserService _userService = UserService();
   
-  Customer? _customer;
-  Customer? get customer => _customer;
+  UserModel? _customer;
+  UserModel? get customer => _customer;
 
   User? get currentUser => _authService.currentUser;
   User? get user => _authService.currentUser;
@@ -21,7 +21,7 @@ class AuthProvider extends ChangeNotifier {
   bool _isLoading = false;
   bool get isLoading => _isLoading;
 
-  StreamSubscription<Customer?>? _customerSubscription;
+  StreamSubscription<UserModel?>? _customerSubscription;
 
   AuthProvider() {
     _authService.authStateChanges.listen((user) {
@@ -37,11 +37,11 @@ class AuthProvider extends ChangeNotifier {
 
   void _listenToCustomerData(String uid) {
     _customerSubscription?.cancel();
-    _customerSubscription = _userService.getCustomerStream(uid).listen((c) {
+    _customerSubscription = _userService.getUserStream(uid).listen((c) {
       _customer = c;
       notifyListeners();
     }, onError: (e) {
-      debugPrint("AuthProvider: Error in customer stream: $e");
+      debugPrint("AuthProvider: Error in user stream: $e");
     });
   }
 

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../core/widgets/safe_cached_image.dart';
+import '../../../core/widgets/safe_network_image.dart';
 import '../../../core/services/firestore_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../services/presentation/service_details_screen.dart';
@@ -14,12 +14,11 @@ class ServiceSpotlightSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
 
-    debugPrint("[Firestore] streaming service_spotlight...");
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: firestoreService.streamServiceSpotlight(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return SizedBox(
+          return const SizedBox(
             height: 200,
             child: Center(child: CircularProgressIndicator()),
           );
@@ -27,7 +26,6 @@ class ServiceSpotlightSection extends StatelessWidget {
 
         final spotlightServices = snapshot.data ?? [];
         if (spotlightServices.isEmpty) {
-          debugPrint("[Firestore] service_spotlight is empty");
           return Container(
             margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
             padding: const EdgeInsets.all(20),
@@ -43,7 +41,6 @@ class ServiceSpotlightSection extends StatelessWidget {
             ),
           );
         }
-        debugPrint("[Firestore] service_spotlight docs: ${spotlightServices.length}");
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -101,10 +98,8 @@ class ServiceSpotlightSection extends StatelessWidget {
 
   Widget _buildSpotlightCard(BuildContext context, Map<String, dynamic> data) {
     final availableTechs = data['availableTechnicians'] ?? 0;
-    // Ultra-safe price parsing - prevents type cast crash
     final rawPrice = data['price'] ?? data['basePrice'] ?? 0;
     final double price = (rawPrice is num) ? rawPrice.toDouble() : 0.0;
-    // Ultra-safe rating parsing
     final rawRating = data['rating'] ?? 0;
     final double rating = (rawRating is num) ? rawRating.toDouble() : 0.0;
     final String serviceId = data['serviceId'] ?? data['id'] ?? '';
@@ -118,11 +113,13 @@ class ServiceSpotlightSection extends StatelessWidget {
           MaterialPageRoute(
             builder: (context) => ServiceDetailsScreen(
               serviceId: serviceId,
-              initialService: HomeService(
+              serviceName: title,
+              serviceData: HomeService(
                 id: serviceId,
                 key: serviceId,
                 title: title,
-                imageAssetPath: imageUrl ?? '',
+                imageUrl: imageUrl ?? '',
+                imageAssetPath: '',
                 description: data['description'] ?? '',
                 category: data['category'] ?? '',
                 basePrice: price,
@@ -154,7 +151,6 @@ class ServiceSpotlightSection extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image Section
             Expanded(
               flex: 5,
               child: Stack(
@@ -167,15 +163,11 @@ class ServiceSpotlightSection extends StatelessWidget {
                         width: double.infinity,
                         height: double.infinity,
                         color: AppTheme.accentColor,
-                        child: (imageUrl?.isNotEmpty ?? false)
-                            ? (() {
-                                print("IMAGE URL => $imageUrl");
-                                return SafeCachedImage(
-                                  imageUrl: imageUrl,
-                                  fit: BoxFit.cover,
-                                );
-                              }())
-                            : Icon(Icons.home_repair_service_rounded, size: 40, color: AppTheme.primaryColor.withOpacity(0.3)),
+                        child: SafeNetworkImage(
+                          imageUrl: imageUrl,
+                          fit: BoxFit.cover,
+                          serviceName: title,
+                        ),
                       ),
                     ),
                   ),
@@ -208,8 +200,6 @@ class ServiceSpotlightSection extends StatelessWidget {
                 ],
               ),
             ),
-            
-            // Info Section
             Expanded(
               flex: 4,
               child: Padding(

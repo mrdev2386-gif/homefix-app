@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../../../core/models/dashboard_models.dart';
-import '../../../core/widgets/safe_cached_image.dart';
+import '../../../core/widgets/safe_network_image.dart';
 
 class ProfessionalReelsSection extends StatefulWidget {
   final List<ProfessionalReel> reels;
@@ -285,9 +285,9 @@ class _ReelItemState extends State<_ReelItem> {
               fit: StackFit.expand,
               children: [
                 // Thumbnail/Image - show for both video and image modes
-                if (widget.reel.thumbnailUrl.isNotEmpty)
-                  SafeCachedImage(
-                    imageUrl: widget.reel.thumbnailUrl,
+                if (widget.reel.imageUrl.isNotEmpty)
+                  SafeNetworkImage(
+                    imageUrl: widget.reel.imageUrl,
                     fit: BoxFit.cover,
                   )
                 else

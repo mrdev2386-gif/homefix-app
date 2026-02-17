@@ -248,4 +248,18 @@ class FunctionsService {
       rethrow;
     }
   }
+
+  /// Accept a proposal for a service request securely
+  Future<Map<String, dynamic>> acceptProposal(String proposalId, String requestId) async {
+    try {
+      HttpsCallable callable = _functions.httpsCallable('acceptProposal');
+      final result = await callable.call({
+        'proposalId': proposalId,
+        'requestId': requestId,
+      });
+      return Map<String, dynamic>.from(result.data);
+    } catch (e) {
+      rethrow;
+    }
+  }
 }

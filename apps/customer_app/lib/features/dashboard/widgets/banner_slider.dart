@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shimmer/shimmer.dart';
-import '../../../core/widgets/safe_cached_image.dart';
+import '../../../core/widgets/safe_network_image.dart';
 import '../../../core/models/banner_model.dart';
 
 class BannerSlider extends StatefulWidget {
@@ -162,7 +162,7 @@ class _BannerSliderState extends State<BannerSlider> {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(16),
-                          child: SafeCachedImage(
+                          child: SafeNetworkImage(
                             imageUrl: banner.imageUrl,
                             fit: BoxFit.cover,
                           ),

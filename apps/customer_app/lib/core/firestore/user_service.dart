@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import '../models/customer.dart';
+import '../models/user_model.dart';
 import '../models/address.dart';
 import '../models/payment_method.dart';
 import '../models/wallet_transaction.dart';
@@ -28,16 +28,16 @@ class UserService {
     }
   }
 
-  Future<Customer?> getCustomer(String uid) async {
+  Future<UserModel?> getUser(String uid) async {
     final doc = await _db.collection('customers').doc(uid).get();
     if (!doc.exists) return null;
-    return Customer.fromFirestore(doc);
+    return UserModel.fromFirestore(doc);
   }
 
-  Stream<Customer?> getCustomerStream(String uid) {
+  Stream<UserModel?> getUserStream(String uid) {
     return _db.collection('customers').doc(uid).snapshots().map((doc) {
       if (!doc.exists) return null;
-      return Customer.fromFirestore(doc);
+      return UserModel.fromFirestore(doc);
     });
   }
 

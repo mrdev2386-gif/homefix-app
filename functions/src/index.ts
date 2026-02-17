@@ -248,6 +248,7 @@ export const updatePrivacySettings = customerFeatures.updatePrivacySettings;
 export const validateReferralCode = customerFeatures.validateReferralCode;
 export const submitServiceRating = customerFeatures.submitServiceRating;
 export const submitSupportRequest = customerFeatures.submitSupportRequest;
+export const acceptProposal = customerFeatures.acceptProposal;
 
 // Partner Applications
 export const submitPartnerApplication = partnerApplications.submitPartnerApplication;

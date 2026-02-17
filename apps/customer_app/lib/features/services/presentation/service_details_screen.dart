@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../../../../core/models/sub_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../../core/models/service.dart';
@@ -13,9 +14,15 @@ import '../../cart/presentation/cart_screen.dart';
 
 class ServiceDetailsScreen extends StatefulWidget {
   final String serviceId;
-  final HomeService? initialService;
+  final String? serviceName;
+  final HomeService? serviceData;
 
-  const ServiceDetailsScreen({super.key, required this.serviceId, this.initialService});
+  const ServiceDetailsScreen({
+    super.key, 
+    required this.serviceId, 
+    this.serviceName,
+    this.serviceData,
+  });
 
   @override
   State<ServiceDetailsScreen> createState() => _ServiceDetailsScreenState();
@@ -25,34 +32,83 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
   HomeService? _service;
   bool _isLoading = true;
   int _techCount = 0;
-  bool _isAddingToCart = false; // Track loading state for add to cart
+  bool _isAddingToCart = false;
+  List<SubService> _subServices = [];
+  bool _isSubServicesLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _service = widget.initialService;
+    _service = widget.serviceData;
     _fetchService();
     _fetchTechnicianCount();
+    _fetchSubServices();
+  }
+
+  Future<void> _fetchSubServices() async {
+    if (_service == null) {
+      // Wait for service to load first
+      return;
+    }
+    
+    // We need category ID to fetch subservices
+    final categoryId = _service!.category;
+    final serviceId = widget.serviceId;
+
+    // Hard validation as requested
+    if (categoryId.isEmpty || serviceId.isEmpty) {
+      debugPrint('❌ SUBSERVICE FETCH BLOCKED — missing ids');
+      setState(() => _isSubServicesLoading = false);
+      return;
+    }
+    
+    FirebaseFirestore.instance
+        .collection('categories')
+        .doc(categoryId)
+        .collection('services')
+        .doc(serviceId)
+        .collection('subServices')
+        .where('isActive', isEqualTo: true)
+        .orderBy('order', descending: false)
+        .snapshots()
+        .listen((snapshot) {
+      if (mounted) {
+        setState(() {
+          _subServices = snapshot.docs.map((doc) => SubService.fromFirestore(doc)).toList();
+          _isSubServicesLoading = false;
+        });
+      }
+    }, onError: (e) {
+      debugPrint('Error fetching sub-services: $e');
+      if (mounted) {
+        setState(() => _isSubServicesLoading = false);
+      }
+    });
   }
 
   Future<void> _fetchService() async {
     if (_service != null && !mounted) return;
     try {
-      final doc = await FirebaseFirestore.instance.collection('services').doc(widget.serviceId).get();
-      if (mounted) {
+      // AUDIT: Use collectionGroup to support nested categories/{catId}/services source
+      // We filter by 'id' field which should be present on most documents, or we'd need to know the categoryId
+      final snapshot = await FirebaseFirestore.instance
+          .collectionGroup('services')
+          .where('id', isEqualTo: widget.serviceId)
+          .get();
+      
+      if (mounted && snapshot.docs.isNotEmpty) {
         setState(() {
-          if (doc.exists) {
-            _service = HomeService.fromFirestore(doc);
-          }
+          _service = HomeService.fromFirestore(snapshot.docs.first);
+          _fetchSubServices(); // Fetch sub-services now that we have categoryId
           _isLoading = false;
         });
+      } else if (mounted) {
+        setState(() => _isLoading = false);
       }
     } catch (e) {
       debugPrint('Error fetching service: $e');
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -139,15 +195,7 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
                     style: GoogleFonts.outfit(color: AppTheme.subtitleColor, height: 1.6, fontSize: 15),
                   ),
                   const SizedBox(height: 32),
-                  Text(
-                    "What's Included",
-                    style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.textColor),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildInclusionItem('Expert and background-verified technicians'),
-                  _buildInclusionItem('Advanced equipment and safe materials'),
-                  _buildInclusionItem('Transparent pricing with no hidden costs'),
-                  _buildInclusionItem('Post-service cleaning & inspection'),
+                  _buildSubServicesSection(),
                   const SizedBox(height: 32),
                   _buildGuaranteeCard(),
                   const SizedBox(height: 32),
@@ -201,8 +249,7 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
         ),
       ),
       actions: [
-        // Favorite Button with animation and proper gesture handling
-        _FavoriteActionButton(serviceId: widget.serviceId),
+        _FavoriteActionButton(service: service), // AUDIT: Fixed parameter mismatch
         const SizedBox(width: 8),
       ],
     );
@@ -347,35 +394,117 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
     );
   }
 
-  Widget _buildReviewItem(String name, String comment) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              CircleAvatar(radius: 12, backgroundColor: AppTheme.primaryColor.withOpacity(0.2), child: Text(name[0], style: const TextStyle(fontSize: 10))),
-              const SizedBox(width: 8),
-              Text(name, style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 14)),
-              const Spacer(),
-              const Icon(Icons.star_rounded, color: Colors.orange, size: 14),
-              const Icon(Icons.star_rounded, color: Colors.orange, size: 14),
-              const Icon(Icons.star_rounded, color: Colors.orange, size: 14),
-              const Icon(Icons.star_rounded, color: Colors.orange, size: 14),
-              const Icon(Icons.star_rounded, color: Colors.orange, size: 14),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(comment, style: GoogleFonts.outfit(color: AppTheme.subtitleColor, fontSize: 13)),
-        ],
-      ),
+  Widget _buildSubServicesSection() {
+    if (_isSubServicesLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_subServices.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Available Sub-Services',
+          style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.textColor),
+        ),
+        const SizedBox(height: 16),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _subServices.length,
+          itemBuilder: (context, index) {
+            final sub = _subServices[index];
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.grey.shade100),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.02),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: SafeNetworkImage(
+                      imageUrl: sub.imageUrl,
+                      width: 60,
+                      height: 60,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          sub.name,
+                          style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 15),
+                        ),
+                        Text(
+                          '₹${sub.price.toStringAsFixed(0)}',
+                          style: GoogleFonts.outfit(
+                            color: AppTheme.primaryColor,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => _handleSubServiceAddToCart(sub),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+                      foregroundColor: AppTheme.primaryColor,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text('Add', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ],
     );
+  }
+
+  Future<void> _handleSubServiceAddToCart(SubService sub) async {
+    HapticFeedback.mediumImpact();
+    final cart = Provider.of<CartProvider>(context, listen: false);
+    await cart.addItem(CartItem(
+      id: '',
+      serviceId: widget.serviceId,
+      subServiceId: sub.id,
+      serviceName: '${_service!.title} - ${sub.name}',
+      serviceImage: sub.imageUrl ?? _service!.imageUrl ?? '',
+      price: sub.price,
+      quantity: 1,
+      totalPrice: sub.price,
+    ));
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${sub.name} added to cart'),
+          backgroundColor: AppTheme.successColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Widget _buildBottomAction(BuildContext context, HomeService service) {
@@ -548,9 +677,9 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
 /// Animated favorite action button for the app bar
 /// Uses InkWell for splash effect and scale animation on tap
 class _FavoriteActionButton extends StatefulWidget {
-  final String serviceId;
+  final HomeService service;
 
-  const _FavoriteActionButton({required this.serviceId});
+  const _FavoriteActionButton({required this.service});
 
   @override
   State<_FavoriteActionButton> createState() => _FavoriteActionButtonState();
@@ -586,7 +715,10 @@ class _FavoriteActionButtonState extends State<_FavoriteActionButton>
     });
     
     // Toggle favorite
-    context.read<FavoritesProvider>().toggleFavorite(widget.serviceId);
+    context.read<FavoritesProvider>().toggleFavorite(
+      widget.service.id, 
+      widget.service.category
+    );
   }
 
   @override
@@ -611,7 +743,7 @@ class _FavoriteActionButtonState extends State<_FavoriteActionButton>
               splashColor: Colors.red.withOpacity(0.2),
               child: Consumer<FavoritesProvider>(
                 builder: (context, favorites, _) {
-                  final isFavorite = favorites.isFavorite(widget.serviceId);
+                  final isFavorite = favorites.isFavorite(widget.service.id);
                   return AnimatedSwitcher(
                     duration: const Duration(milliseconds: 200),
                     transitionBuilder: (child, animation) {

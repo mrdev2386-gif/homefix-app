@@ -82,20 +82,21 @@ class CategoryCard extends StatelessWidget {
   }
 
   Widget _buildIcon() {
-    // Handle Firebase Storage URLs
-    if (category.iconUrl.startsWith('http')) {
+    // AUDIT: Use model's standardized imageUrl (which has multi-field fallback)
+    final String imageUrl = category.imageUrl ?? '';
+
+    if (imageUrl.startsWith('http')) {
       return SafeNetworkImage(
-        imageUrl: category.iconUrl,
+        imageUrl: imageUrl,
         width: 40,
         height: 40,
         fit: BoxFit.contain,
-        fallbackUrl: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=200&q=80',
       );
     }
     
-    // Fallback icon
+    // Fallback icon - local placeholder
     return Icon(
-      Icons.devices,
+      Icons.construction_rounded,
       size: 40,
       color: Colors.blue[700],
     );

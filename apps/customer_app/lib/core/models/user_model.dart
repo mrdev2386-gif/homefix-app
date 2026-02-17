@@ -8,6 +8,8 @@ class UserModel {
   final String? photoUrl;
   final DateTime? createdAt;
   final String role; // customer or technician
+  final String? fcmToken;
+  final List<Map<String, dynamic>> addresses;
   final String? referralCode;
   final String? referredBy;
   final double walletBalance;
@@ -18,7 +20,6 @@ class UserModel {
   final double? longitude;
   final bool isVerified;
   final bool isBlocked;
-  final String? fcmToken;
 
   UserModel({
     required this.uid,
@@ -28,6 +29,8 @@ class UserModel {
     this.photoUrl,
     this.createdAt,
     this.role = 'customer',
+    this.fcmToken,
+    this.addresses = const [],
     this.referralCode,
     this.referredBy,
     this.walletBalance = 0.0,
@@ -38,7 +41,6 @@ class UserModel {
     this.longitude,
     this.isVerified = false,
     this.isBlocked = false,
-    this.fcmToken,
   });
 
   // Getter for convenience in UI
@@ -57,6 +59,8 @@ class UserModel {
       photoUrl: (data['photoUrl'] ?? data['photoURL'] ?? '').toString(),
       createdAt: data['createdAt'] is Timestamp ? (data['createdAt'] as Timestamp).toDate() : null,
       role: (data['role'] ?? 'customer').toString().toLowerCase(),
+      fcmToken: (data['fcmToken'] ?? '').toString(),
+      addresses: data['addresses'] != null ? List<Map<String, dynamic>>.from(data['addresses']) : [],
       referralCode: (data['referralCode'] ?? '').toString(),
       referredBy: (data['referredBy'] ?? '').toString(),
       walletBalance: double.tryParse((data['walletBalance'] ?? 0.0).toString()) ?? 0.0,
@@ -67,10 +71,8 @@ class UserModel {
       longitude: double.tryParse((data['longitude'] ?? 0.0).toString()),
       isVerified: data['isVerified'] ?? false,
       isBlocked: data['isBlocked'] ?? false,
-      fcmToken: (data['fcmToken'] ?? '').toString(),
     );
   }
-
 
   Map<String, dynamic> toMap() {
     return {
@@ -80,6 +82,8 @@ class UserModel {
       'photoUrl': photoUrl,
       'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : FieldValue.serverTimestamp(),
       'role': role,
+      'fcmToken': fcmToken,
+      'addresses': addresses,
       'referralCode': referralCode,
       'referredBy': referredBy,
       'walletBalance': walletBalance,
@@ -90,7 +94,6 @@ class UserModel {
       'longitude': longitude,
       'isVerified': isVerified,
       'isBlocked': isBlocked,
-      'fcmToken': fcmToken,
     };
   }
 
@@ -108,6 +111,7 @@ class UserModel {
     bool? isVerified,
     bool? isBlocked,
     String? fcmToken,
+    List<Map<String, dynamic>>? addresses,
   }) {
     return UserModel(
       uid: uid,
@@ -117,6 +121,8 @@ class UserModel {
       photoUrl: photoUrl ?? this.photoUrl,
       createdAt: createdAt,
       role: role,
+      fcmToken: fcmToken ?? this.fcmToken,
+      addresses: addresses ?? this.addresses,
       referralCode: referralCode,
       referredBy: referredBy,
       walletBalance: walletBalance ?? this.walletBalance,
@@ -127,7 +133,6 @@ class UserModel {
       longitude: longitude ?? this.longitude,
       isVerified: isVerified ?? this.isVerified,
       isBlocked: isBlocked ?? this.isBlocked,
-      fcmToken: fcmToken ?? this.fcmToken,
     );
   }
 }

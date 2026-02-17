@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../services/presentation/service_list_screen.dart';
-import '../history/history_screen.dart';
+import '../bookings/presentation/booking_history_screen.dart';
 import '../profile/profile_screen.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -19,7 +19,7 @@ class _MainWrapperScreenState extends State<MainWrapperScreen> {
   final List<Widget> _screens = const [
     DashboardScreen(),
     ServiceListScreen(),
-    HistoryScreen(),
+    BookingHistoryScreen(),
     ProfileScreen(),
   ];
 

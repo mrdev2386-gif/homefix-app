@@ -492,3 +492,88 @@ export const createServiceRequest = functions.https.onCall(async (data, context)
     return { success: true, requestId };
 });
 
+
+export const acceptProposal = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+    const { proposalId, requestId } = data;
+
+    if (!proposalId || !requestId) {
+        throw new functions.https.HttpsError('invalid-argument', 'Proposal ID and Request ID are required');
+    }
+
+    const customerId = context.auth.uid;
+
+    return await db.runTransaction(async (t) => {
+        const proposalRef = db.collection('proposals').doc(proposalId);
+        const requestRef = db.collection('service_requests').doc(requestId);
+
+        const [proposalDoc, requestDoc] = await Promise.all([t.get(proposalRef), t.get(requestRef)]);
+
+        if (!proposalDoc.exists) throw new functions.https.HttpsError('not-found', 'Proposal not found');
+        if (!requestDoc.exists) throw new functions.https.HttpsError('not-found', 'Service request not found');
+
+        const proposal = proposalDoc.data()!;
+        const request = requestDoc.data()!;
+
+        if (request.customerId !== customerId) {
+            throw new functions.https.HttpsError('permission-denied', 'You can only accept proposals for your own requests');
+        }
+
+        if (proposal.requestId !== requestId) {
+            throw new functions.https.HttpsError('invalid-argument', 'Proposal does not belong to this request');
+        }
+
+        if (request.status === 'accepted' || request.status === 'completed') {
+            throw new functions.https.HttpsError('failed-precondition', 'Request already accepted or completed');
+        }
+
+        // Get customer data for booking
+        const customerRef = db.collection('customers').doc(customerId);
+        const customerDoc = await t.get(customerRef);
+        const customerData = customerDoc.data() || {};
+
+        const bookingId = db.collection('bookings').doc().id;
+        const bookingNumber = `BK-PRP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+        const bookingData = {
+            id: bookingId,
+            bookingNumber,
+            customerId: request.customerId,
+            customerName: customerData.name || 'Customer',
+            customerPhone: customerData.phone || '',
+            technicianId: proposal.technicianId,
+            technicianName: proposal.technicianName,
+            serviceId: 'custom',
+            serviceTitle: request.title,
+            scheduledAt: proposal.proposedDateTime,
+            addressSnapshot: request.address || {},
+            status: 'accepted',
+            paymentStatus: 'pending',
+            price: proposal.quotedPrice,
+            finalAmount: proposal.quotedPrice,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            proposalId: proposalId,
+            requestId: requestId,
+        };
+
+        // Atomic updates
+        t.update(proposalRef, { status: 'accepted', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+        t.update(requestRef, { status: 'accepted', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+        t.set(db.collection('bookings').doc(bookingId), bookingData);
+
+        // Notify Technician
+        const techNotificationRef = db.collection('technicians').doc(proposal.technicianId).collection('notifications').doc();
+        t.set(techNotificationRef, {
+            id: techNotificationRef.id,
+            type: 'proposal_accepted',
+            title: 'Proposal Accepted!',
+            body: `Your proposal for ${request.title} was accepted!`,
+            data: { bookingId, requestId, type: 'booking_status' },
+            read: false,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        return { success: true, bookingId, bookingNumber };
+    });
+});

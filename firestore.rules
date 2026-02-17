@@ -96,10 +96,10 @@ service cloud.firestore {
       allow write: if false;
     }
     
-    // Notifications - public read for authenticated users
+    // Notifications - read only by owner, write only via Cloud Functions
     match /notifications/{docId} {
-      allow read: if request.auth != null;
-      allow write: if false;
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow write: if false; // writes only via Cloud Functions
     }
     
     // ==========================================
@@ -145,49 +145,20 @@ service cloud.firestore {
         allow read: if isOwner(customerId);
         allow write: if isOwner(customerId);
       }
-      
-      match /notifications/{notificationId} {
-        allow read: if isOwner(customerId);
-        allow write: if isAdmin();
-      }
-      
-      // ==========================================
-    // FCM TOKENS (Both Apps)
-    // ==========================================
+    }
     
+    // FCM TOKENS (Both Apps)
     match /fcmTokens/{tokenId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && request.auth.uid == userId;
-      allow delete: if isAuthenticated() && request.auth.uid == userId;
+      // Safe write: only owner can update their own token doc
+      allow write: if isAuthenticated() && (
+        !resource.exists || resource.data.userId == request.auth.uid
+      ) && (
+        !request.resource.data.keys().hasAny(['userId']) || 
+        request.resource.data.userId == request.auth.uid
+      );
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
-  }
-  
-  // Users legacy
-  match /users/{userId} {
-    allow read: if isOwner(userId) || isAdmin();
-    allow write: if isOwner(userId) || isAdmin();
-  }
-  
-  // ==========================================
-  // UNIFIED NOTIFICATIONS COLLECTION
-  // ==========================================
-  
-  match /notifications/{notificationId} {
-    // User can read only their own notifications
-    allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
-    
-    // Only Cloud Functions can create notifications
-    allow create: if false;
-    
-    // User can update isRead for their own notifications
-    allow update: if isAuthenticated() && 
-      resource.data.userId == request.auth.uid &&
-      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead', 'readAt']);
-    
-    // Only owner or admin can delete
-    allow delete: if isAuthenticated() && 
-      (resource.data.userId == request.auth.uid || isAdmin());
-  }
 
   // Users legacy
   match /users/{userId} {

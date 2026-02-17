@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class CartItem {
   final String id;
+  final String categoryId;
   final String serviceId;
   final String serviceName;
   final String serviceImage;
@@ -12,6 +13,7 @@ class CartItem {
 
   CartItem({
     required this.id,
+    required this.categoryId,
     required this.serviceId,
     required this.serviceName,
     required this.serviceImage,
@@ -25,6 +27,7 @@ class CartItem {
     final data = doc.data() as Map<String, dynamic>? ?? {};
     return CartItem(
       id: doc.id,
+      categoryId: (data['categoryId'] ?? '').toString(),
       serviceId: (data['serviceId'] ?? '').toString(),
       serviceName: (data['serviceName'] ?? '').toString(),
       serviceImage: (data['serviceImage'] ?? '').toString(),
@@ -37,6 +40,7 @@ class CartItem {
 
   Map<String, dynamic> toMap() {
     return {
+      'categoryId': categoryId,
       'serviceId': serviceId,
       'serviceName': serviceName,
       'serviceImage': serviceImage,
@@ -49,6 +53,7 @@ class CartItem {
 
   CartItem copyWith({
     String? id,
+    String? categoryId,
     String? serviceId,
     String? serviceName,
     String? serviceImage,
@@ -59,6 +64,7 @@ class CartItem {
   }) {
     return CartItem(
       id: id ?? this.id,
+      categoryId: categoryId ?? this.categoryId,
       serviceId: serviceId ?? this.serviceId,
       serviceName: serviceName ?? this.serviceName,
       serviceImage: serviceImage ?? this.serviceImage,

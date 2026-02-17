@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shimmer/shimmer.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../services/presentation/service_details_screen.dart';
 import '../../services/presentation/service_list_screen.dart';
@@ -36,10 +37,12 @@ class _ServiceListSectionState extends State<ServiceListSection> {
   @override
   void initState() {
     super.initState();
-    Query query = FirebaseFirestore.instance.collection('services').where('isActive', isEqualTo: true);
+    // AUDIT: Using collectionGroup to support nested categories/{catId}/services source
+    Query query = FirebaseFirestore.instance.collectionGroup('services').where('isActive', isEqualTo: true);
     
     if (widget.category != null && widget.category!.isNotEmpty && widget.category != 'all') {
-      query = query.where('category', isEqualTo: widget.category);
+      // Filter by categoryId field on the service document
+      query = query.where('categoryId', isEqualTo: widget.category);
     }
     
     if (widget.limit != null) {
@@ -98,18 +101,41 @@ class _ServiceListSectionState extends State<ServiceListSection> {
           stream: _serviceStream,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: CircularProgressIndicator(),
-              ));
+              // Loading shimmer
+              return SizedBox(
+                height: 180,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  itemCount: 4,
+                  itemBuilder: (context, index) {
+                    return Container(
+                      width: 140,
+                      margin: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Shimmer.fromColors(
+                        baseColor: Colors.grey[200]!,
+                        highlightColor: Colors.white,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              );
             }
             
             final services = snapshot.data?.docs ?? [];
+            // DEBUG: Log service count
+            debugPrint('[SERVICE_COUNT] ${services.length}');
             if (services.isEmpty) {
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 child: Text(
-                  'Explore more services in the catalog!',
+                  'No services available',
                   style: GoogleFonts.outfit(color: AppTheme.subtitleColor, fontSize: 13, fontWeight: FontWeight.w600),
                 ),
               );
@@ -175,6 +201,16 @@ class _HorizontalServiceCard extends StatefulWidget {
 class _HorizontalServiceCardState extends State<_HorizontalServiceCard> {
   bool _isNavigating = false;
 
+  /// Safe image URL extraction with unified mapping
+  String _getImageUrl(Map<String, dynamic>? data) {
+    // AUDIT: Use prioritized mapping standardized across app
+    final imageUrl = (data?['imageUrl'] ?? data?['image'] ?? data?['thumbnail'] ?? '') as String;
+    if (imageUrl.isEmpty || !imageUrl.startsWith('http')) {
+      return '';
+    }
+    return imageUrl;
+  }
+
   @override
   Widget build(BuildContext context) {
     final service = widget.service;
@@ -185,7 +221,11 @@ class _HorizontalServiceCardState extends State<_HorizontalServiceCard> {
         _isNavigating = true;
 
         try {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => ServiceDetailsScreen(serviceId: widget.service.id)));
+          Navigator.push(context, MaterialPageRoute(builder: (_) => ServiceDetailsScreen(
+                serviceId: widget.service.id,
+                serviceName: (widget.service.data() as Map<String, dynamic>?)?['title'] ?? 'Service',
+                serviceData: HomeService.fromFirestore(widget.service),
+              )));
         } finally {
           if (mounted) {
             _isNavigating = false;
@@ -202,7 +242,7 @@ class _HorizontalServiceCardState extends State<_HorizontalServiceCard> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
                 child: SafeNetworkImage(
-                  imageUrl: widget.service['image'],
+                  imageUrl: _getImageUrl(data),
                   width: double.infinity,
                   height: double.infinity,
                 ),
@@ -244,6 +284,16 @@ class _VerticalServiceCard extends StatefulWidget {
 class _VerticalServiceCardState extends State<_VerticalServiceCard> {
   bool _isNavigating = false;
 
+  /// Safe image URL extraction with unified mapping
+  String _getImageUrl(Map<String, dynamic>? data) {
+    // AUDIT: Use prioritized mapping standardized across app
+    final imageUrl = (data?['imageUrl'] ?? data?['image'] ?? data?['thumbnail'] ?? '') as String;
+    if (imageUrl.isEmpty || !imageUrl.startsWith('http')) {
+      return '';
+    }
+    return imageUrl;
+  }
+
   @override
   Widget build(BuildContext context) {
     final service = widget.service;
@@ -254,7 +304,11 @@ class _VerticalServiceCardState extends State<_VerticalServiceCard> {
         _isNavigating = true;
 
         try {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => ServiceDetailsScreen(serviceId: widget.service.id)));
+          Navigator.push(context, MaterialPageRoute(builder: (_) => ServiceDetailsScreen(
+                serviceId: widget.service.id,
+                serviceName: (widget.service.data() as Map<String, dynamic>?)?['title'] ?? 'Service',
+                serviceData: HomeService.fromFirestore(widget.service),
+              )));
         } finally {
           if (mounted) {
             _isNavigating = false;
@@ -278,7 +332,7 @@ class _VerticalServiceCardState extends State<_VerticalServiceCard> {
                   ClipRRect(
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
                     child: SafeNetworkImage(
-                      imageUrl: widget.service['image'],
+                      imageUrl: _getImageUrl(data),
                       width: double.infinity,
                       height: double.infinity,
                     ),
@@ -300,9 +354,10 @@ class _VerticalServiceCardState extends State<_VerticalServiceCard> {
                           await cart.addItem(CartItem(
                             id: '',
                             serviceId: widget.service.id,
-                            serviceName: data?['title'] ?? 'Service',
-                            serviceImage: data?['image'] ?? '',
+                            serviceName: data?['name'] ?? data?['title'] ?? 'Service',
+                            serviceImage: _getImageUrl(data), // AUDIT: Use standardized image URL
                             price: price,
+                            categoryId: (data?['categoryId'] ?? data?['category'] ?? '').toString(),
                             quantity: 1,
                             totalPrice: price,
                           ));

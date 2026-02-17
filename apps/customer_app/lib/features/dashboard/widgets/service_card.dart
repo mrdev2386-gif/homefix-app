@@ -23,20 +23,27 @@ class ServiceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return RepaintBoundary(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          splashColor: const Color(0xFF6366F1).withOpacity(0.1),
+          highlightColor: const Color(0xFF6366F1).withOpacity(0.05),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeInOut,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -49,7 +56,7 @@ class ServiceCard extends StatelessWidget {
                     // Dynamic Network Image with shimmer loading
                     ClipRRect(
                       borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(8),
+                        top: Radius.circular(16),
                       ),
                       child: SafeNetworkImage(
                         imageUrl: service.imageUrl,
@@ -141,7 +148,7 @@ class ServiceCard extends StatelessWidget {
                     Positioned(
                       bottom: 10,
                       right: 10,
-                      child: _FavoriteButton(serviceId: service.id),
+                      child: _FavoriteButton(service: service),
                     ),
                   ],
                 ),
@@ -267,7 +274,7 @@ class ServiceCard extends StatelessWidget {
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -276,9 +283,9 @@ class ServiceCard extends StatelessWidget {
 /// Animated favorite button with proper gesture handling
 /// Uses InkWell for splash effect and scale animation on tap
 class _FavoriteButton extends StatefulWidget {
-  final String serviceId;
+  final HomeService service;
 
-  const _FavoriteButton({required this.serviceId});
+  const _FavoriteButton({required this.service});
 
   @override
   State<_FavoriteButton> createState() => _FavoriteButtonState();
@@ -317,7 +324,10 @@ class _FavoriteButtonState extends State<_FavoriteButton>
     HapticFeedback.lightImpact();
     
     // Use debounce to prevent double taps
-    context.read<FavoritesProvider>().toggleFavorite(widget.serviceId);
+    context.read<FavoritesProvider>().toggleFavorite(
+      widget.service.id, 
+      widget.service.category
+    );
   }
 
   @override
@@ -352,7 +362,7 @@ class _FavoriteButtonState extends State<_FavoriteButton>
             ),
             child: Consumer<FavoritesProvider>(
               builder: (context, favorites, _) {
-                final isFavorite = favorites.isFavorite(widget.serviceId);
+                final isFavorite = favorites.isFavorite(widget.service.id);
                 return AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
                   transitionBuilder: (child, animation) {

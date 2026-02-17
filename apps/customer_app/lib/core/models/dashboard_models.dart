@@ -1,22 +1,24 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import '../constants/app_constants.dart';
 
 class ProfessionalReel {
   final String id;
   final String videoUrl;
-  final String thumbnailUrl;
+  final String imageUrl; // Unified: using imageUrl instead of thumbnailUrl
   final String title;
   final bool isActive;
-  final bool isVideo; // NEW: Toggle between video and image
+  final bool isVideo; 
   final int order;
 
   ProfessionalReel({
     required this.id,
     required this.videoUrl,
-    required this.thumbnailUrl,
+    required this.imageUrl,
     this.title = '',
     this.isActive = true,
-    this.isVideo = true, // Default to video
+    this.isVideo = true, 
     this.order = 0,
   });
 
@@ -25,10 +27,18 @@ class ProfessionalReel {
     return ProfessionalReel(
       id: doc.id,
       videoUrl: (data['videoUrl'] ?? data['video'] ?? '').toString(),
-      thumbnailUrl: (data['thumbnailUrl'] ?? data['thumbnail'] ?? data['imageUrl'] ?? '').toString(),
+      imageUrl: (() {
+        final img = (data['imageUrl'] ?? data['thumbnailUrl'] ?? data['thumbnail'])?.toString().trim();
+        if (img != null && img.isNotEmpty) return img;
+        
+        if (kDebugMode) {
+          debugPrint('⚠️ [ProfessionalReel Model] No image found for ${doc.id}. Using global fallback.');
+        }
+        return AppConstants.fallbackServiceImage;
+      })(),
       title: (data['title'] ?? '').toString(),
       isActive: data['isActive'] ?? true,
-      isVideo: data['isVideo'] ?? true, // Default to video for backward compatibility
+      isVideo: data['isVideo'] ?? true,
       order: int.tryParse((data['order'] ?? 0).toString()) ?? 0,
     );
   }
@@ -37,7 +47,7 @@ class ProfessionalReel {
     return ProfessionalReel(
       id: data['id'] ?? '',
       videoUrl: (data['videoUrl'] ?? data['video'] ?? '').toString(),
-      thumbnailUrl: (data['thumbnailUrl'] ?? data['thumbnail'] ?? data['imageUrl'] ?? '').toString(),
+      imageUrl: (data['imageUrl'] ?? data['thumbnailUrl'] ?? data['thumbnail'] ?? '').toString(),
       title: (data['title'] ?? '').toString(),
       isActive: data['isActive'] ?? true,
       isVideo: data['isVideo'] ?? true,
@@ -49,14 +59,14 @@ class ProfessionalReel {
 class CleaningCategory {
   final String id;
   final String name;
-  final String iconUrl;
+  final String imageUrl; // Unified: using imageUrl instead of iconUrl
   final bool isActive;
   final int order;
 
   CleaningCategory({
     required this.id,
     required this.name,
-    required this.iconUrl,
+    required this.imageUrl,
     this.isActive = true,
     this.order = 0,
   });
@@ -66,14 +76,21 @@ class CleaningCategory {
     return CleaningCategory(
       id: doc.id,
       name: (data['name'] ?? data['title'] ?? '').toString(),
-      iconUrl: (data['iconUrl'] ?? data['imageUrl'] ?? '').toString(),
+      imageUrl: (() {
+        final img = (data['imageUrl'] ?? data['iconUrl'])?.toString().trim();
+        if (img != null && img.isNotEmpty) return img;
+        
+        if (kDebugMode) {
+          debugPrint('⚠️ [CleaningCategory Model] No image found for ${doc.id}. Using global fallback.');
+        }
+        return AppConstants.fallbackServiceImage;
+      })(),
       isActive: data['isActive'] ?? true,
       order: int.tryParse((data['order'] ?? 0).toString()) ?? 0,
     );
   }
 }
 
-// Keeping CleaningEssential for compatibility if needed, but the task mentions categories
 class CleaningEssential {
   final String id;
   final String title;
@@ -96,19 +113,16 @@ class CleaningEssential {
     return CleaningEssential(
       id: doc.id,
       title: (data['title'] ?? data['name'] ?? '').toString(),
-      imageUrl: (data['imageUrl'] ?? data['iconUrl'] ?? '').toString(),
+      imageUrl: (() {
+        final img = (data['imageUrl'] ?? data['iconUrl'] ?? data['image'])?.toString().trim();
+        if (img != null && img.isNotEmpty) return img;
+        
+        if (kDebugMode) {
+          debugPrint('⚠️ [CleaningEssential Model] No image found for ${doc.id}. Using global fallback.');
+        }
+        return AppConstants.fallbackServiceImage;
+      })(),
       categoryId: (data['categoryKey'] ?? data['categoryId'] ?? data['category'] ?? doc.id).toString(),
-      order: int.tryParse((data['order'] ?? 0).toString()) ?? 0,
-      isActive: data['isActive'] ?? true,
-    );
-  }
-
-  factory CleaningEssential.fromMap(Map<String, dynamic> data) {
-    return CleaningEssential(
-      id: data['id'] ?? '',
-      title: (data['title'] ?? data['name'] ?? '').toString(),
-      imageUrl: (data['imageUrl'] ?? data['iconUrl'] ?? '').toString(),
-      categoryId: (data['categoryKey'] ?? data['categoryId'] ?? data['category'] ?? data['id'] ?? '').toString(),
       order: int.tryParse((data['order'] ?? 0).toString()) ?? 0,
       isActive: data['isActive'] ?? true,
     );
@@ -122,8 +136,6 @@ class ServiceSpotlight {
   final String imageUrl;
   final double price;
   final double rating;
-  
-  // Computed later
   final int availableTechnicians;
 
   ServiceSpotlight({
@@ -142,7 +154,15 @@ class ServiceSpotlight {
       id: doc.id,
       serviceId: (data['serviceId'] ?? data['id'] ?? '').toString(),
       title: (data['title'] ?? data['name'] ?? 'Service').toString(),
-      imageUrl: (data['imageUrl'] ?? data['image'] ?? '').toString(),
+      imageUrl: (() {
+        final img = (data['imageUrl'] ?? data['image'] ?? data['thumbnail'])?.toString().trim();
+        if (img != null && img.isNotEmpty) return img;
+        
+        if (kDebugMode) {
+          debugPrint('⚠️ [ServiceSpotlight Model] No image found for ${doc.id}. Using global fallback.');
+        }
+        return AppConstants.fallbackServiceImage;
+      })(),
       price: double.tryParse((data['price'] ?? data['basePrice'] ?? 0.0).toString()) ?? 0.0,
       rating: double.tryParse((data['rating'] ?? 4.5).toString()) ?? 4.5,
       availableTechnicians: int.tryParse((data['availableTechnicians'] ?? 0).toString()) ?? 0,
@@ -183,7 +203,15 @@ class ServiceBanner {
     final data = doc.data() as Map<String, dynamic>? ?? {};
     return ServiceBanner(
       id: doc.id,
-      imageUrl: (data['imageUrl'] ?? '').toString(),
+      imageUrl: (() {
+        final img = (data['imageUrl'] ?? data['bannerUrl'] ?? data['image'])?.toString().trim();
+        if (img != null && img.isNotEmpty) return img;
+        
+        if (kDebugMode) {
+          debugPrint('⚠️ [ServiceBanner Model] No image found for ${doc.id}. Using global fallback.');
+        }
+        return AppConstants.fallbackServiceImage;
+      })(),
       isActive: data['isActive'] ?? true,
       order: int.tryParse((data['order'] ?? 0).toString()) ?? 0,
       title: (data['title'] ?? 'Special Offer').toString(),
@@ -195,14 +223,14 @@ class ServiceBanner {
 class TechnicianCategory {
   final String id;
   final String name;
-  final String icon;
+  final String imageUrl; // Unified from 'icon'
   final bool isActive;
   final int order;
 
   TechnicianCategory({
     required this.id,
     required this.name,
-    required this.icon,
+    required this.imageUrl,
     this.isActive = true,
     this.order = 0
   });
@@ -212,7 +240,15 @@ class TechnicianCategory {
     return TechnicianCategory(
       id: doc.id,
       name: (data['name'] ?? '').toString(),
-      icon: (data['icon'] ?? '').toString(),
+      imageUrl: (() {
+        final img = (data['imageUrl'] ?? data['icon'])?.toString().trim();
+        if (img != null && img.isNotEmpty) return img;
+        
+        if (kDebugMode) {
+          debugPrint('⚠️ [TechnicianCategory Model] No image found for ${doc.id}. Using global fallback.');
+        }
+        return AppConstants.fallbackServiceImage;
+      })(),
       isActive: data['isActive'] ?? true,
       order: int.tryParse((data['order'] ?? 0).toString()) ?? 0,
     );

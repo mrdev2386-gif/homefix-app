@@ -5,7 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../services/presentation/sub_service_screen.dart';
+import '../../services/presentation/service_details_screen.dart';
 import '../../services/presentation/service_list_screen.dart';
 import '../../../core/models/service.dart';
 import '../../../core/models/category.dart';
@@ -111,9 +111,9 @@ class _HorizontalServiceSlider extends StatelessWidget {
     
     return StreamBuilder<QuerySnapshot>(
       stream: db
-          .collection('services')
+          .collectionGroup('services') // AUDIT: Fixed root collection read
           .where('isActive', isEqualTo: true)
-          .limit(10)
+          .limit(20) // Increased limit to allow filtering
           .snapshots(),
       builder: (context, snapshot) {
         // Handle waiting state - show skeleton loader
@@ -140,6 +140,9 @@ class _HorizontalServiceSlider extends StatelessWidget {
         }
 
         final services = snapshot.data!.docs;
+        
+        // DEBUG: Log total service count
+        debugPrint('SERVICE_COUNT: ${services.length}');
         
         // Filter services based on filter function with null-safe category access
         final filteredServices = services.where((doc) {
@@ -227,18 +230,16 @@ class _HorizontalServiceSlider extends StatelessWidget {
         physics: const BouncingScrollPhysics(),
         itemCount: services.length,
         itemBuilder: (context, index) {
-          final service = services[index];
-          final data = service.data() as Map<String, dynamic>?;
-          // Ultra-safe price parsing - prevents type cast crash
-          final rawPrice = data?['price'] ?? data?['basePrice'];
-          final double price = (rawPrice is num) ? rawPrice.toDouble() : 0.0;
-          // Safe field access using doc.data()
+          final doc = services[index];
+          final service = HomeService.fromFirestore(doc);
+          
           return _ServiceCard(
             serviceId: service.id,
-            title: data?['title'] ?? 'Service',
-            imageUrl: data?['imageUrl'] ?? data?['image'] ?? '',
-            category: data?['category'] ?? '',
-            price: price,
+            title: service.name,
+            imageUrl: service.imageUrl ?? '',
+            category: service.category,
+            price: service.basePrice,
+            service: service,
           );
         },
       ),
@@ -269,6 +270,7 @@ class _ServiceCard extends StatefulWidget {
   final String imageUrl;
   final String category;
   final double price;
+  final HomeService service;
 
   const _ServiceCard({
     required this.serviceId,
@@ -276,6 +278,7 @@ class _ServiceCard extends StatefulWidget {
     required this.imageUrl,
     required this.category,
     required this.price,
+    required this.service,
   });
 
   @override
@@ -284,12 +287,6 @@ class _ServiceCard extends StatefulWidget {
 
 class _ServiceCardState extends State<_ServiceCard> {
   bool _isNavigating = false;
-
-  // Getters for widget properties
-  String get title => widget.title;
-  double get price => widget.price;
-  String get imageUrl => widget.imageUrl;
-  String get category => widget.category;
 
   @override
   Widget build(BuildContext context) {
@@ -301,7 +298,17 @@ class _ServiceCardState extends State<_ServiceCard> {
           _isNavigating = true;
 
           try {
-            _navigateToSubService(context);
+            HapticFeedback.lightImpact();
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ServiceDetailsScreen(
+                  serviceId: widget.serviceId,
+                  serviceName: widget.title,
+                  serviceData: widget.service,
+                ),
+              ),
+            );
           } finally {
             if (mounted) {
               _isNavigating = false;
@@ -327,7 +334,12 @@ class _ServiceCardState extends State<_ServiceCard> {
               Expanded(
                 child: ClipRRect(
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                  child: _buildImage(),
+                  child: SafeNetworkImage(
+                    imageUrl: widget.imageUrl,
+                    width: double.infinity,
+                    height: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
                 ),
               ),
               // Content
@@ -337,7 +349,7 @@ class _ServiceCardState extends State<_ServiceCard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      title,
+                      widget.title,
                       style: GoogleFonts.outfit(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -346,10 +358,10 @@ class _ServiceCardState extends State<_ServiceCard> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if (price > 0) ...[
+                    if (widget.price > 0) ...[
                       const SizedBox(height: 4),
                       Text(
-                        '₹${price.toStringAsFixed(0)}',
+                        '₹${widget.price.toStringAsFixed(0)}',
                         style: GoogleFonts.outfit(
                           fontSize: 13,
                           fontWeight: FontWeight.w800,
@@ -366,95 +378,5 @@ class _ServiceCardState extends State<_ServiceCard> {
       ),
     );
   }
-
-  Widget _buildImage() {
-    String validUrl = imageUrl.isNotEmpty ? imageUrl : _getFallbackImage();
-
-    return CachedNetworkImage(
-      imageUrl: validUrl,
-      fit: BoxFit.cover,
-      width: double.infinity,
-      height: double.infinity,
-      memCacheWidth: 300,
-      placeholder: (context, url) => Shimmer.fromColors(
-        baseColor: Colors.grey[200]!,
-        highlightColor: Colors.white,
-        child: Container(color: Colors.grey[300]),
-      ),
-      errorWidget: (context, url, error) => Container(
-        color: AppTheme.primaryColor.withOpacity(0.1),
-        child: Icon(
-          _getCategoryIcon(),
-          color: AppTheme.primaryColor,
-          size: 32,
-        ),
-      ),
-    );
-  }
-
-  String _getFallbackImage() {
-    final cat = category.toLowerCase();
-    if (cat.contains('ac') || cat.contains('air')) {
-      return 'https://images.unsplash.com/photo-1631545806609-5adb40c6e3eb?w=400&q=80';
-    } else if (cat.contains('electric')) {
-      return 'https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=400&q=80';
-    } else if (cat.contains('tv') || cat.contains('electronics')) {
-      return 'https://images.unsplash.com/photo-1593359677879-a4bb92f829d1?w=400&q=80';
-    } else if (cat.contains('fridge') || cat.contains('refrigerator')) {
-      return 'https://images.unsplash.com/photo-1584568694244-14fbdf83bd30?w=400&q=80';
-    } else if (cat.contains('washing')) {
-      return 'https://images.unsplash.com/photo-1556911220-e15b29be8c8f?w=400&q=80';
-    } else if (cat.contains('appliance')) {
-      return 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=400&q=80';
-    }
-    return 'https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=400&q=80';
-  }
-
-  IconData _getCategoryIcon() {
-    final cat = category.toLowerCase();
-    if (cat.contains('electric')) return Icons.electrical_services_rounded;
-    if (cat.contains('ac') || cat.contains('air')) return Icons.ac_unit_rounded;
-    if (cat.contains('tv') || cat.contains('electronics')) return Icons.tv_rounded;
-    if (cat.contains('fridge') || cat.contains('refrigerator')) return Icons.kitchen_rounded;
-    if (cat.contains('washing')) return Icons.local_laundry_service_rounded;
-    if (cat.contains('appliance')) return Icons.kitchen_rounded;
-    return Icons.build_rounded;
-  }
-
-  void _navigateToSubService(BuildContext context) {
-    HapticFeedback.lightImpact();
-    
-    // Create HomeService from data
-    final service = HomeService(
-      id: widget.serviceId,
-      key: widget.serviceId,
-      title: widget.title,
-      imageAssetPath: widget.imageUrl,
-      basePrice: widget.price,
-      isActive: true,
-      category: widget.category,
-      isTopService: false,
-      order: 0,
-      createdAt: DateTime.now(),
-    );
-    
-    // Create Category
-    final cat = Category(
-      id: widget.category,
-      name: widget.category,
-      order: 0,
-      isActive: true,
-    );
-
-    // Navigate to SubServiceScreen in fullscreen mode
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => SubServiceScreen(
-          category: cat,
-          service: service,
-        ),
-      ),
-    );
-  }
 }
+// DELETED redundant helper methods - logic moved to widget build and SafeNetworkImage

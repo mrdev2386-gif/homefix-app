@@ -22,6 +22,7 @@ const path = require('path');
 const DRY_RUN = true; // SET TO FALSE TO APPLY CHANGES
 const TARGET_SUB_SERVICE_COUNT = 5; // We aim for 5 sub-services per service
 const MIN_REQUIRED_COUNT = 4; // Skip if already has this many
+const BATCH_SIZE = 400;
 
 const DEFAULT_SUB_SERVICES = {
     ac: [
@@ -113,6 +114,70 @@ function generateId(serviceId, name) {
 // 4. MIGRATION LOGIC
 // ============================================================================
 
+/**
+ * Process a single service document to add subServices if needed
+ * Returns statistics about the operation
+ */
+async function processService(serviceDoc, categoryId, isTopLevel = false) {
+    const result = { scanned: 0, updated: 0, created: 0, skipped: 0, operations: [] };
+    
+    result.scanned++;
+    const serviceData = serviceDoc.data();
+    const serviceId = serviceDoc.id;
+    const serviceName = serviceData.name || serviceData.title || 'Unnamed Service';
+    const pathType = isTopLevel ? 'top-level' : 'nested';
+
+    // Count existing sub-services
+    const existingSubSnap = await serviceDoc.ref.collection('subServices').get();
+    const existingCount = existingSubSnap.size;
+    const existingNames = new Set(existingSubSnap.docs.map(d => d.data().name?.toLowerCase()));
+
+    if (existingCount >= MIN_REQUIRED_COUNT) {
+        console.log(`⏭️  [${pathType}] SKIP [${serviceName}] - Already has ${existingCount} sub-services.`);
+        result.skipped++;
+        return result;
+    }
+
+    console.log(`🛠️  [${pathType}] ENRICHING [${serviceName}] - Current count: ${existingCount}`);
+
+    const templates = getTemplates(serviceName);
+    let addedInThisService = 0;
+
+    for (const template of templates) {
+        if (existingCount + addedInThisService >= TARGET_SUB_SERVICE_COUNT) break;
+
+        // Avoid duplicate names
+        if (existingNames.has(template.name.toLowerCase())) continue;
+
+        const subId = generateId(serviceId, template.name);
+        const subRef = serviceDoc.ref.collection('subServices').doc(subId);
+
+        const newSubData = {
+            id: subId,
+            name: template.name,
+            imageUrl: getImageUrl(serviceData.imageUrl || serviceData.image),
+            price: template.price,
+            order: (existingCount + addedInThisService + 1) * 10,
+            isActive: true,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        if (!DRY_RUN) {
+            result.operations.push({ ref: subRef, data: newSubData });
+        }
+
+        addedInThisService++;
+        result.created++;
+    }
+
+    if (addedInThisService > 0) {
+        result.updated++;
+        console.log(`   + Added ${addedInThisService} sub-services to [${serviceName}].`);
+    }
+
+    return result;
+}
+
 async function runEnrichment() {
     console.log('═══════════════════════════════════════════════════════════');
     console.log('  HomeFix Service Sub-Service Enrichment');
@@ -127,100 +192,81 @@ async function runEnrichment() {
     const batch = db.batch();
     let opCount = 0;
 
-    try {
-        const categoriesSnap = await db.collection('categories').get();
+    // First: Check nested services path (categories/{categoryId}/services/{serviceId}/subServices)
+    console.log('=== Checking NESTED services path ===\n');
+    const categoriesSnap = await db.collection('categories').get();
+    console.log('Found', categoriesSnap.size, 'categories');
 
-        for (const catDoc of categoriesSnap.docs) {
-            const servicesSnap = await catDoc.ref.collection('services').get();
+    for (const catDoc of categoriesSnap.docs) {
+        const servicesSnap = await catDoc.ref.collection('services').get();
+        console.log(`Category [${catDoc.id}] has ${servicesSnap.size} nested services`);
 
-            for (const serviceDoc of servicesSnap.docs) {
-                servicesScanned++;
-                const serviceData = serviceDoc.data();
-                const serviceId = serviceDoc.id;
-                const serviceName = serviceData.name || serviceData.title || 'Unnamed Service';
-
-                // Count existing sub-services
-                const existingSubSnap = await serviceDoc.ref.collection('subServices').get();
-                const existingCount = existingSubSnap.size;
-                const existingNames = new Set(existingSubSnap.docs.map(d => d.data().name?.toLowerCase()));
-
-                if (existingCount >= MIN_REQUIRED_COUNT) {
-                    console.log(`⏭️  SKIPPING [${serviceName}] - Already has ${existingCount} sub-services.`);
-                    servicesSkipped++;
-                    continue;
-                }
-
-                console.log(`🛠️  ENRICHING [${serviceName}] - Current count: ${existingCount}`);
-
-                const templates = getTemplates(serviceName);
-                let addedInThisService = 0;
-
-                for (const template of templates) {
-                    if (existingCount + addedInThisService >= TARGET_SUB_SERVICE_COUNT) break;
-
-                    // Avoid duplicate names
-                    if (existingNames.has(template.name.toLowerCase())) continue;
-
-                    const subId = generateId(serviceId, template.name);
-                    const subRef = serviceDoc.ref.collection('subServices').doc(subId);
-
-                    const newSubData = {
-                        id: subId,
-                        name: template.name,
-                        imageUrl: getImageUrl(serviceData.imageUrl || serviceData.image),
-                        price: template.price,
-                        order: (existingCount + addedInThisService + 1) * 10,
-                        isActive: true,
-                        createdAt: admin.firestore.FieldValue.serverTimestamp()
-                    };
-
-                    if (!DRY_RUN) {
-                        batch.set(subRef, newSubData);
-                        opCount++;
-
-                        if (opCount >= BATCH_SIZE) {
-                            await batch.commit();
-                            console.log('📦 Batch committed (400 records)');
-                            batch = db.batch();
-                            opCount = 0;
-                        }
+        for (const serviceDoc of servicesSnap.docs) {
+            const result = await processService(serviceDoc, catDoc.id);
+            servicesScanned += result.scanned;
+            servicesUpdated += result.updated;
+            subServicesCreated += result.created;
+            servicesSkipped += result.skipped;
+            
+            // Process batch writes
+            if (!DRY_RUN && result.operations && result.operations.length > 0) {
+                for (const op of result.operations) {
+                    batch.set(op.ref, op.data);
+                    opCount++;
+                    if (opCount >= BATCH_SIZE) {
+                        await batch.commit();
+                        console.log('📦 Batch committed (' + opCount + ' records)');
+                        opCount = 0;
                     }
-
-                    addedInThisService++;
-                    subServicesCreated++;
-                }
-
-                if (addedInThisService > 0) {
-                    servicesUpdated++;
-                    console.log(`   + Added ${addedInThisService} sub-services.`);
-                }
-
-                if (servicesScanned % 25 === 0) {
-                    console.log(`Progress: Scanned ${servicesScanned} services...`);
                 }
             }
         }
-
-        if (!DRY_RUN && opCount > 0) {
-            await batch.commit();
-            console.log(`📦 Final batch committed (${opCount} records)`);
-        }
-
-        console.log('\n═══════════════════════════════════════════════════════════');
-        console.log('  ENRICHMENT SUMMARY');
-        console.log('═══════════════════════════════════════════════════════════');
-        console.log(`  Services Scanned:      ${servicesScanned}`);
-        console.log(`  Services Updated:      ${servicesUpdated}`);
-        console.log(`  Sub-Services Created:  ${subServicesCreated}`);
-        console.log(`  Services Skipped:      ${servicesSkipped}`);
-        console.log('═══════════════════════════════════════════════════════════\n');
-
-        // Run technician alignment check
-        await verifyTechnicianCoverage();
-
-    } catch (error) {
-        console.error('❌ Enrichment failed:', error);
     }
+
+    // Second: Also check top-level services path (services/{serviceId}/subServices)
+    console.log('\n=== Checking TOP-LEVEL services path ===\n');
+    const topLevelServicesSnap = await db.collection('services').get();
+    console.log('Found', topLevelServicesSnap.size, 'top-level services');
+
+    for (const serviceDoc of topLevelServicesSnap.docs) {
+        const result = await processService(serviceDoc, null, true);
+        servicesScanned += result.scanned;
+        servicesUpdated += result.updated;
+        subServicesCreated += result.created;
+        servicesSkipped += result.skipped;
+        
+        // Process batch writes
+        if (!DRY_RUN && result.operations && result.operations.length > 0) {
+            for (const op of result.operations) {
+                batch.set(op.ref, op.data);
+                opCount++;
+                if (opCount >= BATCH_SIZE) {
+                    await batch.commit();
+                    console.log('📦 Batch committed (' + opCount + ' records)');
+                    opCount = 0;
+                }
+            }
+        }
+    }
+
+    if (!DRY_RUN && opCount > 0) {
+        await batch.commit();
+        console.log(`📦 Final batch committed (${opCount} records)`);
+    }
+
+    console.log('\n═══════════════════════════════════════════════════════════');
+    console.log('  ENRICHMENT SUMMARY');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log(`  Services Scanned:      ${servicesScanned}`);
+    console.log(`  Services Updated:      ${servicesUpdated}`);
+    console.log(`  Sub-Services Created:  ${subServicesCreated}`);
+    console.log(`  Services Skipped:      ${servicesSkipped}`);
+    console.log('═══════════════════════════════════════════════════════════\n');
+
+    // Run technician alignment check
+    await verifyTechnicianCoverage();
+
+    return { servicesScanned, servicesUpdated, subServicesCreated, servicesSkipped };
 }
 
 // ============================================================================
