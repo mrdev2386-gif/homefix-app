@@ -50,3 +50,12 @@ firebase-debug.log
 # Env
 .env
 .env.local
+.env.*
+
+# Service account keys & Secrets
+serviceAccountKey.json
+scripts/serviceAccountKey.json
+fix_key.js
+*.pem
+*.key
+*.p12
