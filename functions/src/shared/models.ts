@@ -282,6 +282,7 @@ export interface Booking {
     | 'inspection_scheduled' // Inspection scheduled
     | 'inspection_in_progress' // Tech is inspecting
     | 'awaiting_approval'    // Waiting for customer approval of quote
+    | 'awaiting_payment'     // Waiting for customer to make payment
     | 'approved'             // Customer approved quote
     | 'in_progress'          // Work in progress
     | 'completed'            // Work completed

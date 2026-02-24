@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/models/technician.dart';
-import '../../../core/models/service.dart';
+import 'package:customer_app/core/models/service.dart';
 import '../../../core/widgets/safe_network_image.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
 import '../../booking/presentation/slot_selection_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -25,7 +25,10 @@ class TechnicianListScreen extends StatelessWidget {
     final String title = categoryName ?? service?.title ?? 'Experts';
     
     // Determine query
-    Query query = FirebaseFirestore.instance.collection('technicians');
+    Query query = FirebaseFirestore.instance.collection('technicians')
+      .where('status', isEqualTo: 'active')
+      .where('isApproved', isEqualTo: true)
+      .where('isOnline', isEqualTo: true);
     if (categoryId != null) {
       query = query.where('supportedCategories', arrayContains: categoryId);
     } else if (service != null) {
@@ -153,7 +156,7 @@ class TechnicianListScreen extends StatelessWidget {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(16),
                     child: SafeNetworkImage(
-                      imageUrl: tech.photoUrl,
+                      imageUrl: tech.photoUrl ?? '',
                       width: 70,
                       height: 70,
                       fallbackUrl: 'https://ui-avatars.com/api/?name=${tech.name}&background=6366F1&color=fff',
@@ -178,9 +181,13 @@ class TechnicianListScreen extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          tech.name,
-                          style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.textColor),
+                        Expanded(
+                          child: Text(
+                            tech.name,
+                            style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.textColor),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                         Row(
                           children: [

@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
-import '../../../core/services/auth_service.dart';
+import 'package:customer_app/core/services/auth_service.dart';
 import '../../../core/services/firestore_service.dart';
 import '../widgets/referral_code_card.dart';
 import '../widgets/referral_stats.dart';

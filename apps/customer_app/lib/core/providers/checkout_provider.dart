@@ -7,11 +7,17 @@ class CheckoutProvider with ChangeNotifier {
   DateTime? _selectedDate;
   String? _selectedTimeSlot;
   List<CartItem> _items = [];
+  // NEW: Selected technician for direct booking flow
+  String? _selectedTechnicianId;
+  String? _selectedTechnicianName;
   
   Address? get selectedAddress => _selectedAddress;
   DateTime? get selectedDate => _selectedDate;
   String? get selectedTimeSlot => _selectedTimeSlot;
   List<CartItem> get items => _items;
+  String? get selectedTechnicianId => _selectedTechnicianId;
+  String? get selectedTechnicianName => _selectedTechnicianName;
+  bool get hasSelectedTechnician => _selectedTechnicianId != null;
 
   void setAddress(Address address) {
     _selectedAddress = address;
@@ -26,6 +32,16 @@ class CheckoutProvider with ChangeNotifier {
 
   void setItems(List<CartItem> items) {
     _items = items;
+    if (items.isNotEmpty && items.first.technicianId != null && items.first.technicianId!.isNotEmpty) {
+      _selectedTechnicianId = items.first.technicianId;
+    }
+    notifyListeners();
+  }
+
+  /// Set selected technician for direct booking (new flow)
+  void setSelectedTechnician(String technicianId, String technicianName) {
+    _selectedTechnicianId = technicianId;
+    _selectedTechnicianName = technicianName;
     notifyListeners();
   }
 
@@ -34,6 +50,8 @@ class CheckoutProvider with ChangeNotifier {
     _selectedDate = null;
     _selectedTimeSlot = null;
     _items = [];
+    _selectedTechnicianId = null;
+    _selectedTechnicianName = null;
     notifyListeners();
   }
 

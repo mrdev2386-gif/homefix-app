@@ -20,6 +20,8 @@ class UserModel {
   final double? longitude;
   final bool isVerified;
   final bool isBlocked;
+  final String? district;
+  final bool profileCompleted;
 
   UserModel({
     required this.uid,
@@ -41,6 +43,8 @@ class UserModel {
     this.longitude,
     this.isVerified = false,
     this.isBlocked = false,
+    this.district,
+    this.profileCompleted = false,
   });
 
   // Getter for convenience in UI
@@ -71,6 +75,8 @@ class UserModel {
       longitude: double.tryParse((data['longitude'] ?? 0.0).toString()),
       isVerified: data['isVerified'] ?? false,
       isBlocked: data['isBlocked'] ?? false,
+      district: (data['district'] ?? '').toString(),
+      profileCompleted: data['profileCompleted'] ?? false,
     );
   }
 
@@ -94,6 +100,8 @@ class UserModel {
       'longitude': longitude,
       'isVerified': isVerified,
       'isBlocked': isBlocked,
+      'district': district,
+      'profileCompleted': profileCompleted,
     };
   }
 
@@ -112,6 +120,8 @@ class UserModel {
     bool? isBlocked,
     String? fcmToken,
     List<Map<String, dynamic>>? addresses,
+    String? district,
+    bool? profileCompleted,
   }) {
     return UserModel(
       uid: uid,
@@ -133,6 +143,8 @@ class UserModel {
       longitude: longitude ?? this.longitude,
       isVerified: isVerified ?? this.isVerified,
       isBlocked: isBlocked ?? this.isBlocked,
+      district: district ?? this.district,
+      profileCompleted: profileCompleted ?? this.profileCompleted,
     );
   }
 }

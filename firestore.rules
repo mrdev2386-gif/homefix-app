@@ -17,11 +17,7 @@ service cloud.firestore {
     
     function isAdmin() {
       return isAuthenticated() && 
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
-    }
-    
-    function isActive() {
-      return !resource.data.keys.hasAny(['isActive']) || resource.data.isActive == true;
+        request.auth.token.admin == true;
     }
     
     // ==========================================
@@ -67,7 +63,9 @@ service cloud.firestore {
     }
     
     // Services - public read for service catalog
-    match /services/{serviceId} {
+    
+    // Home Sections - Dynamic home screen control
+    match /homeSections/{sectionId} {
       allow read: if true;
       allow write: if isAdmin();
     }
@@ -77,11 +75,31 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAdmin();
       
-      // SubServices under categories - public read for service catalog
-      match /services/{serviceId}/subServices/{subId} {
-        allow read: if true;
+      // Explicit match for active services under a category
+      match /services/{serviceId} {
+        allow read: if (resource.data.isActive == true) || isAdmin();
         allow write: if isAdmin();
+        
+        // SubServices - explicit path match with strict active check
+        match /subServices/{subId} {
+          allow read: if (resource.data.isActive == true) || isAdmin();
+          allow write: if isAdmin();
+        }
       }
+    }
+
+    // Collection Group: services
+    // Allows querying all services globally where isActive == true
+    match /{path=**}/services/{serviceId} {
+      allow read: if (resource.data.isActive == true) || isAdmin();
+      allow write: if false;
+    }
+
+    // Collection Group: subServices
+    // Allows querying all subServices globally where isActive == true
+    match /{path=**}/subServices/{subId} {
+      allow read: if (resource.data.isActive == true) || isAdmin();
+      allow write: if false;
     }
     
     // Coupons - public read
@@ -128,7 +146,12 @@ service cloud.firestore {
     // Customers
     match /customers/{customerId} {
       allow read: if isOwner(customerId) || isAdmin();
-      allow write: if isOwner(customerId) || isAdmin();
+      allow create: if isOwner(customerId);
+      allow update: if isOwner(customerId) && (
+        !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['walletBalance', 'isSuspended', 'referralCode', 'referredBy', 'isApproved'])
+      );
+      allow delete: if false;
       
       match /cart/{cartItemId} {
         allow read: if isOwner(customerId);
@@ -160,31 +183,28 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
 
-  // Users legacy
-  match /users/{userId} {
-    allow read: if isOwner(userId) || isAdmin();
-    allow write: if isOwner(userId) || isAdmin();
-  }
-    match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow write: if isOwner(userId) || isAdmin();
-    }
-    
-    // ==========================================
-    // BOOKINGS
-    // ==========================================
-    
     match /bookings/{bookingId} {
+      // Read: Admin, customer (owner), or assigned technician
       allow read: if request.auth != null && (
         isAdmin() ||
         request.auth.uid == resource.data.customerId ||
         request.auth.uid == resource.data.customerID ||
         request.auth.uid == resource.data.userId ||
-        request.auth.uid == resource.data.uid
+        request.auth.uid == resource.data.uid ||
+        request.auth.uid == resource.data.technicianId ||
+        request.auth.uid == resource.data.assignedTechnicianId
       );
+      // Write: Only via Cloud Functions (no direct client writes)
       allow create: if false;
       allow update: if false;
       allow delete: if false;
+    }
+
+    // Idempotency Tracking
+    match /booking_idempotency/{id} {
+      // id is customerId_key
+      allow read: if isAuthenticated() && (isAdmin() || id.startsWith(request.auth.uid));
+      allow write: if false; // Only Cloud Functions
     }
     
     // ==========================================
@@ -193,11 +213,7 @@ service cloud.firestore {
     
     match /reviews/{reviewId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && 
-        request.resource.data.keys.hasAny(['customerId']) &&
-        request.resource.data.customerId == request.auth.uid;
-      allow update: if false;
-      allow delete: if isAdmin();
+      allow write: if false; // Writes only via submitServiceRating Cloud Function
     }
     
     // ==========================================
@@ -210,12 +226,7 @@ service cloud.firestore {
         (resource.data.keys.hasAny(['customerId']) && 
          resource.data.customerId == request.auth.uid)
       );
-      allow create: if isAuthenticated() && 
-        request.resource.data.keys.hasAny(['customerId']) &&
-        request.resource.data.customerId == request.auth.uid &&
-        request.resource.data.status == 'processing';
-      allow update: if false;
-      allow delete: if false;
+      allow write: if false; // Writes only via createBookingRequest Cloud Function
     }
     
     // Assignment Requests
@@ -286,6 +297,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     
+    // Admin Logs - Only admin can read/write
+    match /admin_logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+    
     match /admins/{adminId} {
       allow read: if isOwner(adminId);
       allow write: if isAdmin();
@@ -337,6 +354,24 @@ service cloud.firestore {
     }
     
     // ==========================================
+    // TECHNICIAN SERVICES (YouTube-style service listings)
+    // ==========================================
+    
+    // Technician Services - All writes via Cloud Function, read varies
+    match /technician_services/{serviceId} {
+      // Read: Public for active services, owner for own services, admin for all
+      // Note: resource.data is used for existing documents; for collection group queries,
+      // we check the fields directly
+      allow read: if (resource.data.isPublished == true && resource.data.technicianApproved == true) || 
+                  isAdmin() || (isAuthenticated() && resource.data.technicianId == request.auth.uid);
+      
+      // Write: Only via Cloud Function (enforced by function), no direct write
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+    
+    // ==========================================
     // USER ACTIVITY
     // ==========================================
     
@@ -353,18 +388,24 @@ service cloud.firestore {
     }
     
     // ==========================================
-    // CUSTOM REQUESTS
+    // SERVICE REQUESTS (CUSTOM REQUESTS)
     // ==========================================
     
-    match /custom_requests/{requestId} {
+    match /service_requests/{requestId} {
+      // Read: Admin, owner (customer), or assigned technician
       allow read: if isAuthenticated() && (
         isAdmin() ||
         resource.data.customerId == request.auth.uid ||
-        resource.data.technicianAssigned == request.auth.uid
+        resource.data.technicianId == request.auth.uid
       );
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      // Write: ONLY via Cloud Functions
+      allow write: if false;
+    }
+    
+    // Idempotency Tracking for Service Requests
+    match /request_idempotency/{id} {
+      allow read: if isAuthenticated() && (isAdmin() || id.startsWith("custom_" + request.auth.uid));
+      allow write: if false;
     }
     
     // Technician Notifications

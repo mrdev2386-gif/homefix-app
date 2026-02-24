@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../core/services/functions_service.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:customer_app/core/services/functions_service.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
 import '../../cart/presentation/booking_status_screen.dart';
 
 class PaymentScreen extends StatefulWidget {

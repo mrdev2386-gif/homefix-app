@@ -4,7 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
-import '../../../../core/theme/app_theme.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
+import 'package:customer_app/core/widgets/safe_network_image.dart';
 import '../../providers/partner_onboarding_provider.dart';
 
 /// ID Proof Step - Step 5 of 8
@@ -327,19 +328,12 @@ class OnboardingStepIdProof extends StatelessWidget {
                                           borderRadius: BorderRadius.circular(18),
                                           child: kIsWeb
                                               ? (() {
-                                                  print("IMAGE URL => ${provider.idProof!.path}");
-                                                  return Image.network(
-                                                    provider.idProof!.path,
+                                                  // Cleaned: Removed noisy print
+                                                  return SafeNetworkImage(
+                                                    imageUrl: provider.idProof!.path,
                                                     fit: BoxFit.cover,
                                                     width: double.infinity,
                                                     height: 200,
-                                                    loadingBuilder: (context, child, progress) {
-                                                      if (progress == null) return child;
-                                                      return const Center(child: CircularProgressIndicator());
-                                                    },
-                                                    errorBuilder: (context, error, stackTrace) {
-                                                      return const Icon(Icons.image_not_supported, size: 40);
-                                                    },
                                                   );
                                                 }())
                                               : Image.file(

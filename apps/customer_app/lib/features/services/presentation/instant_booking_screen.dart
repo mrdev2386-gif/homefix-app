@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import '../../../core/widgets/safe_network_image.dart';
 import 'package:cloud_functions/cloud_functions.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
 import '../../../core/providers/location_provider.dart';
-import '../../../core/models/category.dart';
-import '../../../core/firestore/category_service.dart';
+import 'package:customer_app/core/models/category.dart';
+import 'package:customer_app/core/services/category_service.dart';
 import 'service_request_screen.dart';
+import '../../custom_request/presentation/custom_request_screen.dart';
 
 /// DTO for instant service from cloud function
 class InstantService {
@@ -43,13 +44,13 @@ class InstantService {
     final double rating = (rawRating is num) ? rawRating.toDouble() : 0.0;
     
     final rawReviewCount = map['reviewCount'];
-    final int reviewCount = (rawReviewCount is num) ? rawReviewCount.toInt() : 0;
+    final int reviewCount = (rawReviewCount is num && rawReviewCount.isFinite) ? rawReviewCount.toInt() : 0;
     
     final rawPrice = map['priceStarting'];
     final double priceStarting = (rawPrice is num) ? rawPrice.toDouble() : 0.0;
     
     final rawArrival = map['estimatedArrivalMinutes'];
-    final int estimatedArrivalMinutes = (rawArrival is num) ? rawArrival.toInt() : 30;
+    final int estimatedArrivalMinutes = (rawArrival is num && rawArrival.isFinite) ? rawArrival.toInt() : 30;
     
     final rawIsVerified = map['isVerified'];
     final bool isVerified = (rawIsVerified is bool) ? rawIsVerified : false;
@@ -127,18 +128,17 @@ class _InstantBookingScreenState extends State<InstantBookingScreen> {
     }
 
     try {
-      final locationProvider = Provider.of<LocationProvider>(context, listen: false);
-      final currentAddress = locationProvider.currentAddress;
-      final selectedAddress = locationProvider.selectedAddress;
-      final latitude = selectedAddress?.latitude ?? locationProvider.currentPosition?.latitude;
-      final longitude = selectedAddress?.longitude ?? locationProvider.currentPosition?.longitude;
+      final addressProvider = context.read<LocationProvider>();
+      final selectedAddress = addressProvider.selectedAddress;
+      final latitude = selectedAddress?.latitude ?? 0.0;
+      final longitude = selectedAddress?.longitude ?? 0.0;
 
       // Build request payload
       final Map<String, dynamic> request = {
-        'city': currentAddress.isNotEmpty ? _extractCity(currentAddress) : '',
-        'area': _extractArea(currentAddress),
-        'latitude': latitude ?? 0.0,
-        'longitude': longitude ?? 0.0,
+        'city': addressProvider.selectedDistrict ?? '',
+        'area': '',
+        'latitude': latitude,
+        'longitude': longitude,
         'categoryId': _selectedCategory?.id,
         'availableNow': _availableNow,
         'sortBy': _sortOption.toString().split('.').last,
@@ -653,9 +653,10 @@ class _InstantBookingScreenState extends State<InstantBookingScreen> {
   }
 
   void _navigateToCustomRequest() {
+    debugPrint('[InstantBooking] Navigating to CustomRequestScreen');
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const ServiceRequestScreen()),
+      MaterialPageRoute(builder: (_) => const CustomRequestScreen()),
     );
   }
 
@@ -682,20 +683,11 @@ class _InstantBookingScreenState extends State<InstantBookingScreen> {
             children: [
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                child: CachedNetworkImage(
+                child: SafeNetworkImage(
                   imageUrl: service.imageUrl ?? '',
                   height: 160,
                   width: double.infinity,
                   fit: BoxFit.cover,
-                  filterQuality: FilterQuality.low,
-                  placeholder: (context, url) => Container(
-                    color: Colors.grey.shade200,
-                    child: const Center(child: CircularProgressIndicator()),
-                  ),
-                  errorWidget: (context, url, error) => Container(
-                    color: Colors.grey.shade200,
-                    child: const Icon(Icons.image_not_supported_rounded),
-                  ),
                 ),
               ),
               // Available badge
@@ -849,7 +841,7 @@ class _InstantBookingScreenState extends State<InstantBookingScreen> {
                     Icon(Icons.star_rounded, size: 14, color: AppTheme.warningColor),
                     const SizedBox(width: 4),
                     Text(
-                      '${service.rating.toStringAsFixed(1)}',
+                      service.rating.toStringAsFixed(1),
                       style: GoogleFonts.outfit(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
@@ -933,13 +925,7 @@ class _InstantBookingScreenState extends State<InstantBookingScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            _buildLocationOption(
-              icon: Icons.my_location_rounded,
-              title: 'Current Location',
-              subtitle: 'Precision location via GPS',
-              onTap: () => _handleCurrentLocation(context),
-            ),
-            const Divider(height: 1, indent: 80),
+
             _buildLocationOption(
               icon: Icons.map_outlined,
               title: 'Add New Address',
@@ -1008,58 +994,7 @@ class _InstantBookingScreenState extends State<InstantBookingScreen> {
     );
   }
 
-  Future<void> _handleCurrentLocation(BuildContext context) async {
-    Navigator.pop(context);
-    
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
 
-    final locationProvider = Provider.of<LocationProvider>(context, listen: false);
-
-    try {
-      final success = await locationProvider.updateCurrentLocation(saveToFirestore: true);
-      
-      if (mounted) {
-        Navigator.pop(context);
-        
-        if (success) {
-          _fetchInstantServices();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Location updated successfully'),
-              backgroundColor: Colors.green,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                locationProvider.currentAddress == 'Location Denied'
-                    ? 'Location permission denied. Please enable in settings.'
-                    : 'Unable to get current location.',
-              ),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to fetch location'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    }
-  }
 
   Future<void> _handleAddNewAddress(BuildContext context) async {
     Navigator.pop(context);

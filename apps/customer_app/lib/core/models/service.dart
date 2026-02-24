@@ -1,6 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../constants/app_constants.dart';
+import 'sub_service.dart';
+
+
 
 class HomeService {
   final String id;
@@ -12,13 +15,25 @@ class HomeService {
   final double basePrice;
   final bool isActive;
   final String category;
+  final String categoryName;
   final bool isTopService;
   final int order;
   final double rating;
   final int reviewCount;
   final bool isTrending;
+  final bool isRecommended;
   final String duration;
   final DateTime createdAt;
+  final bool isPublished;
+  final bool status; // Derived from 'status' field: true if 'active'
+  final bool technicianApproved; // Added to match Cloud Functions
+  final String? technicianId;
+  final String? technicianName;
+  final String? technicianDistrict;
+  final List<SubService> subServices;
+
+  // Derived status helper
+  bool get isActiveStatus => status;
 
   // Aliases for user requested fields
   String get name => title;
@@ -34,13 +49,22 @@ class HomeService {
     required this.basePrice,
     required this.isActive,
     required this.category,
+    required this.categoryName,
     required this.isTopService,
     required this.order,
     this.rating = 4.5,
     this.reviewCount = 0,
     this.isTrending = false,
+    this.isRecommended = false,
     this.duration = '1 hour',
     required this.createdAt,
+    this.isPublished = true,
+    this.status = true,
+    this.technicianApproved = true,
+    this.technicianId,
+    this.technicianName,
+    this.technicianDistrict,
+    this.subServices = const [],
   });
 
   static HomeService? fromFirestore(DocumentSnapshot doc) {
@@ -48,12 +72,35 @@ class HomeService {
     final String id = doc.id;
 
     // MANDATORY CATEGORY CHECK - FIX FOR SERVICE_COUNT 0
-    final categoryId = data['category'] ?? data['categoryId'];
+    String? categoryId = data['category'] ?? data['categoryId'];
+    
+    // FORENSIC FIX: Infer categoryId from path if missing
     if (categoryId == null || categoryId.toString().isEmpty) {
-      if (kDebugMode) {
-        debugPrint('⚠️ SERVICE SKIPPED — missing categoryId → $id');
+      try {
+        // Try to find 'categories' segment in path
+        final pathSegments = doc.reference.path.split('/');
+        final catIndex = pathSegments.indexOf('categories');
+        if (catIndex != -1 && catIndex + 1 < pathSegments.length) {
+          categoryId = pathSegments[catIndex + 1];
+          if (kDebugMode) {
+            debugPrint('🔧 [HomeService] Inferred categoryId=$categoryId from path for ${doc.id}');
+          }
+        }
+      } catch (e) {
+        // ignore
       }
-      return null;
+    }
+
+    if (categoryId == null || categoryId.toString().isEmpty) {
+      // ✅ LOG but do NOT drop — the service is still valid for display.
+      // categoryId is only needed for subServices path, which is now always
+      // supplied via widget.categoryId from the navigation argument.
+      if (kDebugMode) {
+        debugPrint('⚠️ [HomeService] categoryId missing for doc: $id (path: ${doc.reference.path})');
+        debugPrint('   Service will still be shown. categoryId defaults to empty string.');
+        debugPrint('   FIX: Add categoryId/category field to this Firestore document.');
+      }
+      categoryId = ''; // safe fallback — never drop a service just for missing categoryId
     }
 
     // DEBUG (Temporary as requested)
@@ -88,12 +135,14 @@ class HomeService {
 
     final bool isActive = data['isActive'] ?? true;
     final String finalCategory = categoryId.toString();
+    final String finalCategoryName = (data['categoryName'] ?? data['category'] ?? 'General').toString();
+    
     final bool isTop = data['isTopService'] ?? false;
     
     int order = 0;
     final dynamic orderData = data['order'] ?? 0;
     if (orderData is num) {
-      order = orderData.toInt();
+      order = (orderData.isFinite ? orderData : 0).toInt();
     } else if (orderData is String) {
       order = int.tryParse(orderData) ?? 0;
     }
@@ -107,14 +156,15 @@ class HomeService {
     }
 
     int reviews = 0;
-    final dynamic reviewsData = data['reviewCount'] ?? data['reviews'] ?? 0;
-    if (reviewsData is num) {
-      reviews = reviewsData.toInt();
-    } else if (reviewsData is String) {
-      reviews = int.tryParse(reviewsData) ?? 0;
+    final dynamic reviewsDataRaw = data['reviewCount'] ?? data['reviews'] ?? 0;
+    if (reviewsDataRaw is num) {
+      reviews = (reviewsDataRaw.isFinite ? reviewsDataRaw : 0).toInt();
+    } else if (reviewsDataRaw is String) {
+      reviews = int.tryParse(reviewsDataRaw) ?? 0;
     }
 
     final bool isTrending = data['isTrending'] ?? false;
+    final bool isRecommended = data['isRecommended'] ?? false;
     final String duration = (data['duration'] ?? '1 hour').toString();
     
     DateTime createdAt = DateTime.now();
@@ -122,8 +172,26 @@ class HomeService {
       createdAt = (data['createdAt'] as Timestamp).toDate();
     }
 
+    String? technicianId = data['technicianId']?.toString();
+    if (technicianId == null || technicianId.isEmpty) {
+      try {
+        final pathSegments = doc.reference.path.split('/');
+        final techIndex = pathSegments.indexOf('technicians');
+        if (techIndex != -1 && techIndex + 1 < pathSegments.length) {
+          technicianId = pathSegments[techIndex + 1];
+        }
+      } catch (_) {}
+    }
+
+    List<SubService> subServices = [];
+    if (data['subServices'] is List) {
+      subServices = (data['subServices'] as List)
+          .map((item) => SubService.fromMap(item as Map<String, dynamic>))
+          .toList();
+    }
+
     return HomeService(
-      id: id,
+      id: id.isNotEmpty ? id : 'unknown',
       key: key,
       title: title,
       imageAssetPath: '', // Deprecated: No longer used for network images
@@ -132,13 +200,22 @@ class HomeService {
       basePrice: price,
       isActive: isActive,
       category: finalCategory,
+      categoryName: finalCategoryName,
       isTopService: isTop,
       order: order,
       rating: rating,
       reviewCount: reviews,
       isTrending: isTrending,
+      isRecommended: isRecommended,
       duration: duration,
       createdAt: createdAt,
+      isPublished: data['isPublished'] ?? true,
+      status: data['status'] == 'active' || data['isActive'] == true,
+      technicianApproved: data['technicianApproved'] ?? true,
+      technicianId: technicianId,
+      technicianName: data['technicianName']?.toString(),
+      technicianDistrict: data['technicianDistrict']?.toString() ?? data['district']?.toString(),
+      subServices: subServices,
     );
   }
 
@@ -151,13 +228,19 @@ class HomeService {
       'price': basePrice,
       'isActive': isActive,
       'category': category,
+      'categoryName': categoryName,
       'isTopService': isTopService,
       'order': order,
       'rating': rating,
       'reviewCount': reviewCount,
       'isTrending': isTrending,
+      'isRecommended': isRecommended,
       'duration': duration,
       'createdAt': Timestamp.fromDate(createdAt),
+      'isPublished': isPublished,
+      'technicianApproved': technicianApproved,
+      'status': status ? 'active' : 'inactive',
+      'technicianId': technicianId,
     };
   }
 

@@ -13,6 +13,8 @@ import 'screens/dashboard_screen.dart';
 import 'screens/block_screen.dart';
 import 'screens/application_status_screen.dart';
 import 'features/kyc/presentation/kyc_status_screen.dart';
+import 'core/services/technician_catalog_service.dart';
+
 
 
 import 'firebase_options.dart';
@@ -20,6 +22,8 @@ import 'firebase_options.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_performance/firebase_performance.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -41,13 +45,15 @@ void main() async {
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   
-  // Initialize Push Notifications
-  await NotificationsService.initialize();
+  // Initialize Push Notifications (Singleton)
+  await NotificationsService().initialize();
 
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => TechnicianProvider()),
+        Provider(create: (_) => TechnicianCatalogService()),
+        ChangeNotifierProvider(create: (_) => NotificationsService()),
       ],
       child: const TechnicianApp(),
     ),
@@ -62,6 +68,7 @@ class TechnicianApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'HomeFix Technician',
+      navigatorKey: navigatorKey,
       theme: AppTheme.lightTheme,
       home: const AuthGate(),
     );
@@ -87,12 +94,16 @@ class AuthGate extends StatelessWidget {
                 return const Scaffold(body: Center(child: CircularProgressIndicator()));
               }
 
+              if (provider.isLoading) {
+                return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              }
+
               if (provider.userRole != 'technician' && provider.userRole != 'admin') {
                 return const BlockScreen();
               }
 
               if (provider.technician == null) {
-                return const BlockScreen(); // No technician profile yet
+                return const OnboardingScreen(); // Start onboarding flow
               }
               
               final status = provider.technician!.status;

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../../core/models/service.dart';
+import 'package:customer_app/core/models/service.dart';
 import '../../../../core/widgets/safe_network_image.dart';
 import '../../services/presentation/service_details_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -31,6 +31,7 @@ class _ServiceCardGridState extends State<ServiceCardGrid> {
               MaterialPageRoute(
                 builder: (_) => ServiceDetailsScreen(
                   serviceId: widget.service.id,
+                  categoryId: widget.service.category,
                   serviceName: widget.service.title,
                   serviceData: widget.service,
                 ),

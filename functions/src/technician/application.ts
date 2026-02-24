@@ -391,108 +391,92 @@ export const submitApplication = functions.https.onCall(async (data, context) =>
     return { success: true, message: 'Application submitted successfully.' };
 });
 
-export const submitFullApplication = functions.https.onCall(async (data, context) => {
+export const submitTechnicianApplication = functions.https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
     const {
-        name, email, phone, address, city, pinCode,
-        bankName, accountNumber, ifsc, accountHolder,
-        categories, subcategories, experience,
-        idProofUrl, photoUrl
-    } = data; // Match keys sent from Flutter
+        fullName,
+        email,
+        experienceYears,
+        primaryCategoryId,
+        documentType,
+        frontImage,
+        backImage
+    } = data;
 
-    // Check for existing application
+    // 1. Validation
+    if (!fullName || fullName.length < 3) {
+        throw new functions.https.HttpsError('invalid-argument', 'Full name is required (min 3 chars).');
+    }
+    if (!email || !email.includes('@')) {
+        throw new functions.https.HttpsError('invalid-argument', 'Valid email is required.');
+    }
+    if (!experienceYears || experienceYears < 1 || experienceYears > 10) {
+        throw new functions.https.HttpsError('invalid-argument', 'Experience years must be between 1 and 10.');
+    }
+    if (!primaryCategoryId) {
+        throw new functions.https.HttpsError('invalid-argument', 'Primary category is required.');
+    }
+    if (!documentType || !['Aadhaar', 'PAN', 'Passport', 'Voter ID'].includes(documentType)) {
+        throw new functions.https.HttpsError('invalid-argument', 'Valid document type is required.');
+    }
+    if (!frontImage || !backImage) {
+        throw new functions.https.HttpsError('invalid-argument', 'Both front and back images of the document are required.');
+    }
+
+    // 2. Check for existing application
     const existingApp = await db.collection('technician_applications').doc(uid).get();
-    if (existingApp.exists) {
-        throw new functions.https.HttpsError('already-exists', 'Application already submitted.');
+    if (existingApp.exists && existingApp.data()?.status === 'submitted') {
+        throw new functions.https.HttpsError('already-exists', 'Application already submitted and is under review.');
     }
 
-    // Basic Validation
-    if (!name || !phone || !categories || !subcategories) {
-        throw new functions.https.HttpsError('invalid-argument', 'Missing required fields.');
-    }
-
-    // Construct the Application Data Structure
+    // 3. Construct Application Data
     const applicationData = {
-        id: uid,
-        phone,
-        status: 'submitted', // Direct to submitted
-        currentStep: 9, // Skipped steps
-
-        personalDetails: {
-            name,
-            email,
-            phone,
-            address,
-            city,
-            pinCode, // Note: Schema uses 'pinCodes' in serviceArea, but 'pinCode' in UI. 
-            // We'll map for now.
-            photoUrl: photoUrl || null
+        uid,
+        fullName,
+        email,
+        experienceYears,
+        primaryCategoryId,
+        documentType,
+        documents: {
+            frontImage,
+            backImage
         },
-
-        skills: {
-            // We need to map the flat lists to the structure expected: { serviceId: { ... } }
-            // But since the UI sends flat lists, we might store them as is for this simplified flow,
-            // OR we try to construct the complex object.
-            // For now, let's store the raw UI selection to allow admin viewing.
-            categories,     // List of IDs
-            subcategories, // List of IDs
-        },
-
-        experience: {
-            years: experience,
-            description: ""
-        },
-
-        bankDetails: {
-            bankName,
-            accountNumber, // Should encrypt
-            ifsc,
-            holderName: accountHolder
-        },
-
-        kyc: {
-            idProofUrl,
-            status: 'pending'
-        },
-
-        submittedAt: admin.firestore.FieldValue.serverTimestamp(),
+        status: 'pending_admin',
+        isApproved: false,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
     };
 
-    // Save Application Doc
-    await db.collection('technician_applications').doc(uid).set(applicationData);
+    // 4. Save to Firestore
+    const batch = db.batch();
 
-    // Also create the Technician Profile (Inactive)
-    // Note: This duplicates logic from 'submitApplication' but adapts to the new data shape.
-    const techData = {
-        id: uid,
-        name,
+    // Create/Update Application
+    batch.set(db.collection('technician_applications').doc(uid), applicationData, { merge: true });
+
+    // Create/Update Technician Profile (Inactive)
+    batch.set(db.collection('technicians').doc(uid), {
+        uid,
+        name: fullName,
         email,
-        phone,
-        photoUrl: photoUrl || null,
-
-        address,
-        city,
-
-        categoryIds: categories,
-        subcategoryIds: subcategories,
-
-        experienceYears: experience,
-
+        experienceYears,
+        primaryCategoryId,
         status: 'pending_verification',
+        isApproved: false,
         isActive: false,
-        isOnline: false,
-
         rating: 0,
         totalJobs: 0,
-
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    await batch.commit();
+
+    console.log(`Technician Application Submitted: ${uid} (${fullName})`);
+
+    return {
+        success: true,
+        message: 'Application submitted successfully. Waiting for admin approval.',
+        status: 'pending_admin'
     };
-
-    await db.collection('technicians').doc(uid).set(techData);
-
-    return { success: true, message: 'Application received.' };
 });

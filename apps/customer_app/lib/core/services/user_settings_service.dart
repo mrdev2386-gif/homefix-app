@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import '../models/user_settings.dart';
 
 class UserSettingsService {
@@ -7,6 +8,10 @@ class UserSettingsService {
 
   /// Stream user settings
   Stream<UserSettings> streamUserSettings(String userId) {
+    if (userId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in streamUserSettings');
+      return Stream.value(UserSettings.defaults());
+    }
     return _db
         .collection('customers')
         .doc(userId)
@@ -18,6 +23,10 @@ class UserSettingsService {
 
   /// Get user settings once
   Future<UserSettings> getUserSettings(String userId) async {
+    if (userId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in getUserSettings');
+      return UserSettings.defaults();
+    }
     try {
       final doc = await _db
           .collection('customers')
@@ -38,20 +47,16 @@ class UserSettingsService {
     String userId,
     NotificationSettings settings,
   ) async {
-    try {
-      await _db
-          .collection('customers')
-          .doc(userId)
-          .collection('settings')
-          .doc('preferences')
-          .set({
-        'notifications': settings.toMap(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-    } catch (e) {
-      debugPrint('Error updating notification settings: $e');
-      rethrow;
+    if (userId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in updateNotificationSettings');
+      return;
     }
+    debugPrint('[WRITE GUARD] Direct write blocked in updateNotificationSettings');
+    await updateAllSettings(userId, UserSettings(
+      notifications: settings,
+      privacy: PrivacySettings.defaults(),
+      preferences: PreferenceSettings.defaults(),
+    ));
   }
 
   /// Update privacy settings
@@ -59,20 +64,16 @@ class UserSettingsService {
     String userId,
     PrivacySettings settings,
   ) async {
-    try {
-      await _db
-          .collection('customers')
-          .doc(userId)
-          .collection('settings')
-          .doc('preferences')
-          .set({
-        'privacy': settings.toMap(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-    } catch (e) {
-      debugPrint('Error updating privacy settings: $e');
-      rethrow;
+    if (userId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in updatePrivacySettings');
+      return;
     }
+    debugPrint('[WRITE GUARD] Direct write blocked in updatePrivacySettings');
+    await updateAllSettings(userId, UserSettings(
+      notifications: NotificationSettings.defaults(),
+      privacy: settings,
+      preferences: PreferenceSettings.defaults(),
+    ));
   }
 
   /// Update preference settings
@@ -80,20 +81,16 @@ class UserSettingsService {
     String userId,
     PreferenceSettings settings,
   ) async {
-    try {
-      await _db
-          .collection('customers')
-          .doc(userId)
-          .collection('settings')
-          .doc('preferences')
-          .set({
-        'preferences': settings.toMap(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-    } catch (e) {
-      debugPrint('Error updating preference settings: $e');
-      rethrow;
+    if (userId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in updatePreferenceSettings');
+      return;
     }
+    debugPrint('[WRITE GUARD] Direct write blocked in updatePreferenceSettings');
+    await updateAllSettings(userId, UserSettings(
+      notifications: NotificationSettings.defaults(),
+      privacy: PrivacySettings.defaults(),
+      preferences: settings,
+    ));
   }
 
   /// Update all settings at once
@@ -101,46 +98,34 @@ class UserSettingsService {
     String userId,
     UserSettings settings,
   ) async {
+    if (userId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in updateAllSettings');
+      return;
+    }
+    debugPrint('[WRITE GUARD] Direct write blocked in updateAllSettings');
     try {
-      await _db
-          .collection('customers')
-          .doc(userId)
-          .collection('settings')
-          .doc('preferences')
-          .set({
-        ...settings.toMap(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      final callable = FirebaseFunctions.instance.httpsCallable('updateUserSettingsCallable');
+      await callable.call(settings.toMap());
+      debugPrint('✅ [Settings] Updated via callable');
     } catch (e) {
-      debugPrint('Error updating all settings: $e');
+      debugPrint('❌ [Settings] Update failed: $e');
       rethrow;
     }
   }
 
   /// Initialize default settings for new user
   Future<void> initializeDefaultSettings(String userId) async {
+    if (userId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in initializeDefaultSettings');
+      return;
+    }
+    debugPrint('[WRITE GUARD] Direct write blocked in initializeDefaultSettings');
     try {
-      final doc = await _db
-          .collection('customers')
-          .doc(userId)
-          .collection('settings')
-          .doc('preferences')
-          .get();
-
-      if (!doc.exists) {
-        await _db
-            .collection('customers')
-            .doc(userId)
-            .collection('settings')
-            .doc('preferences')
-            .set({
-          ...UserSettings.defaults().toMap(),
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-      }
+      final callable = FirebaseFunctions.instance.httpsCallable('initializeUserSettingsCallable');
+      await callable.call();
+      debugPrint('✅ [Settings] Initialized via callable');
     } catch (e) {
-      debugPrint('Error initializing default settings: $e');
+      debugPrint('❌ [Settings] Initialization failed: $e');
     }
   }
 }

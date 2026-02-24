@@ -4,8 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../core/models/dashboard_models.dart';
 import '../../../core/widgets/safe_network_image.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../core/services/functions_service.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
+import 'package:customer_app/core/services/functions_service.dart';
 import '../../../core/providers/location_provider.dart';
 import '../../services/presentation/service_list_screen.dart';
 
@@ -28,22 +28,17 @@ class _CleaningEssentialsSectionState extends State<CleaningEssentialsSection> {
     final locationProvider = Provider.of<LocationProvider>(context, listen: false);
     final functionsService = Provider.of<FunctionsService>(context, listen: false);
 
-    if (locationProvider.currentPosition == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enable location to check availability')),
-      );
-      await locationProvider.updateCurrentLocation();
-      return;
-    }
-
     setState(() => _isLoading = true);
 
     try {
+      final latitude = locationProvider.selectedAddress?.latitude ?? 0.0;
+      final longitude = locationProvider.selectedAddress?.longitude ?? 0.0;
+
       final result = await functionsService.findEligibleTechniciansCount(
         essential.categoryId,
         {
-          'latitude': locationProvider.currentPosition!.latitude,
-          'longitude': locationProvider.currentPosition!.longitude,
+          'latitude': latitude,
+          'longitude': longitude,
         },
       );
 

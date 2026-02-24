@@ -10,6 +10,8 @@ import '../models/proposal.dart';
 import '../models/user_model.dart';
 import '../models/cart_item.dart';
 import '../models/dashboard_models.dart';
+import '../models/service_result.dart';
+import '../utils/firestore_guards.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -38,71 +40,22 @@ class FirestoreService {
         .map((doc) => Booking.fromFirestore(doc));
   }
   
-  // Create a new booking (Harden: Use FunctionsService instead of direct write)
-  // This method is now legacy, all callers should move to FunctionsService.createBooking
-  Future<String> createBooking(Booking booking) async {
-    final callable = FirebaseFunctions.instance.httpsCallable('createBookingV2');
-    final result = await callable.call(booking.toMap());
-    return result.data['bookingId'] ?? "";
-  }
-
-  // Get Services - supports simple filtering (UNIFIED: Now uses collectionGroup to support nested categories as source)
-  Stream<List<HomeService>> streamServices({
-    bool isTopOnly = false, 
-    String? category, 
-    int limit = 20,
-    DocumentSnapshot? startAfter,
-  }) {
-    // Single source of truth is nested: categories/{catId}/services
-    // We use collectionGroup to fetch them all globally
-    Query query = _db.collectionGroup('services')
-        .where('isActive', isEqualTo: true)
-        .orderBy('order') // MANDATORY: Proper ordering for index consistency
-        .limit(limit);
-    
-    if (startAfter != null) {
-      query = query.startAfterDocument(startAfter);
-    }
-
-    if (isTopOnly) {
-      // Note: This would require a composite index (collectionGroup + isActive + order + rating)
-      // If index is missing, it will throw an error with the link to create it.
-      query = query.where('rating', isGreaterThanOrEqualTo: 4.5);
-    }
-    
-    if (category != null && category.isNotEmpty) {
-      // Note: Filter by category field must still exist on the service document
-      query = query.where('categoryId', isEqualTo: category);
-    }
-    
-    return query.snapshots().map((snapshot) {
-      final List<HomeService> services = [];
-      
-      for (var doc in snapshot.docs) {
-        try {
-          final service = HomeService.fromFirestore(doc);
-          if (service == null) continue;
-          
-          // AUDIT: Defensive check for imageUrl
-          if (service.imageUrl == null || service.imageUrl!.isEmpty) {
-            debugPrint('⚠️ [FirestoreService] Skipping service ${doc.id} due to missing imageUrl');
-            continue;
-          }
-          services.add(service);
-        } catch (e) {
-          debugPrint('❌ [FirestoreService] Error parsing service ${doc.id}: $e');
-        }
-      }
-
-      // We maintain the Firestore order (by 'order' field)
-      return services;
-    }).handleError((error) {
-       if (error.toString().contains('failed-precondition')) {
-         debugPrint('🚨 [FirestoreService] MISSING INDEX ERROR. Please create the required index using the link in the Firebase console.');
-       }
-       debugPrint('❌ [FirestoreService] Stream error: $error');
-       return <HomeService>[];
-    });
+  /// CRITICAL: Stream for Home Screen "All Services"
+  Stream<List<HomeService>> streamAllTechnicianServices({int limit = 50}) {
+    return _db.collectionGroup('technician_services')
+        .where('status', isEqualTo: 'active')
+        .where('isPublished', isEqualTo: true)
+        .where('technicianApproved', isEqualTo: true)
+        .orderBy('createdAt', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map((snapshot) {
+          final services = snapshot.docs
+              .map((doc) => HomeService.fromFirestore(doc))
+              .whereType<HomeService>()
+              .toList();
+          return services;
+        });
   }
   
   // Get Banners - removed orderBy to avoid index requirement
@@ -183,76 +136,127 @@ class FirestoreService {
 
   // --- Cart Management ---
   Stream<List<CartItem>> streamCart(String userId) {
-    return _db.collection('customers').doc(userId).collection('cart')
+    if (!FirestoreGuards.isValidDocumentId(userId)) {
+      debugPrint('[CART] Invalid userId, returning empty stream');
+      return Stream.value([]);
+    }
+    
+    final userDoc = FirestoreGuards.safeDoc(_db.collection('customers'), userId);
+    if (userDoc == null) {
+      return Stream.value([]);
+    }
+    
+    return userDoc.collection('cart')
         .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) => CartItem.fromFirestore(doc)).toList());
+        .map((snapshot) {
+          final items = snapshot.docs.map((doc) => CartItem.fromFirestore(doc)).toList();
+          
+          // CLEANUP: Auto-remove invalid cart items (legacy data protection)
+          for (final item in items) {
+            if (!item.isValid) {
+              debugPrint('🧹 [CART] Removing invalid cart item: ${item.id}');
+              // Schedule removal after stream completes - use direct method call
+              Future.microtask(() => removeFromCart(userId, item.id).catchError((e) {
+                debugPrint('⚠️ [CART] Failed to remove invalid item: $e');
+              }));
+            }
+          }
+          
+          // Return only valid items using the isValid getter
+          return items.where((item) => item.isValid).toList();
+        })
+        .handleError((e) {
+          debugPrint('❌ [CART] Stream error: $e');
+          return <CartItem>[];
+        });
   }
 
   Future<void> addToCart(String userId, CartItem item) async {
-    // SECURITY: Verify serviceId existence before adding to cart
-    final serviceDoc = await _db
-        .collection('categories')
-        .doc(item.categoryId)
-        .collection('services')
-        .doc(item.serviceId)
-        .get();
-
-    if (!serviceDoc.exists) {
-      throw 'Service no longer exists';
-    }
-
-    final cartRef = _db.collection('customers').doc(userId).collection('cart');
-    
-    // Check if item already exists
-    final existing = await cartRef.where('serviceId', isEqualTo: item.serviceId).get();
-    
-    if (existing.docs.isNotEmpty) {
-      final doc = existing.docs.first;
-      final currentQty = doc.data()['quantity'] as int? ?? 0;
-      final newQty = currentQty + item.quantity;
-      await doc.reference.update({
-        'quantity': newQty,
-        'totalPrice': newQty * (doc.data()['price'] as double? ?? 0.0),
-      });
-    } else {
-      final docRef = cartRef.doc();
-      await docRef.set(item.copyWith(id: docRef.id).toMap());
+    if (!FirestoreGuards.isValidDocumentId(userId)) {
+      debugPrint('[CART] Invalid userId, aborting add');
+      throw Exception('Invalid user ID');
     }
     
-    // Track for abandonment reminders
-    await _db.collection('customers').doc(userId).set({
-      'lastCartUpdate': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    // DEV ASSERT: Validate critical fields before writing
+    assert(item.serviceId.isNotEmpty, 'serviceId is mandatory for cart item');
+    assert(item.technicianId != null && item.technicianId!.isNotEmpty, 'technicianId is mandatory for cart item');
+    assert(item.categoryId.isNotEmpty, 'categoryId is mandatory for cart item');
+    assert(item.categoryName.isNotEmpty, 'categoryName is mandatory for cart item');
+    assert(item.finalPriceSnapshot > 0, 'finalPriceSnapshot must be valid');
+    
+    try {
+      debugPrint('[CART] Adding item via callable...');
+      final callable = FirebaseFunctions.instance.httpsCallable('addToCartCallable');
+      await callable.call(item.toMap());
+      debugPrint('✅ [CART] Item added successfully');
+    } catch (e) {
+      debugPrint('❌ [CART] Add failed: $e');
+      rethrow;
+    }
   }
 
   Future<void> updateCartItemQuantity(String userId, String itemId, int quantity) async {
-    final docRef = _db.collection('customers').doc(userId).collection('cart').doc(itemId);
-    final doc = await docRef.get();
-    if (doc.exists) {
-      final price = doc.data()?['price'] as double? ?? 0.0;
-      await docRef.update({
+    if (!FirestoreGuards.isValidDocumentId(userId)) {
+      debugPrint('[CART] Invalid userId, aborting update');
+      throw Exception('Invalid user ID');
+    }
+    
+    if (!FirestoreGuards.isValidDocumentId(itemId)) {
+      debugPrint('[CART] Invalid itemId, aborting update');
+      throw Exception('Invalid item ID');
+    }
+    
+    try {
+      debugPrint('[CART] Updating quantity via callable...');
+      final callable = FirebaseFunctions.instance.httpsCallable('updateCartQuantityCallable');
+      await callable.call({
+        'itemId': itemId,
         'quantity': quantity,
-        'totalPrice': quantity * price,
       });
-      // Track for abandonment reminders
-      await _db.collection('customers').doc(userId).set({
-        'lastCartUpdate': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      debugPrint('✅ [CART] Quantity updated successfully');
+    } catch (e) {
+      debugPrint('❌ [CART] Update failed: $e');
+      rethrow;
     }
   }
 
   Future<void> removeFromCart(String userId, String itemId) async {
-    await _db.collection('customers').doc(userId).collection('cart').doc(itemId).delete();
+    if (!FirestoreGuards.isValidDocumentId(userId)) {
+      debugPrint('[CART] Invalid userId, aborting remove');
+      throw Exception('Invalid user ID');
+    }
+    
+    if (!FirestoreGuards.isValidDocumentId(itemId)) {
+      debugPrint('[CART] Invalid itemId, aborting remove');
+      throw Exception('Invalid item ID');
+    }
+    
+    try {
+      debugPrint('[CART] Removing item via callable...');
+      final callable = FirebaseFunctions.instance.httpsCallable('removeFromCartCallable');
+      await callable.call({'itemId': itemId});
+      debugPrint('✅ [CART] Item removed successfully');
+    } catch (e) {
+      debugPrint('❌ [CART] Remove failed: $e');
+      rethrow;
+    }
   }
 
   Future<void> clearCart(String userId) async {
-    final cartRef = _db.collection('customers').doc(userId).collection('cart');
-    final batch = _db.batch();
-    final snapshot = await cartRef.get();
-    for (var doc in snapshot.docs) {
-      batch.delete(doc.reference);
+    if (!FirestoreGuards.isValidDocumentId(userId)) {
+      debugPrint('[CART] Invalid userId, aborting clear');
+      throw Exception('Invalid user ID');
     }
-    await batch.commit();
+    
+    try {
+      debugPrint('[CART] Clearing cart via callable...');
+      final callable = FirebaseFunctions.instance.httpsCallable('clearCartCallable');
+      await callable.call();
+      debugPrint('✅ [CART] Cart cleared successfully');
+    } catch (e) {
+      debugPrint('❌ [CART] Clear failed: $e');
+      rethrow;
+    }
   }
 
   // --- Service Request ---
@@ -294,43 +298,32 @@ class FirestoreService {
 
   // --- Referrals ---
   Future<void> processReferral(String currentUserId, String referralCode) async {
-    final query = await _db.collection('customers').where('referralCode', isEqualTo: referralCode).get();
-    if (query.docs.isEmpty) throw 'Invalid referral code';
-
-    final referrerId = query.docs.first.id;
-    if (referrerId == currentUserId) throw 'Cannot refer yourself';
-
-    final batch = _db.batch();
-    batch.update(_db.collection('customers').doc(referrerId), {'walletBalance': FieldValue.increment(50.0)});
-    batch.update(_db.collection('customers').doc(currentUserId), {
-      'walletBalance': FieldValue.increment(50.0),
-      'referredBy': referralCode,
-    });
-
-    final tRef1 = _db.collection('wallet_transactions').doc();
-    batch.set(tRef1, {
-      'userId': referrerId,
-      'amount': 50.0,
-      'type': 'credit',
-      'reason': 'Referral Bonus',
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-
-    final tRef2 = _db.collection('wallet_transactions').doc();
-    batch.set(tRef2, {
-      'userId': currentUserId,
-      'amount': 50.0,
-      'type': 'credit',
-      'reason': 'Referral Bonus',
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-
-    await batch.commit();
+    if (currentUserId.isEmpty || referralCode.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in processReferral');
+      return;
+    }
+    
+    debugPrint('[WRITE GUARD] Direct write blocked in processReferral');
+    try {
+      final callable = FirebaseFunctions.instance.httpsCallable('processReferralCallable');
+      await callable.call({
+        'referralCode': referralCode,
+      });
+      debugPrint('✅ [Referral] Processed via callable');
+    } catch (e) {
+      debugPrint('❌ [Referral] Process failed: $e');
+      rethrow;
+    }
   }
 
   // --- User Profile ---
   Future<void> updateUserDefaultAddress(String userId, String address) async {
-    await _db.collection('customers').doc(userId).set({'defaultAddress': address, 'updatedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
+    if (userId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in updateUserDefaultAddress');
+      return;
+    }
+    debugPrint('[WRITE GUARD] Direct write blocked in updateUserDefaultAddress');
+    await updateUserProfile(userId, {'defaultAddress': address});
   }
   
   Future<Map<String, dynamic>?> getUserData(String userId) async {
@@ -339,17 +332,26 @@ class FirestoreService {
   }
 
   Future<void> updateUserData(String userId, Map<String, dynamic> data) async {
-    await _db.collection('customers').doc(userId).update(data);
+    if (userId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in updateUserData');
+      return;
+    }
+    debugPrint('[WRITE GUARD] Direct write blocked in updateUserData');
+    await updateUserProfile(userId, data);
   }
 
   /// Update user profile image URL
   /// CRITICAL: Only updates profileImageUrl field
   Future<void> updateProfileImageUrl(String userId, String imageUrl) async {
-    await _db.collection('customers').doc(userId).set({
+    if (userId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in updateProfileImageUrl');
+      return;
+    }
+    debugPrint('[WRITE GUARD] Direct write blocked in updateProfileImageUrl');
+    await updateUserProfile(userId, {
       'photoUrl': imageUrl,
-      'profileImageUrl': imageUrl, // Keep both for compatibility
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+      'profileImageUrl': imageUrl,
+    });
   }
 
   Stream<UserModel> streamUserModel(String userId) {
@@ -362,29 +364,51 @@ class FirestoreService {
   }
 
   Future<void> updateUserProfile(String userId, Map<String, dynamic> data) async {
-    await _db.collection('customers').doc(userId).set(data, SetOptions(merge: true));
+    if (userId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in updateUserProfile');
+      return;
+    }
+    debugPrint('[WRITE GUARD] Direct write blocked in updateUserProfile');
+    try {
+      final callable = FirebaseFunctions.instance.httpsCallable('updateUserProfile');
+      await callable.call(data);
+      debugPrint('✅ [Profile] Updated via callable');
+    } catch (e) {
+      debugPrint('❌ [Profile] Update failed: $e');
+      rethrow;
+    }
   }
 
   Future<void> becomeTechnician(String userId, Map<String, dynamic> data) async {
-    await _db.collection('technician_applications').doc(userId).set({
-      ...data,
-      'userId': userId,
-      'status': 'pending',
-      'appliedAt': FieldValue.serverTimestamp(),
-    });
+    if (userId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in becomeTechnician');
+      return;
+    }
+    debugPrint('[WRITE GUARD] Direct write blocked in becomeTechnician');
+    try {
+      final callable = FirebaseFunctions.instance.httpsCallable('submitPartnerApplication');
+      await callable.call(data);
+      debugPrint('✅ [Technician] Application submitted via callable');
+    } catch (e) {
+      debugPrint('❌ [Technician] Submission failed: $e');
+      rethrow;
+    }
   }
 
   // --- Favorites --- Harden: Added categoryId to ensure correct service lookup in nested structure
   Future<void> toggleFavorite(String userId, String categoryId, String serviceId, bool isFavorite) async {
-    final docRef = _db.collection('customers').doc(userId).collection('favorites').doc(serviceId);
-    if (isFavorite) {
-      await docRef.set({
+    if (userId.isEmpty || serviceId.isEmpty) return;
+    try {
+      final callable = FirebaseFunctions.instance.httpsCallable('toggleFavoriteCallable');
+      await callable.call({
         'serviceId': serviceId,
         'categoryId': categoryId,
-        'addedAt': FieldValue.serverTimestamp()
+        'isFavorite': isFavorite,
       });
-    } else {
-      await docRef.delete();
+      debugPrint('✅ [Favorite] Toggled via callable (status: $isFavorite)');
+    } catch (e) {
+      debugPrint('❌ [Favorite] Toggle failed: $e');
+      rethrow;
     }
   }
 
@@ -402,7 +426,7 @@ class FirestoreService {
       if (items.isEmpty) return [];
       
       final services = <HomeService>[];
-      for (const item in items) {
+      for (final item in items) {
         final categoryId = item['categoryId'];
         final serviceId = item['serviceId'];
         
@@ -419,28 +443,12 @@ class FirestoreService {
   }
 
   // --- Dashboard Data ---
-  Stream<List<ProfessionalReel>> streamProfessionalReels() {
-    debugPrint("[Firestore] streaming celebrating_professionals...");
-    return _db
-        .collection('celebrating_professionals')
-        .where('isActive', isEqualTo: true)
-        .snapshots()
-        .map((snapshot) {
-          debugPrint("[Firestore] celebrating_professionals docs: ${snapshot.docs.length}");
-          final reels = snapshot.docs.map((doc) => ProfessionalReel.fromFirestore(doc)).toList();
-          reels.sort((a, b) => a.order.compareTo(b.order));
-          return reels;
-        });
-  }
-
   Stream<List<CleaningEssential>> streamCleaningEssentials() {
-    debugPrint("[Firestore] streaming cleaning_essentials...");
     return _db
         .collection('cleaning_essentials')
         .where('isActive', isEqualTo: true)
         .snapshots()
         .map((snapshot) {
-          debugPrint("[Firestore] cleaning_essentials docs: ${snapshot.docs.length}");
           final essentials = snapshot.docs.map((doc) => CleaningEssential.fromFirestore(doc)).toList();
           // Sort by order field in-memory
           essentials.sort((a, b) => a.order.compareTo(b.order));
@@ -450,36 +458,43 @@ class FirestoreService {
 
   Stream<List<Map<String, dynamic>>> streamServiceSpotlight() {
     return _db.collection('service_spotlight').limit(6).snapshots().asyncMap((snapshot) async {
-      final spotlights = <Map<String, dynamic>>[];
-      for (var doc in snapshot.docs) {
-        final data = doc.data();
-        final serviceId = data['serviceId'] as String? ?? data['id'];
-        int techCount = 0;
-        if (serviceId != null && serviceId.isNotEmpty) {
-          final techSnapshot = await _db.collection('technicians').where('serviceId', isEqualTo: serviceId).where('status', isEqualTo: 'approved').where('isAvailable', isEqualTo: true).get();
-          techCount = techSnapshot.docs.length;
+      try {
+        final spotlights = <Map<String, dynamic>>[];
+        for (var doc in snapshot.docs) {
+          final data = doc.data();
+          final serviceId = data['serviceId'] as String? ?? data['id'];
+          int techCount = 0;
+          if (serviceId != null && serviceId.isNotEmpty) {
+            final techSnapshot = await _db.collection('technicians')
+                .where('serviceId', isEqualTo: serviceId)
+                .where('status', isEqualTo: 'approved')
+                .where('isAvailable', isEqualTo: true)
+                .get();
+            techCount = techSnapshot.docs.length;
+          }
+          spotlights.add({'id': doc.id, ...data, 'availableTechnicians': techCount});
         }
-        spotlights.add({'id': doc.id, ...data, 'availableTechnicians': techCount});
+        return spotlights;
+      } catch (e) {
+        debugPrint('❌ [FirestoreService] Spotlight query failed: $e');
+        return [];
       }
-      return spotlights;
     });
   }
 
   Stream<List<ServiceBanner>> streamServiceBottomBanners() {
-    debugPrint("[Firestore] streaming service_bottom_banners...");
     return _db
         .collection('service_bottom_banners')
         .where('isActive', isEqualTo: true)
         .snapshots()
         .map((snapshot) {
-          debugPrint("[Firestore] service_bottom_banners docs: ${snapshot.docs.length}");
           final List<ServiceBanner> banners = [];
           for (var doc in snapshot.docs) {
             try {
               final banner = ServiceBanner.fromFirestore(doc);
               // AUDIT: Defensive check for imageUrl
               if (banner.imageUrl.isEmpty) {
-                debugPrint('⚠️ [FirestoreService] Skipping bottom banner ${doc.id} due to missing imageUrl');
+                // debugPrint('⚠️ [FirestoreService] Skipping bottom banner ${doc.id} due to missing imageUrl');
                 continue;
               }
               banners.add(banner);
@@ -548,5 +563,94 @@ class FirestoreService {
       .toList();
     subcategories.sort((a, b) => a.order.compareTo(b.order));
     return subcategories;
+  }
+
+  Stream<List<HomeService>> streamRecommendedServices(String userId, {int limit = 10}) {
+    // 1. Fetch user's last booking categories or district
+    return _db.collection('bookings')
+        .where('customerId', isEqualTo: userId)
+        .orderBy('createdAt', descending: true)
+        .limit(2)
+        .snapshots()
+        .asyncMap((snapshot) async {
+          final List<String> preferredCategoryIds = [];
+          String? userDistrict;
+
+          if (snapshot.docs.isNotEmpty) {
+            for (var doc in snapshot.docs) {
+              final catId = doc.data()['categoryId'];
+              if (catId != null) preferredCategoryIds.add(catId);
+            }
+          }
+
+          // Also get user district for localized recommendations
+          final customerDoc = await _db.collection('customers').doc(userId).get();
+          if (customerDoc.exists) {
+            userDistrict = customerDoc.data()?['district'];
+          }
+
+          // 2. Build Query
+          Query query = _db.collectionGroup('technician_services')
+              .where('status', isEqualTo: 'active')
+              .where('isPublished', isEqualTo: true)
+              .where('technicianApproved', isEqualTo: true);
+
+          // Priority 1: Preferred Categories
+          if (preferredCategoryIds.isNotEmpty) {
+            query = query.where('categoryId', whereIn: preferredCategoryIds.take(10).toList());
+          } 
+          // Priority 2: User District
+          else if (userDistrict != null && userDistrict.isNotEmpty) {
+            query = query.where('technicianDistrict', isEqualTo: userDistrict);
+          }
+          // Fallback: Top Rated (handled via post-processing or orderBy)
+          else {
+            query = query.where('rating', isGreaterThanOrEqualTo: 4.0).orderBy('rating', descending: true);
+          }
+
+          final finalSnapshot = await query.limit(limit).get();
+          
+          // If query returned nothing, absolute fallback to Top Rated
+          if (finalSnapshot.docs.isEmpty) {
+            final fallbackSnapshot = await _db.collectionGroup('technician_services')
+                .where('status', isEqualTo: 'active')
+                .where('isPublished', isEqualTo: true)
+                .where('technicianApproved', isEqualTo: true)
+                .where('rating', isGreaterThanOrEqualTo: 4.0)
+                .orderBy('rating', descending: true)
+                .limit(limit)
+                .get();
+            return fallbackSnapshot.docs.map((doc) => HomeService.fromFirestore(doc)).whereType<HomeService>().toList();
+          }
+
+          return finalSnapshot.docs.map((doc) => HomeService.fromFirestore(doc)).whereType<HomeService>().toList();
+        });
+  }
+
+  Stream<List<HomeService>> streamTopRatedTechnicianServices({int limit = 10}) {
+    return _db.collectionGroup('technician_services')
+        .where('status', isEqualTo: 'active')
+        .where('isPublished', isEqualTo: true)
+        .where('technicianApproved', isEqualTo: true)
+        .where('rating', isGreaterThanOrEqualTo: 4.0)
+        .orderBy('rating', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map((snapshot) {
+          return snapshot.docs.map((doc) => HomeService.fromFirestore(doc)).whereType<HomeService>().toList();
+        });
+  }
+
+  Stream<List<HomeService>> streamRecentTechnicianServices({int limit = 10}) {
+    return _db.collectionGroup('technician_services')
+        .where('status', isEqualTo: 'active')
+        .where('isPublished', isEqualTo: true)
+        .where('technicianApproved', isEqualTo: true)
+        .orderBy('createdAt', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map((snapshot) {
+          return snapshot.docs.map((doc) => HomeService.fromFirestore(doc)).whereType<HomeService>().toList();
+        });
   }
 }

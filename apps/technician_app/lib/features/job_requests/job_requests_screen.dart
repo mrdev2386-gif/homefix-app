@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import '../../core/firestore/booking_service.dart';
+import '../../core/services/booking_service.dart';
 import '../../core/models/booking.dart';
 import '../../core/providers/technician_provider.dart';
 import '../../core/widgets/safe_network_image.dart';
+import 'package:shimmer/shimmer.dart';
 
 class JobRequestsScreen extends StatefulWidget {
   const JobRequestsScreen({super.key});
@@ -26,7 +27,7 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: Text(
-          "Available Requests",
+          "Job Assignments",
           style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold),
         ),
         actions: [
@@ -39,24 +40,47 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
       body: tech == null
           ? const Center(child: CircularProgressIndicator())
           : StreamBuilder<List<Booking>>(
-              stream: _bookingService.getAvailableBookings(tech.skills),
+              stream: _bookingService.getPendingBookings(tech.uid),
               builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Text('Error loading requests: ${snapshot.error}', textAlign: TextAlign.center),
+                    ),
+                  );
+                }
+
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    itemCount: 3,
+                    itemBuilder: (context, index) => _buildSkeletonCard(),
+                  );
                 }
 
                 final bookings = snapshot.data ?? [];
 
-                if (bookings.isEmpty) {
-                  return _buildEmptyState();
-                }
-
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  itemCount: bookings.length,
-                  itemBuilder: (context, index) {
-                    return _buildRequestCard(bookings[index], tech);
+                return RefreshIndicator(
+                  onRefresh: () async {
+                    // Just wait a moment since Stream is real-time
+                    await Future.delayed(const Duration(milliseconds: 500));
                   },
+                  child: bookings.isEmpty
+                      ? Stack(
+                          children: [
+                            ListView(), // Empty list view to allow Pull-to-refresh
+                            _buildEmptyState(),
+                          ],
+                        )
+                      : ListView.builder(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          itemCount: bookings.length,
+                          itemBuilder: (context, index) {
+                            return _buildRequestCard(bookings[index], tech);
+                          },
+                        ),
                 );
               },
             ),
@@ -76,11 +100,11 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
                 color: const Color(0xFFEEF2FF),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.search_rounded, size: 48, color: Color(0xFF6366F1)),
+              child: const Icon(Icons.inbox_outlined, size: 48, color: Color(0xFF6366F1)),
             ),
             const SizedBox(height: 24),
             Text(
-              "Looking for jobs...",
+              "No pending assignments",
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
@@ -89,7 +113,7 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              "As soon as customers post jobs in your area, they will appear right here.",
+              "Once an administrator assigns a job to you, it will appear here for your approval.",
               textAlign: TextAlign.center,
               style: GoogleFonts.plusJakartaSans(
                 color: const Color(0xFF64748B),
@@ -157,7 +181,7 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            "₹${b.price.toInt()}",
+                            "₹${b.finalAmount.toInt()}",
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
@@ -241,24 +265,24 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () {},
+                        onPressed: () => _handleAction(b.bookingId, 'reject'),
                         style: OutlinedButton.styleFrom(
                           minimumSize: const Size(0, 52),
-                          foregroundColor: const Color(0xFF94A3B8),
-                          side: const BorderSide(color: Color(0xFFE2E8F0)),
+                          foregroundColor: Colors.red,
+                          side: const BorderSide(color: Colors.red),
                         ),
-                        child: const Text("Dismiss"),
+                        child: const Text("Decline"),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: () => _showQuoteModal(context, b, tech),
+                        onPressed: () => _handleAction(b.bookingId, 'accept'),
                         style: ElevatedButton.styleFrom(
                           minimumSize: const Size(0, 52),
-                          backgroundColor: const Color(0xFF0F172A),
+                          backgroundColor: const Color(0xFF6366F1),
                         ),
-                        child: const Text("Submit Quote"),
+                        child: const Text("Accept Job"),
                       ),
                     ),
                   ],
@@ -297,144 +321,75 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
   }
 
 
-  void _showQuoteModal(BuildContext context, Booking booking, dynamic tech) {
-    final priceController = TextEditingController(text: booking.price.toInt().toString());
-    final noteController = TextEditingController();
-    DateTime selectedDate = booking.scheduledAt;
-    String selectedTime = booking.scheduledTime;
+  void _handleAction(String bookingId, String action) async {
+    try {
+      if (action == 'accept') {
+        await _bookingService.acceptBooking(bookingId);
+      } else {
+        await _bookingService.rejectBooking(bookingId);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Job ${action}ed successfully")),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e")),
+        );
+      }
+    }
+  }
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Container(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-          ),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildSkeletonCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.grey.shade100),
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Shimmer.fromColors(
+        baseColor: Colors.grey[200]!,
+        highlightColor: Colors.grey[100]!,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
-                const SizedBox(height: 24),
-                Text("Send Your Quote", style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                Text("Offer your best price and schedule for this task.", style: GoogleFonts.outfit(color: const Color(0xFF64748B))),
-                const SizedBox(height: 32),
-                
-                Text("Proposed Price (₹)", style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: priceController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(prefixIcon: Icon(Icons.currency_rupee_rounded)),
+                Container(width: 64, height: 64, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18))),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(width: 80, height: 12, color: Colors.white),
+                      const SizedBox(height: 8),
+                      Container(width: 120, height: 24, color: Colors.white),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 24),
-
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text("Visit Date", style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 8),
-                          InkWell(
-                            onTap: () async {
-                              final date = await showDatePicker(
-                                context: context,
-                                initialDate: selectedDate,
-                                firstDate: DateTime.now(),
-                                lastDate: DateTime.now().add(const Duration(days: 30)),
-                              );
-                              if (date != null) setModalState(() => selectedDate = date);
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.calendar_today_rounded, size: 16, color: Color(0xFF6366F1)),
-                                  const SizedBox(width: 8),
-                                  Text(DateFormat('dd MMM').format(selectedDate)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text("Visit Time", style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 8),
-                          InkWell(
-                            onTap: () async {
-                              final time = await showTimePicker(
-                                context: context,
-                                initialTime: TimeOfDay.now(),
-                              );
-                              if (time != null) setModalState(() => selectedTime = time.format(context));
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade200)),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.access_time_rounded, size: 16, color: Color(0xFF6366F1)),
-                                  const SizedBox(width: 8),
-                                  Text(selectedTime),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                Text("Optional Note", style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: noteController,
-                  maxLines: 3,
-                  decoration: const InputDecoration(hintText: "E.g. I can bring all necessary tools..."),
-                ),
-                const SizedBox(height: 32),
-                
-                ElevatedButton(
-                  onPressed: () {
-                    final price = double.tryParse(priceController.text) ?? booking.price;
-                    _bookingService.sendQuote(
-                      bookingId: booking.bookingId, 
-                      technicianId: tech.uid, 
-                      technicianName: tech.name, 
-                      price: price, 
-                      date: selectedDate, 
-                      time: selectedTime,
-                      note: noteController.text,
-                    ).then((_) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Quote sent successfully!")));
-                    });
-                  },
-                  child: const Text("Send Proposal"),
-                ),
+                Container(width: 60, height: 24, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10))),
               ],
             ),
-          ),
+            const SizedBox(height: 20),
+            Container(width: 200, height: 20, color: Colors.white),
+            const SizedBox(height: 12),
+            Container(width: double.infinity, height: 14, color: Colors.white),
+            const SizedBox(height: 28),
+            Row(
+              children: [
+                Expanded(child: Container(height: 52, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)))),
+                const SizedBox(width: 12),
+                Expanded(child: Container(height: 52, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)))),
+              ],
+            ),
+          ],
         ),
       ),
     );
   }
 }
+

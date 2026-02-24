@@ -1,12 +1,11 @@
-/**
- * Chat Service for HomeFix Customer App
- * 
- * Handles all chat-related operations:
- * - Get or create chat for a booking
- * - Send messages
- * - Mark messages as read
- * - Stream messages in real-time
- */
+/// Chat Service for HomeFix Customer App
+/// 
+/// Handles all chat-related operations:
+/// - Get or create chat for a booking
+/// - Send messages
+/// - Mark messages as read
+/// - Stream messages in real-time
+library;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -32,16 +31,14 @@ class ChatService {
   // GET OR CREATE CHAT
   // ==========================================
 
-  /**
-   * Gets existing chat or creates new one for a booking.
-   * Only works when booking status is 'accepted' and technician is assigned.
-   * 
-   * Returns ChatResult containing chatId and participant info.
-   * 
-   * Throws HttpsError with:
-   * - 'failed-precondition' if booking not accepted or no technician assigned
-   * - 'permission-denied' if user is not a participant
-   */
+  /// Gets existing chat or creates new one for a booking.
+  /// Only works when booking status is 'accepted' and technician is assigned.
+  /// 
+  /// Returns ChatResult containing chatId and participant info.
+  /// 
+  /// Throws HttpsError with:
+  /// - 'failed-precondition' if booking not accepted or no technician assigned
+  /// - 'permission-denied' if user is not a participant
   Future<ChatResult> getOrCreateChat(String bookingId) async {
     try {
       final callable = _functions.httpsCallable('getOrCreateChat');
@@ -58,15 +55,13 @@ class ChatService {
   // SEND MESSAGE
   // ==========================================
 
-  /**
-   * Sends a message to a chat.
-   * 
-   * Returns messageId on success.
-   * 
-   * Throws HttpsError with:
-   * - 'resource-exhausted' if rate limited
-   * - 'permission-denied' if user not a participant
-   */
+  /// Sends a message to a chat.
+  /// 
+  /// Returns messageId on success.
+  /// 
+  /// Throws HttpsError with:
+  /// - 'resource-exhausted' if rate limited
+  /// - 'permission-denied' if user not a participant
   Future<String> sendMessage(String chatId, String text, {String? imageUrl}) async {
     try {
       final callable = _functions.httpsCallable('sendChatMessage');
@@ -87,11 +82,9 @@ class ChatService {
   // MARK MESSAGES READ
   // ==========================================
 
-  /**
-   * Marks unread messages in a chat as read.
-   * Only marks messages sent by the other party.
-   * Uses debouncing to prevent rapid-fire calls.
-   */
+  /// Marks unread messages in a chat as read.
+  /// Only marks messages sent by the other party.
+  /// Uses debouncing to prevent rapid-fire calls.
   Future<int> markMessagesRead(String chatId) async {
     final now = DateTime.now();
     final lastCall = _readDebounceMap[chatId];
@@ -118,9 +111,7 @@ class ChatService {
   // GET CHAT DETAILS
   // ==========================================
 
-  /**
-   * Gets chat details including booking info.
-   */
+  /// Gets chat details including booking info.
   Future<Map<String, dynamic>> getChatDetails(String chatId) async {
     try {
       final callable = _functions.httpsCallable('getChatDetails');
@@ -136,10 +127,8 @@ class ChatService {
   // REAL-TIME MESSAGE STREAM
   // ==========================================
 
-  /**
-   * Creates a stream of messages for a chat.
-   * Uses Firestore snapshots for real-time updates.
-   */
+  /// Creates a stream of messages for a chat.
+  /// Uses Firestore snapshots for real-time updates.
   Stream<List<ChatMessage>> getMessagesStream(String chatId) {
     return _firestore
         .collection('chats')
@@ -155,9 +144,7 @@ class ChatService {
     });
   }
 
-  /**
-   * Loads older messages for pagination.
-   */
+  /// Loads older messages for pagination.
   Future<List<ChatMessage>> loadMoreMessages(
     String chatId,
     DateTime beforeDate,
@@ -180,9 +167,7 @@ class ChatService {
   // CHAT LIST (For future ChatListScreen)
   // ==========================================
 
-  /**
-   * Gets all chats for the current user.
-   */
+  /// Gets all chats for the current user.
   Stream<List<Chat>> getChatsStream() {
     if (_userId == null) {
       return Stream.value([]);

@@ -3,9 +3,9 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/widgets/safe_network_image.dart';
 import '../../../core/services/firestore_service.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
 import '../../services/presentation/service_details_screen.dart';
-import '../../../core/models/service.dart';
+import 'package:customer_app/core/models/service.dart';
 
 class ServiceSpotlightSection extends StatelessWidget {
   const ServiceSpotlightSection({super.key});
@@ -113,6 +113,7 @@ class ServiceSpotlightSection extends StatelessWidget {
           MaterialPageRoute(
             builder: (context) => ServiceDetailsScreen(
               serviceId: serviceId,
+              categoryId: data['category'] ?? '',
               serviceName: title,
               serviceData: HomeService(
                 id: serviceId,
@@ -122,6 +123,7 @@ class ServiceSpotlightSection extends StatelessWidget {
                 imageAssetPath: '',
                 description: data['description'] ?? '',
                 category: data['category'] ?? '',
+                categoryName: data['categoryName'] ?? data['category'] ?? 'Service',
                 basePrice: price,
                 rating: rating,
                 reviewCount: data['reviewCount'] ?? 0,
@@ -164,7 +166,7 @@ class ServiceSpotlightSection extends StatelessWidget {
                         height: double.infinity,
                         color: AppTheme.accentColor,
                         child: SafeNetworkImage(
-                          imageUrl: imageUrl,
+                          imageUrl: imageUrl ?? '',
                           fit: BoxFit.cover,
                           serviceName: title,
                         ),

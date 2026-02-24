@@ -4,7 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
-import '../../../../core/theme/app_theme.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
+import 'package:customer_app/core/widgets/safe_network_image.dart';
 import '../../providers/partner_onboarding_provider.dart';
 
 /// Profile Photo Step - Step 4 of 8
@@ -308,19 +309,12 @@ class OnboardingStepPhoto extends StatelessWidget {
                                           borderRadius: BorderRadius.circular(22),
                                           child: kIsWeb
                                               ? (() {
-                                                  print("IMAGE URL => ${provider.profilePhoto!.path}");
-                                                  return Image.network(
-                                                    provider.profilePhoto!.path,
+                                                  // Cleaned: Removed noisy print
+                                                  return SafeNetworkImage(
+                                                    imageUrl: provider.profilePhoto!.path,
                                                     fit: BoxFit.cover,
                                                     width: 180,
                                                     height: 180,
-                                                    loadingBuilder: (context, child, progress) {
-                                                      if (progress == null) return child;
-                                                      return const Center(child: CircularProgressIndicator());
-                                                    },
-                                                    errorBuilder: (context, error, stackTrace) {
-                                                      return const Icon(Icons.image_not_supported, size: 40);
-                                                    },
                                                   );
                                                 }())
                                               : Image.file(

@@ -2,22 +2,21 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_app_check/firebase_app_check.dart';
+
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_performance/firebase_performance.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
-import 'core/theme/app_theme.dart';
-import 'core/services/auth_service.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
+import 'package:customer_app/core/services/auth_service.dart';
 import 'core/services/firestore_service.dart';
-import 'core/services/functions_service.dart';
+import 'package:customer_app/core/services/functions_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/notifications_service.dart';
 import 'core/providers/cart_provider.dart';
 import 'core/providers/favorites_provider.dart';
 import 'core/providers/auth_provider.dart';
 import 'core/providers/category_provider.dart';
-import 'core/providers/service_provider.dart';
 import 'core/providers/booking_provider.dart';
 import 'core/providers/location_provider.dart';
 import 'core/providers/checkout_provider.dart';
@@ -28,8 +27,11 @@ import 'features/auth/screens/splash_screen.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/onboarding_screen.dart';
 import 'features/home/main_wrapper_screen.dart';
+import 'features/custom_request/presentation/custom_request_screen.dart';
+import 'features/profile/presentation/saved_addresses_screen.dart';
 import 'core/models/user_model.dart';
 import 'firebase_options.dart';
+import 'core/firebase/firebase_init.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -46,54 +48,8 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
     
-    // 1. Initialize App Check (Critical Security)
-    try {
-      if (kDebugMode) {
-        // Debug mode: Use debug provider to avoid "Too many attempts" error
-        await FirebaseAppCheck.instance.activate(
-          androidProvider: AndroidProvider.debug,
-          appleProvider: AppleProvider.debug,
-          webProvider: ReCaptchaV3Provider('6LfqvMsqAAAAAA-E4yG4yv6YvY-vS9k1yL_S0G4A'),
-        );
-        debugPrint("═══════════════════════════════════════════════════════════");
-        debugPrint("🔐 AppCheck initialized in DEBUG mode");
-        debugPrint("═══════════════════════════════════════════════════════════");
-        
-        // Listen for App Check token changes and log the debug token
-        FirebaseAppCheck.instance.onTokenChange.listen((token) {
-          if (token != null) {
-            debugPrint("═══════════════════════════════════════════════════════════");
-            debugPrint("🎫 APP CHECK DEBUG TOKEN:");
-            debugPrint("   Copy this token and add it to Firebase Console:");
-            debugPrint("   Firebase Console → App Check → Apps → Manage debug tokens");
-            debugPrint("   Token: $token");
-            debugPrint("═══════════════════════════════════════════════════════════");
-          }
-        });
-        
-        // Also try to get the token immediately
-        try {
-          final token = await FirebaseAppCheck.instance.getToken();
-          if (token != null) {
-            debugPrint("🎫 Initial App Check token obtained successfully");
-          }
-        } catch (tokenError) {
-          debugPrint("⚠️ Could not get initial App Check token: $tokenError");
-          debugPrint("   This is normal on first run. Uninstall app and run again.");
-        }
-      } else {
-        // Production mode: Use Play Integrity
-        await FirebaseAppCheck.instance.activate(
-          androidProvider: AndroidProvider.playIntegrity,
-          appleProvider: AppleProvider.deviceCheck,
-          webProvider: ReCaptchaV3Provider('6LfqvMsqAAAAAA-E4yG4yv6YvY-vS9k1yL_S0G4A'),
-        );
-        debugPrint("🔐 AppCheck initialized in PRODUCTION mode (Play Integrity)");
-      }
-    } catch (e) {
-      debugPrint("❌ AppCheck initialization failed: $e");
-      debugPrint("   Uploads and Firestore operations may fail without App Check.");
-    }
+    // Initialize App Check (Critical Security)
+    await initFirebaseSecurity();
 
     // 2. Initialize Crashlytics & Performance
     if (!kIsWeb) {
@@ -104,9 +60,9 @@ void main() async {
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
     }
     
-    // Initialize Push Notifications
+    // 4. Initialize Push Notifications (Singleton)
     try {
-      await NotificationsService.initialize();
+      await NotificationsService().initialize();
     } catch (e) {
       debugPrint("Notifications initialization failed: $e");
     }
@@ -135,7 +91,6 @@ class HomeFixApp extends StatelessWidget {
         Provider<StorageService>(create: (_) => StorageService()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => CategoryProvider()),
-        ChangeNotifierProvider(create: (_) => ServiceProvider()),
         ChangeNotifierProxyProvider<AuthProvider, FavoritesProvider>(
           create: (_) => FavoritesProvider(),
           update: (_, auth, favorites) => favorites!..updateUserId(auth.user?.uid),
@@ -148,11 +103,10 @@ class HomeFixApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => LocationProvider()),
         ChangeNotifierProvider(create: (_) => CheckoutProvider()),
         ChangeNotifierProvider(create: (_) => LocaleProvider()),
-        ChangeNotifierProvider(
-          create: (context) => PartnerOnboardingProvider(
-            context.read<StorageService>(),
-          ),
-        ),
+        ChangeNotifierProvider(create: (_) => NotificationsService()),
+        ChangeNotifierProvider(create: (context) => PartnerOnboardingProvider(
+          context.read<StorageService>(),
+        )),
       ],
       child: Consumer<LocaleProvider>(
         builder: (context, localeProvider, child) {
@@ -174,6 +128,10 @@ class HomeFixApp extends StatelessWidget {
               GlobalWidgetsLocalizations.delegate,
               GlobalCupertinoLocalizations.delegate,
             ],
+            routes: {
+              '/customRequest': (context) => const CustomRequestScreen(),
+              '/addresses': (context) => const SavedAddressesScreen(),
+            },
             home: const AuthWrapper(),
           );
         },
@@ -240,15 +198,41 @@ class _AuthWrapperState extends State<AuthWrapper> {
       return const LoginScreen();
     }
 
-    // Check if user data is loaded
+    // Initialize services with user ID
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<LocationProvider>(context, listen: false).initialize(user.uid);
+    });
+
+    // Check if user data is loaded - with ROOT PROFILE GUARD
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
     return StreamBuilder<UserModel>(
       stream: firestoreService.streamUserModel(user.uid),
       builder: (context, snapshot) {
+        // Show splash while loading user data
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SplashScreen();
+        }
+        
         final userData = snapshot.data;
-        if (userData == null || !userData.isOnboarded) {
+        
+        // ROOT PROFILE GUARD - Check profile completion before allowing access
+        debugPrint('[ROOT_PROFILE_GUARD] Checking profile completion...');
+        debugPrint('[ROOT_PROFILE_GUARD] userData: ${userData?.toString()}');
+        debugPrint('[ROOT_PROFILE_GUARD] profileCompleted: ${userData?.profileCompleted}');
+        debugPrint('[ROOT_PROFILE_GUARD] district: ${userData?.district}');
+        
+        // Check if profile is completed with district
+        if (userData == null) {
+          debugPrint('[ROOT_PROFILE_GUARD] User data null, showing onboarding');
           return const OnboardingScreen();
         }
+        
+        if (!userData.profileCompleted || userData.district == null || userData.district!.isEmpty) {
+          debugPrint('[ROOT_PROFILE_GUARD] Profile incomplete, showing district selection');
+          return const OnboardingScreen();
+        }
+        
+        debugPrint('[ROOT_PROFILE_GUARD] Profile complete, showing MainWrapper');
         return const MainWrapperScreen();
       },
     );

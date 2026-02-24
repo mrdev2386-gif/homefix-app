@@ -68,12 +68,12 @@ class _CustomRequestDetailScreenState extends State<CustomRequestDetailScreen> {
     });
 
     try {
-      final result = await _functionsService.acceptCustomRequest(widget.requestId);
+      final result = await _functionsService.technicianRespondServiceRequest(widget.requestId, 'accept');
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Request accepted! Booking #${result['bookingNumber']} created'),
+            content: Text('Request accepted successfully!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -162,11 +162,11 @@ class _CustomRequestDetailScreenState extends State<CustomRequestDetailScreen> {
             _buildLocationCard(request),
             const SizedBox(height: 12),
             _buildCustomerCard(request),
-            const SizedBox(height: 100), // Space for bottom button
+            const SizedBox(height: 120), // Space for bottom buttons
           ],
         ),
       ),
-      bottomSheet: _buildAcceptButton(request),
+      bottomSheet: _buildBottomActions(request),
     );
   }
 
@@ -554,7 +554,11 @@ class _CustomRequestDetailScreenState extends State<CustomRequestDetailScreen> {
     );
   }
 
-  Widget _buildAcceptButton(CustomRequest request) {
+  Widget _buildBottomActions(CustomRequest request) {
+    if (request.status != RequestStatus.pending && request.status.value != 'technician_pending') {
+      return const SizedBox.shrink(); // Hide if already accepted/rejected/booked
+    }
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -567,37 +571,109 @@ class _CustomRequestDetailScreenState extends State<CustomRequestDetailScreen> {
           ),
         ],
       ),
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton(
-          onPressed: _isAccepting ? null : _acceptRequest,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF2E7D32),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          child: _isAccepting
-              ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
+      child: SafeArea(
+        child: Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _isAccepting ? null : () => _respondToRequest('reject'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(color: Colors.red),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                )
-              : Text(
-                  'Accept Request',
+                ),
+                child: Text(
+                  'Reject',
                   style: GoogleFonts.poppins(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              flex: 2,
+              child: ElevatedButton(
+                onPressed: _isAccepting ? null : () => _respondToRequest('accept'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2E7D32),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: _isAccepting
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        'Accept Request',
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+              ),
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  Future<void> _respondToRequest(String action) async {
+    final techProvider = Provider.of<TechnicianProvider>(context, listen: false);
+    if (techProvider.technician == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please complete your profile first')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isAccepting = true;
+    });
+
+    try {
+      String? reason;
+      if (action == 'reject') {
+        reason = 'Technician declined the request';
+      }
+
+      final result = await _functionsService.technicianRespondServiceRequest(widget.requestId, action, reason: reason);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Successfully updated request.'),
+            backgroundColor: action == 'accept' ? Colors.green : Colors.orange,
+          ),
+        );
+        Navigator.of(context).pop(true);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isAccepting = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   String _formatBudget(double? min, double? max) {

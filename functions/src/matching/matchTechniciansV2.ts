@@ -7,9 +7,7 @@
  * - Concurrency-safe queries
  */
 
-import { onCall } from "firebase-functions/v2/https";
-import { CallableRequest } from "firebase-functions/v2/https";
-import * as https from "firebase-functions/v2/https";
+import * as functions from 'firebase-functions';
 import * as admin from "firebase-admin";
 
 if (!admin.apps.length) {
@@ -23,34 +21,34 @@ const db = admin.firestore();
 // ==========================================
 
 interface LogContext {
-    customerId?: string;
-    serviceId?: string;
-    functionName: string;
-    startTime: number;
+  customerId?: string;
+  serviceId?: string;
+  functionName: string;
+  startTime: number;
 }
 
 function createLogContext(customerId?: string, serviceId?: string): LogContext {
-    return {
-        customerId,
-        serviceId,
-        functionName: "matchTechniciansV2",
-        startTime: Date.now()
-    };
+  return {
+    customerId,
+    serviceId,
+    functionName: "matchTechniciansV1", // Renamed for clarity in logs
+    startTime: Date.now()
+  };
 }
 
 function logStructured(ctx: LogContext, level: string, action: string, data?: Record<string, any>) {
-    const duration = Date.now() - ctx.startTime;
-    const logEntry = {
-        level,
-        function: ctx.functionName,
-        action,
-        customerId: ctx.customerId,
-        serviceId: ctx.serviceId,
-        durationMs: duration,
-        timestamp: new Date().toISOString(),
-        ...data
-    };
-    console.log(JSON.stringify(logEntry));
+  const duration = Date.now() - ctx.startTime;
+  const logEntry = {
+    level,
+    function: ctx.functionName,
+    action,
+    customerId: ctx.customerId,
+    serviceId: ctx.serviceId,
+    durationMs: duration,
+    timestamp: new Date().toISOString(),
+    ...data
+  };
+  console.log(JSON.stringify(logEntry));
 }
 
 // ==========================================
@@ -122,145 +120,141 @@ interface ScoredTechnician {
   score: number;
 }
 
-export const matchTechniciansV2 = onCall(
-  {
-    region: "us-central1",
-    memory: "512MiB",
-    timeoutSeconds: 60,
-    concurrency: 50,
-    minInstances: 0,
-  },
-  async (request: CallableRequest<{
-    serviceId: string;
-    subServiceId?: string;
-    location: CustomerLocation
-  }>): Promise<MatchingResponse> => {
-    const ctx = createLogContext(request.auth?.uid, request.data?.serviceId);
-    const startTime = Date.now();
+export const matchTechniciansV2 = functions.https.onCall(async (data: {
+  serviceId: string;
+  subServiceId?: string;
+  location: CustomerLocation
+}, context: functions.https.CallableContext): Promise<MatchingResponse> => {
+  const ctx = createLogContext(context.auth?.uid, data?.serviceId);
+  const startTime = Date.now();
 
-    // Authentication guard
-    if (!request.auth) {
-      logStructured(ctx, "ERROR", "auth_failure", { error: "Authentication required" });
-      throw new https.HttpsError(
-        "unauthenticated",
-        "Authentication required"
-      );
-    }
+  // Authentication guard
+  if (!context.auth) {
+    logStructured(ctx, "ERROR", "auth_failure", { error: "Authentication required" });
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "Authentication required"
+    );
+  }
 
-    const data = request.data;
+  // Input validation
+  if (!data.serviceId || typeof data.serviceId !== "string") {
+    logStructured(ctx, "ERROR", "validation_failure", { error: "Invalid serviceId" });
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "Invalid serviceId"
+    );
+  }
 
-    // Input validation
-    if (!data.serviceId || typeof data.serviceId !== "string") {
-      logStructured(ctx, "ERROR", "validation_failure", { error: "Invalid serviceId" });
-      throw new https.HttpsError(
-        "invalid-argument",
-        "Invalid serviceId"
-      );
-    }
+  if (
+    !data.location ||
+    typeof data.location.latitude !== "number" ||
+    typeof data.location.longitude !== "number"
+  ) {
+    logStructured(ctx, "ERROR", "validation_failure", { error: "Invalid location coordinates" });
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "Invalid location coordinates"
+    );
+  }
 
-    if (
-      !data.location ||
-      typeof data.location.latitude !== "number" ||
-      typeof data.location.longitude !== "number"
-    ) {
-      logStructured(ctx, "ERROR", "validation_failure", { error: "Invalid location coordinates" });
-      throw new https.HttpsError(
-        "invalid-argument",
-        "Invalid location coordinates"
-      );
-    }
+  logStructured(ctx, "INFO", "request_received", {
+    serviceId: data.serviceId,
+    subServiceId: data.subServiceId || "none",
+    location: `${data.location.latitude}, ${data.location.longitude}`
+  });
 
-    logStructured(ctx, "INFO", "request_received", {
-      serviceId: data.serviceId,
-      subServiceId: data.subServiceId || "none",
-      location: `${data.location.latitude}, ${data.location.longitude}`
+  try {
+    // Query eligible technicians
+    const eligibleStartTime = Date.now();
+    const eligibleTechnicians = await queryEligibleTechnicians(
+      data.serviceId,
+      data.subServiceId
+    );
+
+    logStructured(ctx, "INFO", "eligible_query_complete", {
+      count: eligibleTechnicians.length,
+      durationMs: Date.now() - eligibleStartTime
     });
 
-    try {
-      // Query eligible technicians
-      const eligibleStartTime = Date.now();
-      const eligibleTechnicians = await queryEligibleTechnicians(
-        data.serviceId,
-        data.subServiceId
-      );
-      
-      logStructured(ctx, "INFO", "eligible_query_complete", {
-        count: eligibleTechnicians.length,
-        durationMs: Date.now() - eligibleStartTime
-      });
-
-      if (eligibleTechnicians.length === 0) {
-        logStructured(ctx, "INFO", "no_technicians_found", { serviceId: data.serviceId });
-        return { available: false };
-      }
-
-      // Score and rank technicians
-      const scoringStartTime = Date.now();
-      const scoredTechnicians = await scoreAndRankTechnicians(
-        eligibleTechnicians,
-        data.location
-      );
-      
-      logStructured(ctx, "INFO", "scoring_complete", {
-        passedCount: scoredTechnicians.length,
-        maxDistanceKm: MATCHING_CONFIG.maxDistanceKm,
-        durationMs: Date.now() - scoringStartTime
-      });
-
-      if (scoredTechnicians.length === 0) {
-        logStructured(ctx, "INFO", "no_technicians_in_range", { 
-          maxDistanceKm: MATCHING_CONFIG.maxDistanceKm 
-        });
-        return { available: false };
-      }
-
-      // Select top technicians
-      const topTechnicians = scoredTechnicians
-        .slice(0, MATCHING_CONFIG.maxResults)
-        .map((tech) => ({
-          id: tech.id,
-          name: tech.name || "Technician",
-          photoUrl: tech.photoUrl,
-          rating: tech.rating,
-          totalCompletedOrders: tech.totalCompletedOrders,
-          distanceKm: Math.round(tech.distanceKm * 100) / 100,
-          estimatedArrivalMinutes: Math.round(tech.estimatedArrivalMinutes),
-          score: Math.round(tech.score * 100) / 100,
-        }));
-
-      logStructured(ctx, "INFO", "success", {
-        returnedCount: topTechnicians.length,
-        totalScored: scoredTechnicians.length,
-        durationMs: Date.now() - startTime
-      });
-
-      return {
-        available: true,
-        technicianCount: scoredTechnicians.length,
-        topTechnicians,
-      };
-    } catch (error: any) {
-      logStructured(ctx, "ERROR", "matching_failure", { 
-        error: error.message,
-        stack: error.stack
-      });
-      throw new https.HttpsError(
-        "internal",
-        "Failed to match technicians"
-      );
+    if (eligibleTechnicians.length === 0) {
+      logStructured(ctx, "INFO", "no_technicians_found", { serviceId: data.serviceId });
+      return { available: false };
     }
+
+    // Score and rank technicians
+    const scoringStartTime = Date.now();
+    const scoredTechnicians = await scoreAndRankTechnicians(
+      eligibleTechnicians,
+      data.location
+    );
+
+    logStructured(ctx, "INFO", "scoring_complete", {
+      passedCount: scoredTechnicians.length,
+      maxDistanceKm: MATCHING_CONFIG.maxDistanceKm,
+      durationMs: Date.now() - scoringStartTime
+    });
+
+    if (scoredTechnicians.length === 0) {
+      logStructured(ctx, "INFO", "no_technicians_in_range", {
+        maxDistanceKm: MATCHING_CONFIG.maxDistanceKm
+      });
+      return { available: false };
+    }
+
+    // Select top technicians
+    const topTechnicians = scoredTechnicians
+      .slice(0, MATCHING_CONFIG.maxResults)
+      .map((tech) => ({
+        id: tech.id,
+        name: tech.name || "Technician",
+        photoUrl: tech.photoUrl,
+        rating: tech.rating,
+        totalCompletedOrders: tech.totalCompletedOrders,
+        distanceKm: Math.round(tech.distanceKm * 100) / 100,
+        estimatedArrivalMinutes: Math.round(tech.estimatedArrivalMinutes),
+        score: Math.round(tech.score * 100) / 100,
+      }));
+
+    logStructured(ctx, "INFO", "success", {
+      returnedCount: topTechnicians.length,
+      totalScored: scoredTechnicians.length,
+      durationMs: Date.now() - startTime
+    });
+
+    return {
+      available: true,
+      technicianCount: scoredTechnicians.length,
+      topTechnicians,
+    };
+  } catch (error: any) {
+    logStructured(ctx, "ERROR", "matching_failure", {
+      error: error.message,
+      stack: error.stack
+    });
+    throw new functions.https.HttpsError(
+      "internal",
+      "Failed to match technicians"
+    );
   }
+}
 );
 
 async function queryEligibleTechnicians(
   serviceId: string,
   subServiceId?: string
 ): Promise<{ id: string; data: TechnicianDocument }[]> {
-  const snapshot = await db
-    .collection("technicians")
+  let query: admin.firestore.Query = db.collection("technicians")
     .where("isApproved", "==", true)
-    .where("isOnline", "==", true)
-    .get();
+    .where("isOnline", "==", true);
+
+  if (subServiceId) {
+    query = query.where("subServices", "array-contains", subServiceId);
+  } else {
+    query = query.where("services", "array-contains", serviceId);
+  }
+
+  const snapshot = await query.get();
 
   const candidates: { id: string; data: TechnicianDocument }[] = [];
   let checkedCount = 0;
@@ -386,9 +380,9 @@ function calculateHaversineDistance(
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(toRadians(point1.lat)) *
-      Math.cos(toRadians(point2.lat)) *
-      Math.sin(dLng / 2) *
-      Math.sin(dLng / 2);
+    Math.cos(toRadians(point2.lat)) *
+    Math.sin(dLng / 2) *
+    Math.sin(dLng / 2);
 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 

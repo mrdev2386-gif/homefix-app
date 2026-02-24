@@ -23,6 +23,7 @@ class StatusFilterChips extends StatelessWidget {
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: statuses.map((status) {
           final isSelected = selectedStatus == status['key'];

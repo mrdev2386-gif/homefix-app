@@ -146,7 +146,7 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
 
   @override
   Widget build(BuildContext context) {
-    final unreadCount = context.select<NotificationProvider, int>(
+    final unreadCount = context.select<NotificationsService, int>(
       (provider) => provider.unreadCount,
     );
 

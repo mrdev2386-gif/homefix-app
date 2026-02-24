@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../core/models/category.dart';
+import 'package:customer_app/core/models/category.dart';
 import '../../../core/widgets/safe_network_image.dart';
-import '../../../../core/theme/app_theme.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
 
 class CategoryGridCard extends StatelessWidget {
   final Category category;
@@ -16,7 +16,7 @@ class CategoryGridCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveImageUrl = category.imageUrl ?? category.getFallbackImageUrl();
+    final effectiveImageUrl = category.imageUrl;
 
     return GestureDetector(
       onTap: onTap,

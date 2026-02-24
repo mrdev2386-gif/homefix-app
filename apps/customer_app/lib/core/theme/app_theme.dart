@@ -149,7 +149,7 @@ class AppTheme {
         height: 80,
         indicatorColor: primaryColor.withValues(alpha: 0.1),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(MaterialState.selected)) {
+          if (states.contains(WidgetState.selected)) {
             return GoogleFonts.outfit(
               color: primaryColor,
               fontSize: 12,
@@ -162,8 +162,8 @@ class AppTheme {
             fontWeight: FontWeight.w500,
           );
         }),
-        iconTheme: MaterialStateProperty.resolveWith((states) {
-          if (states.contains(MaterialState.selected)) {
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
             return const IconThemeData(color: primaryColor, size: 26);
           }
           return const IconThemeData(color: subtitleColor, size: 24);
@@ -173,4 +173,43 @@ class AppTheme {
   }
 
   static ThemeData get darkTheme => lightTheme.copyWith(brightness: Brightness.dark); // Simplified for now
+
+  // Added for compatibility with other parts of the app
+  static InputDecoration inputDecoration({
+    String? hintText,
+    String? labelText,
+    Widget? prefixIcon,
+    Widget? suffixIcon,
+  }) {
+    return InputDecoration(
+      hintText: hintText,
+      labelText: labelText,
+      prefixIcon: prefixIcon,
+      suffixIcon: suffixIcon,
+      filled: true,
+      fillColor: Colors.white,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: Colors.grey.shade200),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: Colors.grey.shade200),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: primaryColor, width: 2),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(color: errorColor, width: 1),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+      hintStyle: GoogleFonts.outfit(
+        color: Colors.grey.shade400,
+        fontSize: 15,
+        fontWeight: FontWeight.w500,
+      ),
+    );
+  }
 }

@@ -84,7 +84,7 @@ class _LocationConfirmDialogState extends State<LocationConfirmDialog> {
   late TextEditingController _stateController;
   late TextEditingController _pincodeController;
   String _selectedLabel = 'Home';
-  bool _isLoading = false;
+  final bool _isLoading = false;
 
   final List<Map<String, dynamic>> _labelOptions = [
     {'label': 'Home', 'icon': Icons.home_outlined},

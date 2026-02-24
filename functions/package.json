@@ -1,7 +1,7 @@
 {
     "name": "homefix-functions",
     "version": "2.0.0",
-    "description": "Cloud Functions for HomeFix - 2nd Gen",
+    "description": "Cloud Functions for HomeFix - 1st Gen",
     "main": "lib/index.js",
     "scripts": {
         "build": "tsc",

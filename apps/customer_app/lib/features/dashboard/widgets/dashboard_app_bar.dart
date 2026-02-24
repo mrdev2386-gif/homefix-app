@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../../../screens/notifications_screen.dart';
+import '../../notifications/presentation/notifications_screen.dart';
 
 class DashboardAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String city;
@@ -90,7 +90,7 @@ class DashboardAppBar extends StatelessWidget implements PreferredSizeWidget {
                      Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const NotificationsScreen(),
+                        builder: (context) => const CustomerNotificationsScreen(),
                       ),
                     );
                   },

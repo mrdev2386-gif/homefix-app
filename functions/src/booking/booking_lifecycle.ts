@@ -1,4 +1,20 @@
 /**
+ * @deprecated LEGACY FILE - DO NOT USE
+ * 
+ * This file contains the OLD booking lifecycle logic that bypasses admin approval.
+ * Use ./new_booking_flow.ts instead.
+ * 
+ * OLD FLOW (DEPRECATED):
+ * - Customer creates booking → status: pending_payment/pending
+ * - Auto technician assignment
+ * - No admin approval required
+ * 
+ * NEW FLOW (ACTIVE):
+ * - Customer creates booking request → status: pending_admin
+ * - Admin approves → status: technician_pending
+ * - Technician accepts → status: awaiting_payment
+ * - Customer pays → status: confirmed
+ *
  * Hardened HomeFix Booking Lifecycle System
  * 
  * Production Safety Features:
@@ -42,11 +58,11 @@ const BOOKING_CONFIG = {
 };
 
 const logger = {
-  info: (action: string, data: any) => 
+  info: (action: string, data: any) =>
     console.log(`[BOOKING-${action}]`, JSON.stringify(data)),
-  warn: (action: string, data: any) => 
+  warn: (action: string, data: any) =>
     console.warn(`[BOOKING-${action}]`, JSON.stringify(data)),
-  error: (action: string, data: any) => 
+  error: (action: string, data: any) =>
     console.error(`[BOOKING-${action}]`, JSON.stringify(data)),
 };
 
@@ -206,10 +222,10 @@ async function verifyPaymentIdempotent(
 
       // Amount mismatch
       if (payment.amount !== expectedAmount) {
-        logger.warn('payment_amount_mismatch', { 
-          paymentId, 
-          expected: expectedAmount, 
-          actual: payment.amount 
+        logger.warn('payment_amount_mismatch', {
+          paymentId,
+          expected: expectedAmount,
+          actual: payment.amount
         });
         return { success: false, error: 'Amount mismatch' };
       }
@@ -259,7 +275,7 @@ export const createBookingWithAssignment = functions.https.onCall(
     data: BookingInput,
     context: functions.https.CallableContext
   ): Promise<{ success: boolean; bookingId?: string; error?: string }> => {
-    
+
     if (!context.auth) {
       throw new functions.https.HttpsError('unauthenticated', 'Authentication required');
     }
@@ -287,7 +303,7 @@ export const createBookingWithAssignment = functions.https.onCall(
 
       // Step 2: Get service price server-side
       const servicePrice = await getServicePriceServerSide(data.serviceId);
-      
+
       if (data.amount < servicePrice) {
         await markPaymentOrphaned(data.paymentId);
         throw new functions.https.HttpsError(
@@ -308,10 +324,10 @@ export const createBookingWithAssignment = functions.https.onCall(
         return { success: false, error: result.error };
       }
 
-      logger.info('booking_created', { 
-        bookingId: result.bookingId, 
+      logger.info('booking_created', {
+        bookingId: result.bookingId,
         technicianId: result.technicianId,
-        paymentId: data.paymentId 
+        paymentId: data.paymentId
       });
 
       // Step 4: Send notification
@@ -344,14 +360,14 @@ async function createBookingAtomically(
 
   // Find best technician
   const techResult = await findBestTechnician(data.serviceId, data.customerLocation);
-  
+
   if (!techResult.success || !techResult.technician) {
     // Create booking without technician
     await createBookingWithoutTechnician(customerId, data, amount, bookingId, now);
-    
+
     // Trigger refund
     await triggerIdempotentRefund(data.paymentId, amount);
-    
+
     return { success: false, error: 'no_technician_available' };
   }
 
@@ -497,7 +513,7 @@ async function findBestTechnician(
 
   for (const doc of techSnapshot.docs) {
     const tech = doc.data() as TechnicianCandidate;
-    
+
     if (tech.activeBookings >= BOOKING_CONFIG.maxActiveBookingsPerTech) continue;
     if (!tech.location?.lat || !tech.location?.lng) continue;
 
@@ -525,7 +541,7 @@ async function findBestTechnician(
   // Double-check in transaction
   const techRef = db.collection('technicians').doc(bestTech.id);
   const techDoc = await techRef.get();
-  
+
   if (!techDoc.exists) {
     return { success: false, error: 'Technician vanished' };
   }
@@ -546,10 +562,10 @@ function calculateTechnicianScore(tech: TechnicianCandidate): number {
   const newTechBonus = (tech.totalCompletedOrders || 0) < 10 ? 0.15 : 0;
 
   return (ratingNorm * 0.35) +
-         (ordersNorm * 0.25) +
-         (earningsNorm * 0.15) +
-         (reviewBonus * 0.10) +
-         (newTechBonus * 0.15);
+    (ordersNorm * 0.25) +
+    (earningsNorm * 0.15) +
+    (reviewBonus * 0.10) +
+    (newTechBonus * 0.15);
 }
 
 function calculateDistance(
@@ -559,10 +575,10 @@ function calculateDistance(
   const R = 6371;
   const dLat = toRad(p2.lat - p1.lat);
   const dLng = toRad(p2.lng - p1.lng);
-  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-            Math.cos(toRad(p1.lat)) * Math.cos(toRad(p2.lat)) *
-            Math.sin(dLng/2) * Math.sin(dLng/2);
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(p1.lat)) * Math.cos(toRad(p2.lat)) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function toRad(deg: number): number {
@@ -578,7 +594,7 @@ export const respondToBooking = functions.https.onCall(
     data: { bookingId: string; action: 'accept' | 'reject' },
     context: functions.https.CallableContext
   ): Promise<{ success: boolean; message: string }> => {
-    
+
     if (!context.auth) {
       throw new functions.https.HttpsError('unauthenticated', 'Auth required');
     }
@@ -647,7 +663,7 @@ async function acceptBooking(
       .where('bookingId', '==', bookingId)
       .where('technicianId', '==', technicianId)
       .limit(1);
-    
+
     const assignmentSnapshot = await transaction.get(assignmentRef);
     if (!assignmentSnapshot.empty) {
       transaction.update(assignmentSnapshot.docs[0].ref, {
@@ -702,7 +718,7 @@ async function rejectBooking(
       .where('bookingId', '==', bookingId)
       .where('technicianId', '==', technicianId)
       .limit(1);
-    
+
     const assignmentSnapshot = await transaction.get(assignmentRef);
     if (!assignmentSnapshot.empty) {
       transaction.update(assignmentSnapshot.docs[0].ref, {
@@ -797,7 +813,7 @@ async function triggerReassignment(bookingId: string): Promise<void> {
       // Double-check new technician
       const newTechDoc = await transaction.get(db.collection('technicians').doc(newTech.id));
       const techData = newTechDoc.data()!;
-      
+
       if (!techData.isOnline || (techData.activeBookings || 0) > 0) {
         throw new Error('New technician no longer available');
       }
@@ -878,7 +894,7 @@ async function triggerIdempotentRefund(
 
   await db.runTransaction(async (transaction) => {
     const paymentDoc = await transaction.get(paymentRef);
-    
+
     if (!paymentDoc.exists) {
       logger.warn('refund_payment_not_found', { paymentId });
       return;
@@ -965,9 +981,9 @@ export const handleTechnicianOfflineRecovery = functions.pubsub
 
 export const updateBookingStatus = functions.https.onCall(
   async (
-    data: { 
-      bookingId: string; 
-      status: 'en_route' | 'started' | 'completed' | 'cancelled' 
+    data: {
+      bookingId: string;
+      status: 'en_route' | 'started' | 'completed' | 'cancelled'
       reason?: string;
     },
     context: functions.https.CallableContext
@@ -1119,7 +1135,7 @@ export const cancelBookingByCustomer = functions.https.onCall(
 
     await db.runTransaction(async (transaction) => {
       const current = (await transaction.get(bookingRef)).data() as BookingDocument;
-      
+
       if (!CANCELLABLE_STATES.includes(current.status)) {
         throw new Error('Booking no longer cancellable');
       }
@@ -1190,6 +1206,7 @@ async function notifyTechnicianNewBooking(
 async function notifyCustomerBookingStatus(
   customerId: string,
   bookingId: string,
+  
   status: string,
   reason?: string
 ): Promise<void> {

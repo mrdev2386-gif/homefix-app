@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
-import '../firestore/user_service.dart';
+import '../services/user_service.dart';
 import '../models/user_model.dart';
 import '../models/address.dart';
 import '../models/payment_method.dart';
@@ -37,7 +37,7 @@ class AuthProvider extends ChangeNotifier {
 
   void _listenToCustomerData(String uid) {
     _customerSubscription?.cancel();
-    _customerSubscription = _userService.getUserStream(uid).listen((c) {
+    _customerSubscription = _userService.streamUser(uid).listen((c) {
       _customer = c;
       notifyListeners();
     }, onError: (e) {
@@ -95,11 +95,6 @@ class AuthProvider extends ChangeNotifier {
     await _userService.updateDefaultAddress(_customer!.uid, address);
   }
 
-  /// Update default location with coordinates (for location picker updates)
-  Future<void> updateDefaultLocation(String address, double latitude, double longitude) async {
-    if (_customer == null) return;
-    await _userService.updateDefaultLocation(_customer!.uid, address, latitude, longitude);
-  }
 
   Stream<List<Address>> get addresses {
     if (_customer == null) return const Stream.empty();

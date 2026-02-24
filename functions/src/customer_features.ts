@@ -165,8 +165,10 @@ import { sendPushNotification } from './shared/notifications';
 export const submitServiceRating = functions.https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     const { bookingId, rating, comment, tags } = data; // tags is string[]
+    const customerId = context.auth.uid;
 
-    // 1. Validation
+    // 0. RATE LIMITING (Harden)
+    await checkRateLimit(customerId, 'submit_rating', 5, 60);
     if (!bookingId || typeof rating !== 'number' || rating < 1 || rating > 5) {
         throw new functions.https.HttpsError('invalid-argument', 'Invalid rating data');
     }
@@ -333,12 +335,24 @@ export const updateUserProfile = functions.https.onCall(async (data: any, contex
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
 
     const uid = context.auth.uid;
-    const allowedKeys = ['name', 'email', 'phone', 'photoUrl', 'isOnboarded', 'defaultAddress', 'latitude', 'longitude', 'fcmToken'];
+
+    // 0. RATE LIMITING (Harden)
+    await checkRateLimit(uid, 'update_profile', 10, 60);
+
+    const allowedKeys = ['name', 'email', 'phone', 'photoUrl', 'isOnboarded', 'profileCompleted', 'district'];
     const updateData: any = {};
 
     Object.keys(data).forEach(key => {
         if (allowedKeys.includes(key)) {
-            updateData[key] = data[key];
+            if (key === 'district' && data[key]) {
+                const district = data[key].toString().trim();
+                updateData['district'] = district;
+                updateData['districtNormalized'] = district.toLowerCase();
+            } else {
+                updateData[key] = data[key];
+            }
+        } else if (key === 'displayName') {
+            updateData['name'] = data[key];
         }
     });
 
@@ -377,12 +391,22 @@ export const updateTechnicianProfile = functions.https.onCall(async (data: any, 
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
 
     const uid = context.auth.uid;
+
+    // 0. RATE LIMITING (Harden)
+    await checkRateLimit(uid, 'update_tech_profile', 10, 60);
+
     const allowedKeys = ['name', 'email', 'phone', 'photoUrl', 'skills', 'bio', 'experience', 'isOnline', 'geo'];
     const updateData: any = {};
 
     Object.keys(data).forEach(key => {
         if (allowedKeys.includes(key)) {
-            updateData[key] = data[key];
+            if (key === 'district' && data[key]) {
+                const district = data[key].toString().trim();
+                updateData['district'] = district;
+                updateData['districtNormalized'] = district.toLowerCase();
+            } else {
+                updateData[key] = data[key];
+            }
         }
     });
 
@@ -439,6 +463,7 @@ export const manageAddress = functions.https.onCall(async (data, context) => {
     return { success: true };
 });
 
+
 export const managePaymentMethod = functions.https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
     const uid = context.auth.uid;
@@ -466,114 +491,4 @@ export const updatePrivacySettings = functions.https.onCall(async (data, context
     const uid = context.auth.uid;
     await db.collection('customers').doc(uid).set({ privacy: data }, { merge: true });
     return { success: true };
-});
-
-export const createServiceRequest = functions.https.onCall(async (data, context) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
-
-    const { title, description, preferredDateTime, address } = data;
-    if (!title || !description || !address) {
-        throw new functions.https.HttpsError('invalid-argument', 'Missing fields');
-    }
-
-    const requestId = db.collection('service_requests').doc().id;
-    await db.collection('service_requests').doc(requestId).set({
-        id: requestId,
-        customerId: context.auth.uid,
-        title,
-        description,
-        preferredDateTime: new Date(preferredDateTime),
-        address,
-        status: 'pending',
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    return { success: true, requestId };
-});
-
-
-export const acceptProposal = functions.https.onCall(async (data, context) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
-    const { proposalId, requestId } = data;
-
-    if (!proposalId || !requestId) {
-        throw new functions.https.HttpsError('invalid-argument', 'Proposal ID and Request ID are required');
-    }
-
-    const customerId = context.auth.uid;
-
-    return await db.runTransaction(async (t) => {
-        const proposalRef = db.collection('proposals').doc(proposalId);
-        const requestRef = db.collection('service_requests').doc(requestId);
-
-        const [proposalDoc, requestDoc] = await Promise.all([t.get(proposalRef), t.get(requestRef)]);
-
-        if (!proposalDoc.exists) throw new functions.https.HttpsError('not-found', 'Proposal not found');
-        if (!requestDoc.exists) throw new functions.https.HttpsError('not-found', 'Service request not found');
-
-        const proposal = proposalDoc.data()!;
-        const request = requestDoc.data()!;
-
-        if (request.customerId !== customerId) {
-            throw new functions.https.HttpsError('permission-denied', 'You can only accept proposals for your own requests');
-        }
-
-        if (proposal.requestId !== requestId) {
-            throw new functions.https.HttpsError('invalid-argument', 'Proposal does not belong to this request');
-        }
-
-        if (request.status === 'accepted' || request.status === 'completed') {
-            throw new functions.https.HttpsError('failed-precondition', 'Request already accepted or completed');
-        }
-
-        // Get customer data for booking
-        const customerRef = db.collection('customers').doc(customerId);
-        const customerDoc = await t.get(customerRef);
-        const customerData = customerDoc.data() || {};
-
-        const bookingId = db.collection('bookings').doc().id;
-        const bookingNumber = `BK-PRP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-
-        const bookingData = {
-            id: bookingId,
-            bookingNumber,
-            customerId: request.customerId,
-            customerName: customerData.name || 'Customer',
-            customerPhone: customerData.phone || '',
-            technicianId: proposal.technicianId,
-            technicianName: proposal.technicianName,
-            serviceId: 'custom',
-            serviceTitle: request.title,
-            scheduledAt: proposal.proposedDateTime,
-            addressSnapshot: request.address || {},
-            status: 'accepted',
-            paymentStatus: 'pending',
-            price: proposal.quotedPrice,
-            finalAmount: proposal.quotedPrice,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            proposalId: proposalId,
-            requestId: requestId,
-        };
-
-        // Atomic updates
-        t.update(proposalRef, { status: 'accepted', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-        t.update(requestRef, { status: 'accepted', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-        t.set(db.collection('bookings').doc(bookingId), bookingData);
-
-        // Notify Technician
-        const techNotificationRef = db.collection('technicians').doc(proposal.technicianId).collection('notifications').doc();
-        t.set(techNotificationRef, {
-            id: techNotificationRef.id,
-            type: 'proposal_accepted',
-            title: 'Proposal Accepted!',
-            body: `Your proposal for ${request.title} was accepted!`,
-            data: { bookingId, requestId, type: 'booking_status' },
-            read: false,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
-        return { success: true, bookingId, bookingNumber };
-    });
 });

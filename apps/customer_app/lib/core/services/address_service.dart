@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/foundation.dart';
 import '../models/address.dart';
 
 /// Production-grade Address Service
@@ -10,6 +11,10 @@ class AddressService {
 
   /// Stream user's saved addresses
   Stream<List<Address>> streamAddresses(String userId) {
+    if (userId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in streamAddresses');
+      return Stream.value([]);
+    }
     return _db
         .collection('customers')
         .doc(userId)
@@ -30,6 +35,10 @@ class AddressService {
 
   /// Get a single address by ID
   Future<Address?> getAddress(String userId, String addressId) async {
+    if (userId.isEmpty || addressId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in getAddress');
+      return null;
+    }
     final doc = await _db
         .collection('customers')
         .doc(userId)
@@ -43,6 +52,11 @@ class AddressService {
 
   /// Save address (add or update) via Cloud Function
   Future<String> saveAddress(String userId, Address address) async {
+    if (userId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in saveAddress');
+      return '';
+    }
+    debugPrint('[WRITE GUARD] Direct write blocked in saveAddress');
     final callable = _functions.httpsCallable('manageAddress');
     final result = await callable.call({
       'action': address.id.isEmpty ? 'add' : 'edit',
@@ -50,11 +64,16 @@ class AddressService {
       'addressData': address.toMap(),
     });
 
-    return result.data['addressId'] as String;
+    return result.data['addressId'] as String? ?? '';
   }
 
   /// Delete address via Cloud Function
   Future<void> deleteAddress(String userId, String addressId) async {
+    if (userId.isEmpty || addressId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in deleteAddress');
+      return;
+    }
+    debugPrint('[WRITE GUARD] Direct write blocked in deleteAddress');
     final callable = _functions.httpsCallable('manageAddress');
     await callable.call({
       'action': 'delete',
@@ -64,6 +83,11 @@ class AddressService {
 
   /// Set default address via Cloud Function
   Future<void> setDefaultAddress(String userId, String addressId) async {
+    if (userId.isEmpty || addressId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in setDefaultAddress');
+      return;
+    }
+    debugPrint('[WRITE GUARD] Direct write blocked in setDefaultAddress');
     final callable = _functions.httpsCallable('manageAddress');
     await callable.call({
       'action': 'setDefault',
@@ -99,18 +123,38 @@ class AddressService {
     return await saveAddress(userId, address);
   }
 
-  /// Update selected address in user profile
+  /// Update selected address in user profile via Cloud Function
   Future<void> updateSelectedAddress(String userId, String addressId) async {
-    await _db.collection('customers').doc(userId).set({
-      'selectedAddressId': addressId,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    if (userId.isEmpty || addressId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in updateSelectedAddress');
+      return;
+    }
+    debugPrint('[WRITE GUARD] Direct write blocked in updateSelectedAddress');
+    try {
+      final callable = _functions.httpsCallable('updateUserProfile');
+      await callable.call({
+        'selectedAddressId': addressId,
+      });
+      debugPrint('✅ [Address] Selected address updated via callable');
+    } catch (e) {
+      debugPrint('❌ [Address] Update failed: $e');
+      rethrow;
+    }
   }
 
   /// Get selected address ID from user profile
   Future<String?> getSelectedAddressId(String userId) async {
-    final doc = await _db.collection('customers').doc(userId).get();
-    return doc.data()?['selectedAddressId'] as String?;
+    if (userId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in getSelectedAddressId');
+      return null;
+    }
+    try {
+      final doc = await _db.collection('customers').doc(userId).get();
+      return doc.data()?['selectedAddressId'] as String?;
+    } catch (e) {
+      debugPrint('❌ [Address] getSelectedAddressId failed: $e');
+      return null;
+    }
   }
 
   /// Get the selected address object

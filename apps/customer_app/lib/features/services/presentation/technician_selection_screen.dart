@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:provider/provider.dart';
 import '../../../core/models/matched_technician.dart';
 import '../../../core/widgets/safe_network_image.dart';
-import '../../../../core/theme/app_theme.dart';
+import '../../../core/providers/checkout_provider.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
 
 class TechnicianSelectionScreen extends StatefulWidget {
   final List<MatchedTechnician> technicians;
@@ -188,13 +190,12 @@ class _TechnicianSelectionScreenState extends State<TechnicianSelectionScreen> {
   }
 
   void _confirmBooking(MatchedTechnician technician) {
-    // TODO: Implement booking confirmation
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Booking with ${technician.name} confirmed!'),
-        backgroundColor: AppTheme.primaryColor,
-      ),
-    );
+    // Set the selected technician in checkout provider
+    final checkoutProvider = Provider.of<CheckoutProvider>(context, listen: false);
+    checkoutProvider.setSelectedTechnician(technician.id, technician.name);
+    
+    // Navigate to checkout
+    Navigator.of(context).pushNamed('/checkout');
   }
 
   @override

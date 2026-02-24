@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../../core/providers/technician_provider.dart';
 import '../../../core/models/technician.dart';
 import '../../availability/presentation/availability_screen.dart';
+import '../../services/presentation/services_list_screen.dart';
 import 'reviews_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -192,7 +193,9 @@ class ProfileScreen extends StatelessWidget {
       ),
       child: Column(
         children: [
-          _buildMenuItem(Icons.build_circle_outlined, "Skills & Services", tech.skills.join(", ")),
+          _buildMenuItem(Icons.build_circle_outlined, "Skills & Services", tech.skills.join(", "), onTap: () {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const ServicesListScreen()));
+          }),
           const Divider(height: 1, indent: 64),
           _buildMenuItem(Icons.calendar_today_rounded, "Availability", "Manage your schedule", onTap: () {
             Navigator.push(context, MaterialPageRoute(builder: (_) => const AvailabilityScreen()));

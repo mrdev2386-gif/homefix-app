@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import '../../../core/models/service.dart';
+import 'package:customer_app/core/models/service.dart';
 import '../../../core/widgets/safe_network_image.dart';
 import '../../../core/providers/favorites_provider.dart';
 
@@ -192,21 +192,29 @@ class ServiceCard extends StatelessWidget {
                               color: const Color(0xFF6366F1),
                             ),
                           ),
-                          Text(
-                            service.basePrice.toStringAsFixed(0),
-                            style: GoogleFonts.outfit(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                              color: const Color(0xFF6366F1),
+                          Flexible(
+                            child: Text(
+                              service.basePrice.toStringAsFixed(0),
+                              style: GoogleFonts.outfit(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: const Color(0xFF6366F1),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const SizedBox(width: 4),
-                          Text(
-                            '/${service.duration}',
-                            style: GoogleFonts.outfit(
-                              fontSize: 12,
-                              color: Colors.grey[500],
-                              fontWeight: FontWeight.w500,
+                          Flexible(
+                            child: Text(
+                              '/${service.duration}',
+                              style: GoogleFonts.outfit(
+                                fontSize: 12,
+                                color: Colors.grey[500],
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],
@@ -274,9 +282,12 @@ class ServiceCard extends StatelessWidget {
               ),
             ),
           ),
-        ),
+        ],
       ),
-    );
+    ),
+  ),
+),
+);
   }
 }
 

@@ -3,58 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../constants/app_constants.dart';
 
-class ProfessionalReel {
-  final String id;
-  final String videoUrl;
-  final String imageUrl; // Unified: using imageUrl instead of thumbnailUrl
-  final String title;
-  final bool isActive;
-  final bool isVideo; 
-  final int order;
 
-  ProfessionalReel({
-    required this.id,
-    required this.videoUrl,
-    required this.imageUrl,
-    this.title = '',
-    this.isActive = true,
-    this.isVideo = true, 
-    this.order = 0,
-  });
-
-  factory ProfessionalReel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>? ?? {};
-    return ProfessionalReel(
-      id: doc.id,
-      videoUrl: (data['videoUrl'] ?? data['video'] ?? '').toString(),
-      imageUrl: (() {
-        final img = (data['imageUrl'] ?? data['thumbnailUrl'] ?? data['thumbnail'])?.toString().trim();
-        if (img != null && img.isNotEmpty) return img;
-        
-        if (kDebugMode) {
-          debugPrint('⚠️ [ProfessionalReel Model] No image found for ${doc.id}. Using global fallback.');
-        }
-        return AppConstants.fallbackServiceImage;
-      })(),
-      title: (data['title'] ?? '').toString(),
-      isActive: data['isActive'] ?? true,
-      isVideo: data['isVideo'] ?? true,
-      order: int.tryParse((data['order'] ?? 0).toString()) ?? 0,
-    );
-  }
-
-  factory ProfessionalReel.fromMap(Map<String, dynamic> data) {
-    return ProfessionalReel(
-      id: data['id'] ?? '',
-      videoUrl: (data['videoUrl'] ?? data['video'] ?? '').toString(),
-      imageUrl: (data['imageUrl'] ?? data['thumbnailUrl'] ?? data['thumbnail'] ?? '').toString(),
-      title: (data['title'] ?? '').toString(),
-      isActive: data['isActive'] ?? true,
-      isVideo: data['isVideo'] ?? true,
-      order: int.tryParse((data['order'] ?? 0).toString()) ?? 0,
-    );
-  }
-}
 
 class CleaningCategory {
   final String id;

@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
 import '../../../core/providers/checkout_provider.dart';
 import '../../../core/providers/cart_provider.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/providers/location_provider.dart';
-import '../../../core/services/functions_service.dart';
-import '../../../core/models/address.dart';
+import '../../../core/providers/booking_provider.dart';
+import 'package:customer_app/core/services/functions_service.dart';
+import 'package:customer_app/core/models/address.dart';
 import '../../profile/presentation/saved_addresses_screen.dart';
 import '../../home/main_wrapper_screen.dart';
 import 'booking_status_screen.dart';
@@ -24,6 +26,7 @@ class CheckoutScreen extends StatefulWidget {
 class _CheckoutScreenState extends State<CheckoutScreen> {
   int _currentStep = 0;
   bool _isProcessing = false;
+  bool _submitLock = false; // Duplicate-submit guard
 
   final List<String> _steps = ['Address', 'Schedule', 'Summary'];
 
@@ -63,60 +66,287 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _finishBooking() async {
-    final checkout = Provider.of<CheckoutProvider>(context, listen: false);
-    if (checkout.selectedAddress == null || checkout.selectedDate == null || checkout.selectedTimeSlot == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please complete all selection steps')),
-      );
+    // ── Duplicate-submit guard ──────────────────────────────────────────────
+    if (_submitLock || _isProcessing) {
+      debugPrint('⚠️ [Checkout] Submit already in progress – ignoring duplicate tap');
       return;
     }
 
-    setState(() => _isProcessing = true);
+    final checkout = Provider.of<CheckoutProvider>(context, listen: false);
+
+    // ── Pre-flight validation ───────────────────────────────────────────────
+    if (checkout.selectedAddress == null) {
+      _showError('Please select a delivery address.');
+      return;
+    }
+    if (checkout.selectedDate == null || checkout.selectedTimeSlot == null) {
+      _showError('Please select a date and time slot.');
+      return;
+    }
+    if (checkout.items.isEmpty) {
+      _showError('Your cart is empty. Please add services first.');
+      return;
+    }
+
+    // Validate every cart item has the required IDs
+    for (final item in checkout.items) {
+      if (item.categoryId.isEmpty) {
+        _showError('Service "${item.serviceName}" is missing category info. Please remove and re-add it.');
+        return;
+      }
+      if (item.serviceId.isEmpty) {
+        _showError('Service "${item.serviceName}" has an invalid ID. Please remove and re-add it.');
+        return;
+      }
+    }
+
+    // ── Get authenticated user ──────────────────────────────────────────────
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      _showError('You must be logged in to place a booking.');
+      return;
+    }
+
+    setState(() {
+      _isProcessing = true;
+      _submitLock = true;
+    });
+
     try {
-      final functions = Provider.of<FunctionsService>(context, listen: false);
+      final bookingProvider = Provider.of<BookingProvider>(context, listen: false);
 
-      final bookingData = {
-        'services': checkout.items.map((item) => {
-          'id': item.serviceId,
-          'name': item.serviceName,
-          'price': item.price,
-          'quantity': item.quantity,
-          'image': item.serviceImage,
-        }).toList(),
-        'address': checkout.selectedAddress!.toMap(),
-        'scheduledDate': checkout.selectedDate!.toIso8601String(),
-        'scheduledTime': checkout.selectedTimeSlot,
-        'totalAmount': checkout.grandTotal,
-        'status': 'confirmed',
-      };
+      // ── Build scheduled datetime ────────────────────────────────────────
+      final scheduledDate = checkout.selectedDate!;
+      final timeSlot = checkout.selectedTimeSlot!;
+      // Parse time slot like "09:00 AM" into hours/minutes
+      final scheduledAt = _buildScheduledAt(scheduledDate, timeSlot);
 
-      final result = await functions.createBooking(bookingData);
-
-      if (result['bookingId'] != null) {
-        // Clear Cart
-        await Provider.of<CartProvider>(context, listen: false).clearCart();
+      // ── NEW BOOKING FLOW: Check if technician is selected ─────────────
+      if (checkout.hasSelectedTechnician) {
+        // Use new booking flow with pre-selected technician
+        debugPrint('🔄 [Checkout] Using NEW booking flow with technician: ${checkout.selectedTechnicianId}');
         
-        if (mounted) {
+        // Get first item for service details
+        final firstItem = checkout.items.isNotEmpty ? checkout.items.first : null;
+        if (firstItem == null) {
+          throw Exception('No service selected. Please add a service first.');
+        }
+
+        final result = await bookingProvider.createBookingRequest(
+          serviceId: firstItem.serviceId,
+          technicianId: checkout.selectedTechnicianId!,
+          categoryId: firstItem.categoryId,
+          categoryName: firstItem.categoryName,
+          scheduledDate: scheduledDate.toIso8601String(),
+          scheduledTime: timeSlot,
+          address: checkout.selectedAddress!.toMap(),
+          price: checkout.grandTotal,
+          subcategoryId: firstItem.subServiceId,
+        );
+
+        debugPrint('✅ [Checkout] New booking request created: $result');
+
+        final bookingId = result['bookingId'] as String?;
+        final status = result['status'] as String?;
+        
+        if (bookingId == null || bookingId.isEmpty) {
+          throw Exception('Server returned no bookingId. Please try again.');
+        }
+
+        // Clear cart
+        try {
+          await Provider.of<CartProvider>(context, listen: false).clearCart();
+          Provider.of<CheckoutProvider>(context, listen: false).clear();
+        } catch (clearErr) {
+          debugPrint('⚠️ [Checkout] Cart clear failed (non-fatal): $clearErr');
+        }
+
+        if (!mounted) return;
+
+        // In new flow: status = pending_admin → wait for admin approval
+        debugPrint('🔍 [Checkout] Booking status: $status');
+        
+        if (status == 'pending_admin') {
+          // Show success - booking is pending admin approval
+          _showBookingPendingSheet(bookingId);
+        } else {
+          // Fallback to status screen
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (context) => PaymentScreen(
-                bookingId: result['bookingId'],
-                amount: checkout.grandTotal,
-              ),
+              builder: (context) => BookingStatusScreen(bookingId: bookingId),
             ),
           );
         }
+        return;
       }
-    } catch (e) {
+
+      // NEW FLOW: Require technician selection - no fallback to legacy
+      if (checkout.selectedTechnicianId == null) {
+        throw Exception('Please select a technician before booking. This is required for the new booking flow.');
+      }
+      return;
+    } on Exception catch (e) {
+      debugPrint('❌ [Checkout] Booking failed: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Booking failed: $e'), backgroundColor: AppTheme.errorColor),
-        );
+        _showError('Booking failed: ${e.toString().replaceAll('Exception: ', '')}');
+      }
+    } catch (e, stack) {
+      debugPrint('❌ [Checkout] Unexpected error: $e\n$stack');
+      if (mounted) {
+        _showError('An unexpected error occurred. Please try again.');
       }
     } finally {
-      if (mounted) setState(() => _isProcessing = false);
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+          _submitLock = false;
+        });
+      }
     }
+  }
+
+  /// Parses a time slot string like "09:00 AM" and combines with the date.
+  DateTime _buildScheduledAt(DateTime date, String timeSlot) {
+    try {
+      final format = DateFormat('hh:mm a');
+      final parsed = format.parse(timeSlot);
+      return DateTime(date.year, date.month, date.day, parsed.hour, parsed.minute);
+    } catch (_) {
+      // Fallback: use noon on the selected date
+      return DateTime(date.year, date.month, date.day, 12, 0);
+    }
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppTheme.errorColor,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
+  void _showSearchingSheet(String bookingId) {
+    showModalBottomSheet(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.search_rounded, color: AppTheme.primaryColor, size: 64),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Booking Received!',
+              style: GoogleFonts.outfit(
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
+                color: AppTheme.textColor,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'We\'re searching for the best technician near you. You\'ll be notified once one is assigned.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.outfit(color: AppTheme.subtitleColor, fontSize: 15),
+            ),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(
+                      builder: (context) => BookingStatusScreen(bookingId: bookingId),
+                    ),
+                    (route) => false,
+                  );
+                },
+                child: const Text('Track Booking'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// NEW FLOW: Show when booking is pending admin approval
+  void _showBookingPendingSheet(String bookingId) {
+    showModalBottomSheet(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.hourglass_empty_rounded, color: Colors.orange, size: 64),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Booking Submitted!',
+              style: GoogleFonts.outfit(
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
+                color: AppTheme.textColor,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Your booking is pending admin approval. You\'ll be notified once it\'s approved.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.outfit(color: AppTheme.subtitleColor, fontSize: 15),
+            ),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(
+                      builder: (context) => BookingStatusScreen(bookingId: bookingId),
+                    ),
+                    (route) => false,
+                  );
+                },
+                child: const Text('Track Booking'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showSuccessSheet(String bookingId) {
@@ -178,7 +408,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         foregroundColor: AppTheme.textColor,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-          onPressed: _prevStep,
+          onPressed: _isProcessing ? null : _prevStep,
         ),
       ),
       body: Column(
@@ -437,7 +667,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 .setDateTime(checkout.selectedDate ?? DateTime.now(), slot);
           },
           child: Container(
-            width: (MediaQuery.of(context).size.width - 64) / 3,
+            width: (MediaQuery.of(context).size.width.clamp(300, 1000) - 64) / 3,
             padding: const EdgeInsets.symmetric(vertical: 12),
             decoration: BoxDecoration(
               color: isSelected ? AppTheme.primaryColor : Colors.white,
@@ -590,7 +820,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             width: 160,
             height: 50,
             child: ElevatedButton(
-              onPressed: canContinue && !_isProcessing ? _nextStep : null,
+              onPressed: canContinue && !_isProcessing && !_submitLock ? _nextStep : null,
               style: ElevatedButton.styleFrom(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),

@@ -2,9 +2,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import '../../../core/models/user_model.dart';
-import '../../../core/services/functions_service.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:customer_app/core/models/user_model.dart';
+import 'package:customer_app/core/services/functions_service.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final UserModel user;

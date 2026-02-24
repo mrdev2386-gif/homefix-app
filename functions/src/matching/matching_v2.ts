@@ -75,7 +75,8 @@ export async function matchAndAssignBooking(bookingId: string, options?: { force
     const booking = bookingDoc.data()!;
 
     // Check Status (unless forced)
-    if (!options?.forceAssign && ['assigned', 'started', 'completed', 'cancelled'].includes(booking.status)) {
+    const terminalOrAssignedStatuses = ['assigned', 'started', 'completed', 'cancelled', 'accepted'];
+    if (!options?.forceAssign && terminalOrAssignedStatuses.includes(booking.status)) {
         console.log(`Booking ${bookingId} already in terminal/assigned state: ${booking.status}`);
         return { success: false, reason: 'invalid_status' };
     }
@@ -140,7 +141,17 @@ export async function matchAndAssignBooking(bookingId: string, options?: { force
 
     if (candidates.length === 0) {
         console.warn(`No suitable candidates found for booking ${bookingId}`);
-        await handleAdminEscalation(bookingId, 'no_candidates');
+        // Safe fallback: set to searching_technician so user sees proper status
+        try {
+            await db.collection('bookings').doc(bookingId).update({
+                status: 'searching_technician',
+                technicianAssigned: false,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                adminNotes: 'No matching technician candidates found. Will retry.',
+            });
+        } catch (updateErr: any) {
+            console.error(`[matchAndAssignBooking] Could not update booking to searching_technician: ${updateErr.message}`);
+        }
         return { success: false, reason: 'no_candidates' };
     }
 
@@ -270,8 +281,9 @@ async function attemptAssignmentInTransaction(bookingId: string, candidate: Scor
         if (!bDoc.exists) throw new Error('Booking missing');
 
         const bData = bDoc.data()!;
-        if (bData.status !== 'confirmed' && bData.status !== 'pending' && bData.status !== 'pending_assignment') { // Accept pending states
-            throw new Error(`Booking ${bookingId} improperly accepted`);
+        const validAssignmentStatuses = ['confirmed', 'pending', 'pending_assignment', 'pending_payment', 'searching_technician'];
+        if (!validAssignmentStatuses.includes(bData.status)) {
+            throw new Error(`Booking ${bookingId} is in non-assignable state: ${bData.status}`);
         }
 
         // Check if there is already an active request
@@ -342,9 +354,30 @@ export const onBookingCreatedMatch = functions.firestore
     .document('bookings/{bookingId}')
     .onCreate(async (snap, context) => {
         const booking = snap.data();
-        if (booking.status === 'confirmed' || booking.status === 'pending') {
-            // Trigger Matching V2
-            await matchAndAssignBooking(context.params.bookingId);
+        const bookingId = context.params.bookingId;
+        const triggerStatuses = [
+            'confirmed',
+            'pending',
+            'pending_payment',
+            'searching_technician',
+        ];
+        if (triggerStatuses.includes(booking.status)) {
+            console.log(`[onBookingCreatedMatch] Triggering matching for booking ${bookingId} (status=${booking.status})`);
+            try {
+                await matchAndAssignBooking(bookingId);
+            } catch (err: any) {
+                console.error(`[onBookingCreatedMatch] Matching failed for ${bookingId}: ${err.message}`);
+                // Safe fallback: ensure booking stays in searching_technician
+                try {
+                    await snap.ref.update({
+                        status: 'searching_technician',
+                        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        adminNotes: `Auto-matching error: ${err.message}`,
+                    });
+                } catch (_) { /* ignore */ }
+            }
+        } else {
+            console.log(`[onBookingCreatedMatch] Skipping matching for booking ${bookingId} (status=${booking.status})`);
         }
     });
 

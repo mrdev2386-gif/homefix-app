@@ -4,53 +4,62 @@ import * as admin from 'firebase-admin';
 import { db } from '../shared/config';
 import { assertAdmin, logAdminAction } from './utils';
 
-export const approveTechnicianApplication = functions.https.onCall(async (data, context) => {
+export const adminApproveTechnician = functions.https.onCall(async (data, context) => {
     try {
         await assertAdmin(context);
-        const { appId, approve, reason } = data;
+        const { techId, approve, reason } = data;
 
-        if (!appId) throw new functions.https.HttpsError('invalid-argument', 'Missing appId');
+        if (!techId) throw new functions.https.HttpsError('invalid-argument', 'Missing techId');
 
-        const appRef = db.collection('technician_applications').doc(appId);
+        const appRef = db.collection('technician_applications').doc(techId);
         const appDoc = await appRef.get();
         if (!appDoc.exists) throw new functions.https.HttpsError('not-found', 'Application not found');
         const appData = appDoc.data()!;
 
         if (approve) {
-            await db.collection('technicians').doc(appId).set({
-                uid: appId,
-                name: appData.name || '',
-                phone: appData.phone || '',
+            await db.collection('technicians').doc(techId).set({
+                uid: techId,
+                name: appData.fullName || '',
                 email: appData.email || '',
-                categoryIds: appData.categoryIds || [],
-                subcategoryIds: appData.subcategoryIds || [],
-                serviceIds: appData.serviceIds || [],
-                skills: appData.skills || {},
+                experienceYears: appData.experienceYears || 0,
+                primaryCategoryId: appData.primaryCategoryId || '',
+                serviceCategories: appData.categoryIds || [],
+                services: appData.serviceIds || [],
+                subServices: appData.subcategoryIds || [],
+                district: appData.district || '',
+                districtNormalized: appData.districtNormalized || (appData.district ? appData.district.toString().trim().toLowerCase() : ''),
                 status: 'approved',
-                isVerified: true,
-                isAvailable: true,
+                isApproved: true,
+                isActive: true,
                 rating: 5.0,
-                jobsCompleted: 0,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                totalJobs: 0,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
 
             await appRef.update({
                 status: 'approved',
+                isApproved: true,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
         } else {
             await appRef.update({
                 status: 'rejected',
+                isApproved: false,
                 rejectionReason: reason || 'Not specified',
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            await db.collection('technicians').doc(techId).update({
+                status: 'rejected',
+                isApproved: false,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
         }
 
-        await logAdminAction(context.auth!.uid, approve ? 'tech_app_approve' : 'tech_app_reject', appId, { reason });
+        await logAdminAction(context.auth!.uid, approve ? 'tech_app_approve' : 'tech_app_reject', techId, { reason });
         return { success: true };
     } catch (error: any) {
-        console.error('[Technician] Error in approveTechnicianApplication:', error);
+        console.error('[Technician] Error in adminApproveTechnician:', error);
         if (error instanceof functions.https.HttpsError) throw error;
         throw new functions.https.HttpsError('internal', error.message || 'Failed to process application');
     }

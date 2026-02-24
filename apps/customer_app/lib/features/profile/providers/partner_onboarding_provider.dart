@@ -1,7 +1,8 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:image_picker/image_picker.dart';
-import '../../../core/services/storage_service.dart';
+import 'package:customer_app/core/services/storage_service.dart';
 
 /// Production-grade state management for Partner Onboarding
 /// 
@@ -370,17 +371,17 @@ class PartnerOnboardingProvider extends ChangeNotifier {
       if (_profilePhoto != null) {
         debugPrint('[PartnerOnboarding] Uploading profile photo...');
         profilePhotoUrl = await _storageService.uploadProfilePhoto(
-          userId: userId,
-          file: _profilePhoto!,
+          userId,
+          File(_profilePhoto!.path),
         );
       }
 
       if (_idProof != null) {
         debugPrint('[PartnerOnboarding] Uploading ID proof...');
         idProofUrl = await _storageService.uploadTechnicianDoc(
-          userId: userId,
-          file: _idProof!,
-          docType: 'id_proof',
+          userId,
+          File(_idProof!.path),
+          'id_proof',
         );
       }
 

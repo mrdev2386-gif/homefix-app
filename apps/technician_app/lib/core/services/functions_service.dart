@@ -17,11 +17,15 @@ class FunctionsService {
     }
   }
 
-  /// Technician: Accept a custom request
-  Future<Map<String, dynamic>> acceptCustomRequest(String requestId) async {
+  /// Technician: Accept or Reject a custom request
+  Future<Map<String, dynamic>> technicianRespondServiceRequest(String requestId, String action, {String? reason}) async {
     try {
-      HttpsCallable callable = _functions.httpsCallable('acceptCustomRequest');
-      final result = await callable.call({'requestId': requestId});
+      HttpsCallable callable = _functions.httpsCallable('technicianRespondServiceRequest');
+      final result = await callable.call({
+        'requestId': requestId,
+        'action': action, // 'accept' or 'reject'
+        if (reason != null) 'rejectionReason': reason,
+      });
       return Map<String, dynamic>.from(result.data);
     } catch (e) {
       rethrow;

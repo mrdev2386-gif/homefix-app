@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:technician_app/app/app.dart';
+import 'package:technician_app/main.dart';
 
 void main() {
   testWidgets('Smoke test', (WidgetTester tester) async {

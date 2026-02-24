@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../core/models/service.dart';
+import 'package:customer_app/core/models/service.dart';
 import '../../../core/models/dashboard_models.dart';
 import '../../../core/widgets/safe_network_image.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
 import '../../services/presentation/service_details_screen.dart';
-import '../../../core/models/category.dart';
+import 'package:customer_app/core/models/category.dart';
 
 class ProfessionalHomeServiceSection extends StatefulWidget {
   final List<HomeService> services;
@@ -116,6 +116,7 @@ class _ProfessionalHomeServiceSectionState extends State<ProfessionalHomeService
               MaterialPageRoute(
                 builder: (_) => ServiceDetailsScreen(
                   serviceId: service.id,
+                  categoryId: service.category,
                   serviceName: service.title,
                   serviceData: service,
                 ),

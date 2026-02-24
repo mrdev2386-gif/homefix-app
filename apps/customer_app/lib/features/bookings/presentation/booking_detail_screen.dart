@@ -5,6 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/models/booking.dart';
+import '../../../core/services/booking_service.dart';
+import '../../payment/presentation/payment_screen.dart';
 import '../widgets/status_tracker.dart';
 import 'rating_screen.dart';
 
@@ -270,7 +272,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
             const SizedBox(height: 32),
 
             // Action Buttons
-            if (booking.status == 'pending' || booking.status == 'assigned') ...[
+            if (['pending_admin', 'technician_pending', 'pending', 'assigned'].contains(booking.status)) ...[
               SizedBox(
                 width: double.infinity,
                 height: 50,
@@ -290,6 +292,94 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+
+            if (booking.status == 'awaiting_payment') ...[
+              SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => PaymentScreen(
+                          bookingId: booking.id,
+                          amount: booking.finalAmount,
+                        ),
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6366F1),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 4,
+                  ),
+                  child: Text(
+                    'PAY NOW (₹${booking.finalAmount.toStringAsFixed(0)})',
+                    style: GoogleFonts.outfit(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: OutlinedButton(
+                  onPressed: () => _cancelBooking(context),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.red),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    'Cancel Booking',
+                    style: GoogleFonts.outfit(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+
+            if (booking.status == 'confirmed') ...[
+               Center(
+                 child: Text(
+                   'Waiting for technician to start work',
+                   style: GoogleFonts.outfit(color: Colors.grey[600], fontStyle: FontStyle.italic),
+                 ),
+               ),
+               const SizedBox(height: 12),
+               SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: OutlinedButton(
+                  onPressed: () => _cancelBooking(context),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.red),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    'Cancel Booking',
+                    style: GoogleFonts.outfit(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red,
                     ),
                   ),
                 ),
@@ -498,13 +588,29 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
   }
 
   void _cancelBooking(BuildContext context) {
+    final TextEditingController reasonController = TextEditingController();
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Cancel Booking?', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-        content: Text(
-          'Are you sure you want to cancel this booking?',
-          style: GoogleFonts.outfit(),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Are you sure you want to cancel this booking? This action cannot be undone.',
+              style: GoogleFonts.outfit(),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: reasonController,
+              decoration: const InputDecoration(
+                hintText: 'Reason for cancellation',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 2,
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -512,11 +618,32 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
             child: Text('No', style: GoogleFonts.outfit()),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
+              final reason = reasonController.text.trim();
+              if (reason.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please provide a reason')),
+                );
+                return;
+              }
+              
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Booking cancellation coming soon!')),
-              );
+              
+              try {
+                await BookingService().cancelBooking(widget.booking.id, reason);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Booking cancelled successfully')),
+                  );
+                  Navigator.pop(context); // Go back after cancellation
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to cancel: $e')),
+                  );
+                }
+              }
             },
             child: Text('Yes, Cancel', style: GoogleFonts.outfit(color: Colors.red)),
           ),

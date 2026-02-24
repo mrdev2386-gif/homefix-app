@@ -16,21 +16,25 @@ class _HomeBannerCarouselState extends State<HomeBannerCarousel> {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint("[Firestore] streaming home_banners...");
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('home_banners').where('isActive', isEqualTo: true).snapshots(),
       builder: (context, snapshot) {
+        // Handle loading state
         if (snapshot.connectionState == ConnectionState.waiting) {
           return SizedBox(height: 200, child: Center(child: CircularProgressIndicator()));
         }
         
+        // Handle error state - don't crash, show defaults
+        if (snapshot.hasError) {
+          debugPrint('⚠️ [BannerCarousel] Stream error: ${snapshot.error}');
+          return _buildCarousel(_getDefaultBanners());
+        }
+        
+        // Handle empty data
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          debugPrint("[Firestore] home_banners is empty, showing defaults");
-          // If no banners in Firestore, show some default premium banners
           return _buildCarousel(_getDefaultBanners());
         }
 
-        debugPrint("[Firestore] home_banners docs: ${snapshot.data!.docs.length}");
         final banners = snapshot.data!.docs;
         return _buildCarousel(banners);
       },

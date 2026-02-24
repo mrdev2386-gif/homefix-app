@@ -61,9 +61,7 @@ class MatchingResponse {
 
   factory MatchingResponse.fromMap(Map<String, dynamic> map) {
     final List<dynamic>? techniciansList = map['topTechnicians'];
-    final List<MatchedTechnician>? technicians = techniciansList != null
-        ? techniciansList.map((t) => MatchedTechnician.fromMap(t)).toList()
-        : null;
+    final List<MatchedTechnician>? technicians = techniciansList?.map((t) => MatchedTechnician.fromMap(t)).toList();
 
     return MatchingResponse(
       available: map['available'] ?? false,

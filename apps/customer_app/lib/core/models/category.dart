@@ -8,6 +8,7 @@ class Category {
   final String imageUrl;
   final int order;
   final bool isActive;
+  final int serviceCount; // Number of services in this category
 
   const Category({
     required this.id,
@@ -15,6 +16,7 @@ class Category {
     this.imageUrl = AppConstants.fallbackServiceImage,
     this.order = 0,
     this.isActive = true,
+    this.serviceCount = 0,
   });
 
   // Aliases for user requested fields and legacy code compatibility
@@ -40,14 +42,23 @@ class Category {
     }
     
     int order = 0;
-    final dynamic orderData = data['order'] ?? 0;
+    final dynamic orderData = data['sortOrder'] ?? data['order'] ?? 0;
     if (orderData is num) {
-      order = orderData.toInt();
+      order = (orderData.isFinite ? orderData : 0).toInt();
     } else if (orderData is String) {
       order = int.tryParse(orderData) ?? 0;
     }
 
     final bool isActive = data['isActive'] ?? true;
+    
+    // Get service count if available
+    int serviceCount = 0;
+    final dynamic countData = data['serviceCount'];
+    if (countData is num) {
+      serviceCount = countData.toInt();
+    } else if (countData is String) {
+      serviceCount = int.tryParse(countData) ?? 0;
+    }
 
     return Category(
       id: id,
@@ -55,6 +66,7 @@ class Category {
       imageUrl: imageUrl,
       order: order,
       isActive: isActive,
+      serviceCount: serviceCount,
     );
   }
 
@@ -64,7 +76,27 @@ class Category {
       'imageUrl': imageUrl ?? '',
       'order': order,
       'isActive': isActive,
+      'serviceCount': serviceCount,
     };
+  }
+
+  /// copyWith — required for enrichWithCounts
+  Category copyWith({
+    String? id,
+    String? name,
+    String? imageUrl,
+    int? order,
+    bool? isActive,
+    int? serviceCount,
+  }) {
+    return Category(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      imageUrl: imageUrl ?? this.imageUrl,
+      order: order ?? this.order,
+      isActive: isActive ?? this.isActive,
+      serviceCount: serviceCount ?? this.serviceCount,
+    );
   }
 
   /// Get fallback image URL - returns null to show local placeholder

@@ -133,17 +133,23 @@ class StatusTracker extends StatelessWidget {
   }
 
   List<Map<String, dynamic>> _getSteps() {
-    // Handle cancelled status separately
-    if (status.toLowerCase() == 'cancelled') {
+    final statusLower = status.toLowerCase();
+
+    // Handle terminal negative statuses
+    if (statusLower == 'cancelled' || statusLower == 'admin_rejected' || statusLower == 'technician_rejected') {
+      String title = 'Cancelled';
+      if (statusLower == 'admin_rejected') title = 'Rejected by Admin';
+      if (statusLower == 'technician_rejected') title = 'Declined by Technician';
+
       return [
         {
-          'title': 'Booking Created',
-          'subtitle': 'Your booking was placed',
+          'title': 'Booking Requested',
+          'subtitle': 'Your request was submitted',
           'icon': Icons.receipt_long,
         },
         {
-          'title': 'Cancelled',
-          'subtitle': 'Booking has been cancelled',
+          'title': title,
+          'subtitle': 'Booking will not proceed',
           'icon': Icons.cancel,
         },
       ];
@@ -151,28 +157,28 @@ class StatusTracker extends StatelessWidget {
 
     return [
       {
-        'title': 'Booking Created',
-        'subtitle': 'Your booking was placed',
-        'icon': Icons.receipt_long,
+        'title': 'Booking Requested',
+        'subtitle': 'Awaiting admin approval',
+        'icon': Icons.history,
       },
       {
         'title': 'Technician Assigned',
-        'subtitle': 'A technician has been assigned',
-        'icon': Icons.person_add,
+        'subtitle': 'Technician is reviewing',
+        'icon': Icons.person_search,
       },
       {
-        'title': 'On the Way',
-        'subtitle': 'Technician is coming to your location',
-        'icon': Icons.directions_car,
+        'title': 'Payment & Confirmation',
+        'subtitle': 'Secure your booking',
+        'icon': Icons.payments,
       },
       {
-        'title': 'Service Started',
-        'subtitle': 'Work is in progress',
+        'title': 'Service in Progress',
+        'subtitle': 'Technician is working',
         'icon': Icons.build,
       },
       {
         'title': 'Completed',
-        'subtitle': 'Service has been completed',
+        'subtitle': 'Service is done',
         'icon': Icons.check_circle,
       },
     ];
@@ -181,24 +187,28 @@ class StatusTracker extends StatelessWidget {
   int _getCurrentStepIndex() {
     final statusLower = status.toLowerCase();
     
-    if (statusLower == 'cancelled') {
-      return 1; // Show cancelled as current step
+    if (statusLower == 'cancelled' || statusLower == 'admin_rejected' || statusLower == 'technician_rejected') {
+      return 1;
     }
 
     switch (statusLower) {
-      case 'pending':
+      case 'pending_admin':
         return 0;
+      case 'technician_pending':
       case 'assigned':
-      case 'accepted':
         return 1;
-      case 'on_the_way':
+      case 'awaiting_payment':
+      case 'confirmed':
         return 2;
+      case 'on_the_way':
       case 'started':
       case 'in_progress':
         return 3;
       case 'completed':
         return 4;
       default:
+        // Fallback for legacy
+        if (statusLower == 'pending') return 0;
         return 0;
     }
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../core/models/booking.dart';
+import '../core/services/booking_service.dart';
 import '../core/widgets/safe_network_image.dart';
 
 class JobDetailsScreen extends StatelessWidget {
@@ -158,38 +159,138 @@ class JobDetailsScreen extends StatelessWidget {
           ],
         ),
       ),
-      bottomSheet: Container(
+      bottomSheet: _buildBottomSheet(context),
+    );
+  }
+
+  Widget? _buildBottomSheet(BuildContext context) {
+    if (booking.status == 'technician_pending') {
+      return Container(
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 20,
-              offset: const Offset(0, -8),
-            ),
-          ],
-        ),
+        decoration: _bottomSheetDecoration(),
         child: Row(
           children: [
             Expanded(
-              child: ElevatedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.call_rounded, size: 20),
-                label: const Text("Call Customer"),
+              child: OutlinedButton(
+                onPressed: () => _handleAction(context, 'reject'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 56),
+                  side: const BorderSide(color: Color(0xFFEF4444)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                child: Text("Decline", style: GoogleFonts.plusJakartaSans(color: const Color(0xFFEF4444), fontWeight: FontWeight.bold)),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: ElevatedButton(
+                onPressed: () => _handleAction(context, 'accept'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF10B981),
-                  foregroundColor: Colors.white,
+                  backgroundColor: const Color(0xFF6366F1),
                   minimumSize: const Size(double.infinity, 56),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  elevation: 0,
                 ),
+                child: Text("Accept Job", style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold)),
               ),
             ),
           ],
         ),
+      );
+    }
+
+    if (booking.status == 'confirmed') {
+      return Container(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        decoration: _bottomSheetDecoration(),
+        child: ElevatedButton.icon(
+          onPressed: () => _handleAction(context, 'start'),
+          icon: const Icon(Icons.play_arrow_rounded, color: Colors.white),
+          label: Text("START JOB", style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF6366F1),
+            minimumSize: const Size(double.infinity, 56),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+        ),
+      );
+    }
+
+    if (booking.status == 'in_progress' || booking.status == 'started') {
+      return Container(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        decoration: _bottomSheetDecoration(),
+        child: ElevatedButton.icon(
+          onPressed: () => _handleAction(context, 'complete'),
+          icon: const Icon(Icons.check_circle_outline_rounded, color: Colors.white),
+          label: Text("COMPLETE JOB", style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF10B981),
+            minimumSize: const Size(double.infinity, 56),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+        ),
+      );
+    }
+
+    // Default: Call Customer
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+      decoration: _bottomSheetDecoration(),
+      child: ElevatedButton.icon(
+        onPressed: () {
+          // Implement call customer logic
+        },
+        icon: const Icon(Icons.call_rounded, size: 20),
+        label: const Text("Call Customer"),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF10B981),
+          foregroundColor: Colors.white,
+          minimumSize: const Size(double.infinity, 56),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
       ),
     );
+  }
+
+  BoxDecoration _bottomSheetDecoration() {
+    return BoxDecoration(
+      color: Colors.white,
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.04),
+          blurRadius: 20,
+          offset: const Offset(0, -8),
+        ),
+      ],
+    );
+  }
+
+  void _handleAction(BuildContext context, String action) async {
+    final service = BookingService();
+    try {
+      if (action == 'accept') {
+        await service.acceptBooking(booking.id);
+      } else if (action == 'reject') {
+        await service.rejectBooking(booking.id);
+      } else if (action == 'start') {
+        await service.updateBookingStatus(booking.id, 'in_progress');
+      } else if (action == 'complete') {
+        await service.updateBookingStatus(booking.id, 'completed');
+      }
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Job ${action}ed successfully")),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Action failed: $e")),
+        );
+      }
+    }
   }
 
   Widget _buildSectionTitle(String title) {

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import '../../../core/services/auth_service.dart';
+import 'package:customer_app/core/services/auth_service.dart';
 
 class HelpRequestForm extends StatefulWidget {
   const HelpRequestForm({super.key});

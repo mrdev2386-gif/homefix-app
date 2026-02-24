@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../core/services/firestore_service.dart';
-import '../../../core/services/auth_service.dart';
-import '../../../core/providers/location_provider.dart';
-import '../../../core/providers/checkout_provider.dart';
-import '../../../core/models/address.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:customer_app/core/services/firestore_service.dart';
+import 'package:customer_app/core/services/auth_service.dart';
+import 'package:customer_app/core/providers/location_provider.dart';
+import 'package:customer_app/core/providers/checkout_provider.dart';
+import 'package:customer_app/core/models/address.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
 import 'add_edit_address_screen.dart';
 
 class SavedAddressesScreen extends StatelessWidget {

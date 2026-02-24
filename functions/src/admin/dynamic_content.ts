@@ -1,7 +1,7 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { db } from '../shared/config';
-import { assertAdmin } from './utils';
+import { assertAdmin, logAdminAction } from './utils';
 import { calculateDistance } from '../shared/geoutils';
 
 export const admin_manageProfessionalVideos = functions.https.onCall(async (data, context) => {
@@ -489,6 +489,460 @@ export const admin_manageTechnicianSubcategories = functions.https.onCall(async 
             });
         });
         await batch.commit();
+        return { success: true };
+    }
+
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid action');
+});
+
+// ============================================================================
+// HOME SECTIONS MANAGEMENT (Dynamic Home Screen Control)
+// ============================================================================
+
+export const admin_manageHomeSections = functions.https.onCall(async (data, context) => {
+    await assertAdmin(context);
+
+    const { action, sectionId, sectionData, orders } = data;
+    // action: 'add' | 'update' | 'delete' | 'reorder'
+
+    // Validate imageUrl if provided
+    if (sectionData?.imageUrl && !sectionData.imageUrl.startsWith('https://')) {
+        throw new functions.https.HttpsError('invalid-argument', 'imageUrl must start with https://');
+    }
+
+    if (action === 'add') {
+        const { title, type, linkedCategoryId, customServices, imageUrl, isActive, order } = sectionData;
+
+        if (!title || !type) {
+            throw new functions.https.HttpsError('invalid-argument', 'Missing required fields: title, type');
+        }
+
+        // Validate type
+        const validTypes = ['horizontal', 'grid', 'banner'];
+        if (!validTypes.includes(type)) {
+            throw new functions.https.HttpsError('invalid-argument', `type must be one of: ${validTypes.join(', ')}`);
+        }
+
+        const docRef = db.collection('homeSections').doc();
+        const newSection = {
+            title,
+            type,
+            linkedCategoryId: linkedCategoryId || null,
+            customServices: customServices || [],
+            imageUrl: imageUrl || '',
+            isActive: isActive !== undefined ? isActive : true,
+            order: order || 0,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdBy: context.auth!.uid
+        };
+
+        await docRef.set(newSection);
+        await logAdminAction(context.auth!.uid, 'homesection_create', docRef.id, newSection);
+
+        return { success: true, id: docRef.id };
+    }
+
+    if (action === 'update') {
+        if (!sectionId) {
+            throw new functions.https.HttpsError('invalid-argument', 'Missing sectionId');
+        }
+
+        const updateData: any = {
+            ...sectionData,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        // Remove undefined values
+        Object.keys(updateData).forEach(key => {
+            if (updateData[key] === undefined) {
+                delete updateData[key];
+            }
+        });
+
+        await db.collection('homeSections').doc(sectionId).update(updateData);
+        await logAdminAction(context.auth!.uid, 'homesection_update', sectionId, updateData);
+
+        return { success: true };
+    }
+
+    if (action === 'delete') {
+        if (!sectionId) {
+            throw new functions.https.HttpsError('invalid-argument', 'Missing sectionId');
+        }
+
+        await db.collection('homeSections').doc(sectionId).delete();
+        await logAdminAction(context.auth!.uid, 'homesection_delete', sectionId);
+
+        return { success: true };
+    }
+
+    if (action === 'reorder') {
+        if (!Array.isArray(orders)) {
+            throw new functions.https.HttpsError('invalid-argument', 'orders must be an array');
+        }
+
+        const batch = db.batch();
+        orders.forEach((item: any) => {
+            batch.update(db.collection('homeSections').doc(item.id), {
+                order: item.order,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+        });
+
+        await batch.commit();
+        await logAdminAction(context.auth!.uid, 'homesection_reorder', 'bulk', { orders });
+
+        return { success: true };
+    }
+
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid action');
+});
+
+// ============================================================================
+// CATEGORY MANAGEMENT (Under categories collection)
+// ============================================================================
+
+export const admin_manageCategory = functions.https.onCall(async (data, context) => {
+    await assertAdmin(context);
+
+    const { action, categoryId, categoryData, orders } = data;
+    // action: 'add' | 'update' | 'delete' | 'reorder'
+
+    // Validate imageUrl if provided
+    if (categoryData?.imageUrl && !categoryData.imageUrl.startsWith('https://')) {
+        throw new functions.https.HttpsError('invalid-argument', 'imageUrl must start with https://');
+    }
+
+    if (action === 'add') {
+        const { name, imageUrl, isActive, order } = categoryData;
+
+        if (!name) {
+            throw new functions.https.HttpsError('invalid-argument', 'Missing required field: name');
+        }
+
+        const docRef = db.collection('categories').doc();
+        const newCategory = {
+            name,
+            imageUrl: imageUrl || '',
+            isActive: isActive !== undefined ? isActive : true,
+            order: order || 0,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdBy: context.auth!.uid
+        };
+
+        await docRef.set(newCategory);
+        await logAdminAction(context.auth!.uid, 'category_create', docRef.id, newCategory);
+
+        return { success: true, id: docRef.id };
+    }
+
+    if (action === 'update') {
+        if (!categoryId) {
+            throw new functions.https.HttpsError('invalid-argument', 'Missing categoryId');
+        }
+
+        const updateData: any = {
+            ...categoryData,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        // Remove undefined values
+        Object.keys(updateData).forEach(key => {
+            if (updateData[key] === undefined) {
+                delete updateData[key];
+            }
+        });
+
+        await db.collection('categories').doc(categoryId).update(updateData);
+        await logAdminAction(context.auth!.uid, 'category_update', categoryId, updateData);
+
+        return { success: true };
+    }
+
+    if (action === 'delete') {
+        if (!categoryId) {
+            throw new functions.https.HttpsError('invalid-argument', 'Missing categoryId');
+        }
+
+        // Check if category has services before deleting
+        const servicesSnapshot = await db.collection('categories').doc(categoryId)
+            .collection('services').get();
+
+        if (!servicesSnapshot.empty) {
+            // Check for force flag
+            if (!data.force) {
+                throw new functions.https.HttpsError('failed-precondition',
+                    'Cannot delete category with existing services. Use force: true to override.');
+            }
+        }
+
+        // Soft delete - just mark as inactive
+        await db.collection('categories').doc(categoryId).update({
+            isActive: false,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        await logAdminAction(context.auth!.uid, 'category_delete', categoryId);
+
+        return { success: true };
+    }
+
+    if (action === 'reorder') {
+        if (!Array.isArray(orders)) {
+            throw new functions.https.HttpsError('invalid-argument', 'orders must be an array');
+        }
+
+        const batch = db.batch();
+        orders.forEach((item: any) => {
+            batch.update(db.collection('categories').doc(item.id), {
+                order: item.order,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+        });
+
+        await batch.commit();
+        await logAdminAction(context.auth!.uid, 'category_reorder', 'bulk', { orders });
+
+        return { success: true };
+    }
+
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid action');
+});
+
+// ============================================================================
+// SERVICE MANAGEMENT (Under categories/{categoryId}/services)
+// ============================================================================
+
+export const admin_manageNestedService = functions.https.onCall(async (data, context) => {
+    await assertAdmin(context);
+
+    const { action, categoryId, serviceId, serviceData, orders } = data;
+    // action: 'add' | 'update' | 'delete' | 'reorder'
+
+    // Validate imageUrl if provided
+    if (serviceData?.imageUrl && !serviceData.imageUrl.startsWith('https://')) {
+        throw new functions.https.HttpsError('invalid-argument', 'imageUrl must start with https://');
+    }
+
+    if (action === 'add') {
+        if (!categoryId) {
+            throw new functions.https.HttpsError('invalid-argument', 'Missing categoryId');
+        }
+
+        const { name, imageUrl, isActive, order } = serviceData;
+
+        if (!name) {
+            throw new functions.https.HttpsError('invalid-argument', 'Missing required field: name');
+        }
+
+        const docRef = db.collection('categories').doc(categoryId).collection('services').doc();
+        const newService = {
+            id: docRef.id,
+            name,
+            imageUrl: imageUrl || '',
+            isActive: isActive !== undefined ? isActive : true,
+            order: order || 0,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdBy: context.auth!.uid
+        };
+
+        await docRef.set(newService);
+        await logAdminAction(context.auth!.uid, 'nested_service_create', docRef.id, { ...newService, categoryId });
+
+        return { success: true, id: docRef.id };
+    }
+
+    if (action === 'update') {
+        if (!serviceId || !categoryId) {
+            throw new functions.https.HttpsError('invalid-argument', 'Missing serviceId or categoryId');
+        }
+
+        const updateData: any = {
+            ...serviceData,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        // Remove undefined values
+        Object.keys(updateData).forEach(key => {
+            if (updateData[key] === undefined) {
+                delete updateData[key];
+            }
+        });
+
+        await db.collection('categories').doc(categoryId).collection('services').doc(serviceId).update(updateData);
+        await logAdminAction(context.auth!.uid, 'nested_service_update', serviceId, { ...updateData, categoryId });
+
+        return { success: true };
+    }
+
+    if (action === 'delete') {
+        if (!serviceId || !categoryId) {
+            throw new functions.https.HttpsError('invalid-argument', 'Missing serviceId or categoryId');
+        }
+
+        // Check for subServices before deleting
+        const subServicesSnapshot = await db.collection('categories').doc(categoryId)
+            .collection('services').doc(serviceId).collection('subServices').get();
+
+        if (!subServicesSnapshot.empty) {
+            if (!data.force) {
+                throw new functions.https.HttpsError('failed-precondition',
+                    'Cannot delete service with existing subServices. Use force: true to override.');
+            }
+        }
+
+        // Soft delete
+        await db.collection('categories').doc(categoryId).collection('services').doc(serviceId).update({
+            isActive: false,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        await logAdminAction(context.auth!.uid, 'nested_service_delete', serviceId, { categoryId });
+
+        return { success: true };
+    }
+
+    if (action === 'reorder') {
+        if (!categoryId || !Array.isArray(orders)) {
+            throw new functions.https.HttpsError('invalid-argument', 'Missing categoryId or invalid orders array');
+        }
+
+        const batch = db.batch();
+        orders.forEach((item: any) => {
+            batch.update(db.collection('categories').doc(categoryId).collection('services').doc(item.id), {
+                order: item.order,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+        });
+
+        await batch.commit();
+        await logAdminAction(context.auth!.uid, 'nested_service_reorder', 'bulk', { categoryId, orders });
+
+        return { success: true };
+    }
+
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid action');
+});
+
+// ============================================================================
+// SUBSERVICE MANAGEMENT (Under categories/{categoryId}/services/{serviceId}/subServices)
+// ============================================================================
+
+export const admin_manageNestedSubService = functions.https.onCall(async (data, context) => {
+    await assertAdmin(context);
+
+    const { action, categoryId, serviceId, subServiceId, subServiceData, orders } = data;
+    // action: 'add' | 'update' | 'delete' | 'reorder'
+
+    // Validate price if provided
+    if (subServiceData?.price !== undefined && subServiceData.price < 0) {
+        throw new functions.https.HttpsError('invalid-argument', 'Price cannot be negative');
+    }
+
+    // Validate imageUrl if provided
+    if (subServiceData?.imageUrl && !subServiceData.imageUrl.startsWith('https://')) {
+        throw new functions.https.HttpsError('invalid-argument', 'imageUrl must start with https://');
+    }
+
+    if (action === 'add') {
+        if (!categoryId || !serviceId) {
+            throw new functions.https.HttpsError('invalid-argument', 'Missing categoryId or serviceId');
+        }
+
+        const { name, price, imageUrl, isActive, order } = subServiceData;
+
+        if (!name || price === undefined) {
+            throw new functions.https.HttpsError('invalid-argument', 'Missing required fields: name, price');
+        }
+
+        const docRef = db.collection('categories').doc(categoryId)
+            .collection('services').doc(serviceId).collection('subServices').doc();
+
+        const newSubService = {
+            id: docRef.id,
+            name,
+            price,
+            imageUrl: imageUrl || '',
+            isActive: isActive !== undefined ? isActive : true,
+            order: order || 0,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdBy: context.auth!.uid
+        };
+
+        await docRef.set(newSubService);
+        await logAdminAction(context.auth!.uid, 'nested_subservice_create', docRef.id,
+            { ...newSubService, categoryId, serviceId });
+
+        return { success: true, id: docRef.id };
+    }
+
+    if (action === 'update') {
+        if (!subServiceId || !categoryId || !serviceId) {
+            throw new functions.https.HttpsError('invalid-argument', 'Missing required IDs');
+        }
+
+        const updateData: any = {
+            ...subServiceData,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        // Remove undefined values
+        Object.keys(updateData).forEach(key => {
+            if (updateData[key] === undefined) {
+                delete updateData[key];
+            }
+        });
+
+        await db.collection('categories').doc(categoryId)
+            .collection('services').doc(serviceId)
+            .collection('subServices').doc(subServiceId).update(updateData);
+
+        await logAdminAction(context.auth!.uid, 'nested_subservice_update', subServiceId,
+            { ...updateData, categoryId, serviceId });
+
+        return { success: true };
+    }
+
+    if (action === 'delete') {
+        if (!subServiceId || !categoryId || !serviceId) {
+            throw new functions.https.HttpsError('invalid-argument', 'Missing required IDs');
+        }
+
+        // Soft delete
+        await db.collection('categories').doc(categoryId)
+            .collection('services').doc(serviceId)
+            .collection('subServices').doc(subServiceId).update({
+                isActive: false,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+        await logAdminAction(context.auth!.uid, 'nested_subservice_delete', subServiceId, { categoryId, serviceId });
+
+        return { success: true };
+    }
+
+    if (action === 'reorder') {
+        if (!categoryId || !serviceId || !Array.isArray(orders)) {
+            throw new functions.https.HttpsError('invalid-argument', 'Missing required IDs or invalid orders array');
+        }
+
+        const batch = db.batch();
+        orders.forEach((item: any) => {
+            batch.update(db.collection('categories').doc(categoryId)
+                .collection('services').doc(serviceId)
+                .collection('subServices').doc(item.id), {
+                order: item.order,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+        });
+
+        await batch.commit();
+        await logAdminAction(context.auth!.uid, 'nested_subservice_reorder', 'bulk', { categoryId, serviceId, orders });
+
         return { success: true };
     }
 

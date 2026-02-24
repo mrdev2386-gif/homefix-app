@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../../core/models/service.dart';
+import 'package:customer_app/core/models/service.dart';
 import '../../../core/widgets/safe_network_image.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../technicians/presentation/technician_list_screen.dart';
 

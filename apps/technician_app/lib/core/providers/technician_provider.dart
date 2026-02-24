@@ -2,7 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../firestore/technician_service.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import '../services/technician_service.dart';
 import '../models/technician.dart';
 
 class TechnicianProvider extends ChangeNotifier {
@@ -78,15 +79,44 @@ class TechnicianProvider extends ChangeNotifier {
     // Stream takes care of local update
   }
 
-  Future<void> updateLocation(double lat, double lng) async {
-    if (_technician == null) return;
-    await _techService.updateLocation(_technician!.uid, lat, lng);
+
+
+  Future<void> submitApplication({
+    required String fullName,
+    required String email,
+    required int experienceYears,
+    required String primaryCategoryId,
+    required String documentType,
+    required String frontImage,
+    required String backImage,
+  }) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      final callable = FirebaseFunctions.instance.httpsCallable('submitTechnicianApplication');
+      final result = await callable.call({
+        'fullName': fullName,
+        'email': email,
+        'experienceYears': experienceYears,
+        'primaryCategoryId': primaryCategoryId,
+        'documentType': documentType,
+        'frontImage': frontImage,
+        'backImage': backImage,
+      });
+
+      if (result.data['success'] != true) {
+        throw Exception(result.data['message'] ?? 'Failed to submit application');
+      }
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
-  Future<void> onboard(List<String> skills, {double? lat, double? lng}) async {
+  Future<void> onboard(List<String> skills) async {
     final user = _auth.currentUser;
     if (user == null) return;
-    await _techService.saveTechnicianProfile(user, skills: skills, lat: lat, lng: lng);
+    await _techService.saveTechnicianProfile(user, skills: skills);
   }
 
   Future<void> signOut() async {

@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../../core/providers/technician_provider.dart';
-import '../../../core/firestore/wallet_service.dart';
+import '../../../core/services/wallet_service.dart';
 import '../../../core/models/wallet.dart';
 import '../../../core/models/earning.dart';
 import '../../../core/models/payout.dart';

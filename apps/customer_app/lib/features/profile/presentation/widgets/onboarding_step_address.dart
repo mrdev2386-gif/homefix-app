@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../../core/theme/app_theme.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
 import '../../providers/partner_onboarding_provider.dart';
 
 /// Service Address Step - Step 6 of 8

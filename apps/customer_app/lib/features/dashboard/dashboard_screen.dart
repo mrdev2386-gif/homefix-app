@@ -2,34 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../core/services/auth_service.dart';
+import 'package:customer_app/core/services/auth_service.dart';
 import '../../core/services/firestore_service.dart';
-import '../../core/models/service.dart';
+import 'package:customer_app/core/services/category_service.dart';
+import 'package:customer_app/core/models/service.dart';
 import '../../core/providers/cart_provider.dart';
 import '../../core/models/booking.dart';
 import '../../core/providers/location_provider.dart';
 import '../../core/services/notifications_service.dart';
 import '../cart/presentation/cart_screen.dart';
 import '../notifications/presentation/notification_screen.dart';
+import '../services/presentation/service_list_screen.dart';
+import 'widgets/premium_search_bar.dart';
+import 'widgets/real_services_sections.dart';
+import 'widgets/upcoming_booking_widget.dart';
+import '../../core/models/dashboard_models.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
+import '../services/presentation/service_details_screen.dart';
+import '../support/presentation/support_screen.dart';
 import '../profile/presentation/saved_addresses_screen.dart';
 import '../profile/presentation/add_edit_address_screen.dart';
-import '../services/presentation/service_request_screen.dart';
-import '../services/presentation/instant_booking_screen.dart';
-import '../services/presentation/service_list_screen.dart';
 import '../custom_request/presentation/custom_request_screen.dart';
-import '../support/presentation/support_screen.dart';
-import 'widgets/home_banner_carousel.dart';
-import 'widgets/service_section.dart';
-import 'widgets/upcoming_booking_widget.dart';
-import 'widgets/category_grid.dart';
-import 'widgets/service_spotlight_section.dart';
-import 'widgets/professional_home_service.dart';
-import 'widgets/professional_reels_section.dart';
-import 'widgets/cleaning_essentials_section.dart';
-import 'widgets/service_bottom_banners_section.dart';
-import 'widgets/horizontal_service_section.dart';
-import '../../core/models/dashboard_models.dart';
-import '../../core/theme/app_theme.dart';
+import '../services/presentation/instant_booking_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -39,39 +33,26 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAliveClientMixin {
-  Stream<List<ProfessionalReel>>? _reelsStream;
-  Stream<List<CleaningEssential>>? _essentialsStream;
-  Stream<List<ServiceBanner>>? _bannersStream;
   Stream<List<Booking>>? _bookingsStream;
-  Stream<List<HomeService>>? _servicesStream;
   
-  // Debounce guard for location button - prevents multiple parallel calls
-  bool _isLocationUpdating = false;
-  DateTime? _lastLocationUpdateTime;
-  static const _locationDebounceDuration = Duration(seconds: 2);
+
   
-  // Debounce guard for Custom Request navigation
   bool _isNavigatingToCustomRequest = false;
   DateTime? _lastCustomRequestNavigationTime;
-  static const _customRequestDebounceDuration = Duration(milliseconds: 500);
-  
+  final _customRequestDebounceDuration = const Duration(milliseconds: 500);
+   
   @override
   bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
-    final firestore = Provider.of<FirestoreService>(context, listen: false);
-    _reelsStream = firestore.streamProfessionalReels();
-    _essentialsStream = firestore.streamCleaningEssentials();
-    _bannersStream = firestore.streamServiceBottomBanners();
-    _servicesStream = firestore.streamServices();
-
     final auth = Provider.of<AuthService>(context, listen: false);
     if (auth.currentUser != null) {
+      final firestore = Provider.of<FirestoreService>(context, listen: false);
       _bookingsStream = firestore.streamBookings(auth.currentUser!.uid, limit: 1);
-      
-      // Initialize location provider with user ID
+       
+      // Initialize location provider with user ID to load district
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final locationProvider = Provider.of<LocationProvider>(context, listen: false);
         locationProvider.initialize(auth.currentUser!.uid);
@@ -110,77 +91,52 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Custom Request & Verified Technician (TOP)
+                  // Quick Actions
                   _buildQuickActions(context),
-                  const SizedBox(height: 24),
                   
-                  // What are you looking for?
-                  _buildSectionHeader('What are you looking for?', null),
-                  const CategoryGrid(),
-                  const SizedBox(height: 24),
-                  
-                  // Professional Home Service (NEW 2x2 layout)
-                  _buildProfessionalHomeService(context),
-                  const SizedBox(height: 24),
-                  
-                  // Cleaning Essentials
-                  _buildCleaningEssentials(context),
-                  const SizedBox(height: 24),
-                  
-                  // Home Repair & Installation (NEW)
-                  HorizontalServiceSection(
-                    title: 'Home Repair & Installation',
-                    serviceFilter: (cat) =>
-                        cat.contains('appliance') ||
-                        cat.contains('repair') ||
-                        cat.contains('electronics') ||
-                        cat.contains('tv') ||
-                        cat.contains('fridge') ||
-                        cat.contains('washing') ||
-                        cat.contains('ac') ||
-                        cat.contains('install'),
-                    viewAllCategory: 'appliance',
+                  // SECTION 0: Available Quick Search
+                  PremiumSearchBar(
+                    hintText: 'Search for home services...',
+                    onChanged: (query) {
+                      if (query.isNotEmpty && query.length > 2) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ServiceListScreen(initialSearchQuery: query),
+                          ),
+                        );
+                      }
+                    },
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const ServiceListScreen()),
+                      );
+                    },
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
+
+                  // SECTION: Upcoming Booking
+                  _buildUpcomingBooking(context),
                   
-                  // Electrician Services (NEW)
-                  HorizontalServiceSection(
-                    title: 'Electrician',
-                    serviceFilter: (cat) =>
-                        cat.contains('electric') ||
-                        cat.contains('wiring') ||
-                        cat.contains('electrical'),
-                    viewAllCategory: 'electrician',
-                  ),
-                  const SizedBox(height: 24),
+                  // SECTION 1: All Services (Primary discovery)
+                  const AllServicesSection(),
+                  const SizedBox(height: 32),
                   
-                  // Trending Near You - based on highest bookings
-                  HorizontalServiceSection(
-                    title: 'Trending Near You',
-                    serviceFilter: (cat) =>
-                        cat.contains('clean') ||
-                        cat.contains('plumb') ||
-                        cat.contains('ac') ||
-                        cat.contains('electric'),
-                    maxItems: 6,
-                    viewAllCategory: 'trending',
-                  ),
-                  const SizedBox(height: 24),
+                  // SECTION 2: Top Rated Services
+                  const TopRatedRealServicesSection(),
+                  const SizedBox(height: 32),
+
+                  // SECTION 3: Recently Added Services
+                  const RecentlyAddedServicesSection(),
+                  const SizedBox(height: 32),
                   
-                  // Recently Added Services - order by createdAt desc
-                  const ServiceListSection(title: 'Recently Added', isHorizontal: true, limit: 8),
-                  const SizedBox(height: 24),
-                  
-                  // Recommended for You
-                  const ServiceListSection(title: 'Recommended For You', category: 'cleaning', isHorizontal: true),
-                  const SizedBox(height: 24),
-                  
-                  // Need Assistance
+                  // SECTION 4: Recommended For You (AI Driven)
+                  const RecommendedServicesSection(),
+                  const SizedBox(height: 32),
+
+                  // SECTION 5: Support
                   _buildSupportCard(context),
-                  const SizedBox(height: 24),
-                  
-                  // Celebration Professional (moved to bottom)
-                  _buildProfessionalReels(context),
                   const SizedBox(height: 32),
                   
                   const SizedBox(height: 100),
@@ -209,51 +165,46 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
           color: Colors.transparent,
           child: Consumer<LocationProvider>(
             builder: (context, location, child) {
-              return InkWell(
-                onTap: () => _showLocationBottomSheet(context),
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.all(4.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.location_on_rounded, color: AppTheme.primaryColor, size: 14),
-                          const SizedBox(width: 4),
-                          Text(
-                            'DELIVERING TO',
+              return Padding(
+                padding: const EdgeInsets.all(4.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.location_on_rounded, color: AppTheme.primaryColor, size: 14),
+                        const SizedBox(width: 4),
+                        Text(
+                          'YOUR DISTRICT',
+                          style: GoogleFonts.outfit(
+                            color: AppTheme.primaryColor,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            location.selectedDistrict ?? location.currentAddress, 
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.outfit(
-                              color: AppTheme.primaryColor,
-                              fontSize: 9,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 1,
+                              color: AppTheme.textColor,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
                             ),
                           ),
-                        ],
-                      ),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              location.currentAddress, 
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.outfit(
-                                color: AppTheme.textColor,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 15,
-                              ),
-                            ),
-                          ),
-                          const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.primaryColor, size: 18),
-                        ],
-                      ),
-                    ],
-                  ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               );
             },
@@ -383,14 +334,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
               ),
             ),
             const SizedBox(height: 24),
-            _buildLocationOption(
-              context,
-              icon: Icons.my_location_rounded,
-              title: 'Current Location',
-              subtitle: 'Precision location via GPS',
-              onTap: () => _handleCurrentLocation(context),
-            ),
-            const Divider(height: 1, indent: 80),
+
             _buildLocationOption(
               context,
               icon: Icons.map_outlined,
@@ -412,125 +356,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
     );
   }
 
-  Future<void> _handleCurrentLocation(BuildContext context) async {
-    if (!mounted) return;
 
-    // Debounce guard - prevent multiple parallel calls within 2 seconds
-    if (_isLocationUpdating) {
-      debugPrint('[Location] Location update already in progress, ignoring request');
-      return;
-    }
-    final now = DateTime.now();
-    if (_lastLocationUpdateTime != null && 
-        now.difference(_lastLocationUpdateTime!) < _locationDebounceDuration) {
-      debugPrint('[Location] Location update debounced, please wait');
-      return;
-    }
-    _isLocationUpdating = true;
-    _lastLocationUpdateTime = now;
-
-    // First pop the bottom sheet
-    if (!context.mounted) return;
-    final navigator = Navigator.maybeOf(context);
-    if (navigator != null && navigator.canPop()) {
-      navigator.pop();
-    }
-
-    // Show loading indicator
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
-
-    final locationProvider = Provider.of<LocationProvider>(context, listen: false);
-
-    try {
-      // Fetch location and save to Firestore
-      final success = await locationProvider.updateCurrentLocation(saveToFirestore: true);
-
-      // Always close loader safely - check mounted first
-      if (!mounted) return;
-      if (!context.mounted) return;
-      final nav = Navigator.maybeOf(context);
-      if (nav != null && nav.canPop()) {
-        nav.pop();
-      }
-
-      if (!mounted) return;
-
-      if (success) {
-        // Success snackbar
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Location updated successfully'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      } else {
-        // Get error message from provider
-        final errorMsg = locationProvider.errorMessage ?? 'Unable to get current location. Please try again.';
-        
-        // Determine appropriate error message
-        String displayMessage;
-        VoidCallback? settingsAction;
-        
-        if (errorMsg.contains('permission') || errorMsg.contains('denied')) {
-          displayMessage = 'Location permission denied. Please enable in settings.';
-          settingsAction = () => locationProvider.openAppSettings();
-        } else if (errorMsg.contains('disabled') || errorMsg.contains('service')) {
-          displayMessage = 'Location service is disabled. Please enable GPS.';
-          settingsAction = () => locationProvider.openLocationSettings();
-        } else if (errorMsg.contains('timeout') || errorMsg.contains('timed out')) {
-          displayMessage = 'Location request timed out. Please try again.';
-        } else {
-          displayMessage = errorMsg;
-        }
-
-        // Error snackbar with optional action
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(displayMessage),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            action: settingsAction != null
-                ? SnackBarAction(
-                    label: 'Settings',
-                    textColor: Colors.white,
-                    onPressed: settingsAction,
-                  )
-                : null,
-            duration: Duration(seconds: settingsAction != null ? 4 : 3),
-          ),
-        );
-      }
-    } catch (e) {
-      // Always close loader on error - check mounted first
-      if (!mounted) return;
-      final nav = Navigator.maybeOf(context);
-      if (nav != null && nav.canPop()) {
-        nav.pop();
-      }
-
-      if (!mounted) return;
-
-      // Error snackbar
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to fetch location: ${e.toString()}'),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    } finally {
-      // Always reset the debounce flag
-      _isLocationUpdating = false;
-    }
-  }
 
   Future<void> _handleAddNewAddress(BuildContext context) async {
     if (mounted && Navigator.canPop(context)) {
@@ -872,80 +698,4 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
     );
   }
 
-  Widget _buildProfessionalHomeService(BuildContext context) {
-    return StreamBuilder<List<HomeService>>(
-      stream: _servicesStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: CircularProgressIndicator(),
-          ));
-        }
-        
-        final services = snapshot.data ?? [];
-        if (services.isEmpty) {
-          return const SizedBox.shrink();
-        }
-        return ProfessionalHomeServiceSection(services: services.take(6).toList());
-      },
-    );
-  }
-
-  Widget _buildProfessionalReels(BuildContext context) {
-    return StreamBuilder<List<ProfessionalReel>>(
-      stream: _reelsStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: CircularProgressIndicator(),
-          ));
-        }
-        
-        final reels = snapshot.data ?? [];
-        if (reels.isEmpty) {
-          return const SizedBox.shrink();
-        }
-        return ProfessionalReelsSection(reels: reels);
-      },
-    );
-  }
-
-  Widget _buildCleaningEssentials(BuildContext context) {
-    return StreamBuilder<List<CleaningEssential>>(
-      stream: _essentialsStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: CircularProgressIndicator(),
-          ));
-        }
-
-        final essentials = snapshot.data ?? [];
-        if (essentials.isEmpty) {
-          return const SizedBox.shrink();
-        }
-        return CleaningEssentialsSection(essentials: essentials);
-      },
-    );
-  }
-
-  Widget _buildServiceBottomBanners(BuildContext context) {
-    return StreamBuilder<List<ServiceBanner>>(
-      stream: _bannersStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SizedBox(height: 180, child: Center(child: CircularProgressIndicator()));
-        }
-
-        final banners = snapshot.data ?? [];
-        if (banners.isEmpty) {
-          return const SizedBox.shrink();
-        }
-        return ServiceBottomBannersSection(banners: banners);
-      },
-    );
-  }
 }

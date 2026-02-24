@@ -3,8 +3,7 @@
  * Migrated from v1 with exact same business logic
  */
 
-import { onRequest } from "firebase-functions/v2/https";
-import * as https from "firebase-functions/v2/https";
+import * as functions from 'firebase-functions';
 import * as admin from "firebase-admin";
 import * as crypto from "crypto";
 import { Request, Response } from "express";
@@ -16,88 +15,80 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 /**
- * Razorpay Webhook Handler (2nd Gen)
+ * Razorpay Webhook Handler (V1)
  * 
  * CRITICAL SECURITY:
  * - Verifies Razorpay signature
  * - Updates booking only after verification
  * - Handles payment.captured and payment.failed events
  */
-export const razorpayWebhookV2 = onRequest(
-    {
-        region: "us-central1",
-        memory: "512MiB",
-        timeoutSeconds: 60,
-        concurrency: 80,
-        minInstances: 0,
-    },
-    async (req: Request, res: Response) => {
-        // Only accept POST requests
-        if (req.method !== "POST") {
-            res.status(405).send("Method Not Allowed");
+export const razorpayWebhookV2 = functions.https.onRequest(async (req, res) => {
+    // Only accept POST requests
+    if (req.method !== "POST") {
+        res.status(405).send("Method Not Allowed");
+        return;
+    }
+
+    try {
+        // Get webhook secret
+        const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || "";
+
+        if (!webhookSecret) {
+            console.error("Razorpay webhook secret not configured");
+            res.status(500).send("Webhook secret not configured");
             return;
         }
 
-        try {
-            // Get webhook secret
-            const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || "";
+        // Verify signature
+        const signature = req.headers["x-razorpay-signature"] as string;
 
-            if (!webhookSecret) {
-                console.error("Razorpay webhook secret not configured");
-                res.status(500).send("Webhook secret not configured");
-                return;
-            }
-
-            // Verify signature
-            const signature = req.headers["x-razorpay-signature"] as string;
-
-            if (!signature) {
-                console.error("No signature in webhook request");
-                res.status(400).send("No signature provided");
-                return;
-            }
-
-            // Create signature hash
-            const body = JSON.stringify(req.body);
-            const expectedSignature = crypto
-                .createHmac("sha256", webhookSecret)
-                .update(body)
-                .digest("hex");
-
-            // Verify signature
-            if (signature !== expectedSignature) {
-                console.error("Invalid webhook signature");
-                res.status(400).send("Invalid signature");
-                return;
-            }
-
-            // Signature verified, process event
-            const event = req.body.event;
-            const payload = req.body.payload;
-
-            console.log("Razorpay webhook V2 event:", event);
-
-            // Handle different events
-            switch (event) {
-                case "payment.captured":
-                    await handlePaymentCapturedV2(payload);
-                    break;
-
-                case "payment.failed":
-                    await handlePaymentFailedV2(payload);
-                    break;
-
-                default:
-                    console.log("Unhandled webhook event:", event);
-            }
-
-            res.status(200).send("OK");
-
-        } catch (error: any) {
-            console.error("Webhook processing error:", error);
-            res.status(500).send("Internal Server Error");
+        if (!signature) {
+            console.error("No signature in webhook request");
+            res.status(400).send("No signature provided");
+            return;
         }
+
+        // Create signature hash
+        const body = JSON.stringify(req.body);
+        const expectedSignature = crypto
+            .createHmac("sha256", webhookSecret)
+            .update(body)
+            .digest("hex");
+
+        // Verify signature
+        if (signature !== expectedSignature) {
+            console.error("Invalid webhook signature");
+            res.status(400).send("Invalid signature");
+            return;
+        }
+
+        // Signature verified, process event
+        const event = req.body.event;
+        const payload = req.body.payload;
+
+        console.log("Razorpay webhook V2 event:", event);
+
+        // Handle different events
+        switch (event) {
+            case "payment.captured":
+                await handlePaymentCapturedV2(payload);
+                break;
+
+            case "payment.failed":
+                await handlePaymentFailedV2(payload);
+                break;
+
+            default:
+                console.log("Unhandled webhook event:", event);
+        }
+
+        res.status(200).send("OK");
+
+    } catch (error: any) {
+        console.error("Webhook processing error:", error);
+        res.status(500).send("Internal Server Error");
     }
+}
 );
 
 /**

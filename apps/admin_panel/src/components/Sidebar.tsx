@@ -29,6 +29,7 @@ import { useAuth } from '@/components/AuthProvider';
 const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
     { icon: Calendar, label: 'Bookings', href: '/bookings' },
+    { icon: ClipboardList, label: 'Custom Requests', href: '/custom-requests' },
     { icon: ClipboardList, label: 'Technician Applications', href: '/applications' },
     { icon: Wrench, label: 'Technicians', href: '/technicians' },
     { icon: Users, label: 'Customers', href: '/customers' },

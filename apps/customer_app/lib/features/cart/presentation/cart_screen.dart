@@ -5,7 +5,7 @@ import '../../../core/providers/cart_provider.dart';
 import '../../../core/providers/auth_provider.dart';
 import '../../../core/models/cart_item.dart';
 import '../../../core/widgets/safe_network_image.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
 import 'checkout_screen.dart';
 import '../../../core/providers/checkout_provider.dart';
 

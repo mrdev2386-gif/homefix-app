@@ -21,6 +21,7 @@ class _OtpScreenState extends State<OtpScreen> {
   final List<TextEditingController> _controllers = List.generate(6, (index) => TextEditingController());
   final List<FocusNode> _focusNodes = List.generate(6, (index) => FocusNode());
   bool _isLoading = false;
+  bool _isResending = false; // Rate guard to prevent OTP spam
   int _timerSeconds = 30;
   Timer? _timer;
   late String _currentVerificationId;
@@ -79,9 +80,9 @@ class _OtpScreenState extends State<OtpScreen> {
   }
 
   Future<void> _resendCode() async {
-    if (_timerSeconds > 0 || _isLoading) return;
+    if (_timerSeconds > 0 || _isLoading || _isResending) return;
     
-    setState(() => _isLoading = true);
+    setState(() => _isResending = true);
     try {
       await FirebaseAuth.instance.verifyPhoneNumber(
         phoneNumber: widget.phoneNumber,
@@ -89,14 +90,14 @@ class _OtpScreenState extends State<OtpScreen> {
           if (mounted) {
             setState(() {
               _currentVerificationId = verificationId;
-              _isLoading = false;
+              _isResending = false;
               _startTimer();
             });
           }
         },
         verificationFailed: (e) {
           if (mounted) {
-            setState(() => _isLoading = false);
+            setState(() => _isResending = false);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text("Failed: ${e.message}")),
             );
@@ -109,7 +110,9 @@ class _OtpScreenState extends State<OtpScreen> {
         codeAutoRetrievalTimeout: (id) {},
       );
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isResending = false);
+      }
     }
   }
 

@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { adminApi } from '@/lib/admin-api';
 import {
@@ -30,11 +30,7 @@ export default function UserDetailPage() {
         role: '',
     });
 
-    useEffect(() => {
-        fetchUserDetails();
-    }, [userId]);
-
-    const fetchUserDetails = async () => {
+    const fetchUserDetails = useCallback(async () => {
         setLoading(true);
         try {
             const data = await adminApi.getUserById(userId) as any;
@@ -54,7 +50,11 @@ export default function UserDetailPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [userId]);
+
+    useEffect(() => {
+        fetchUserDetails();
+    }, [fetchUserDetails]);
 
     const handleUpdateUser = async () => {
         setUpdating(true);
@@ -138,8 +138,8 @@ export default function UserDetailPage() {
                     <Button
                         variant="outline"
                         className={`h-12 rounded-2xl border-slate-800 font-black uppercase tracking-widest text-[10px] px-6 transition-all ${user.isBlocked
-                                ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20 hover:bg-indigo-500 hover:text-white"
-                                : "bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500 hover:text-white"
+                            ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20 hover:bg-indigo-500 hover:text-white"
+                            : "bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500 hover:text-white"
                             }`}
                         onClick={handleBlockToggle}
                         disabled={updating}

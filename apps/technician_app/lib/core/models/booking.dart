@@ -20,6 +20,8 @@ class Booking {
   final DateTime createdAt;
   final Map<String, dynamic>? quoteData;
 
+  String get id => bookingId;
+
   Booking({
     required this.bookingId,
     required this.customerId,

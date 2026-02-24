@@ -46,8 +46,26 @@ export default function BookingsPage() {
     });
 
     const handleAction = async (bookingId: string, action: string) => {
-        // Open modal instead of using prompt
-        setSelectedBooking(bookings.find(b => b.id === bookingId));
+        // Get the booking to check its status
+        const booking = bookings.find(b => b.id === bookingId);
+        if (!booking) return;
+
+        // NEW FLOW: Use new functions for pending_admin status
+        if (action === 'approve' || action === 'reject') {
+            if (booking.status !== 'pending_admin') {
+                alert('This booking cannot be approved/rejected. Current status: ' + booking.status);
+                return;
+            }
+
+            setSelectedBooking(booking);
+            setActionType(action);
+            setActionPayload({});
+            setActionModalOpen(true);
+            return;
+        }
+
+        // Open modal for other actions
+        setSelectedBooking(booking);
         setActionType(action);
         setActionPayload({});
         setActionModalOpen(true);
@@ -55,7 +73,7 @@ export default function BookingsPage() {
 
     const executeAction = async () => {
         if (!selectedBooking) return;
-        
+
         setProcessingId(selectedBooking.id);
         try {
             await adminApi.manageBooking(selectedBooking.id, actionType, actionPayload);
@@ -147,6 +165,30 @@ export default function BookingsPage() {
             align: 'right' as const,
             render: (b: any) => (
                 <div className="flex justify-end gap-2 pr-2">
+                    {/* NEW FLOW: Approve/Reject for pending_admin status */}
+                    {b.status === 'pending_admin' && (
+                        <>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 bg-green-500/10 border-green-500/20 text-green-400 hover:bg-green-500 hover:text-white rounded-lg font-black text-[9px] uppercase tracking-widest px-3"
+                                disabled={processingId === b.id}
+                                onClick={() => handleAction(b.id, 'approve')}
+                            >
+                                Approve
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg font-black text-[9px] uppercase tracking-widest px-3"
+                                disabled={processingId === b.id}
+                                onClick={() => handleAction(b.id, 'reject')}
+                            >
+                                Reject
+                            </Button>
+                        </>
+                    )}
+                    {/* Legacy: Assign for confirmed/requested (for backward compatibility) */}
                     {(b.status === 'confirmed' || b.status === 'requested') && (
                         <Button
                             size="sm"
@@ -176,8 +218,10 @@ export default function BookingsPage() {
 
     const tabs = [
         { id: 'all', label: 'All Operations' },
-        { id: 'requested', label: 'Requested' },
-        { id: 'assigned', label: 'Assigned' },
+        { id: 'pending_admin', label: 'Pending Approval' },
+        { id: 'technician_pending', label: 'Technician Pending' },
+        { id: 'awaiting_payment', label: 'Awaiting Payment' },
+        { id: 'confirmed', label: 'Confirmed' },
         { id: 'completed', label: 'Completed' },
         { id: 'cancelled', label: 'Cancelled' }
     ];
@@ -216,8 +260,8 @@ export default function BookingsPage() {
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
                             className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.15em] transition-all whitespace-nowrap ${activeTab === tab.id
-                                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
-                                    : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'
+                                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                                : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'
                                 }`}
                         >
                             {tab.label}
@@ -245,10 +289,10 @@ export default function BookingsPage() {
                         <div className="p-6 border-b border-slate-800 flex items-center justify-between">
                             <div>
                                 <h2 className="text-xl font-black text-white uppercase">
-                                    {actionType === 'assign' ? 'Assign Technician' : 
-                                     actionType === 'reassign' ? 'Reassign Technician' :
-                                     actionType === 'cancel' ? 'Cancel Booking' :
-                                     'Complete Booking'}
+                                    {actionType === 'assign' ? 'Assign Technician' :
+                                        actionType === 'reassign' ? 'Reassign Technician' :
+                                            actionType === 'cancel' ? 'Cancel Booking' :
+                                                'Complete Booking'}
                                 </h2>
                                 <p className="text-slate-500 text-xs mt-1">Booking: #{selectedBooking.id.substring(0, 8).toUpperCase()}</p>
                             </div>

@@ -1,8 +1,7 @@
-/**
- * Chat Models for HomeFix
- * 
- * Data models for chat and messages following Firestore schema.
- */
+/// Chat Models for HomeFix
+/// 
+/// Data models for chat and messages following Firestore schema.
+library;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 

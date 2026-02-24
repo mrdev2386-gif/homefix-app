@@ -26,15 +26,20 @@ class JobDetailsScreen extends StatelessWidget {
        if(confirm != true) return;
 
        try {
-            await FirebaseFirestore.instance.collection('bookings').doc(bookingId).update({
-                'status': 'cancelled',
-                'cancelledAt': FieldValue.serverTimestamp(),
-            });
+            if (bookingId.isEmpty) {
+              debugPrint('[PATH GUARD] blocked empty id in _cancelBooking');
+              return;
+            }
+            debugPrint('[WRITE GUARD] Direct write blocked in _cancelBooking');
+            final callable = FirebaseFunctions.instance.httpsCallable('cancelBookingCallable');
+            await callable.call({'bookingId': bookingId});
+            
             if(context.mounted) {
                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Booking Cancelled")));
                  Navigator.pop(context);
             }
        } catch(e) {
+           debugPrint('❌ [Booking] Cancel failed: $e');
            if(context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
        }
   }
@@ -126,19 +131,20 @@ class _DisputeDialogState extends State<_DisputeDialog> {
         if(_controller.text.isEmpty) return;
         setState(() => _loading = true);
         try {
-            await FirebaseFirestore.instance.collection('disputes').add({
+            debugPrint('[WRITE GUARD] Direct write blocked in _submit dispute');
+            final callable = FirebaseFunctions.instance.httpsCallable('reportIssueCallable');
+            await callable.call({
                 'bookingId': widget.bookingId,
                 'customerId': widget.customerId,
                 'issueType': _type,
                 'description': _controller.text,
-                'status': 'open',
-                'createdAt': FieldValue.serverTimestamp()
             });
             if(mounted) {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Issue Reported")));
             }
         } catch(e) {
+             debugPrint('❌ [Dispute] Submission failed: $e');
              if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
         }
     }

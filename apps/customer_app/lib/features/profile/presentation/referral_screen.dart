@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import '../../../core/services/auth_service.dart';
-import '../../../core/services/firestore_service.dart';
-import '../../../core/models/user_model.dart';
+import 'package:customer_app/core/services/auth_service.dart';
+import 'package:customer_app/core/services/firestore_service.dart';
+import 'package:customer_app/core/models/user_model.dart';
 
 class ReferralScreen extends StatelessWidget {
   const ReferralScreen({super.key});

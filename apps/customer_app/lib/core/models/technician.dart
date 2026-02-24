@@ -17,6 +17,8 @@ class Technician {
   final DateTime createdAt;
   final DateTime updatedAt;
   final List<String> supportedCategories;
+  final String? district;
+  final String? districtNormalized;
 
   String get id => uid;
 
@@ -37,6 +39,8 @@ class Technician {
     required this.createdAt,
     required this.updatedAt,
     this.supportedCategories = const [],
+    this.district,
+    this.districtNormalized,
   });
 
   factory Technician.fromFirestore(DocumentSnapshot doc) {
@@ -75,6 +79,8 @@ class Technician {
       createdAt: data['createdAt'] != null ? (data['createdAt'] as Timestamp).toDate() : DateTime.now(),
       updatedAt: data['updatedAt'] != null ? (data['updatedAt'] as Timestamp).toDate() : DateTime.now(),
       supportedCategories: supportedCats,
+      district: data['district']?.toString(),
+      districtNormalized: data['districtNormalized']?.toString(),
     );
   }
 
@@ -95,6 +101,8 @@ class Technician {
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
       'supportedCategories': supportedCategories,
+      'district': district,
+      'districtNormalized': districtNormalized,
     };
   }
 }

@@ -4,11 +4,7 @@ import * as testing from './testing';
 import { getAppConfig } from './shared/config';
 import * as crypto from 'crypto';
 
-// v2 Firestore triggers
-import {
-    onDocumentCreated,
-    onDocumentUpdated,
-} from 'firebase-functions/v2/firestore';
+// v2 Firestore triggers removed for compatibility
 
 // Environment variables for Razorpay configuration
 const razorpayKeyId = process.env.RAZORPAY_KEY_ID || '';
@@ -21,6 +17,7 @@ import * as adminServices from './admin/services';
 import * as adminBookings from './admin/bookings';
 import * as adminFinance from './admin/finance';
 import * as adminNotif from './admin/notifications';
+import * as notificationsMgmt from './notifications_management';
 import * as adminDynamic from './admin/dynamic_content';
 import * as technicianFinance from './finance/wallet_logic';
 import * as payoutLogic from './finance/payout_logic';
@@ -32,8 +29,25 @@ import * as technicianPayouts from './payments/payouts';
 // Partner Applications
 import * as partnerApplications from './partner/applications';
 
+// Technician Services (YouTube-style service listings)
+import * as technicianServices from './technician/createTechnicianService';
+
 // Chat System
 import * as chat from './chat/chat';
+
+// Technician Onboarding & Management
+import * as techApp from './technician/application';
+import * as techTrack from './technician/tracking';
+import * as adminTechMgmt from './admin/technician_management';
+import * as matchEngine from './matching/engine';
+import * as techTriggers from './technician/triggers';
+import * as techSec from './technician/security';
+import * as customRequest from './custom_request';
+import * as techAlerts from './technician/alerts';
+import * as instantBooking from './instant_booking';
+import * as bookingActions from './booking_actions';
+import * as fraudProtection from './fraud_protection';
+import { onBookingCreatedMatch } from './matching/matching_v2';
 
 
 if (!admin.apps.length) {
@@ -68,18 +82,19 @@ export const matchTechniciansForService = matchTechs;
 export const updateTechnicianLastAssignment = updateTechnicianAssignment;
 export const onStaleTechnicianCleanup = cleanupStaleTechnicianStatus;
 
-// Booking Lifecycle
-export { createBookingWithAssignment, respondToBooking, updateBookingStatus, handleBookingTimeouts } from './booking/booking_lifecycle';
-
-// v2 Booking Functions
-export { createBookingV2 } from './booking/createBookingV2';
-export { razorpayWebhookV2 } from './payments/razorpayWebhookV2';
+// NEW Booking Flow Functions (Admin-First Flow - ONLY ACTIVE SYSTEM)
+export {
+    createBookingRequest,
+    adminApproveBooking,
+    technicianRespondBooking,
+    customerConfirmPayment,
+    updateBookingStatusGeneric as updateBookingStatusNew
+} from './booking/new_booking_flow';
 
 // Production Hardening
 export {
     handlePaymentWebhook,
     createBookingIdempotent,
-    checkRateLimit,
     updateTechnicianHeartbeat,
     createPayoutLedgerEntry,
     generateWeeklyPayoutReport,
@@ -94,6 +109,17 @@ export {
     generateAnalyticsSnapshot,
     trackTechnicianMetrics
 } from './booking/production_hardening';
+
+export { checkRateLimit } from './shared/utils';
+
+// ==========================================
+// TECHNICIAN SERVICE LISTINGS (YouTube-style)
+// ==========================================
+
+export const createTechnicianService = technicianServices.createTechnicianService;
+export const updateTechnicianService = technicianServices.updateTechnicianService;
+export const deleteTechnicianService = technicianServices.deleteTechnicianService;
+export const getMyTechnicianServices = technicianServices.getMyTechnicianServices;
 
 /**
  * Scheduled function to remind users about items in their cart.
@@ -167,25 +193,6 @@ async function logActivity(actorType: 'customer' | 'technician' | 'admin' | 'sys
     }
 }
 
-async function checkRateLimit(uid: string, action: string, limit: number, windowMs: number) {
-    const now = Date.now();
-    const rateLimitRef = db.collection('rate_limits').doc(`${uid}_${action}`);
-    const doc = await rateLimitRef.get();
-
-    if (doc.exists) {
-        const data = doc.data()!;
-        if (now - data.lastReset < windowMs) {
-            if (data.count >= limit) {
-                throw new functions.https.HttpsError('resource-exhausted', 'Rate limit exceeded. Try again later.');
-            }
-            await rateLimitRef.update({ count: admin.firestore.FieldValue.increment(1) });
-        } else {
-            await rateLimitRef.set({ count: 1, lastReset: now });
-        }
-    } else {
-        await rateLimitRef.set({ count: 1, lastReset: now });
-    }
-}
 
 export async function isAdmin(uid: string) {
     const adminDoc = await db.collection('admins').doc(uid).get();
@@ -193,52 +200,12 @@ export async function isAdmin(uid: string) {
 }
 
 // 1. CUSTOMER CALLABLES
-export const createBooking = functions.https.onCall(async (data: any, context: functions.https.CallableContext) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
-    const { services, scheduledDate, scheduledTime, address, totalAmount, couponCode } = data;
-    if (!services || services.length === 0 || !address || !totalAmount) {
-        throw new functions.https.HttpsError('invalid-argument', 'Missing fields');
-    }
-    const bookingId = db.collection('bookings').doc().id;
-    const finalStatus = 'pending_payment';
-    try {
-        await db.runTransaction(async (transaction: admin.firestore.Transaction) => {
-            const riskDoc = await transaction.get(db.collection('risk_profiles').doc(context.auth!.uid));
-            if (riskDoc.exists) {
-                const riskData = riskDoc.data()!;
-                if (riskData.status === 'suspended') throw new functions.https.HttpsError('permission-denied', 'Account suspended.');
-            }
-            transaction.set(db.collection('bookings').doc(bookingId), {
-                id: bookingId,
-                bookingId,
-                customerId: context.auth!.uid,
-                customerName: context.auth!.token.name || 'Customer',
-                addressSnapshot: address,
-                status: finalStatus,
-                paymentStatus: 'pending',
-                price: totalAmount,
-                finalAmount: totalAmount,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                services,
-                serviceTitle: services[0].name + (services.length > 1 ? ` (+${services.length - 1} more)` : ''),
-                scheduledDate,
-                scheduledTime,
-                scheduledAt: admin.firestore.Timestamp.fromDate(new Date(scheduledDate))
-            });
-        });
-        return { success: true, bookingId, totalAmount };
-    } catch (e: any) {
-        throw new functions.https.HttpsError('internal', e.message);
-    }
-});
+// createBooking is legacy - use createBookingRequest instead
 
 export const initiateRazorpayPayment = razorpayPayments.createPaymentOrder;
 export const verifyRazorpayPayment = razorpayPayments.verifyPayment;
 export const processWalletTransaction = technicianFinance.processWalletTransaction;
 
-// Export Customer Features
-export const createServiceRequest = customerFeatures.createServiceRequest;
 export const updateUserProfile = customerFeatures.updateUserProfile;
 export const updateTechnicianProfile = customerFeatures.updateTechnicianProfile;
 export const deleteAccount = customerFeatures.deleteAccount;
@@ -248,22 +215,19 @@ export const updatePrivacySettings = customerFeatures.updatePrivacySettings;
 export const validateReferralCode = customerFeatures.validateReferralCode;
 export const submitServiceRating = customerFeatures.submitServiceRating;
 export const submitSupportRequest = customerFeatures.submitSupportRequest;
-export const acceptProposal = customerFeatures.acceptProposal;
 
 // Partner Applications
 export const submitPartnerApplication = partnerApplications.submitPartnerApplication;
 
-// Custom Request Features
-import * as customRequest from './custom_request';
-export const createCustomRequest = customRequest.createCustomRequest;
-export const acceptCustomRequest = customRequest.acceptCustomRequest;
-export const getMyCustomRequests = customRequest.getMyCustomRequests;
-export const cancelCustomRequest = customRequest.cancelCustomRequest;
+// Custom Service Request Features
+export const createCustomServiceRequest = customRequest.createCustomServiceRequest;
+export const adminApproveServiceRequest = customRequest.adminApproveServiceRequest;
+export const technicianRespondServiceRequest = customRequest.technicianRespondServiceRequest;
+export const customerConfirmServicePayment = customRequest.customerConfirmServicePayment;
 export const getTechnicianInbox = customRequest.getTechnicianInbox;
 export const getCustomRequestDetail = customRequest.getCustomRequestDetail;
 
 // Instant Booking Features
-import * as instantBooking from './instant_booking';
 export const getInstantServices = instantBooking.getInstantServices;
 
 
@@ -282,8 +246,10 @@ export const admin_manageUser = adminUsers.manageUser;
 export const admin_getTechnicians = adminTechs.getTechnicians;
 export const admin_getTechnicianById = adminTechs.getTechnicianById;
 export const admin_updateTechnician = adminTechs.updateTechnician;
-export const admin_approveTechnicianApplication = adminTechs.approveTechnicianApplication;
-export const admin_approveTechnician = adminTechs.approveTechnician;
+export const admin_approveTechnicianApplication = adminTechs.adminApproveTechnician;
+export const admin_approveTechnician = adminTechMgmt.approveTechnician;
+export const admin_approveKYC = adminTechMgmt.approveKYC;
+export const admin_suspendTechnician = adminTechMgmt.suspendTechnician;
 export const admin_toggleTechAvailability = adminTechs.toggleTechAvailability;
 export const admin_updateTechServices = adminTechs.updateTechServices;
 
@@ -317,7 +283,11 @@ import {
     admin_manageCleaningEssentials,
     admin_manageServiceBanners,
     admin_manageTechnicianCategories,
-    admin_manageTechnicianSubcategories
+    admin_manageTechnicianSubcategories,
+    admin_manageHomeSections,
+    admin_manageCategory,
+    admin_manageNestedService,
+    admin_manageNestedSubService
 } from './admin/dynamic_content';
 
 import { admin_initializeHomeContent, admin_backfillImages } from './admin/system_initialization';
@@ -329,11 +299,15 @@ export {
     admin_manageProfessionalVideos,
     admin_manageCleaningEssentials,
     admin_manageServiceBanners,
+    admin_manageTechnicianCategories,
+    admin_manageTechnicianSubcategories,
+    admin_manageHomeSections,
+    admin_manageCategory,
+    admin_manageNestedService,
+    admin_manageNestedSubService,
     admin_initializeHomeContent,
     admin_backfillImages,
-    admin_auditServiceCatalog,
-    admin_manageTechnicianCategories,
-    admin_manageTechnicianSubcategories
+    admin_auditServiceCatalog
 };
 
 // Technician Finance & Payouts
@@ -343,7 +317,6 @@ export const settleTechnicianBalance = payoutLogic.settleTechnicianBalance;
 
 
 // Fraud & Abuse Protection
-import * as fraudProtection from './fraud_protection';
 export const onBookingStatusUpdateRiskCheck = fraudProtection.onBookingStatusUpdateRiskCheck;
 export const onReviewRiskCheck = fraudProtection.onReviewRiskCheck;
 export const onPaymentStatusRiskCheck = fraudProtection.onPaymentStatusRiskCheck;
@@ -530,7 +503,11 @@ export const getFcmTokens = functions.https.onCall(async (data, context) => {
 });
 
 
-import * as bookingActions from './booking_actions';
+// Notification Management
+export const markNotificationRead = notificationsMgmt.markNotificationRead;
+export const markAllNotificationsRead = notificationsMgmt.markAllNotificationsRead;
+export const deleteNotificationCallable = notificationsMgmt.deleteNotificationCallable;
+export const deleteAllNotificationsCallable = notificationsMgmt.deleteAllNotificationsCallable;
 
 // Technician Actions
 export const scheduleInspection = bookingActions.scheduleInspection;
@@ -558,217 +535,21 @@ export const onUserCreated = functions.auth.user().onCreate(async (user: admin.a
 // 3. TRIGGERS & NOTIFICATIONS (V2)
 // ==========================================
 
-// V2 Firestore Trigger: onBookingCreated
-export const onBookingCreated = onDocumentCreated(
-    {
-        document: 'bookings/{bookingId}',
-        region: 'us-central1',
-        memory: '256MiB',
-        timeoutSeconds: 60,
-        minInstances: 1,
-    },
-    async (event: any) => {
-        const snap = event.data;
-        if (!snap) return;
-
-        const booking = snap.data();
-        const bookingId = event.params.bookingId;
-
-        // Notify Customer
-        await sendPushNotification(booking.customerId, 'customers', {
-            title: 'Booking Received',
-            body: `Your booking for ${booking.serviceTitle} has been received.`,
-            data: { bookingId, type: 'booking_status' }
-        });
-
-        // Notify Technician (if assigned immediately)
-        if (booking.assignedTechnicianId) {
-            await sendPushNotification(booking.assignedTechnicianId, 'technicians', {
-                title: 'New Job Assigned!',
-                body: `You have a new booking for ${booking.serviceTitle}.`,
-                data: { bookingId, type: 'job_request' }
-            });
-        }
-    }
-);
-
-export const onBookingStatusChange = onDocumentUpdated(
-    {
-        document: 'bookings/{bookingId}',
-        region: 'us-central1',
-        memory: '256MiB',
-        timeoutSeconds: 60,
-        minInstances: 1,
-    },
-    async (event: any) => {
-        const startTime = Date.now();
-        const before = event.data.before.data();
-        const after = event.data.after.data();
-        if (!before || !after) {
-            console.log(JSON.stringify({ level: "WARN", function: "onBookingStatusChange", action: "missing_data", durationMs: Date.now() - startTime }));
-            return;
-        }
-
-        const bookingId = event.params.bookingId;
-        const bookingContext = { bookingId, customerId: after.customerId, technicianId: after.assignedTechnicianId };
-
-        // 1. Handle Status Change with guard against duplicate processing
-        if (before.status !== after.status) {
-            const status = after.status;
-            console.log(JSON.stringify({
-                level: "INFO",
-                function: "onBookingStatusChange",
-                action: "status_change",
-                ...bookingContext,
-                fromStatus: before.status,
-                toStatus: status,
-                durationMs: Date.now() - startTime
-            }));
-
-            let customerPayload: NotificationPayload | null = null;
-            let techPayload: NotificationPayload | null = null;
-
-            switch (status) {
-                case 'confirmed':
-                    customerPayload = {
-                        title: 'Booking Confirmed!',
-                        body: `Your booking for ${after.serviceTitle} is confirmed.`,
-                        data: { bookingId, type: 'booking_status' }
-                    };
-                    break;
-                case 'assigned':
-                    customerPayload = {
-                        title: 'Technician Assigned',
-                        body: `Expert ${after.assignedTechnicianName} has been assigned to your service.`,
-                        data: { bookingId, type: 'booking_status' }
-                    };
-                    break;
-                case 'on_the_way':
-                    customerPayload = {
-                        title: 'Technician is On The Way!',
-                        body: 'Get ready! Our professional is headed to your location.',
-                        data: { bookingId, type: 'tracking' }
-                    };
-                    break;
-                case 'started':
-                    customerPayload = {
-                        title: 'Service Started',
-                        body: 'The pro has started the service. Relax while we fix it!',
-                        data: { bookingId, type: 'booking_status' }
-                    };
-                    break;
-                case 'completed':
-                    // GUARD: Check if earnings already processed
-                    if (after.earningsProcessed) {
-                        console.log(JSON.stringify({
-                            level: "WARN",
-                            function: "onBookingStatusChange",
-                            action: "earnings_already_processed",
-                            ...bookingContext,
-                            durationMs: Date.now() - startTime
-                        }));
-                    } else {
-                        customerPayload = {
-                            title: 'Service Completed!',
-                            body: 'How was your experience? Please rate the service.',
-                            data: { bookingId, type: 'rating' }
-                        };
-                        const techAmount = after.finalAmount * 0.8;
-                        techPayload = {
-                            title: 'Payment Credited',
-                            body: `₹${techAmount.toFixed(2)} has been added to your pending balance for ${after.serviceTitle}.`,
-                            data: { bookingId, type: 'earnings' }
-                        };
-                        if (after.assignedTechnicianId) {
-                            try {
-                                await technicianFinance.processTechnicianEarning(
-                                    bookingId,
-                                    after.assignedTechnicianId,
-                                    after.finalAmount,
-                                    after.services.map((s: any) => s.id)
-                                );
-                                console.log(JSON.stringify({
-                                    level: "INFO",
-                                    function: "onBookingStatusChange",
-                                    action: "earnings_processed",
-                                    ...bookingContext,
-                                    amount: techAmount,
-                                    durationMs: Date.now() - startTime
-                                }));
-                            } catch (error: any) {
-                                console.error(JSON.stringify({
-                                    level: "ERROR",
-                                    function: "onBookingStatusChange",
-                                    action: "earnings_processing_failed",
-                                    ...bookingContext,
-                                    error: error.message,
-                                    durationMs: Date.now() - startTime
-                                }));
-                            }
-                        }
-                    }
-                    break;
-                case 'cancelled':
-                    customerPayload = {
-                        title: 'Booking Cancelled',
-                        body: `Your booking for ${after.serviceTitle} was cancelled. Refund initialized if paid.`,
-                        data: { bookingId, type: 'booking_status' }
-                    };
-                    if (after.assignedTechnicianId) {
-                        techPayload = {
-                            title: 'Job Cancelled',
-                            body: `The customer cancelled the booking for ${after.serviceTitle}.`,
-                            data: { bookingId, type: 'job_update' }
-                        };
-                    }
-                    break;
-            }
-
-            if (customerPayload) {
-                await sendPushNotification(after.customerId, 'customers', customerPayload);
-            }
-            if (techPayload && after.assignedTechnicianId) {
-                await sendPushNotification(after.assignedTechnicianId, 'technicians', techPayload);
-            }
-        }
-
-        // 2. Handle Technician Assignment (guard against duplicate notifications)
-        if (!before.assignedTechnicianId && after.assignedTechnicianId) {
-            console.log(JSON.stringify({
-                level: "INFO",
-                function: "onBookingStatusChange",
-                action: "technician_assigned",
-                ...bookingContext,
-                durationMs: Date.now() - startTime
-            }));
-            await sendPushNotification(after.assignedTechnicianId, 'technicians', {
-                title: 'New Job Request',
-                body: `New job request for ${after.serviceTitle} at ${after.scheduledTime}.`,
-                data: { bookingId, type: 'job_request' }
-            });
-        }
-    }
-);
+// Legacy Firestore Triggers Removed (Deduplicated)
 
 // ==========================================
 // 4. TECHNICIAN ONBOARDING (NEW)
 // ==========================================
 
-export const onTechnicianApplicationUpdate = onDocumentUpdated(
-    {
-        document: 'technician_applications/{appId}',
-        region: 'us-central1',
-        memory: '256MiB',
-        timeoutSeconds: 30,
-        minInstances: 1,
-    },
-    async (event: any) => {
-        const after = event.data.after.data();
-        const before = event.data.before.data();
+export const onTechnicianApplicationUpdate = functions.firestore
+    .document('technician_applications/{appId}')
+    .onUpdate(async (change, context) => {
+        const after = change.after.data();
+        const before = change.before.data();
         if (!after || !before) return;
 
         if (before.status !== after.status) {
-            const userId = event.params.appId;
+            const userId = context.params.appId;
             let title = 'Application Update';
             if (after.status === 'approved') title = 'Application Approved';
             else if (after.status === 'rejected') title = 'Application Rejected';
@@ -779,17 +560,11 @@ export const onTechnicianApplicationUpdate = onDocumentUpdated(
                 data: { type: 'application_status', status: after.status }
             });
         }
-    }
-);
+    });
 
 // ==========================================
 // 4. TECHNICIAN ONBOARDING (NEW)
 // ==========================================
-
-import * as techApp from './technician/application';
-import * as techTrack from './technician/tracking';
-import * as adminTechMgmt from './admin/technician_management';
-import * as matchEngine from './matching/engine';
 
 // Application Flow
 export const initiatePhoneVerification = techApp.initiatePhoneVerification;
@@ -802,14 +577,13 @@ export const saveServiceArea = techApp.saveServiceArea;
 export const saveBankDetails = techApp.saveBankDetails;
 export const completeTraining = techApp.completeTraining;
 export const submitApplication = techApp.submitApplication;
-export const submitFullApplication = techApp.submitFullApplication;
+export const submitFullApplication = techApp.submitTechnicianApplication;
+export const syncTechnicianApprovalToServices = techTriggers.syncTechnicianApprovalToServices;
 
 // Admin Management
 export const approveKYC = adminTechMgmt.approveKYC;
 export const approveTechnician = adminTechMgmt.approveTechnician;
 export const suspendTechnician = adminTechMgmt.suspendTechnician;
-
-import * as techSec from './technician/security';
 
 // Tracking & Security
 export const bindDevice = techSec.bindDevice;
@@ -817,36 +591,16 @@ export const updateLocation = techTrack.updateLocation;
 export const toggleOnlineStatus = techTrack.toggleOnlineStatus;
 
 // Matching & Booking
-import { onBookingCreatedMatch } from './matching/matching_v2';
-export const onNewBookingMatch = onBookingCreatedMatch; // Trigger
+// export const onNewBookingMatch = onBookingCreatedMatch; // Trigger Removed
 // export const respondToBooking = matchEngine.respondToBooking; // Use handleAssignmentResponse instead
+
+export const onCustomRequestCreatedAlertTechnicians = techAlerts.onCustomRequestCreatedAlertTechnicians;
 
 // ==========================================
 // V2 PAYMENT UPDATE TRIGGER
 // ==========================================
 
-export const onPaymentUpdate = onDocumentUpdated(
-    {
-        document: 'bookings/{bookingId}',
-        region: 'us-central1',
-        memory: '256MiB',
-        timeoutSeconds: 30,
-        minInstances: 0,
-    },
-    async (event: any) => {
-        const before = event.data.before.data();
-        const after = event.data.after.data();
-        if (!before || !after) return;
-
-        if (before.paymentStatus !== after.paymentStatus && after.paymentStatus === 'paid') {
-            await sendPushNotification(after.customerId, 'customers', {
-                title: 'Payment Successful',
-                body: `Payment for booking #${event.params.bookingId.slice(-6)} was successful.`,
-                data: { bookingId: event.params.bookingId, type: 'payment' }
-            });
-        }
-    }
-);
+// onPaymentUpdate Trigger Removed
 
 export const migrateDatabaseReq = functions.https.onRequest(async (req: any, res: any) => {
     console.log('Starting migration via Request...');

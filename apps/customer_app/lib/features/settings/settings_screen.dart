@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import '../../core/services/auth_service.dart';
+import 'package:customer_app/core/services/auth_service.dart';
 import '../../core/services/user_settings_service.dart';
 import '../../core/models/user_settings.dart';
 import '../../core/models/user_model.dart';
-import '../../core/theme/app_theme.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
 import '../../core/utils/app_localizations.dart';
 import '../profile/presentation/edit_profile_screen.dart';
 import '../support/presentation/support_screen.dart';
@@ -230,7 +230,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         );
                       },
                     ),
-                    if (widget.user.role?.toLowerCase() == 'technician') ...[
+                    if (widget.user.role.toLowerCase() == 'technician') ...[
                       const Divider(height: 1, indent: 60),
                       _buildSwitchTile(
                         icon: Icons.work_outline_rounded,

@@ -19,6 +19,17 @@ class SubService {
     this.isActive = true,
   });
 
+  factory SubService.fromMap(Map<String, dynamic> map) {
+    return SubService(
+      id: (map['id'] ?? '').toString(),
+      name: (map['name'] ?? map['title'] ?? 'Sub Service').toString(),
+      price: (map['price'] ?? 0.0).toDouble(),
+      imageUrl: (map['imageUrl'] ?? map['image'] ?? AppConstants.fallbackServiceImage).toString(),
+      order: (map['order'] ?? 0) is int ? map['order'] : 0,
+      isActive: map['isActive'] ?? true,
+    );
+  }
+
   factory SubService.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
     

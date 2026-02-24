@@ -1,18 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../core/services/notifications_service.dart';
+import '../features/notifications/presentation/notifications_screen.dart';
 import 'dart:async';
 
 import '../core/providers/technician_provider.dart';
-import '../core/firestore/booking_service.dart';
+import '../core/services/booking_service.dart';
+import '../core/services/technician_catalog_service.dart';
 import '../core/models/booking.dart';
 import '../core/widgets/safe_network_image.dart';
 import '../features/availability/presentation/availability_screen.dart';
 import '../features/job_requests/job_requests_screen.dart';
 import '../features/earnings/presentation/earnings_screen.dart';
 import '../features/profile/presentation/profile_screen.dart';
+import '../features/services/presentation/create_service_screen.dart';
 import 'job_details_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -90,34 +94,20 @@ class DashboardHome extends StatefulWidget {
 
 class _DashboardHomeState extends State<DashboardHome> {
   final BookingService _bookingService = BookingService();
-  Timer? _locationTimer;
 
   @override
   void initState() {
     super.initState();
-    _startLocationTracking();
   }
 
   @override
   void dispose() {
-    _locationTimer?.cancel();
     super.dispose();
   }
 
-  void _startLocationTracking() {
-    _locationTimer?.cancel();
-    _locationTimer = Timer.periodic(const Duration(minutes: 5), (timer) async {
-       if (!mounted) return;
-       final provider = Provider.of<TechnicianProvider>(context, listen: false);
-       if (provider.technician?.isOnline == true) {
-            try {
-                final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.medium);
-                await provider.updateLocation(pos.latitude, pos.longitude);
-            } catch (e) {
-                debugPrint("Location error: $e");
-            }
-       }
-    });
+  // Background location tracking removed to minimize dependencies
+  void _updateSelfLocation() {
+    debugPrint('Manual location update requested (GPS-less mode)');
   }
 
   @override
@@ -132,7 +122,7 @@ class _DashboardHomeState extends State<DashboardHome> {
         ? const Center(child: CircularProgressIndicator()) 
         : RefreshIndicator(
             onRefresh: () async {
-              _startLocationTracking();
+              _updateSelfLocation();
             },
             child: CustomScrollView(
               slivers: [
@@ -250,9 +240,35 @@ class _DashboardHomeState extends State<DashboardHome> {
                   activeTrackColor: const Color(0xFF10B981),
                   inactiveThumbColor: Colors.white,
                   inactiveTrackColor: const Color(0xFF94A3B8),
-                  onChanged: (v) {
+                  onChanged: (v) async {
+                    if (v) {
+                      // Check if technician has at least one service before going online
+                      final serviceService = TechnicianCatalogService();
+                      final hasServices = await serviceService.hasActiveServices();
+                      
+                      if (!hasServices) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: const Text('You need to create a service before going online'),
+                              action: SnackBarAction(
+                                label: 'Create Service',
+                                onPressed: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (context) => const CreateServiceScreen(),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          );
+                        }
+                        return;
+                      }
+                    }
                     provider.updateOnlineStatus(v);
-                    if (v) _startLocationTracking();
+                    if (v) _updateSelfLocation();
                   },
                 ),
               ),
@@ -260,16 +276,60 @@ class _DashboardHomeState extends State<DashboardHome> {
           ),
         ),
         const SizedBox(width: 8),
-        IconButton(
-          onPressed: () {},
-          icon: const Icon(Icons.notifications_outlined, color: Color(0xFF0F172A)),
-        ),
-        const SizedBox(width: 8),
+
+        _buildNotificationIcon(provider.technician?.uid),
+        const SizedBox(width: 16),
       ],
     );
   }
 
+  Widget _buildNotificationIcon(String? userId) {
+    if (userId == null) return const SizedBox.shrink();
+
+    return StreamBuilder<int>(
+      stream: NotificationsService.streamUnreadCount(userId),
+      builder: (context, snapshot) {
+        final count = snapshot.data ?? 0;
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.notifications_none_rounded, color: Color(0xFF64748B)),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+              ),
+            ),
+            if (count > 0)
+              Positioned(
+                right: 8,
+                top: 8,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEF4444),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    '$count',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 8,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildWelcomeHeader(dynamic tech) {
+    final now = DateTime.now();
+    final dayStr = DateFormat('MMM dd').format(now);
+
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       child: Column(
@@ -310,7 +370,7 @@ class _DashboardHomeState extends State<DashboardHome> {
                     const Icon(Icons.calendar_today_rounded, size: 14, color: Color(0xFF6366F1)),
                     const SizedBox(width: 6),
                     Text(
-                      "Feb 10",
+                      dayStr,
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
@@ -573,7 +633,7 @@ class _DashboardHomeState extends State<DashboardHome> {
               Expanded(
                 child: _buildActionBtn(
                   "On Way",
-                  b.status == 'assigned' || b.status == 'accepted',
+                  b.status == 'confirmed',
                   () => _updateStatus(b.bookingId, 'on_the_way'),
                   const Color(0xFF6366F1),
                 ),
@@ -583,15 +643,15 @@ class _DashboardHomeState extends State<DashboardHome> {
                 child: _buildActionBtn(
                   "Start",
                   b.status == 'on_the_way',
-                  () => _updateStatus(b.bookingId, 'started'),
+                  () => _updateStatus(b.bookingId, 'in_progress'),
                   const Color(0xFF10B981),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: _buildActionBtn(
-                  "Complete",
-                  b.status == 'started',
+                  "Done",
+                  b.status == 'in_progress' || b.status == 'started',
                   () => _updateStatus(b.bookingId, 'completed'),
                   const Color(0xFF0F172A),
                 ),

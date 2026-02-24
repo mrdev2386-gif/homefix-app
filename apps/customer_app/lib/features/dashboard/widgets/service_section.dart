@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shimmer/shimmer.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
 import '../../services/presentation/service_details_screen.dart';
 import '../../services/presentation/service_list_screen.dart';
 import '../../../core/widgets/safe_network_image.dart';
 import 'package:provider/provider.dart';
 import '../../../core/providers/cart_provider.dart';
 import '../../../core/models/cart_item.dart';
+import 'package:customer_app/core/models/service.dart';
+import 'package:customer_app/core/services/category_service.dart';
 
 class ServiceListSection extends StatefulWidget {
   final String title;
@@ -32,26 +34,22 @@ class ServiceListSection extends StatefulWidget {
 
 class _ServiceListSectionState extends State<ServiceListSection> {
   bool _isNavigating = false;
-  late Stream<QuerySnapshot> _serviceStream;
+  late Stream<List<HomeService>> _serviceStream;
+  final CategoryService _categoryService = CategoryService();
 
   @override
   void initState() {
     super.initState();
-    // AUDIT: Using collectionGroup to support nested categories/{catId}/services source
-    Query query = FirebaseFirestore.instance.collectionGroup('services').where('isActive', isEqualTo: true);
-    
-    if (widget.category != null && widget.category!.isNotEmpty && widget.category != 'all') {
-      // Filter by categoryId field on the service document
-      query = query.where('categoryId', isEqualTo: widget.category);
+    // Step 2: Use CategoryService as SINGLE SOURCE OF TRUTH
+    if (widget.category == null && widget.title.contains('Recently Added')) {
+      _serviceStream = _categoryService.getRecentlyAddedServices(limit: widget.limit ?? 10);
+    } else {
+      final categoryId = widget.category ?? 'cleaning';
+      _serviceStream = _categoryService.getServicesByCategory(categoryId);
     }
-    
-    if (widget.limit != null) {
-      query = query.limit(widget.limit!);
-    } else if (widget.isTopOnly) {
-      query = query.limit(5); // Simulated top services
-    }
-    _serviceStream = query.snapshots();
   }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -63,15 +61,19 @@ class _ServiceListSectionState extends State<ServiceListSection> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                widget.title,
-                style: GoogleFonts.outfit(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.textColor,
-                ),
-              ),
-              GestureDetector(
+                      Expanded(
+                        child: Text(
+                          widget.title,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.outfit(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.textColor,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8), // Spacing between title and view all
+                      GestureDetector(
                 onTap: () async {
                   if (_isNavigating) return;
                   _isNavigating = true;
@@ -97,7 +99,7 @@ class _ServiceListSectionState extends State<ServiceListSection> {
           ),
         ),
         const SizedBox(height: 16),
-        StreamBuilder<QuerySnapshot>(
+        StreamBuilder<List<HomeService>>(
           stream: _serviceStream,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
@@ -128,7 +130,7 @@ class _ServiceListSectionState extends State<ServiceListSection> {
               );
             }
             
-            final services = snapshot.data?.docs ?? [];
+            final services = snapshot.data ?? [];
             // DEBUG: Log service count
             debugPrint('[SERVICE_COUNT] ${services.length}');
             if (services.isEmpty) {
@@ -140,6 +142,7 @@ class _ServiceListSectionState extends State<ServiceListSection> {
                 ),
               );
             }
+
 
             if (widget.isHorizontal) {
               return SizedBox(
@@ -183,7 +186,7 @@ class _ServiceListSectionState extends State<ServiceListSection> {
 
 class ServiceSection extends StatelessWidget {
   final Widget child;
-  const ServiceSection({Key? key, required this.child}) : super(key: key);
+  const ServiceSection({super.key, required this.child});
   @override
   Widget build(BuildContext context) {
     return child;
@@ -191,7 +194,7 @@ class ServiceSection extends StatelessWidget {
 }
 
 class _HorizontalServiceCard extends StatefulWidget {
-  final QueryDocumentSnapshot service;
+  final HomeService service;
   const _HorizontalServiceCard({required this.service});
 
   @override
@@ -201,20 +204,8 @@ class _HorizontalServiceCard extends StatefulWidget {
 class _HorizontalServiceCardState extends State<_HorizontalServiceCard> {
   bool _isNavigating = false;
 
-  /// Safe image URL extraction with unified mapping
-  String _getImageUrl(Map<String, dynamic>? data) {
-    // AUDIT: Use prioritized mapping standardized across app
-    final imageUrl = (data?['imageUrl'] ?? data?['image'] ?? data?['thumbnail'] ?? '') as String;
-    if (imageUrl.isEmpty || !imageUrl.startsWith('http')) {
-      return '';
-    }
-    return imageUrl;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final service = widget.service;
-    final data = service.data() as Map<String, dynamic>?;
     return GestureDetector(
       onTap: () async {
         if (_isNavigating) return;
@@ -223,8 +214,9 @@ class _HorizontalServiceCardState extends State<_HorizontalServiceCard> {
         try {
           Navigator.push(context, MaterialPageRoute(builder: (_) => ServiceDetailsScreen(
                 serviceId: widget.service.id,
-                serviceName: (widget.service.data() as Map<String, dynamic>?)?['title'] ?? 'Service',
-                serviceData: HomeService.fromFirestore(widget.service),
+                categoryId: widget.service.category,
+                serviceName: widget.service.title,
+                serviceData: widget.service,
               )));
         } finally {
           if (mounted) {
@@ -242,7 +234,7 @@ class _HorizontalServiceCardState extends State<_HorizontalServiceCard> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
                 child: SafeNetworkImage(
-                  imageUrl: _getImageUrl(data),
+                  imageUrl: widget.service.imageUrl,
                   width: double.infinity,
                   height: double.infinity,
                 ),
@@ -250,7 +242,7 @@ class _HorizontalServiceCardState extends State<_HorizontalServiceCard> {
             ),
             const SizedBox(height: 10),
             Text(
-              data?['title'] ?? 'Service',
+              widget.service.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.textColor),
@@ -261,7 +253,7 @@ class _HorizontalServiceCardState extends State<_HorizontalServiceCard> {
                 const Icon(Icons.star_rounded, color: Colors.orange, size: 14),
                 const SizedBox(width: 4),
                 Text(
-                  '4.8',
+                  widget.service.rating.toStringAsFixed(1),
                   style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 11, color: AppTheme.subtitleColor),
                 ),
               ],
@@ -274,7 +266,7 @@ class _HorizontalServiceCardState extends State<_HorizontalServiceCard> {
 }
 
 class _VerticalServiceCard extends StatefulWidget {
-  final QueryDocumentSnapshot service;
+  final HomeService service;
   const _VerticalServiceCard({required this.service});
 
   @override
@@ -284,20 +276,8 @@ class _VerticalServiceCard extends StatefulWidget {
 class _VerticalServiceCardState extends State<_VerticalServiceCard> {
   bool _isNavigating = false;
 
-  /// Safe image URL extraction with unified mapping
-  String _getImageUrl(Map<String, dynamic>? data) {
-    // AUDIT: Use prioritized mapping standardized across app
-    final imageUrl = (data?['imageUrl'] ?? data?['image'] ?? data?['thumbnail'] ?? '') as String;
-    if (imageUrl.isEmpty || !imageUrl.startsWith('http')) {
-      return '';
-    }
-    return imageUrl;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final service = widget.service;
-    final data = service.data() as Map<String, dynamic>?;
     return GestureDetector(
       onTap: () async {
         if (_isNavigating) return;
@@ -306,8 +286,9 @@ class _VerticalServiceCardState extends State<_VerticalServiceCard> {
         try {
           Navigator.push(context, MaterialPageRoute(builder: (_) => ServiceDetailsScreen(
                 serviceId: widget.service.id,
-                serviceName: (widget.service.data() as Map<String, dynamic>?)?['title'] ?? 'Service',
-                serviceData: HomeService.fromFirestore(widget.service),
+                categoryId: widget.service.category,
+                serviceName: widget.service.title,
+                serviceData: widget.service,
               )));
         } finally {
           if (mounted) {
@@ -332,7 +313,7 @@ class _VerticalServiceCardState extends State<_VerticalServiceCard> {
                   ClipRRect(
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
                     child: SafeNetworkImage(
-                      imageUrl: _getImageUrl(data),
+                      imageUrl: widget.service.imageUrl,
                       width: double.infinity,
                       height: double.infinity,
                     ),
@@ -347,27 +328,38 @@ class _VerticalServiceCardState extends State<_VerticalServiceCard> {
                       child: InkWell(
                         onTap: () async {
                           final cart = Provider.of<CartProvider>(context, listen: false);
-                          final data = widget.service.data() as Map<String, dynamic>?;
-                          // Ultra-safe price parsing - prevents type cast crash
-                          final rawPrice = data?['basePrice'];
-                          final double price = (rawPrice is num) ? rawPrice.toDouble() : 0.0;
-                          await cart.addItem(CartItem(
-                            id: '',
-                            serviceId: widget.service.id,
-                            serviceName: data?['name'] ?? data?['title'] ?? 'Service',
-                            serviceImage: _getImageUrl(data), // AUDIT: Use standardized image URL
-                            price: price,
-                            categoryId: (data?['categoryId'] ?? data?['category'] ?? '').toString(),
-                            quantity: 1,
-                            totalPrice: price,
-                          ));
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('${data?['title'] ?? 'Service'} added to cart'),
-                                duration: const Duration(seconds: 1),
-                              ),
-                            );
+                          try {
+                            await cart.addItem(CartItem(
+                              id: '',
+                              serviceId: widget.service.id,
+                              serviceName: widget.service.title,
+                              serviceImage: widget.service.imageUrl,
+                              price: widget.service.basePrice,
+                              categoryId: widget.service.category,
+                              categoryName: widget.service.categoryName,
+                              quantity: 1,
+                              totalPrice: widget.service.basePrice,
+                              technicianId: widget.service.technicianId,
+                              finalPriceSnapshot: widget.service.basePrice,
+                            ));
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('${widget.service.title} added to cart'),
+                                  duration: const Duration(seconds: 1),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Failed to add to cart: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
                           }
                         },
                         borderRadius: BorderRadius.circular(8),
@@ -387,7 +379,7 @@ class _VerticalServiceCardState extends State<_VerticalServiceCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    data?['title'] ?? 'Service',
+                    widget.service.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 14, color: AppTheme.textColor),
@@ -396,9 +388,12 @@ class _VerticalServiceCardState extends State<_VerticalServiceCard> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        '₹${service['basePrice']}',
-                        style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 14, color: AppTheme.primaryColor),
+                      Flexible(
+                        child: Text(
+                          '₹${widget.service.basePrice.toStringAsFixed(0)}',
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 14, color: AppTheme.primaryColor),
+                        ),
                       ),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -407,7 +402,7 @@ class _VerticalServiceCardState extends State<_VerticalServiceCard> {
                           children: [
                             const Icon(Icons.star_rounded, color: Colors.orange, size: 12),
                             const SizedBox(width: 2),
-                            Text('4.9', style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 10, color: Colors.orange)),
+                            Text(widget.service.rating.toStringAsFixed(1), style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 10, color: Colors.orange)),
                           ],
                         ),
                       ),

@@ -3,15 +3,15 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:customer_app/core/widgets/safe_network_image.dart';
 import 'dart:io';
 import 'package:customer_app/core/services/storage_service.dart';
 
-import '../../core/services/auth_service.dart';
-import '../../core/services/firestore_service.dart';
-import '../../core/models/user_model.dart';
-import '../../core/theme/app_theme.dart';
-import '../../core/utils/app_localizations.dart';
+import 'package:customer_app/core/services/auth_service.dart';
+import 'package:customer_app/core/services/firestore_service.dart';
+import 'package:customer_app/core/models/user_model.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
+import 'package:customer_app/core/utils/app_localizations.dart';
 import '../../shared/widgets/app_widgets.dart';
 import '../bookings/presentation/booking_history_screen.dart';
 import '../support/presentation/support_screen.dart';
@@ -139,8 +139,8 @@ class _ProfileContentState extends State<_ProfileContent> {
       
       // Upload to Firebase Storage
       final String downloadURL = await storage.uploadProfilePhoto(
-        userId: widget.user.uid,
-        file: image,
+        widget.user.uid,
+        File(image.path),
       );
       
       // Update Firestore with download URL
@@ -249,34 +249,34 @@ class _ProfileContentState extends State<_ProfileContent> {
                               child: ClipOval(
                                 child: widget.user.photoUrl != null && widget.user.photoUrl!.isNotEmpty
                                     ? (() {
-                                        print("IMAGE URL => ${widget.user.photoUrl}");
-                                        return CachedNetworkImage(
+                                        // Cleaned
+                                        return SafeNetworkImage(
                                           imageUrl: widget.user.photoUrl ?? '',
                                           fit: BoxFit.cover,
-                                          placeholder: (context, url) => Container(
+                                          width: 110,
+                                          height: 110,
+                                          placeholder: Container(
                                             color: AppTheme.accentColor,
-                                            child: Center(
+                                            child: const Center(
                                               child: CircularProgressIndicator(
                                                 color: AppTheme.primaryColor,
+                                                strokeWidth: 2,
                                               ),
                                             ),
                                           ),
-                                          errorWidget: (context, url, error) {
-                                            debugPrint('[ProfileScreen] Error loading profile image: $error');
-                                            return Container(
-                                              color: AppTheme.primaryColor,
-                                              child: Center(
-                                                child: Text(
-                                                  initials,
-                                                  style: GoogleFonts.outfit(
-                                                    fontSize: 40,
-                                                    fontWeight: FontWeight.w900,
-                                                    color: Colors.white,
-                                                  ),
+                                          errorWidget: Container(
+                                            color: AppTheme.primaryColor,
+                                            child: Center(
+                                              child: Text(
+                                                initials,
+                                                style: GoogleFonts.outfit(
+                                                  fontSize: 40,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: Colors.white,
                                                 ),
                                               ),
-                                            );
-                                          },
+                                            ),
+                                          ),
                                         );
                                       }())
                                     : Container(

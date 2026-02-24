@@ -8,9 +8,15 @@ const colors: Record<string, string> = {
     blocked: 'bg-red-500/10 text-red-400 border-red-500/20',
     suspicious: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
     // Bookings
-    requested: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
-    assigned: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
-    accepted: 'bg-violet-500/10 text-violet-400 border-violet-500/20',
+    // Bookings & Service Requests (New Flow)
+    pending_admin: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+    admin_approved: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+    admin_rejected: 'bg-red-500/10 text-red-400 border-red-500/20',
+    technician_pending: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
+    technician_accepted: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
+    technician_rejected: 'bg-red-500/10 text-red-400 border-red-500/20',
+    awaiting_payment: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+    confirmed: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
     in_progress: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
     completed: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
     cancelled: 'bg-red-500/10 text-red-400 border-red-500/20',

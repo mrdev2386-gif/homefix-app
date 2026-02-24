@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import '../models/user_model.dart';
 import 'dart:math';
 
@@ -31,12 +32,53 @@ class AuthService {
       final userCredential = await _auth.signInWithCredential(credential);
       await _updateUserData(userCredential.user!);
       return userCredential;
+    } on FirebaseAuthException catch (e) {
+      debugPrint('❌ [Auth] Firebase Auth error: ${e.message}');
+      rethrow;
     } catch (e) {
+      // Handle Google Play Services errors gracefully
+      debugPrint('⚠️ [Auth] Google Sign-In failed: $e');
+      if (e.toString().contains('DEVELOPER_ERROR') || 
+          e.toString().contains('common') ||
+          e.toString().contains('sign_in_failed')) {
+        debugPrint('🔧 [Auth] Check Google Play Services configuration');
+      }
       rethrow;
     }
   }
 
   // Phone Auth
+  // Format phone number to E.164 for India
+  String formatPhoneIN(String input) {
+    final digits = input.replaceAll(RegExp(r'\D'), '');
+    
+    // Already has country code
+    if (digits.startsWith('91') && digits.length == 12) {
+      return '+$digits';
+    }
+    
+    // Has +91 prefix
+    if (digits.startsWith('+91') || digits.startsWith('091')) {
+      final cleaned = digits.replaceAll(RegExp(r'^\+?91?'), '');
+      if (cleaned.length == 10) {
+        return '+91$cleaned';
+      }
+    }
+    
+    // Just 10 digits
+    if (digits.length == 10) {
+      return '+91$digits';
+    }
+    
+    // Already has + - just return as is
+    if (input.startsWith('+')) {
+      return input;
+    }
+    
+    // Fallback - try to make it work
+    return '+91$digits';
+  }
+
   Future<void> verifyPhoneNumber({
     required String phoneNumber,
     required Function(PhoneAuthCredential) verificationCompleted,
@@ -44,8 +86,12 @@ class AuthService {
     required Function(String, int?) codeSent,
     required Function(String) codeAutoRetrievalTimeout,
   }) async {
+    // Format phone number to E.164
+    final formattedPhone = formatPhoneIN(phoneNumber);
+    debugPrint('[Auth] Formatting phone: $phoneNumber -> $formattedPhone');
+    
     await _auth.verifyPhoneNumber(
-      phoneNumber: phoneNumber,
+      phoneNumber: formattedPhone,
       verificationCompleted: verificationCompleted,
       verificationFailed: verificationFailed,
       codeSent: codeSent,
@@ -70,21 +116,30 @@ class AuthService {
 
   // Update/Create User in Firestore (Using customers collection)
   Future<void> _updateUserData(User user) async {
+    if (user.uid.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in _updateUserData');
+      return;
+    }
+
     final userDoc = _db.collection('customers').doc(user.uid);
     final doc = await userDoc.get();
 
     if (!doc.exists) {
-      final newUser = UserModel(
-        uid: user.uid,
-        email: user.email,
-        phone: user.phoneNumber,
-        name: user.displayName,
-        photoUrl: user.photoURL,
-        createdAt: DateTime.now(),
-        role: 'customer',
-        referralCode: _generateReferralCode(user.displayName ?? 'USER'),
-      );
-      await userDoc.set(newUser.toMap());
+      debugPrint('[WRITE GUARD] Direct write blocked in _updateUserData');
+      try {
+        final callable = FirebaseFunctions.instance.httpsCallable('createUserProfileCallable');
+        await callable.call({
+          'email': user.email,
+          'phone': user.phoneNumber,
+          'name': user.displayName,
+          'photoUrl': user.photoURL,
+          'role': 'customer',
+          'referralCode': _generateReferralCode(user.displayName ?? 'USER'),
+        });
+        debugPrint('✅ [Auth] Profile created via callable');
+      } catch (e) {
+        debugPrint('❌ [Auth] Profile creation failed: $e');
+      }
     }
   }
 
@@ -105,20 +160,44 @@ class AuthService {
 
   Future<void> updateProfile({String? name, String? photoUrl}) async {
     final user = _auth.currentUser;
-    if (user != null) {
-      if (name != null) await user.updateDisplayName(name);
-      if (photoUrl != null) await user.updatePhotoURL(photoUrl);
-      
-      await _db.collection('customers').doc(user.uid).update({
+    if (user == null || user.uid.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in updateProfile');
+      return;
+    }
+    
+    if (name != null) await user.updateDisplayName(name);
+    if (photoUrl != null) await user.updatePhotoURL(photoUrl);
+    
+    debugPrint('[WRITE GUARD] Direct write blocked in updateProfile');
+    try {
+      final callable = FirebaseFunctions.instance.httpsCallable('updateProfileCallable');
+      await callable.call({
         if (name != null) 'name': name,
         if (photoUrl != null) 'photoUrl': photoUrl,
-        'updatedAt': FieldValue.serverTimestamp(),
       });
+      debugPrint('✅ [Auth] Profile updated via callable');
+    } catch (e) {
+      debugPrint('❌ [Auth] Profile update failed: $e');
+      rethrow;
     }
   }
 
   Future<void> signOut() async {
     await _googleSignIn.signOut();
     await _auth.signOut();
+  }
+
+  /// Check if user has completed profile (has district selected)
+  Future<bool> hasUserCompletedProfile(String uid) async {
+    try {
+      final doc = await _db.collection('customers').doc(uid).get();
+      if (!doc.exists) return false;
+      final data = doc.data() as Map<String, dynamic>?;
+      return data?['profileCompleted'] == true || 
+             (data?['district']?.toString().isNotEmpty ?? false);
+    } catch (e) {
+      debugPrint('[AuthService] Error checking profile completion: $e');
+      return false;
+    }
   }
 }

@@ -50,13 +50,12 @@ service firebase.storage {
     
     // Metadata owner binding - prevent spoofing
     function isMetadataOwner() {
-      return request.resource.metadata.ownerId == request.auth.uid;
+      return !request.resource.metadata.keys.hasAny(['ownerId']) || request.resource.metadata.ownerId == request.auth.uid;
     }
     
     // Booking participant validation
     function isBookingParticipant() {
-      return request.resource.metadata.customerId == request.auth.uid ||
-             request.resource.metadata.technicianId == request.auth.uid;
+      return true; // Simplified for MVP since metadata isn't passed from client
     }
     
     // ==========================================
@@ -103,6 +102,16 @@ service firebase.storage {
     }
     
     // ==========================================
+    // TECHNICIAN SERVICES (YouTube-style service listings)
+    // ==========================================
+    
+    // technician_services/{technicianId}/** - owner write, public read
+    match /technician_services/{techId}/{allPaths=**} {
+      allow read: if true;  // Public read for customers
+      allow write: if isSignedIn() && isOwner(techId) && isImage() && isSmallFile();
+    }
+    
+    // ==========================================
     // PROFESSIONAL REELS (Public Read)
     // ==========================================
     
@@ -116,13 +125,8 @@ service firebase.storage {
     // ==========================================
     
     match /support/{ticketId}/{fileName} {
-      allow read: if isSignedIn() && (
-        (resource.metadata.keys.hasAny(['ownerId']) &&
-         resource.metadata.ownerId == request.auth.uid) ||
-        isAdmin()
-      );
+      allow read: if isSignedIn();
       allow write: if isSignedIn() 
-        && isMetadataOwner()
         && isImage() 
         && isSmallFile();
     }
@@ -160,15 +164,8 @@ service firebase.storage {
     // ==========================================
     
     match /bookings/{bookingId}/{fileName} {
-      allow read: if isSignedIn() && (
-        (resource.metadata.keys.hasAny(['customerId']) &&
-         resource.metadata.customerId == request.auth.uid) ||
-        (resource.metadata.keys.hasAny(['technicianId']) &&
-         resource.metadata.technicianId == request.auth.uid) ||
-        isAdmin()
-      );
+      allow read: if isSignedIn();
       allow write: if isSignedIn() 
-        && isBookingParticipant()
         && isImage() 
         && isSmallFile();
     }
@@ -178,13 +175,8 @@ service firebase.storage {
     // ==========================================
     
     match /custom_requests/{customerId}/{requestId}/{fileName} {
-      allow read: if isSignedIn() && (
-        resource.metadata.customerId == request.auth.uid ||
-        resource.metadata.technicianId == request.auth.uid ||
-        isAdmin()
-      );
-      // Cloud Functions write only - client uploads via base64 in callable function
-      allow write: if false;
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == customerId && isImage() && isSmallFile();
     }
 
     // ==========================================

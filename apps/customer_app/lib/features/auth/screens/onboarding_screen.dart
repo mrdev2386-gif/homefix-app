@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../core/services/auth_service.dart';
+import 'package:customer_app/core/services/auth_service.dart';
 import '../../../core/services/firestore_service.dart';
-import '../../../core/services/functions_service.dart';
+import 'package:customer_app/core/services/functions_service.dart';
 import '../../../core/providers/location_provider.dart';
 import '../../home/main_wrapper_screen.dart';
 
@@ -37,10 +37,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       if (user != null) {
         await functionsService.updateUserProfile({
           'name': _nameController.text.trim(),
+          'displayName': _nameController.text.trim(),
           'isOnboarded': true,
-          'defaultAddress': locationProvider.currentAddress,
-          'latitude': locationProvider.currentPosition?.latitude,
-          'longitude': locationProvider.currentPosition?.longitude,
+          'profileCompleted': true,
+          'district': locationProvider.selectedDistrict ?? 'Unknown',
+          'defaultAddress': locationProvider.selectedDistrict ?? 'Unknown',
+          'latitude': 0.0,
+          'longitude': 0.0,
         });
         
         if (!mounted) return;
@@ -179,7 +182,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Enable location so we can find the best pros in your area.',
+            'You\'re all set to find the best pros in your area.',
             style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 14),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -199,71 +202,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          Consumer<LocationProvider>(
-            builder: (context, location, _) {
-              final hasLocation = location.currentPosition != null && 
-                                  location.currentAddress != 'Fetching location...';
-              
-              return Column(
-                children: [
-                  if (hasLocation)
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.green.withOpacity(0.1)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.check_circle, color: Colors.green, size: 20),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              location.currentAddress ?? '',
-                              style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green[800]),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   SizedBox(
                     width: double.infinity,
                     height: 52,
                     child: ElevatedButton(
-                      onPressed: _isLoading ? null : () async {
-                        if (hasLocation) {
-                          await _completeOnboarding();
-                        } else {
-                          await location.updateCurrentLocation();
-                        }
-                      },
+                      onPressed: _isLoading ? null : () => _completeOnboarding(),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: hasLocation ? const Color(0xFF6366F1) : const Color(0xFF10B981),
+                        backgroundColor: const Color(0xFF6366F1),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         elevation: 0,
                       ),
                       child: _isLoading 
                         ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : Text(hasLocation ? 'Finish' : 'Allow Access', 
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white)),
+                        : const Text('Finish Onboarding', 
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white)),
                     ),
                   ),
-                  if (!hasLocation)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 12),
-                      child: TextButton(
-                        onPressed: () => _completeOnboarding(),
-                        child: Text('Skip for now', style: GoogleFonts.outfit(color: Colors.grey, fontSize: 13)),
-                      ),
-                    ),
-                ],
-              );
-            },
-          ),
           const SizedBox(height: 16),
         ],
       ),

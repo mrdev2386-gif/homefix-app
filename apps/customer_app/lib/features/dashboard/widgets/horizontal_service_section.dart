@@ -4,11 +4,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shimmer/shimmer.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
 import '../../services/presentation/service_details_screen.dart';
-import '../../services/presentation/service_list_screen.dart';
-import '../../../core/models/service.dart';
-import '../../../core/models/category.dart';
+import '../../services/presentation/services_categories_screen.dart';
+import 'package:customer_app/core/models/service.dart';
+import 'package:customer_app/core/models/category.dart';
+import '../../../core/widgets/safe_network_image.dart';
+import 'package:customer_app/core/services/category_service.dart';
+import '../../../core/widgets/service_result_builder.dart';
+import '../../../core/models/service_result.dart';
 
 /// Reusable horizontal service section widget
 /// 
@@ -47,12 +51,16 @@ class _HorizontalServiceSectionState extends State<HorizontalServiceSection> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                widget.title,
-                style: GoogleFonts.outfit(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.textColor,
+              Expanded(
+                child: Text(
+                  widget.title,
+                  style: GoogleFonts.outfit(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.textColor,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               if (widget.viewAllCategory != null)
@@ -65,7 +73,7 @@ class _HorizontalServiceSectionState extends State<HorizontalServiceSection> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => ServiceListScreen(category: widget.viewAllCategory),
+                          builder: (_) => const ServicesCategoriesScreen(),
                         ),
                       );
                     } finally {
@@ -90,6 +98,7 @@ class _HorizontalServiceSectionState extends State<HorizontalServiceSection> {
         _HorizontalServiceSlider(
           serviceFilter: widget.serviceFilter,
           maxItems: widget.maxItems,
+          viewAllCategory: widget.viewAllCategory,
         ),
       ],
     );
@@ -99,64 +108,44 @@ class _HorizontalServiceSectionState extends State<HorizontalServiceSection> {
 class _HorizontalServiceSlider extends StatelessWidget {
   final bool Function(String category) serviceFilter;
   final int maxItems;
+  final String? viewAllCategory;
 
   const _HorizontalServiceSlider({
     required this.serviceFilter,
     required this.maxItems,
+    this.viewAllCategory,
   });
 
   @override
   Widget build(BuildContext context) {
-    final FirebaseFirestore db = FirebaseFirestore.instance;
+    final CategoryService categoryService = CategoryService();
     
-    return StreamBuilder<QuerySnapshot>(
-      stream: db
-          .collectionGroup('services') // AUDIT: Fixed root collection read
-          .where('isActive', isEqualTo: true)
-          .limit(20) // Increased limit to allow filtering
-          .snapshots(),
-      builder: (context, snapshot) {
-        // Handle waiting state - show skeleton loader
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return SizedBox(
-            height: 180,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              itemCount: 4,
-              itemBuilder: (context, index) => _buildShimmerCard(),
-            ),
-          );
-        }
+    final Stream<ServiceResult<List<HomeService>>> resultStream;
+    if (viewAllCategory == 'trending' || viewAllCategory == 'new') {
+      resultStream = categoryService.getRecentlyAddedServicesResult(limit: 20);
+    } else {
+      final String categoryId = viewAllCategory ?? 'cleaning';
+      resultStream = categoryService.getServicesByCategoryResult(categoryId);
+    }
 
-        // Handle error state - show friendly error UI
-        if (snapshot.hasError) {
-          return _buildErrorState();
-        }
-
-        // Handle no data
-        if (!snapshot.hasData || snapshot.data == null) {
-          return _buildEmptyState();
-        }
-
-        final services = snapshot.data!.docs;
-        
-        // DEBUG: Log total service count
-        debugPrint('SERVICE_COUNT: ${services.length}');
-        
-        // Filter services based on filter function with null-safe category access
-        final filteredServices = services.where((doc) {
-          try {
-            final data = doc.data() as Map<String, dynamic>?;
-            final category = (data?['category'] ?? '').toString().toLowerCase().trim();
-            return serviceFilter(category);
-          } catch (e) {
-            // Skip on any parsing error
-            return false;
-          }
+    return ServiceResultBuilder<List<HomeService>>(
+      stream: resultStream,
+      loadingWidget: SizedBox(
+        height: 180,
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          itemCount: 4,
+          itemBuilder: (context, index) => _buildShimmerCard(),
+        ),
+      ),
+      errorWidget: _buildErrorState(),
+      emptyWidget: _buildEmptyState(),
+      builder: (context, services) {
+        final filteredServices = services.where((s) {
+          return serviceFilter(s.category.toLowerCase());
         }).take(maxItems).toList();
 
-        // If no matching services found, show empty state instead of blank
         if (filteredServices.isEmpty) {
           return _buildEmptyState();
         }
@@ -165,6 +154,7 @@ class _HorizontalServiceSlider extends StatelessWidget {
       },
     );
   }
+
 
   /// Build proper empty state UI to prevent silent failures
   Widget _buildEmptyState() {
@@ -222,7 +212,7 @@ class _HorizontalServiceSlider extends StatelessWidget {
     );
   }
 
-  Widget _buildHorizontalSlider(List<QueryDocumentSnapshot> services) {
+  Widget _buildHorizontalSlider(List<HomeService> services) {
     return SizedBox(
       height: 180,
       child: PageView.builder(
@@ -230,13 +220,12 @@ class _HorizontalServiceSlider extends StatelessWidget {
         physics: const BouncingScrollPhysics(),
         itemCount: services.length,
         itemBuilder: (context, index) {
-          final doc = services[index];
-          final service = HomeService.fromFirestore(doc);
+          final service = services[index];
           
           return _ServiceCard(
             serviceId: service.id,
             title: service.name,
-            imageUrl: service.imageUrl ?? '',
+            imageUrl: service.imageUrl,
             category: service.category,
             price: service.basePrice,
             service: service,
@@ -245,6 +234,7 @@ class _HorizontalServiceSlider extends StatelessWidget {
       ),
     );
   }
+
 
   Widget _buildShimmerCard() {
     return Container(
@@ -304,6 +294,7 @@ class _ServiceCardState extends State<_ServiceCard> {
               MaterialPageRoute(
                 builder: (_) => ServiceDetailsScreen(
                   serviceId: widget.serviceId,
+                  categoryId: widget.category,
                   serviceName: widget.title,
                   serviceData: widget.service,
                 ),
@@ -334,11 +325,11 @@ class _ServiceCardState extends State<_ServiceCard> {
               Expanded(
                 child: ClipRRect(
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                  child: SafeNetworkImage(
-                    imageUrl: widget.imageUrl,
-                    width: double.infinity,
-                    height: double.infinity,
-                    fit: BoxFit.cover,
+                  child: SizedBox.expand(
+                    child: SafeNetworkImage(
+                      imageUrl: widget.imageUrl,
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 ),
               ),

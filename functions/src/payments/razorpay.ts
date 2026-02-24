@@ -89,11 +89,12 @@ export const createPaymentOrder = functions.https.onCall(async (data, context) =
         throw new functions.https.HttpsError('permission-denied', 'You are not authorized to pay for this booking');
     }
 
-    // Validation 2: Booking must be completed
-    if (booking.status !== 'completed') {
+    // Validation 2: Booking must be in a payable state
+    const payableStatuses = ['awaiting_payment', 'completed'];
+    if (!payableStatuses.includes(booking.status)) {
         throw new functions.https.HttpsError(
             'failed-precondition',
-            `Payment not allowed. Booking status is "${booking.status}". Work must be completed first.`
+            `Payment not allowed. Booking status is "${booking.status}".`
         );
     }
 
@@ -330,13 +331,17 @@ async function handlePaymentCaptured(payload: any) {
     }
 
     // Update booking with payment success
+    const isNewFlow = booking.status === 'awaiting_payment';
+    const newStatus = isNewFlow ? 'confirmed' : 'completed';
+
     await bookingDoc.ref.update({
         'payment.status': 'paid',
         'payment.razorpayPaymentId': paymentId,
         'payment.amountPaid': amount,
         'payment.paymentMethod': payment.method,
         'payment.paidAt': admin.firestore.FieldValue.serverTimestamp(),
-        'status': 'completed', // Keep as completed (payment done)
+        'status': newStatus,
+        'updatedAt': admin.firestore.FieldValue.serverTimestamp(),
 
         // Initialize payout as pending
         'payout.status': 'pending',
@@ -521,6 +526,9 @@ export const verifyPayment = functions.https.onCall(async (data, context) => {
         }
 
         // Update booking
+        const isNewFlow = booking.status === 'awaiting_payment';
+        const newStatus = isNewFlow ? 'confirmed' : 'completed';
+
         await bookingRef.update({
             'payment.status': 'paid',
             'payment.razorpayPaymentId': razorpayPaymentId,
@@ -528,6 +536,8 @@ export const verifyPayment = functions.https.onCall(async (data, context) => {
             'payment.amountPaid': amount,
             'payment.paymentMethod': payment.method,
             'payment.paidAt': admin.firestore.FieldValue.serverTimestamp(),
+            'status': newStatus,
+            'updatedAt': admin.firestore.FieldValue.serverTimestamp(),
 
             // Initialize payout
             'payout.status': 'pending',

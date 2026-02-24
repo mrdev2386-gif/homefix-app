@@ -1,817 +1,357 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import { db } from './shared/config';
-import { sendPushNotification, NotificationPayload } from './shared/notifications';
+import { checkRateLimit } from './shared/utils';
+
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+
+const db = admin.firestore();
 
 // ==========================================
-// CUSTOM REQUEST TYPES
+// HELPERS
 // ==========================================
 
-export interface CustomRequestData {
-  categoryId: string;
-  title: string;
-  description: string;
-  imageUrls?: string[];
-  preferredDate: string;
-  preferredTime: string;
-  addressId: string;
-  budgetMin?: number;
-  budgetMax?: number;
-  urgency: 'normal' | 'urgent' | 'emergency';
+async function isAdmin(uid: string): Promise<boolean> {
+  const adminDoc = await db.collection('admins').doc(uid).get();
+  return adminDoc.exists;
 }
 
-export interface CustomRequest {
-  id: string;
-  customerId: string;
-  customerName: string;
-  customerPhone: string;
-  categoryId: string;
-  categoryName?: string;
-  title: string;
-  description: string;
-  imageUrls: string[];
-  preferredDate: string;
-  preferredTime: string;
-  addressId: string;
-  address: {
-    address: string;
-    coordinates?: admin.firestore.GeoPoint;
-    city?: string;
-    pinCode?: string;
-    label?: string;
-  };
-  budgetMin?: number;
-  budgetMax?: number;
-  urgency: 'normal' | 'urgent' | 'emergency';
-  status: 'pending' | 'accepted' | 'booked' | 'cancelled' | 'expired';
-  technicianAssigned?: string;
-  technicianName?: string;
-  technicianPhone?: string;
-  bookingId?: string;
-  createdAt: admin.firestore.Timestamp;
-  updatedAt: admin.firestore.Timestamp;
-  acceptedAt?: admin.firestore.Timestamp;
-}
-
-// ==========================================
-// HELPER FUNCTIONS
-// ==========================================
-
-/**
- * Structured logging helper
- */
-function log(level: 'INFO' | 'WARN' | 'ERROR', action: string, metadata: Record<string, any> = {}): void {
-  console.log(JSON.stringify({
-    level,
-    timestamp: new Date().toISOString(),
-    action,
-    ...metadata,
-  }));
-}
-
-/**
- * Sanitize text input to prevent XSS and injection attacks
- */
-function sanitizeInput(text: string): string {
-  return text
-    .trim()
-    .replace(/[<>]/g, '')
-    .replace(/javascript:/gi, '')
-    .replace(/on\w+=/gi, '')
-    .slice(0, 2000);
-}
-
-/**
- * Validate category exists and is active
- * Composite index: categories(isActive, name) - required for efficient lookup
- */
-async function validateCategory(categoryId: string): Promise<{ exists: boolean; name?: string }> {
-  const categoryDoc = await db.collection('categories').doc(categoryId).get();
-  if (!categoryDoc.exists) {
-    return { exists: false };
-  }
-  const categoryData = categoryDoc.data()!;
-  if (!categoryData.isActive) {
-    return { exists: false };
-  }
-  return { exists: true, name: categoryData.name };
-}
-
-/**
- * Validate address belongs to customer
- */
-async function validateAddress(customerId: string, addressId: string): Promise<any> {
-  const addressDoc = await db.collection('customers').doc(customerId).collection('addresses').doc(addressId).get();
-  if (!addressDoc.exists) {
-    return null;
-  }
-  return { id: addressDoc.id, ...addressDoc.data() };
-}
-
-/**
- * Validate and upload base64 image to Firebase Storage
- * Server-side enforcement of size, type, and path
- */
-async function uploadBase64Image(
-  base64Data: string,
-  customerId: string,
-  requestId: string,
-  index: number
-): Promise<string> {
-  // Validate base64 header
-  if (!base64Data || typeof base64Data !== 'string') {
-    throw new functions.https.HttpsError('invalid-argument', 'Invalid image data');
-  }
-
-  if (!base64Data.startsWith('data:image/')) {
-    throw new functions.https.HttpsError('invalid-argument', 'Only image files are allowed');
-  }
-
-  // Extract and validate base64 content
-  const parts = base64Data.split(',');
-  if (parts.length !== 2) {
-    throw new functions.https.HttpsError('invalid-argument', 'Invalid image format');
-  }
-
-  const mimeType = parts[0].split(':')[1]?.split(';')[0] || '';
-  const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-  
-  if (!allowedMimeTypes.includes(mimeType.toLowerCase())) {
-    throw new functions.https.HttpsError('invalid-argument', 'Invalid image type. Allowed: JPEG, PNG, WebP');
-  }
-
-  let imageBuffer: Buffer;
+async function sendNotification(
+  userId: string,
+  userType: 'customer' | 'technician' | 'admin',
+  title: string,
+  body: string,
+  data: Record<string, string> = {}
+) {
   try {
-    imageBuffer = Buffer.from(parts[1], 'base64');
-  } catch {
-    throw new functions.https.HttpsError('invalid-argument', 'Invalid base64 data');
-  }
+    if (userId === 'admin') {
+      const admins = await db.collection('admins').get();
+      for (const adminDoc of admins.docs) {
+        await sendNotification(adminDoc.id, 'admin', title, body, data);
+      }
+      return;
+    }
 
-  // Size validation (5MB max)
-  const maxSize = 5 * 1024 * 1024;
-  if (imageBuffer.length > maxSize) {
-    throw new functions.https.HttpsError('invalid-argument', 'Image size exceeds 5MB limit');
-  }
-
-  // Validate size is reasonable (at least 1 byte)
-  if (imageBuffer.length === 0) {
-    throw new functions.https.HttpsError('invalid-argument', 'Empty image file');
-  }
-
-  // Sanitize filename and create path
-  const sanitizedCustomerId = customerId.replace(/[^a-zA-Z0-9]/g, '_');
-  const sanitizedRequestId = requestId.replace(/[^a-zA-Z0-9]/g, '_');
-  const imageId = `img_${Date.now()}_${index}`;
-  const filePath = `custom_requests/${sanitizedCustomerId}/${sanitizedRequestId}/${imageId}.jpg`;
-  const file = admin.storage().bucket().file(filePath);
-
-  try {
-    await file.save(imageBuffer, {
-      contentType: 'image/jpeg',
-      metadata: {
-        cacheControl: 'public,max-age=31536000',
-        metadata: {
-          customerId: sanitizedCustomerId,
-          requestId: sanitizedRequestId,
-          uploadedAt: new Date().toISOString(),
-        },
-      },
-    });
-
-    const [url] = await file.getSignedUrl({
-      action: 'read',
-      expires: Date.now() + 365 * 24 * 60 * 60 * 1000,
-    });
-
-    return url;
-  } catch (error: any) {
-    log('ERROR', 'image_upload_failed', { customerId, requestId, error: error.message });
-    throw new functions.https.HttpsError('internal', 'Failed to upload image');
-  }
-}
-
-/**
- * Find matching technicians for a custom request
- * Composite index required: technicians(isActive, status, serviceCategories, city)
- * Limited to 50 results for scalability
- */
-async function findMatchingTechnicians(categoryId: string, city?: string): Promise<string[]> {
-  try {
-    let query: admin.firestore.Query = db.collection('technicians')
+    const tokensSnapshot = await db.collection(userType === 'technician' ? 'technicians' : 'customers')
+      .doc(userId)
+      .collection('fcmTokens')
       .where('isActive', '==', true)
-      .where('status', '==', 'active')
-      .where('serviceCategories', 'array-contains', categoryId)
-      .limit(50); // Scalability guard - max 50 technicians notified
-
-    if (city) {
-      query = query.where('city', '==', city);
-    }
-
-    const technicianSnap = await query.get();
-    return technicianSnap.docs.map(doc => doc.id);
-  } catch (error: any) {
-    log('ERROR', 'technician_matching_failed', { categoryId, error: error.message });
-    return [];
-  }
-}
-
-/**
- * Create notifications for technicians - failure-safe fan-out
- * Uses Promise.allSettled to ensure one failure doesn't block others
- */
-async function createTechnicianNotifications(
-  technicianIds: string[],
-  requestId: string,
-  categoryName: string,
-  urgencyLabel: string
-): Promise<void> {
-  if (technicianIds.length === 0) {
-    log('INFO', 'no_technicians_to_notify', { requestId });
-    return;
-  }
-
-  log('INFO', 'creating_technician_notifications', { 
-    requestId, 
-    count: technicianIds.length 
-  });
-
-  const notificationPromises: Promise<void>[] = technicianIds.map(async (technicianId) => {
-    try {
-      const notificationRef = db.collection('technician_notifications').doc();
-      
-      await notificationRef.set({
-        id: notificationRef.id,
-        technicianId,
-        requestId,
-        type: 'custom_request',
-        title: 'New Service Request',
-        body: `A customer needs help with ${categoryName}`,
-        urgency: urgencyLabel,
-        status: 'unread',
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true });
-
-      // Send FCM - wrapped in try/catch, doesn't block notification creation
-      await sendPushNotification(technicianId, 'technicians', {
-        title: '🔔 New Service Request',
-        body: 'A customer nearby needs help! Tap to view.',
-        data: { type: 'custom_request', requestId },
-      }).catch((err) => {
-        log('WARN', 'fcm_send_failed', { technicianId, requestId, error: err.message });
-      });
-    } catch (error: any) {
-      // Log but don't throw - notification fan-out must not fail the main request
-      log('WARN', 'notification_creation_failed', { 
-        technicianId, 
-        requestId, 
-        error: error.message 
-      });
-    }
-  });
-
-  // Use allSettled to ensure all notifications are attempted
-  await Promise.allSettled(notificationPromises);
-  
-  log('INFO', 'notifications_completed', { requestId, count: technicianIds.length });
-}
-
-/**
- * Check rate limit for custom requests
- * Uses rolling window with indexed query on createdAt
- */
-async function checkRateLimit(customerId: string, urgency: string): Promise<void> {
-  // Emergency requests bypass rate limiting
-  if (urgency === 'emergency') {
-    log('INFO', 'rate_limit_bypassed', { customerId, reason: 'emergency' });
-    return;
-  }
-
-  // Rolling window: last 60 minutes
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-
-  try {
-    const recentRequests = await db.collection('custom_requests')
-      .where('customerId', '==', customerId)
-      .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(oneHourAgo))
-      .where('status', '!=', 'cancelled')
-      .count()
       .get();
 
-    const count = recentRequests.data().count;
+    if (tokensSnapshot.empty) return;
 
-    if (count >= 3) {
-      log('WARN', 'rate_limit_exceeded', { customerId, count, limit: 3 });
-      throw new functions.https.HttpsError(
-        'resource-exhausted',
-        'Rate limit exceeded. You can only create 3 requests per hour.'
-      );
-    }
+    const tokens = tokensSnapshot.docs.map(doc => doc.data().token);
+    const messages = tokens.map(token => ({
+      token,
+      notification: { title, body },
+      data,
+    }));
 
-    log('INFO', 'rate_limit_passed', { customerId, count, limit: 3 });
-  } catch (error: any) {
-    if (error instanceof functions.https.HttpsError) {
-      throw error;
+    for (let i = 0; i < messages.length; i += 500) {
+      const chunk = messages.slice(i, i + 500);
+      await admin.messaging().sendAll(chunk);
     }
-    log('ERROR', 'rate_limit_check_failed', { customerId, error: error.message });
-    // Don't fail on rate limit check errors - allow the request
+  } catch (error) {
+    console.error(`[Notification Error] ${userId}:`, error);
   }
 }
 
 // ==========================================
-// CREATE CUSTOM REQUEST FUNCTION
+// 1. CREATE CUSTOM SERVICE REQUEST
 // ==========================================
 
-export const createCustomRequest = functions.https.onCall(async (data: CustomRequestData, context: functions.https.CallableContext) => {
-  // 1. Authentication Check
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
-  }
+interface CreateCustomRequestData {
+  categoryId: string;
+  subCategoryId: string;
+  description: string;
+  preferredDate?: string;
+  addressId: string;
+  images?: string[]; // Max 3
+  idempotencyKey: string;
+}
+
+export const createCustomServiceRequest = functions.https.onCall(async (data: CreateCustomRequestData, context) => {
+  if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
 
   const customerId = context.auth.uid;
-  const customerName = context.auth.token.name || 'Customer';
+  const { categoryId, subCategoryId, description, preferredDate, addressId, images, idempotencyKey } = data;
 
-  log('INFO', 'create_custom_request_started', { customerId });
+  // 0. RATE LIMITING (Harden)
+  await checkRateLimit(customerId, 'create_custom_request', 3, 120);
 
-  // 2. Input Validation
-  const errors: string[] = [];
+  // 1. Role verification
+  const customerDoc = await db.collection('customers').doc(customerId).get();
+  if (!customerDoc.exists) throw new functions.https.HttpsError('not-found', 'Customer profile not found');
+  const customerData = customerDoc.data()!;
 
-  if (!data.categoryId) errors.push('Service category is required');
-  if (!data.title || data.title.trim().length < 5) errors.push('Title must be at least 5 characters');
-  if (!data.description || data.description.trim().length < 20) errors.push('Description must be at least 20 characters');
-  if (!data.preferredDate) errors.push('Preferred date is required');
-  if (!data.preferredTime) errors.push('Preferred time slot is required');
-  if (!data.addressId) errors.push('Address is required');
-  if (!data.urgency) errors.push('Urgency level is required');
+  // 2. Fetch District from profile
+  const district = customerData.district;
+  if (!district) throw new functions.https.HttpsError('failed-precondition', 'District not found in profile. Please update profile.');
 
-  if (errors.length > 0) {
-    throw new functions.https.HttpsError('invalid-argument', errors.join('; '));
+  // 3. Validation
+  if (!categoryId || !subCategoryId || !addressId) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing required fields');
+  }
+  if (subCategoryId === 'custom_sub_service' && (!description || description.trim().length < 10)) {
+    throw new functions.https.HttpsError('invalid-argument', 'Description required for custom service (min 10 chars)');
   }
 
-  // Validate date is not in the past
-  const preferredDate = new Date(data.preferredDate);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  if (preferredDate < today) {
-    throw new functions.https.HttpsError('invalid-argument', 'Preferred date cannot be in the past');
-  }
+  // 4. Address Snapshot
+  const addressDoc = await db.collection('customers').doc(customerId).collection('addresses').doc(addressId).get();
+  if (!addressDoc.exists) throw new functions.https.HttpsError('not-found', 'Address not found');
+  const addressSnapshot = addressDoc.data();
 
-  // Validate budget range
-  if (data.budgetMin !== undefined && data.budgetMin < 0) {
-    throw new functions.https.HttpsError('invalid-argument', 'Minimum budget cannot be negative');
-  }
-  if (data.budgetMax !== undefined && data.budgetMax < 0) {
-    throw new functions.https.HttpsError('invalid-argument', 'Maximum budget cannot be negative');
-  }
-  if (data.budgetMin !== undefined && data.budgetMax !== undefined && data.budgetMin > data.budgetMax) {
-    throw new functions.https.HttpsError('invalid-argument', 'Minimum budget cannot exceed maximum budget');
-  }
+  // 5. Idempotency & Transaction
+  const requestId = db.collection('service_requests').doc().id;
+  const idempotencyId = `custom_${customerId}_${idempotencyKey}`;
 
-  // Server-side image validation - critical for security
-  if (data.imageUrls && data.imageUrls.length > 5) {
-    throw new functions.https.HttpsError('invalid-argument', 'Maximum 5 images allowed');
-  }
+  return await db.runTransaction(async (transaction) => {
+    const idempotencyRef = db.collection('request_idempotency').doc(idempotencyId);
+    const idempotencyDoc = await transaction.get(idempotencyRef);
 
-  // 3. Validate Category
-  const categoryResult = await validateCategory(data.categoryId);
-  if (!categoryResult.exists) {
-    throw new functions.https.HttpsError('not-found', 'Invalid or inactive service category');
-  }
-
-  // 4. Validate Address
-  const addressData = await validateAddress(customerId, data.addressId);
-  if (!addressData) {
-    throw new functions.https.HttpsError('not-found', 'Address not found');
-  }
-
-  // 5. Rate Limiting Check
-  await checkRateLimit(customerId, data.urgency);
-
-  try {
-    const requestId = db.collection('custom_requests').doc().id;
-
-    // 6. Upload Images (if any) - with server-side validation
-    const imageUrls: string[] = [];
-    if (data.imageUrls && data.imageUrls.length > 0) {
-      for (let i = 0; i < data.imageUrls.length; i++) {
-        const uploadedUrl = await uploadBase64Image(data.imageUrls[i], customerId, requestId, i);
-        imageUrls.push(uploadedUrl);
-      }
+    if (idempotencyDoc.exists) {
+      return { success: true, requestId: idempotencyDoc.data()!.requestId, message: 'Existing request retrieved' };
     }
 
-    // 7. Prepare Request Data
-    const requestData: CustomRequest = {
+    const requestData = {
       id: requestId,
       customerId,
-      customerName,
-      customerPhone: '',
-      categoryId: data.categoryId,
-      categoryName: categoryResult.name,
-      title: sanitizeInput(data.title),
-      description: sanitizeInput(data.description),
-      imageUrls,
-      preferredDate: data.preferredDate,
-      preferredTime: data.preferredTime,
-      addressId: data.addressId,
-      address: {
-        address: addressData.address,
-        coordinates: addressData.coordinates,
-        city: addressData.city,
-        pinCode: addressData.pinCode,
-        label: addressData.label,
-      },
-      budgetMin: data.budgetMin,
-      budgetMax: data.budgetMax,
-      urgency: data.urgency,
-      status: 'pending',
-      createdAt: admin.firestore.FieldValue.serverTimestamp() as admin.firestore.Timestamp,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp() as admin.firestore.Timestamp,
+      customerName: customerData.name || 'Customer',
+      customerPhone: customerData.phone || '',
+      district: district || '',
+      districtNormalized: district ? district.toString().trim().toLowerCase() : '',
+      categoryId,
+      subCategoryId,
+      description: description || '',
+      preferredDate: preferredDate || null,
+      addressId,
+      addressSnapshot,
+      images: images || [],
+      status: 'pending_admin',
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    // 8. Get Customer Phone
-    const customerDoc = await db.collection('customers').doc(customerId).get();
-    if (customerDoc.exists) {
-      const customerData = customerDoc.data()!;
-      requestData.customerPhone = customerData.phone || '';
-    }
+    transaction.set(db.collection('service_requests').doc(requestId), requestData);
+    transaction.set(idempotencyRef, { requestId, createdAt: admin.firestore.FieldValue.serverTimestamp() });
 
-    // 9. Create Firestore Document
-    await db.collection('custom_requests').doc(requestId).set(requestData);
-
-    log('INFO', 'custom_request_created', { requestId, customerId, urgency: data.urgency });
-
-    // 10. Async Technician Alert - fire and forget, failure-safe
-    const urgencyLabel = data.urgency === 'emergency' ? 'URGENT' : data.urgency === 'urgent' ? 'Soon' : 'Flexible';
-    
-    findMatchingTechnicians(data.categoryId, addressData.city)
-      .then(async (technicianIds) => {
-        await createTechnicianNotifications(technicianIds, requestId, categoryResult.name || '', urgencyLabel);
-      })
-      .catch(err => log('ERROR', 'technician_alert_failed', { requestId, error: err.message }));
-
-    // 11. Return Success
-    return {
-      success: true,
-      requestId,
-      message: 'Custom request created successfully',
-    };
-
-  } catch (error: any) {
-    log('ERROR', 'create_custom_request_failed', { customerId, error: error.message });
-    throw new functions.https.HttpsError('internal', error.message || 'Failed to create custom request');
-  }
+    return { success: true, requestId, message: 'Custom request submitted for admin review' };
+  }).then(async (result) => {
+    // Notify Admin
+    await sendNotification('admin', 'admin', 'New Custom Request', `A new custom request from ${district} requires review.`);
+    return result;
+  });
 });
 
 // ==========================================
-// ACCEPT CUSTOM REQUEST FUNCTION
+// 2. ADMIN APPROVE SERVICE REQUEST
 // ==========================================
 
-export const acceptCustomRequest = functions.https.onCall(async (data, context: functions.https.CallableContext) => {
-  // 1. Authentication Check
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+interface AdminApproveData {
+  requestId: string;
+  action: 'approve' | 'reject';
+  technicianId?: string; // Required for approve
+  rejectionReason?: string;
+}
+
+export const adminApproveServiceRequest = functions.https.onCall(async (data: AdminApproveData, context) => {
+  if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Unauthenticated');
+  if (!(await isAdmin(context.auth.uid))) throw new functions.https.HttpsError('permission-denied', 'Admin access required');
+
+  const { requestId, action, technicianId, rejectionReason } = data;
+
+  const requestRef = db.collection('service_requests').doc(requestId);
+  const requestDoc = await requestRef.get();
+  if (!requestDoc.exists) throw new functions.https.HttpsError('not-found', 'Request not found');
+  const request = requestDoc.data()!;
+
+  if (request.status !== 'pending_admin' && request.status !== 'technician_rejected') {
+    throw new functions.https.HttpsError('failed-precondition', 'Request is not in a status that allows approval');
   }
 
-  const { requestId } = data;
+  if (action === 'approve') {
+    if (!technicianId) throw new functions.https.HttpsError('invalid-argument', 'Technician ID required for approval');
 
-  if (!requestId) {
-    throw new functions.https.HttpsError('invalid-argument', 'Request ID is required');
-  }
+    const techDoc = await db.collection('technicians').doc(technicianId).get();
+    if (!techDoc.exists) throw new functions.https.HttpsError('not-found', 'Technician not found');
+    const techData = techDoc.data()!;
 
-  const technicianId = context.auth.uid;
-
-  log('INFO', 'accept_custom_request_started', { technicianId, requestId });
-
-  // 2. Verify Technician Status
-  const technicianDoc = await db.collection('technicians').doc(technicianId).get();
-  if (!technicianDoc.exists) {
-    throw new functions.https.HttpsError('permission-denied', 'Only verified technicians can accept requests');
-  }
-
-  const technicianData = technicianDoc.data()!;
-  if (!technicianData.isActive || technicianData.status !== 'active') {
-    throw new functions.https.HttpsError('permission-denied', 'Technician account is not active');
-  }
-
-  // 3. Use Transaction for Race Condition Safety
-  const result = await db.runTransaction(async (transaction) => {
-    const requestRef = db.collection('custom_requests').doc(requestId);
-    const requestDoc = await transaction.get(requestRef);
-
-    if (!requestDoc.exists) {
-      throw new functions.https.HttpsError('not-found', 'Custom request not found');
+    // STRICT FILTER: Match district, approved status, and category
+    if (techData.district !== request.district) {
+      throw new functions.https.HttpsError('failed-precondition', 'Technician must be in the same district');
+    }
+    if (techData.status !== 'approved' && techData.status !== 'active') {
+      throw new functions.https.HttpsError('failed-precondition', 'Technician is not approved');
     }
 
-    const request = requestDoc.data() as CustomRequest;
-
-    // 4. Double-check Status (race protection)
-    if (request.status !== 'pending') {
-      log('WARN', 'accept_failed_already_processed', { 
-        requestId, 
-        technicianId, 
-        status: request.status 
-      });
-      throw new functions.https.HttpsError('failed-precondition', `Request has already been ${request.status}`);
+    // serviceCategories is usually an array of category IDs
+    const categories = techData.serviceCategories || [];
+    if (!categories.includes(request.categoryId)) {
+      throw new functions.https.HttpsError('failed-precondition', 'Technician does not handle this category');
     }
 
-    // 5. Check for conflicting active requests (within transaction for consistency)
-    const conflictingSnapshot = await db.collection('custom_requests')
-      .where('technicianAssigned', '==', technicianId)
-      .where('status', 'in', ['pending', 'accepted'])
-      .limit(2)
-      .get();
-
-    if (!conflictingSnapshot.empty) {
-      throw new functions.https.HttpsError('failed-precondition', 'You already have an active request');
-    }
-
-    // 6. Create Booking from Custom Request
-    const bookingId = db.collection('bookings').doc().id;
-    const bookingNumber = `BK-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000)).padStart(4, '0')}`;
-    const estimatedAmount = request.budgetMax || request.budgetMin || 500;
-
-    const bookingData = {
-      id: bookingId,
-      bookingNumber,
-      customerId: request.customerId,
-      customerName: request.customerName,
-      customerPhone: request.customerPhone,
+    await requestRef.update({
+      status: 'technician_pending',
       technicianId,
-      technicianName: technicianData.name || 'Technician',
-      technicianPhone: technicianData.phone || '',
-      serviceId: request.categoryId,
-      serviceName: request.categoryName || 'Custom Service',
-      location: request.address,
-      status: 'accepted',
-      paymentStatus: 'pending',
-      price: estimatedAmount,
-      finalAmount: estimatedAmount,
-      customRequestId: requestId,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
-      scheduledDate: request.preferredDate,
-      scheduledTime: request.preferredTime,
-    };
-
-    // 7. Atomic Writes within Transaction
-    transaction.set(db.collection('bookings').doc(bookingId), bookingData);
-    transaction.update(requestRef, {
-      status: 'accepted',
-      technicianAssigned: technicianId,
-      technicianName: technicianData.name || 'Technician',
-      technicianPhone: technicianData.phone || '',
-      bookingId,
-      acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
+      technicianName: techData.name || 'Technician',
+      technicianPhone: techData.phone || '',
+      adminApprovedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // 8. Create customer notification
-    const customerNotificationRef = db.collection('customers').doc(request.customerId).collection('notifications').doc();
-    transaction.set(customerNotificationRef, {
-      id: customerNotificationRef.id,
-      type: 'request_accepted',
-      title: 'Request Accepted!',
-      body: 'A technician has accepted your request and a booking has been created.',
-      data: { bookingId, requestId, type: 'booking_status' },
-      read: false,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    await sendNotification(technicianId, 'technician', 'New Job Assigned', 'You have a new custom request to review.');
+    return { success: true, message: 'Request approved and assigned to technician' };
+  } else {
+    await requestRef.update({
+      status: 'admin_rejected',
+      rejectionReason: rejectionReason || 'Rejected by admin',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-
-    log('INFO', 'custom_request_accepted', { requestId, bookingId, technicianId });
-
-    return {
-      bookingId,
-      bookingNumber,
-      customerId: request.customerId,
-      customerName: request.customerName,
-      technicianName: technicianData.name || 'Technician',
-    };
-  });
-
-  // 9. Send Push Notification to Customer (async, failure-safe)
-  try {
-    await sendPushNotification(result.customerId, 'customers', {
-      title: '✅ Request Accepted!',
-      body: `${result.technicianName} has accepted your request. Booking #${result.bookingNumber}`,
-      data: { 
-        type: 'booking_status', 
-        bookingId: result.bookingId,
-        requestId,
-      },
-    });
-  } catch (err: any) {
-    log('WARN', 'customer_notification_failed', { 
-      bookingId: result.bookingId, 
-      error: err.message 
-    });
-    // Don't fail - notification is non-critical
-  }
-
-  return {
-    success: true,
-    bookingId: result.bookingId,
-    bookingNumber: result.bookingNumber,
-    message: 'Custom request accepted successfully',
-  };
-});
-
-// ==========================================
-// GET CUSTOM REQUEST (Customer View)
-// ==========================================
-
-export const getMyCustomRequests = functions.https.onCall(async (data, context: functions.https.CallableContext) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
-  }
-
-  const customerId = context.auth.uid;
-  const { status, limit = 20, startAfter } = data;
-
-  try {
-    let query: admin.firestore.Query = db.collection('custom_requests')
-      .where('customerId', '==', customerId)
-      .orderBy('createdAt', 'desc')
-      .limit(limit);
-
-    if (startAfter) {
-      const startAfterDoc = await db.collection('custom_requests').doc(startAfter).get();
-      if (startAfterDoc.exists) {
-        query = query.startAfter(startAfterDoc);
-      }
-    }
-
-    if (status) {
-      query = query.where('status', '==', status);
-    }
-
-    const snapshot = await query.get();
-    
-    return {
-      success: true,
-      requests: snapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          createdAt: data.createdAt?.toDate?.()?.toISOString(),
-          updatedAt: data.updatedAt?.toDate?.()?.toISOString(),
-          acceptedAt: data.acceptedAt?.toDate?.()?.toISOString(),
-        };
-      }),
-    };
-  } catch (error: any) {
-    log('ERROR', 'get_my_requests_failed', { customerId, error: error.message });
-    throw new functions.https.HttpsError('internal', 'Failed to fetch requests');
+    await sendNotification(request.customerId, 'customer', 'Request Update', 'Your custom request was not approved by admin.');
+    return { success: true, message: 'Request rejected' };
   }
 });
 
 // ==========================================
-// CANCEL CUSTOM REQUEST (Customer View)
+// 3. TECHNICIAN RESPOND SERVICE REQUEST
 // ==========================================
 
-export const cancelCustomRequest = functions.https.onCall(async (data, context: functions.https.CallableContext) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
-  }
+interface TechnicianRespondData {
+  requestId: string;
+  action: 'accept' | 'reject';
+  rejectionReason?: string;
+}
 
-  const { requestId, reason } = data;
-
-  if (!requestId) {
-    throw new functions.https.HttpsError('invalid-argument', 'Request ID is required');
-  }
-
-  const customerId = context.auth.uid;
-
-  await db.runTransaction(async (transaction) => {
-    const requestRef = db.collection('custom_requests').doc(requestId);
-    const requestDoc = await transaction.get(requestRef);
-
-    if (!requestDoc.exists) {
-      throw new functions.https.HttpsError('not-found', 'Request not found');
-    }
-
-    const request = requestDoc.data() as CustomRequest;
-
-    if (request.customerId !== customerId) {
-      throw new functions.https.HttpsError('permission-denied', 'You can only cancel your own requests');
-    }
-
-    if (request.status !== 'pending') {
-      throw new functions.https.HttpsError('failed-precondition', 'Only pending requests can be cancelled');
-    }
-
-    transaction.update(requestRef, {
-      status: 'cancelled',
-      cancellationReason: reason || 'Cancelled by customer',
-      cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-  });
-
-  log('INFO', 'custom_request_cancelled', { requestId, customerId });
-
-  return { success: true, message: 'Request cancelled successfully' };
-});
-
-// ==========================================
-// GET CUSTOM REQUEST (Technician Inbox)
-// ==========================================
-
-export const getTechnicianInbox = functions.https.onCall(async (data, context: functions.https.CallableContext) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
-  }
-
+export const technicianRespondServiceRequest = functions.https.onCall(async (data: TechnicianRespondData, context) => {
+  if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Unauthenticated');
   const technicianId = context.auth.uid;
+  const { requestId, action, rejectionReason } = data;
 
-  const technicianDoc = await db.collection('technicians').doc(technicianId).get();
-  if (!technicianDoc.exists) {
-    throw new functions.https.HttpsError('permission-denied', 'Technician not found');
-  }
+  const requestRef = db.collection('service_requests').doc(requestId);
+  const requestDoc = await requestRef.get();
+  if (!requestDoc.exists) throw new functions.https.HttpsError('not-found', 'Request not found');
+  const request = requestDoc.data()!;
 
-  const technicianData = technicianDoc.data()!;
-  if (!technicianData.isActive || technicianData.status !== 'active') {
-    throw new functions.https.HttpsError('permission-denied', 'Technician account is not active');
-  }
+  if (request.technicianId !== technicianId) throw new functions.https.HttpsError('permission-denied', 'Unauthorized');
+  if (request.status !== 'technician_pending') throw new functions.https.HttpsError('failed-precondition', 'Request not in technician_pending status');
 
-  const { limit = 20, startAfter } = data;
-
-  try {
-    const serviceCategories = technicianData.serviceCategories || [];
-    
-    let query: admin.firestore.Query = db.collection('custom_requests')
-      .where('status', '==', 'pending')
-      .where('categoryId', 'in', serviceCategories)
-      .orderBy('createdAt', 'desc')
-      .limit(limit);
-
-    if (startAfter) {
-      const startAfterDoc = await db.collection('custom_requests').doc(startAfter).get();
-      if (startAfterDoc.exists) {
-        query = query.startAfter(startAfterDoc);
-      }
-    }
-
-    const snapshot = await query.get();
-    
-    return {
-      success: true,
-      requests: snapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          createdAt: data.createdAt?.toDate?.()?.toISOString(),
-          updatedAt: data.updatedAt?.toDate?.()?.toISOString(),
-        };
-      }),
-    };
-  } catch (error: any) {
-    log('ERROR', 'get_technician_inbox_failed', { technicianId, error: error.message });
-    throw new functions.https.HttpsError('internal', 'Failed to fetch inbox');
+  if (action === 'accept') {
+    await requestRef.update({
+      status: 'awaiting_payment',
+      technicianAcceptedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    await sendNotification(request.customerId, 'customer', 'Technician Accepted!', 'Your custom request was accepted. Please proceed to payment.');
+    return { success: true, message: 'Request accepted' };
+  } else {
+    await requestRef.update({
+      status: 'technician_rejected',
+      rejectionReason: rejectionReason || 'Technician declined',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    await sendNotification('admin', 'admin', 'Technician Rejected Request', `Technician rejected the request for ${request.district}.`);
+    return { success: true, message: 'Request rejected' };
   }
 });
 
 // ==========================================
-// GET CUSTOM REQUEST DETAIL
+// 4. CUSTOMER CONFIRM SERVICE PAYMENT
 // ==========================================
 
-export const getCustomRequestDetail = functions.https.onCall(async (data, context: functions.https.CallableContext) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+interface CustomerPaymentData {
+  requestId: string;
+  paymentMethod: 'now' | 'after_service';
+}
+
+export const customerConfirmServicePayment = functions.https.onCall(async (data: CustomerPaymentData, context) => {
+  if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Unauthenticated');
+  const customerId = context.auth.uid;
+  const { requestId, paymentMethod } = data;
+
+  const requestRef = db.collection('service_requests').doc(requestId);
+  const requestDoc = await requestRef.get();
+  if (!requestDoc.exists) throw new functions.https.HttpsError('not-found', 'Request not found');
+  const request = requestDoc.data()!;
+
+  if (request.customerId !== customerId) throw new functions.https.HttpsError('permission-denied', 'Unauthorized');
+
+  if (request.status === 'confirmed') {
+    return { success: true, message: 'Booking already confirmed' };
   }
 
+  if (request.status !== 'awaiting_payment') {
+    throw new functions.https.HttpsError('failed-precondition', 'Request is not in awaiting_payment status');
+  }
+
+  if (request.paymentStatus === 'paid' && paymentMethod === 'now') {
+    return { success: true, message: 'Payment already processed' };
+  }
+
+  await requestRef.update({
+    status: 'confirmed',
+    paymentMethod,
+    paymentStatus: paymentMethod === 'now' ? 'paid' : 'pending',
+    confirmedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  await sendNotification(request.technicianId, 'technician', 'Booking Confirmed!', 'The customer has confirmed the booking. You can start the job.');
+  return { success: true, message: 'Booking confirmed' };
+});
+
+/**
+ * Technician: Get inbox of assigned custom requests
+ */
+export const getTechnicianInbox = functions.https.onCall(async (data: { limit?: number; startAfter?: string }, context) => {
+  if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Unauthenticated');
+  const technicianId = context.auth.uid;
+  const limit = data.limit || 20;
+
+  let query = db.collection('service_requests')
+    .where('technicianId', '==', technicianId)
+    .where('status', '==', 'technician_pending')
+    .orderBy('createdAt', 'desc')
+    .limit(limit);
+
+  if (data.startAfter) {
+    const startDoc = await db.collection('service_requests').doc(data.startAfter).get();
+    if (startDoc.exists) {
+      query = query.startAfter(startDoc);
+    }
+  }
+
+  const snapshot = await query.get();
+  const requests = snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+
+  return { success: true, requests };
+});
+
+/**
+ * Get details of a single custom request
+ */
+export const getCustomRequestDetail = functions.https.onCall(async (data: { requestId: string }, context) => {
+  if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Unauthenticated');
+  const uid = context.auth.uid;
   const { requestId } = data;
-  const userId = context.auth.uid;
 
-  if (!requestId) {
-    throw new functions.https.HttpsError('invalid-argument', 'Request ID is required');
+  if (!requestId) throw new functions.https.HttpsError('invalid-argument', 'Request ID required');
+
+  const requestDoc = await db.collection('service_requests').doc(requestId).get();
+  if (!requestDoc.exists) throw new functions.https.HttpsError('not-found', 'Request not found');
+  const request = requestDoc.data()!;
+
+  // Security check: Customer, Technician, or Admin
+  const isOwner = request.customerId === uid;
+  const isAssignedTech = request.technicianId === uid;
+  const isAdm = await isAdmin(uid);
+
+  if (!isOwner && !isAssignedTech && !isAdm) {
+    throw new functions.https.HttpsError('permission-denied', 'Privacy violation');
   }
 
-  const requestDoc = await db.collection('custom_requests').doc(requestId).get();
-
-  if (!requestDoc.exists) {
-    throw new functions.https.HttpsError('not-found', 'Request not found');
-  }
-
-  const request = requestDoc.data() as CustomRequest;
-
-  const isOwner = request.customerId === userId;
-  const isAssignedTech = request.technicianAssigned === userId;
-  const adminDoc = await db.collection('admins').doc(userId).get();
-  const isAdmin = adminDoc.exists;
-
-  if (!isOwner && !isAssignedTech && !isAdmin) {
-    throw new functions.https.HttpsError('permission-denied', 'Access denied');
-  }
-
-  return {
-    success: true,
-    request: {
-      ...request,
-      createdAt: request.createdAt?.toDate?.()?.toISOString(),
-      updatedAt: request.updatedAt?.toDate?.()?.toISOString(),
-      acceptedAt: request.acceptedAt?.toDate?.()?.toISOString(),
-    },
-  };
+  return { success: true, request };
 });

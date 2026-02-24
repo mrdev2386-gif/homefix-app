@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/providers/locale_provider.dart';
-import '../../core/theme/app_theme.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
 import '../../core/utils/app_localizations.dart';
 
 class LanguageSelectionScreen extends StatelessWidget {

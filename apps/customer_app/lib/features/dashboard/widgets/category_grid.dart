@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../services/presentation/service_list_screen.dart';
+import 'package:customer_app/core/theme/app_theme.dart';
+import '../../services/presentation/services_categories_screen.dart';
 
 class CategoryGrid extends StatelessWidget {
   const CategoryGrid({super.key});
@@ -72,14 +72,12 @@ class CategoryGrid extends StatelessWidget {
               gradient: cat['gradient'] as List<Color>,
               color: cat['color'],
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ServiceListScreen(
-                      category: cat['name'] == 'More' ? null : cat['name'].toLowerCase(),
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ServicesCategoriesScreen(),
                     ),
-                  ),
-                );
+                  );
               },
             ),
           );
