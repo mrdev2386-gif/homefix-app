@@ -13,6 +13,7 @@ class ApplicationStatusScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isPending = status == 'pending';
+    final isPendingServiceApproval = status == 'pending_service_approval';
     final isSuspended = status == 'suspended';
     
     return Scaffold(
@@ -24,7 +25,7 @@ class ApplicationStatusScreen extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildStatusIllustration(isPending, isSuspended),
+                _buildStatusIllustration(isPending, isPendingServiceApproval, isSuspended),
                 const SizedBox(height: 48),
                 Text(
                   _getTitle(status),
@@ -48,7 +49,7 @@ class ApplicationStatusScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 64),
-                if (!isPending)
+                if (!isPending && !isPendingServiceApproval)
                   ElevatedButton(
                     onPressed: () {},
                     style: ElevatedButton.styleFrom(
@@ -82,8 +83,12 @@ class ApplicationStatusScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStatusIllustration(bool isPending, bool isSuspended) {
-    final color = isPending ? const Color(0xFF6366F1) : const Color(0xFFEF4444);
+  Widget _buildStatusIllustration(bool isPending, bool isPendingServiceApproval, bool isSuspended) {
+    final color = isPendingServiceApproval 
+        ? const Color(0xFFF59E0B) // Amber for pending service approval
+        : isPending 
+            ? const Color(0xFF6366F1)  // Indigo for pending
+            : const Color(0xFFEF4444); // Red for rejected/suspended
     return Container(
       width: 160,
       height: 160,
@@ -107,7 +112,11 @@ class ApplicationStatusScreen extends StatelessWidget {
             ),
           ),
           Icon(
-            isPending ? Icons.hourglass_top_rounded : Icons.gpp_bad_rounded,
+            isPendingServiceApproval 
+                ? Icons.pending_actions_rounded 
+                : isPending 
+                    ? Icons.hourglass_top_rounded 
+                    : Icons.gpp_bad_rounded,
             size: 64,
             color: color,
           ),
@@ -117,16 +126,20 @@ class ApplicationStatusScreen extends StatelessWidget {
   }
 
   String _getTitle(String status) {
-    if (status == 'pending') return 'Reviewing Details';
+    if (status == 'pending_service_approval') return 'Service Access Pending';
+    if (status == 'pending' || status == 'under_review') return 'Under Review';
     if (status == 'suspended') return 'Account Suspended';
     return 'Application Rejected';
   }
 
   String _getSubtitle(bool isPending, String? reason) {
-    if (isPending) {
-      return 'Our team is currently verifying your profile and documents. You will notify you once your account is activated.';
+    if (status == 'pending_service_approval') {
+      return 'Your account has been approved but you need admin approval to add and manage services. Please wait for admin confirmation.';
     }
-    return reason ?? 'Unfortunately, your application was not approved. Please reach out to our support team for more information.';
+    if (isPending || reason == null) {
+      return 'Our team is currently verifying your profile and documents. You will be notified once your account is activated.';
+    }
+    return reason;
   }
 
 }

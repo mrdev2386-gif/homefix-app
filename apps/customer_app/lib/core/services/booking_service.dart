@@ -48,7 +48,7 @@ class BookingService {
       });
       return results.data as Map<String, dynamic>;
     } catch (e) {
-      debugPrint("Error creating booking request: $e");
+      if (kDebugMode) debugPrint("Error creating booking request: $e");
       rethrow;
     }
   }
@@ -63,7 +63,18 @@ class BookingService {
         .map((snapshot) =>
             snapshot.docs.map((doc) => Booking.fromFirestore(doc)).toList())
         .handleError((e) {
-      debugPrint('❌ [BookingService] Error fetching customer bookings: $e');
+      // FIX 3 & 4: Firestore Network Resilience - handle UNAVAILABLE and other errors gracefully
+      final errorStr = e.toString().toLowerCase();
+      final bool isUnavailable = errorStr.contains('unavailable') || errorStr.contains('network');
+      
+      if (kDebugMode) {
+        if (isUnavailable) {
+          debugPrint('⚠️ [BookingService] Network unavailable - returning empty list');
+        } else {
+          debugPrint('❌ [BookingService] Error fetching customer bookings (logged once): $e');
+        }
+      }
+      // Return empty list, NEVER crash, NEVER infinite loader
       return <Booking>[];
     });
   }
@@ -78,7 +89,7 @@ class BookingService {
         'reason': reason,
       });
     } catch (e) {
-      debugPrint("Error cancelling booking via Function: $e");
+      if (kDebugMode) debugPrint("Error cancelling booking via Function: $e");
       rethrow;
     }
   }
@@ -101,7 +112,7 @@ class BookingService {
       });
       return results.data as Map<String, dynamic>;
     } catch (e) {
-      debugPrint("Error confirming payment: $e");
+      if (kDebugMode) debugPrint("Error confirming payment: $e");
       rethrow;
     }
   }
@@ -111,7 +122,16 @@ class BookingService {
       if (!doc.exists) return null;
       return Booking.fromFirestore(doc);
     }).handleError((e) {
-      debugPrint('❌ [BookingService] Error fetching booking $bookingId: $e');
+      // FIX 3 & 4: Network resilience
+      final errorStr = e.toString().toLowerCase();
+      final bool isUnavailable = errorStr.contains('unavailable') || errorStr.contains('network');
+      if (kDebugMode) {
+        if (isUnavailable) {
+          debugPrint('⚠️ [BookingService] Network unavailable for booking $bookingId');
+        } else {
+          debugPrint('❌ [BookingService] Error fetching booking $bookingId: $e');
+        }
+      }
       return null;
     });
   }

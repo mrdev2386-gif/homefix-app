@@ -8,10 +8,35 @@ class TechnicianCatalogService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
+  /// Check if technician is approved to manage services
+  Future<bool> canManageServices() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return false;
+      
+      final doc = await _db.collection('technicians').doc(uid).get();
+      if (!doc.exists) return false;
+      
+      final data = doc.data()!;
+      final isApproved = data['isApproved'] ?? false;
+      final adminApproved = data['adminApproved'] ?? false;
+      final isKycComplete = data['isKycComplete'] ?? false;
+      
+      return isKycComplete && isApproved && adminApproved;
+    } catch (e) {
+      debugPrint('[TechnicianCatalogService] Error checking service permissions: $e');
+      return false;
+    }
+  }
+
   /// Create a new technician service via Cloud Function
   Future<TechnicianService> createService(CreateTechnicianServiceInput input) async {
     try {
-      // Client-side validation first
+      // First check if technician can manage services
+      final canManage = await canManageServices();
+      if (!canManage) {
+        throw Exception('You must be approved by admin to add or manage services. Please wait for admin approval.');
+      }
       final validationError = input.validate();
       if (validationError != null) {
         throw Exception(validationError);
@@ -52,6 +77,12 @@ class TechnicianCatalogService {
   /// Update an existing technician service
   Future<void> updateService(UpdateTechnicianServiceInput input) async {
     try {
+      // Check if technician can manage services
+      final canManage = await canManageServices();
+      if (!canManage) {
+        throw Exception('You must be approved by admin to update services. Please wait for admin approval.');
+      }
+      
       final callable = _functions.httpsCallable('updateTechnicianService');
       await callable.call<Map<String, dynamic>>(input.toMap());
     } on FirebaseFunctionsException catch (e) {
@@ -66,6 +97,12 @@ class TechnicianCatalogService {
   /// Delete (soft delete) a technician service
   Future<void> deleteService(String serviceId) async {
     try {
+      // Check if technician can manage services
+      final canManage = await canManageServices();
+      if (!canManage) {
+        throw Exception('You must be approved by admin to delete services. Please wait for admin approval.');
+      }
+      
       final callable = _functions.httpsCallable('deleteTechnicianService');
       await callable.call<Map<String, dynamic>>({'serviceId': serviceId});
     } on FirebaseFunctionsException catch (e) {

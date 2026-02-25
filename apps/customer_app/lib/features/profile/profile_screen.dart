@@ -18,9 +18,9 @@ import '../support/presentation/support_screen.dart';
 import '../settings/settings_screen.dart';
 import 'presentation/edit_profile_screen.dart';
 import 'presentation/favorite_services_screen.dart';
-import 'package:customer_app/features/profile/presentation/partner_onboarding_screen_v2.dart';
 import 'presentation/about_screen.dart';
 import 'presentation/policy_screen.dart';
+import 'widgets/profile_shimmer.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -43,11 +43,15 @@ class ProfileScreen extends StatelessWidget {
           stream: firestoreService.streamUserModel(currentUser.uid),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const _ProfileSkeleton();
+              // Use premium skeleton loader
+              return const Scaffold(
+                backgroundColor: Color(0xFFFAFAFA),
+                body: ProfileSkeleton(),
+              );
             }
 
             if (snapshot.hasError) {
-              return _ProfileErrorView(error: snapshot.error.toString());
+              return ProfileErrorView(error: snapshot.error.toString());
             }
 
             final user = snapshot.data;
@@ -432,11 +436,6 @@ class _ProfileContentState extends State<_ProfileContent> {
                   }),
                 ]),
 
-                if ((widget.user.role ?? 'customer').toString().toLowerCase() == 'customer') ...[
-                  const SizedBox(height: 32),
-                  _buildBecomeTechnicianCTA(context, l10n),
-                ],
-
                 const SizedBox(height: 32),
                 _sectionTitle(l10n.translate('support')),
                 _settingsGroup([
@@ -490,71 +489,6 @@ class _ProfileContentState extends State<_ProfileContent> {
         border: Border.all(color: Colors.grey.shade100),
       ),
       child: Column(children: children),
-    );
-  }
-
-  Widget _buildBecomeTechnicianCTA(BuildContext context, AppLocalizations l10n) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF10B981), Color(0xFF059669)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF10B981).withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          )
-        ],
-      ),
-      child: InkWell(
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PartnerOnboardingScreenV2())),
-        borderRadius: BorderRadius.circular(28),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
-                  child: const Icon(Icons.handyman_rounded, color: Colors.white, size: 20),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  l10n.translate('earnMoreWithHomeFix'),
-                  style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              l10n.translate('joinCommunity'),
-              style: GoogleFonts.outfit(color: Colors.white.withOpacity(0.9), fontSize: 13, height: 1.5),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PartnerOnboardingScreenV2())),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF059669),
-                elevation: 0,
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              ),
-              child: Text(
-                l10n.translate('registerAsPartner'),
-                style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -618,82 +552,78 @@ class _ProfileContentState extends State<_ProfileContent> {
   }
 }
 
-class _ProfileSkeleton extends StatelessWidget {
-  const _ProfileSkeleton();
-
-  @override
-  Widget build(BuildContext context) {
-    return const SingleChildScrollView(
-      child: Column(
-        children: [
-          SkeletonLoader(height: 280, borderRadius: 0),
-          Padding(
-            padding: EdgeInsets.all(20),
-            child: Column(
-              children: [
-                SkeletonLoader(height: 150, borderRadius: 24),
-                SizedBox(height: 32),
-                SkeletonLoader(height: 200, borderRadius: 24),
-                SizedBox(height: 32),
-                SkeletonLoader(height: 200, borderRadius: 24),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileErrorView extends StatelessWidget {
-  final String error;
-  const _ProfileErrorView({required this.error});
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline_rounded, size: 80, color: Colors.redAccent),
-            const SizedBox(height: 24),
-            Text(l10n.translate('oopsSomethingWrong'), style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 12),
-            Text(error, textAlign: TextAlign.center, style: GoogleFonts.outfit(color: AppTheme.subtitleColor)),
-            const SizedBox(height: 32),
-            ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text(l10n.translate('goBack')),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _ProfileGuestView extends StatelessWidget {
   const _ProfileGuestView();
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.person_outline_rounded, size: 100, color: AppTheme.primaryColor),
-          const SizedBox(height: 24),
-          Text(l10n.translate('loginToViewProfile'), style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 32),
-          ElevatedButton(
-            onPressed: () => Navigator.pushNamed(context, '/login'),
-            child: Text(l10n.login.toUpperCase()),
+    return Scaffold(
+      backgroundColor: const Color(0xFFFAFAFA),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Premium icon container
+              Container(
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.person_outline_rounded,
+                  size: 80,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+              const SizedBox(height: 32),
+              Text(
+                l10n.translate('loginToViewProfile'),
+                style: GoogleFonts.outfit(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: AppTheme.textColor,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Sign in to access your profile, bookings, and more',
+                style: GoogleFonts.outfit(
+                  fontSize: 15,
+                  color: AppTheme.subtitleColor,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 40),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pushNamed(context, '/login'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: Text(
+                    l10n.login.toUpperCase(),
+                    style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

@@ -121,22 +121,50 @@ service cloud.firestore {
     }
     
     // ==========================================
-    // TECHNICIANS (Public read only)
+    // TECHNICIANS (Public read only, writes via Cloud Functions)
     // ==========================================
     
     match /technicians/{technicianId} {
+      // Public read for finding technicians
       allow read: if true;
+      
+      // WRITE: ONLY via Cloud Functions - no direct client writes allowed
+      // This ensures server-side validation and proper role assignment
       allow write: if false;
       
+      // Subcollections
       match /earnings/{earningId} {
         allow read: if isOwner(technicianId) || isAdmin();
-        allow write: if false;
+        allow write: if false; // Only Cloud Functions
       }
       
       match /ledger/{entryId} {
         allow read: if isOwner(technicianId) || isAdmin();
-        allow write: if false;
+        allow write: if false; // Only Cloud Functions
       }
+    }
+    
+    // ==========================================
+    // USERS COLLECTION (Role management)
+    // ==========================================
+    
+    match /users/{userId} {
+      // User can read their own profile
+      allow read: if isOwner(userId) || isAdmin();
+      
+      // Users can create their own profile (initial login)
+      // But role can only be set by Cloud Functions
+      allow create: if isOwner(userId) && (
+        !request.resource.data.keys().hasAny(['role']) ||
+        request.resource.data.role == null
+      );
+      
+      // Update: Only allow updating non-role fields
+      allow update: if isOwner(userId) && (
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
+      );
+      
+      allow delete: if false;
     }
     
     // ==========================================
@@ -358,6 +386,7 @@ service cloud.firestore {
     // ==========================================
     
     // Technician Services - All writes via Cloud Function, read varies
+    // CRITICAL: Service management requires adminApproved == true
     match /technician_services/{serviceId} {
       // Read: Public for active services, owner for own services, admin for all
       // Note: resource.data is used for existing documents; for collection group queries,
@@ -366,9 +395,18 @@ service cloud.firestore {
                   isAdmin() || (isAuthenticated() && resource.data.technicianId == request.auth.uid);
       
       // Write: Only via Cloud Function (enforced by function), no direct write
+      // Cloud Functions must verify technician has adminApproved == true before allowing writes
       allow create: if false;
       allow update: if false;
       allow delete: if false;
+    }
+    
+    // Service Access Control - ensures technicians can only manage services after admin approval
+    match /technician_service_access/{technicianId} {
+      // Only the technician themselves or admin can read this
+      allow read: if isOwner(technicianId) || isAdmin();
+      // Write: Only via Cloud Function after admin approval
+      allow write: if false;
     }
     
     // ==========================================

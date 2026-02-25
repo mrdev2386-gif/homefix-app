@@ -132,6 +132,8 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
   }
 
   void _onScroll() {
+    // Use hasClients check to prevent assertion errors
+    if (!_scrollController.hasClients) return;
     if (_scrollController.position.pixels >= 
         _scrollController.position.maxScrollExtent - 200) {
       _loadMoreNotifications();

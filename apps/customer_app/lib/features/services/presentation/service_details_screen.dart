@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import '../../../../core/models/sub_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:customer_app/core/models/sub_service.dart';
 import 'package:customer_app/core/models/service.dart';
-import '../../../../core/widgets/safe_network_image.dart';
-import '../../../../core/providers/cart_provider.dart';
-import '../../../../core/providers/favorites_provider.dart';
-import '../../../../core/models/cart_item.dart';
+import 'package:customer_app/core/models/cart_item.dart';
+import 'package:customer_app/core/widgets/safe_network_image.dart';
+import 'package:customer_app/core/providers/cart_provider.dart';
+import 'package:customer_app/core/providers/favorites_provider.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
-import '../../cart/presentation/cart_screen.dart';
 import 'package:customer_app/core/services/category_service.dart';
+import 'package:customer_app/features/cart/presentation/cart_screen.dart';
 
 class ServiceDetailsScreen extends StatefulWidget {
   final String serviceId;
@@ -621,10 +621,21 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
       final itemPrice = _selectedSubService?.price ?? service.basePrice;
       final itemName = _selectedSubService?.name ?? service.title;
       
-      // Mandate category metadata for checkout hardening
-      assert(service.category.isNotEmpty, 'categoryId is mandatory for checkout');
-      assert(service.categoryName.isNotEmpty, 'categoryName is mandatory for checkout');
-      assert(service.technicianId != null, 'technicianId is mandatory for checkout');
+      // FIX: Replace asserts with runtime guards — asserts crash before try/catch can handle
+      if (service.category.isEmpty || service.categoryName.isEmpty || service.technicianId == null || service.technicianId!.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(service.technicianId == null || service.technicianId!.isEmpty
+                  ? 'This service is not yet assigned to a technician'
+                  : 'Missing service category information'),
+              backgroundColor: AppTheme.errorColor,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        return;
+      }
 
       await cart.addItem(CartItem(
         id: '',

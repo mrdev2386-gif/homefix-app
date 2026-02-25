@@ -1,0 +1,9 @@
+# ADD THESE DEPENDENCIES TO pubspec.yaml
+
+# For image compression
+image: ^4.0.0
+
+# For URL launching (support contact)
+url_launcher: ^6.1.0
+
+# Run: flutter pub get

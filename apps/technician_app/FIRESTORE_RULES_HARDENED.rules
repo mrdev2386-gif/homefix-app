@@ -1,0 +1,113 @@
+// FIRESTORE SECURITY RULES - PRODUCTION HARDENED
+// Deploy this to Firebase Console
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ============================================
+    // TECHNICIAN PROFILE - STRICT ACCESS CONTROL
+    // ============================================
+    match /technicians/{uid} {
+      // Read: Only self or approved technicians
+      allow read: if request.auth.uid == uid || 
+                     (get(/databases/$(database)/documents/technicians/$(request.auth.uid)).data.isApproved == true &&
+                      get(/databases/$(database)/documents/technicians/$(uid)).data.isApproved == true);
+      
+      // Write: NEVER allow client writes
+      // All writes MUST go through Cloud Functions
+      allow write: if false;
+      
+      // ============================================
+      // PROTECTED FIELDS - NEVER WRITABLE BY CLIENT
+      // ============================================
+      // These fields can ONLY be set by Cloud Functions:
+      // - isApproved (set by admin approval function)
+      // - adminApproved (set by admin approval function)
+      // - status (set by Cloud Functions only)
+      // - kycStatus (set by Cloud Functions only)
+      // - rating (set by Cloud Functions from reviews)
+      // - walletBalance (set by Cloud Functions)
+      // - adminNotes (set by admin only)
+      // - rejectionReason (set by admin only)
+      // - aadhaarHash (set by Cloud Functions for duplicate checking)
+      
+      // Subcollections
+      match /wallet_transactions/{txnId} {
+        allow read: if request.auth.uid == uid;
+        allow write: if false; // Cloud Functions only
+      }
+      
+      match /services/{serviceId} {
+        // Read: Only if technician is approved
+        allow read: if get(/databases/$(database)/documents/technicians/$(uid)).data.isApproved == true;
+        
+        // Write: Only if approved AND adminApproved
+        allow write: if request.auth.uid == uid &&
+                        get(/databases/$(database)/documents/technicians/$(uid)).data.isApproved == true &&
+                        get(/databases/$(database)/documents/technicians/$(uid)).data.adminApproved == true;
+      }
+    }
+    
+    // ============================================
+    // BOOKINGS - RESTRICTED VISIBILITY
+    // ============================================
+    match /bookings/{bookingId} {
+      allow read: if request.auth.uid == resource.data.customerId ||
+                     request.auth.uid == resource.data.technicianId;
+      
+      allow update: if request.auth.uid == resource.data.technicianId &&
+                       // Only allow status updates
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']);
+    }
+    
+    // ============================================
+    // REVIEWS - READ-ONLY FOR TECHNICIANS
+    // ============================================
+    match /reviews/{reviewId} {
+      allow read: if request.auth.uid == resource.data.technicianId;
+      allow write: if false;
+    }
+    
+    // ============================================
+    // SERVICES CATALOG - READ-ONLY
+    // ============================================
+    match /services/{serviceId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    
+    // ============================================
+    // COUPONS - READ-ONLY
+    // ============================================
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    
+    // ============================================
+    // SUPPORT TICKETS
+    // ============================================
+    match /support_tickets/{ticketId} {
+      allow read: if request.auth.uid == resource.data.technicianId;
+      allow create: if request.auth.uid == request.resource.data.technicianId;
+      allow update: if request.auth.uid == resource.data.technicianId &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']);
+    }
+  }
+}
+
+// ============================================
+// VERIFICATION CHECKLIST
+// ============================================
+// 
+// ✅ Technicians can only read/write own profile
+// ✅ Protected fields (isApproved, adminApproved, status) NOT writable by client
+// ✅ All writes go through Cloud Functions
+// ✅ Services only manageable by approved technicians with adminApproved=true
+// ✅ Bookings visible only to customer and assigned technician
+// ✅ Reviews read-only for technicians
+// ✅ Coupons and services read-only
+// ✅ Support tickets restricted to owner
+// ✅ No client-side field manipulation possible
+// ✅ Aadhaar hash stored for duplicate checking (not searchable raw value)

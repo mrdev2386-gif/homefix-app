@@ -70,16 +70,16 @@ class CartItem {
     final warningKey = '${doc.id}_${technicianId.isEmpty}';
     if (!_loggedCartWarnings.contains(warningKey)) {
       if (technicianId.isEmpty) {
-        debugPrint('⚠️ [CartItem] Missing technicianId for cart item ${doc.id} - legacy data detected');
+        if (kDebugMode) debugPrint('⚠️ [CartItem] Missing technicianId for cart item ${doc.id} - legacy data detected');
         _loggedCartWarnings.add(warningKey);
       } else if (serviceId.isEmpty) {
-        debugPrint('⚠️ [CartItem] Missing serviceId for cart item ${doc.id}');
+        if (kDebugMode) debugPrint('⚠️ [CartItem] Missing serviceId for cart item ${doc.id}');
         _loggedCartWarnings.add(warningKey);
       } else if (categoryId.isEmpty) {
-        debugPrint('⚠️ [CartItem] Missing categoryId for cart item ${doc.id}');
+        if (kDebugMode) debugPrint('⚠️ [CartItem] Missing categoryId for cart item ${doc.id}');
         _loggedCartWarnings.add(warningKey);
       } else if (finalPriceSnapshot <= 0) {
-        debugPrint('⚠️ [CartItem] Invalid price snapshot for cart item ${doc.id}');
+        if (kDebugMode) debugPrint('⚠️ [CartItem] Invalid price snapshot for cart item ${doc.id}');
         _loggedCartWarnings.add(warningKey);
       }
     }

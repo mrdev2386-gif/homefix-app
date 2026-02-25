@@ -93,6 +93,7 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> with SingleTi
   }
 
   Future<void> _submitRequest() async {
+    // PRE-SUBMIT VALIDATION
     if (!_formKey.currentState!.validate()) return;
     if (_selectedAddress == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -100,7 +101,27 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> with SingleTi
       );
       return;
     }
-
+    if (_selectedCategory == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a category')),
+      );
+      return;
+    }
+    if (_selectedSubCategory == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a sub-category')),
+      );
+      return;
+    }
+    
+    // Validate description minimum length
+    if (_descriptionController.text.trim().length < 10) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please provide more details (at least 10 characters)')),
+      );
+      return;
+    }
+    
     setState(() {
       _isSubmitting = true;
       _uploadProgress = 0.1; // Start progress
@@ -132,11 +153,14 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> with SingleTi
 
       final requestData = {
         'categoryId': _selectedCategory!.id,
+        'categoryName': _selectedCategory!.name, // Added categoryName
         'subCategoryId': _selectedSubCategory!.id,
-        'description': _descriptionController.text,
+        'description': _descriptionController.text.trim(), // Use trimmed description
         'preferredDate': dateStr != null ? '$dateStr $timeStr' : null,
         'addressId': _selectedAddress!.id,
-        'images': imageUrls, // Now using Storage URLs
+        'districtNormalized': _selectedAddress!.city.toLowerCase().trim(), // Use city as district
+        'userId': userId, // Explicit userId
+        'images': imageUrls,
         'idempotencyKey': DateTime.now().millisecondsSinceEpoch.toString(),
       };
 
@@ -356,7 +380,59 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> with SingleTi
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _buildCategorySkeleton();
         }
+        
+        // FIX: Handle error state — prevents blank screen
+        if (snapshot.hasError) {
+          debugPrint('❌ [CustomRequest] Category stream error: ${snapshot.error}');
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline_rounded, size: 48, color: Colors.red[300]),
+                  const SizedBox(height: 16),
+                  Text('Failed to load categories',
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 16)),
+                  const SizedBox(height: 8),
+                  Text('Please check your connection and try again.',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.outfit(color: Colors.grey)),
+                  const SizedBox(height: 24),
+                  TextButton.icon(
+                    onPressed: () => setState(() {}),
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+        
         final categories = snapshot.data ?? [];
+        
+        // FIX: Handle empty state — prevents blank screen
+        if (categories.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.category_outlined, size: 48, color: Colors.grey[300]),
+                  const SizedBox(height: 16),
+                  Text('No categories available',
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 16)),
+                  const SizedBox(height: 8),
+                  Text('Categories will appear here once added by admin.',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.outfit(color: Colors.grey)),
+                ],
+              ),
+            ),
+          );
+        }
         
         return GridView.builder(
           padding: const EdgeInsets.all(24),
@@ -440,6 +516,35 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> with SingleTi
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _buildListSkeleton();
+        }
+        
+        // FIX: Handle error state — prevents blank screen
+        if (snapshot.hasError) {
+          debugPrint('❌ [CustomRequest] SubCategory stream error: ${snapshot.error}');
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline_rounded, size: 48, color: Colors.red[300]),
+                  const SizedBox(height: 16),
+                  Text('Failed to load services',
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 16)),
+                  const SizedBox(height: 8),
+                  Text('Please check your connection and try again.',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.outfit(color: Colors.grey)),
+                  const SizedBox(height: 24),
+                  TextButton.icon(
+                    onPressed: () => setState(() {}),
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          );
         }
         
         List<HomeService> services = snapshot.data ?? [];

@@ -2,22 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import '../core/services/notifications_service.dart';
-import '../features/notifications/presentation/notifications_screen.dart';
-import 'dart:async';
+import 'package:technician_app/core/models/technician.dart';
+import 'package:technician_app/core/services/notifications_service.dart';
+import 'package:technician_app/features/notifications/presentation/notifications_screen.dart';
 
-import '../core/providers/technician_provider.dart';
-import '../core/services/booking_service.dart';
-import '../core/services/technician_catalog_service.dart';
-import '../core/models/booking.dart';
-import '../core/widgets/safe_network_image.dart';
-import '../features/availability/presentation/availability_screen.dart';
-import '../features/job_requests/job_requests_screen.dart';
-import '../features/earnings/presentation/earnings_screen.dart';
-import '../features/profile/presentation/profile_screen.dart';
-import '../features/services/presentation/create_service_screen.dart';
-import 'job_details_screen.dart';
+import 'package:technician_app/core/providers/technician_provider.dart';
+import 'package:technician_app/core/services/booking_service.dart';
+import 'package:technician_app/core/services/technician_catalog_service.dart';
+import 'package:technician_app/core/models/booking.dart';
+import 'package:technician_app/core/widgets/safe_network_image.dart';
+import 'package:technician_app/features/job_requests/job_requests_screen.dart';
+import 'package:technician_app/features/earnings/presentation/earnings_screen.dart';
+import 'package:technician_app/features/profile/presentation/profile_screen.dart';
+import 'package:technician_app/features/services/presentation/create_service_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -27,7 +24,6 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final BookingService _bookingService = BookingService();
   int _selectedIndex = 0;
 
   final List<Widget> _screens = [
@@ -40,41 +36,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: _screens[_selectedIndex],
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.only(bottom: 24, left: 24, right: 24, top: 12),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.8),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: Container(
-            height: 72,
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E293B),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
+      bottomNavigationBar: MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaleFactor: 1.0),
+        child: SafeArea(
+          child: SizedBox(
+            height: kBottomNavigationBarHeight,
             child: BottomNavigationBar(
               currentIndex: _selectedIndex,
-              onTap: (index) => setState(() => _selectedIndex = index),
+              onTap: (index) {
+                if (!mounted) return;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) {
+                    setState(() => _selectedIndex = index);
+                  }
+                });
+              },
               type: BottomNavigationBarType.fixed,
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              selectedItemColor: Colors.white,
-              unselectedItemColor: Colors.white.withOpacity(0.4),
-              showSelectedLabels: false,
-              showUnselectedLabels: false,
+              selectedFontSize: 11,
+              unselectedFontSize: 11,
+              iconSize: 22,
+              showUnselectedLabels: true,
               items: const [
-                BottomNavigationBarItem(icon: Icon(Icons.grid_view_rounded, size: 28), label: 'Home'),
-                BottomNavigationBarItem(icon: Icon(Icons.flash_on_rounded, size: 28), label: 'Requests'),
-                BottomNavigationBarItem(icon: Icon(Icons.account_balance_wallet_rounded, size: 28), label: 'Wallet'),
-                BottomNavigationBarItem(icon: Icon(Icons.person_rounded, size: 28), label: 'Profile'),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.home_outlined),
+                  label: 'Home',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.work_outline),
+                  label: 'Jobs',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.account_balance_wallet_outlined),
+                  label: 'Earnings',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.person_outline),
+                  label: 'Profile',
+                ),
               ],
             ),
           ),
@@ -117,7 +117,7 @@ class _DashboardHomeState extends State<DashboardHome> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      appBar: _buildAppBar(tech, provider),
+      appBar: tech != null ? _buildAppBar(tech, provider) : null,
       body: tech == null 
         ? const Center(child: CircularProgressIndicator()) 
         : RefreshIndicator(
@@ -156,7 +156,7 @@ class _DashboardHomeState extends State<DashboardHome> {
     );
   }
 
-  PreferredSizeWidget _buildAppBar(dynamic tech, TechnicianProvider provider) {
+  PreferredSizeWidget _buildAppBar(Technician tech, TechnicianProvider provider) {
     return AppBar(
       elevation: 0,
       backgroundColor: Colors.transparent,
@@ -171,8 +171,8 @@ class _DashboardHomeState extends State<DashboardHome> {
             child: CircleAvatar(
               radius: 18,
               backgroundColor: const Color(0xFFE2E8F0),
-              backgroundImage: tech?.photoUrl != null ? NetworkImage(tech.photoUrl) : null,
-              child: tech?.photoUrl == null ? const Icon(Icons.person, size: 20, color: Color(0xFF64748B)) : null,
+              backgroundImage: tech.photoUrl != null ? NetworkImage(tech.photoUrl!) : null,
+              child: tech.photoUrl == null ? const Icon(Icons.person, size: 20, color: Color(0xFF64748B)) : null,
             ),
           ),
           const SizedBox(width: 12),
@@ -180,7 +180,7 @@ class _DashboardHomeState extends State<DashboardHome> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                "Hello, ${tech?.name.split(' ')[0] ?? 'Partner'}",
+                "Hello, ${tech.name.split(' ')[0]}",
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -193,13 +193,13 @@ class _DashboardHomeState extends State<DashboardHome> {
                     width: 6,
                     height: 6,
                     decoration: BoxDecoration(
-                      color: tech?.isOnline == true ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
+                      color: tech.isOnline ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
                       shape: BoxShape.circle,
                     ),
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    tech?.isOnline == true ? "Online" : "Offline",
+                    tech.isOnline ? "Online" : "Offline",
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
@@ -217,17 +217,17 @@ class _DashboardHomeState extends State<DashboardHome> {
           height: 32,
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
-            color: Color(tech?.isOnline == true ? 0xFFDCFCE7 : 0xFFF1F5F9),
+            color: Color(tech.isOnline ? 0xFFDCFCE7 : 0xFFF1F5F9),
             borderRadius: BorderRadius.circular(20),
           ),
           child: Row(
             children: [
               Text(
-                tech?.isOnline == true ? "ONLINE" : "OFFLINE",
+                tech.isOnline ? "ONLINE" : "OFFLINE",
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
-                  color: Color(tech?.isOnline == true ? 0xFF15803D : 0xFF475569),
+                  color: Color(tech.isOnline ? 0xFF15803D : 0xFF475569),
                 ),
               ),
               const SizedBox(width: 4),
@@ -235,40 +235,51 @@ class _DashboardHomeState extends State<DashboardHome> {
                 height: 24,
                 width: 36,
                 child: Switch(
-                  value: tech?.isOnline ?? false,
+                  value: tech.isOnline,
                   activeColor: Colors.white,
                   activeTrackColor: const Color(0xFF10B981),
                   inactiveThumbColor: Colors.white,
                   inactiveTrackColor: const Color(0xFF94A3B8),
                   onChanged: (v) async {
-                    if (v) {
-                      // Check if technician has at least one service before going online
-                      final serviceService = TechnicianCatalogService();
-                      final hasServices = await serviceService.hasActiveServices();
-                      
-                      if (!hasServices) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Text('You need to create a service before going online'),
-                              action: SnackBarAction(
-                                label: 'Create Service',
-                                onPressed: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (context) => const CreateServiceScreen(),
-                                    ),
-                                  );
-                                },
+                    try {
+                      if (v) {
+                        // Check if technician has at least one service before going online
+                        final serviceService = TechnicianCatalogService();
+                        final hasServices = await serviceService.hasActiveServices();
+                        
+                        if (!hasServices) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Text('You need to create a service before going online'),
+                                action: SnackBarAction(
+                                  label: 'Create Service',
+                                  onPressed: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (context) => const CreateServiceScreen(),
+                                      ),
+                                    );
+                                  },
+                                ),
                               ),
-                            ),
-                          );
+                            );
+                          }
+                          return;
                         }
-                        return;
+                      }
+                      await provider.updateOnlineStatus(v);
+                      if (v) _updateSelfLocation();
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Failed to update status: ${e.toString()}'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
                       }
                     }
-                    provider.updateOnlineStatus(v);
-                    if (v) _updateSelfLocation();
                   },
                 ),
               ),
@@ -326,7 +337,7 @@ class _DashboardHomeState extends State<DashboardHome> {
     );
   }
 
-  Widget _buildWelcomeHeader(dynamic tech) {
+  Widget _buildWelcomeHeader(Technician tech) {
     final now = DateTime.now();
     final dayStr = DateFormat('MMM dd').format(now);
 
@@ -387,7 +398,7 @@ class _DashboardHomeState extends State<DashboardHome> {
     );
   }
 
-  Widget _buildStatsGrid(dynamic tech) {
+  Widget _buildStatsGrid(Technician tech) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
@@ -398,17 +409,17 @@ class _DashboardHomeState extends State<DashboardHome> {
               "${tech.jobsDone}",
               Icons.check_circle_rounded,
               const Color(0xFF6366F1),
-              "Total bookings",
+              "Total completed",
             ),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: _buildStatCard(
-              "Earnings",
-              "₹1,250",
-              Icons.account_balance_wallet_rounded,
-              const Color(0xFF10B981),
-              "Today's peak",
+              "Rating",
+              tech.avgRating > 0 ? tech.avgRating.toStringAsFixed(1) : "N/A",
+              Icons.star_rounded,
+              const Color(0xFFF59E0B),
+              "${tech.totalRatings} reviews",
             ),
           ),
         ],
@@ -477,7 +488,7 @@ class _DashboardHomeState extends State<DashboardHome> {
     );
   }
 
-  Widget _buildActiveSchedule(dynamic tech) {
+  Widget _buildActiveSchedule(Technician tech) {
     return StreamBuilder<List<Booking>>(
       stream: _bookingService.getAssignedBookings(tech.uid),
       builder: (context, snapshot) {

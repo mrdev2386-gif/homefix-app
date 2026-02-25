@@ -457,10 +457,10 @@ export interface TechnicianServiceData {
 export const createTechnicianService = onCall(
     {
         region: "us-central1",
+        cpu: 1,
         memory: "256MiB",
         timeoutSeconds: 60,
-        minInstances: 0,
-        maxInstances: 100,
+        maxInstances: 5
     },
     async (request: CallableRequest<TechnicianServiceData>) => {
         // 1. Authentication check
@@ -474,15 +474,26 @@ export const createTechnicianService = onCall(
         const technicianId = request.auth.uid;
         const data = request.data;
 
-        // 1.1 Check if technician is approved
+        // 1.1 Check if technician is approved AND has admin approval for service management
         const techDoc = await db.collection('technicians').doc(technicianId).get();
-        if (!techDoc.exists || !techDoc.data()?.isApproved) {
+        if (!techDoc.exists) {
             throw new https.HttpsError(
-                "permission-denied",
-                "Only approved technicians can create services"
+                "not-found",
+                "Technician profile not found"
             );
         }
         const techData = techDoc.data()!;
+
+        // CRITICAL: Both isApproved AND adminApproved must be true for service management
+        const isApproved = techData.isApproved || false;
+        const adminApproved = techData.adminApproved || false;
+
+        if (!isApproved || !adminApproved) {
+            throw new https.HttpsError(
+                "permission-denied",
+                "You must be fully approved by admin to create services. Please wait for admin approval."
+            );
+        }
 
         console.log(`[TECH_SERVICE] Creating service for technician: ${technicianId}`);
         console.log(`[TECH_SERVICE] Input data: ${JSON.stringify({
@@ -666,8 +677,10 @@ export const createTechnicianService = onCall(
 export const updateTechnicianService = onCall(
     {
         region: "us-central1",
+        cpu: 1,
         memory: "256MiB",
         timeoutSeconds: 60,
+        maxInstances: 5
     },
     async (request: CallableRequest<{
         serviceId: string;
@@ -694,6 +707,27 @@ export const updateTechnicianService = onCall(
         }
 
         console.log(`[TECH_SERVICE] Updating service ${serviceId} for technician: ${technicianId}`);
+
+        // 1.1 Check if technician has admin approval for service management
+        const techDoc = await db.collection('technicians').doc(technicianId).get();
+        if (!techDoc.exists) {
+            throw new https.HttpsError(
+                "not-found",
+                "Technician profile not found"
+            );
+        }
+        const techData = techDoc.data()!;
+
+        // CRITICAL: Both isApproved AND adminApproved must be true for service management
+        const isApproved = techData.isApproved || false;
+        const adminApproved = techData.adminApproved || false;
+
+        if (!isApproved || !adminApproved) {
+            throw new https.HttpsError(
+                "permission-denied",
+                "You must be fully approved by admin to update services. Please wait for admin approval."
+            );
+        }
 
         // 2. Get the existing service
         const serviceDoc = await db.collection('technician_services').doc(serviceId).get();
@@ -826,8 +860,10 @@ export const updateTechnicianService = onCall(
 export const deleteTechnicianService = onCall(
     {
         region: "us-central1",
+        cpu: 1,
         memory: "128MiB",
         timeoutSeconds: 30,
+        maxInstances: 5
     },
     async (request: CallableRequest<{ serviceId: string }>) => {
         // 1. Authentication check
@@ -846,6 +882,27 @@ export const deleteTechnicianService = onCall(
         }
 
         console.log(`[TECH_SERVICE] Deleting service ${serviceId} for technician: ${technicianId}`);
+
+        // 1.1 Check if technician has admin approval for service management
+        const techDoc = await db.collection('technicians').doc(technicianId).get();
+        if (!techDoc.exists) {
+            throw new https.HttpsError(
+                "not-found",
+                "Technician profile not found"
+            );
+        }
+        const techData = techDoc.data()!;
+
+        // CRITICAL: Both isApproved AND adminApproved must be true for service management
+        const isApproved = techData.isApproved || false;
+        const adminApproved = techData.adminApproved || false;
+
+        if (!isApproved || !adminApproved) {
+            throw new https.HttpsError(
+                "permission-denied",
+                "You must be fully approved by admin to delete services. Please wait for admin approval."
+            );
+        }
 
         // 2. Get the existing service
         const serviceDoc = await db.collection('technician_services').doc(serviceId).get();
@@ -889,8 +946,10 @@ export const deleteTechnicianService = onCall(
 export const getMyTechnicianServices = onCall(
     {
         region: "us-central1",
+        cpu: 1,
         memory: "256MiB",
         timeoutSeconds: 30,
+        maxInstances: 5
     },
     async (request: CallableRequest) => {
         // 1. Authentication check

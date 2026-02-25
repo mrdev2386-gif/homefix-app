@@ -421,4 +421,4 @@ class JobDetailsScreen extends StatelessWidget {
       ),
     );
   }
-
+}

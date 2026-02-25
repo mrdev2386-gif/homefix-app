@@ -17,6 +17,8 @@ export const onCustomRequestCreatedAlertTechnicians = functions.firestore
 
         const districtNormalized = requestData.districtNormalized || (requestData.district ? requestData.district.toString().trim().toLowerCase() : '');
         const categoryId = requestData.categoryId;
+        const categoryName = requestData.categoryName || '';
+        const description = requestData.description || '';
 
         if (!districtNormalized || !categoryId) {
             console.log(`[TECH_ALERT] Missing district (${districtNormalized}) or categoryId (${categoryId}) for request ${context.params.requestId}`);
@@ -38,7 +40,7 @@ export const onCustomRequestCreatedAlertTechnicians = functions.firestore
             .get();
 
         if (techniciansSnapshot.empty) {
-            console.log(`[TECH_ALERT] No eligible technicians found in ${district} for category ${categoryId}`);
+            console.log(`[TECH_ALERT] No eligible technicians found in ${districtNormalized} for category ${categoryId}`);
             // Optional: alert admins that no tech is available
             return;
         }

@@ -40,12 +40,16 @@ class StatusFilterChips extends StatelessWidget {
                     color: isSelected ? Colors.white : const Color(0xFF6366F1),
                   ),
                   const SizedBox(width: 6),
-                  Text(
-                    status['label'] as String,
-                    style: GoogleFonts.outfit(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: isSelected ? Colors.white : const Color(0xFF6366F1),
+                  Flexible(
+                    child: Text(
+                      status['label'] as String,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.outfit(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isSelected ? Colors.white : const Color(0xFF6366F1),
+                      ),
                     ),
                   ),
                 ],

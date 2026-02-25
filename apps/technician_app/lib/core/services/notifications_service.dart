@@ -142,24 +142,12 @@ class NotificationsService extends ChangeNotifier {
   void _setupTokenHandlers() {
     FirebaseAuth.instance.authStateChanges().listen((user) async {
       if (user != null) {
-        final token = await _messaging.getToken();
-        if (token != null) await _saveToken(token);
+        // Save token with retry logic
+        await _saveTokenWithRetry();
         _setupDataStreams(user.uid);
       } else {
         // Cleanup token on logout
-        try {
-          final token = await _messaging.getToken();
-          if (token != null) {
-            final callable = FirebaseFunctions.instance.httpsCallable('removeFcmToken');
-            await callable.call({
-              'token': token,
-              'userType': 'technician',
-            });
-            debugPrint('[Notifications] Token removed on logout');
-          }
-        } catch (e) {
-          debugPrint('[Notifications] Token removal skip: $e');
-        }
+        await _removeTokenOnLogout();
 
         _notifications = [];
         _unreadCount = 0;
@@ -167,7 +155,47 @@ class NotificationsService extends ChangeNotifier {
       }
     });
 
-    _messaging.onTokenRefresh.listen((token) => _saveToken(token));
+    _messaging.onTokenRefresh.listen((token) async {
+      await _saveTokenWithRetry();
+    });
+  }
+
+  Future<void> _saveTokenWithRetry() async {
+    const maxRetries = 3;
+    const retryDelay = Duration(seconds: 2);
+    
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        final token = await _messaging.getToken();
+        if (token != null) {
+          await _saveToken(token);
+          debugPrint('[Notifications] Token saved successfully on attempt $attempt');
+          return;
+        }
+      } catch (e) {
+        debugPrint('[Notifications] Token save attempt $attempt failed: $e');
+        if (attempt < maxRetries) {
+          await Future.delayed(retryDelay);
+        }
+      }
+    }
+    debugPrint('[Notifications] Failed to save token after $maxRetries attempts');
+  }
+
+  Future<void> _removeTokenOnLogout() async {
+    try {
+      final token = await _messaging.getToken();
+      if (token != null) {
+        final callable = FirebaseFunctions.instance.httpsCallable('removeFcmToken');
+        await callable.call({
+          'token': token,
+          'userType': 'technician',
+        });
+        debugPrint('[Notifications] Token removed on logout');
+      }
+    } catch (e) {
+      debugPrint('[Notifications] Token removal skip: $e');
+    }
   }
 
   Future<void> _saveToken(String token) async {
@@ -180,6 +208,7 @@ class NotificationsService extends ChangeNotifier {
       });
     } catch (e) {
       debugPrint('[Notifications] Token save error: $e');
+      // Don't rethrow - token save failure shouldn't break the app
     }
   }
 

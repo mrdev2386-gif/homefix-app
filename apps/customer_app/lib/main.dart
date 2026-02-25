@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -22,7 +23,6 @@ import 'core/providers/location_provider.dart';
 import 'core/providers/checkout_provider.dart';
 import 'core/providers/locale_provider.dart';
 import 'core/utils/app_localizations.dart';
-import 'features/profile/providers/partner_onboarding_provider.dart';
 import 'features/auth/screens/splash_screen.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/onboarding_screen.dart';
@@ -104,9 +104,6 @@ class HomeFixApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => CheckoutProvider()),
         ChangeNotifierProvider(create: (_) => LocaleProvider()),
         ChangeNotifierProvider(create: (_) => NotificationsService()),
-        ChangeNotifierProvider(create: (context) => PartnerOnboardingProvider(
-          context.read<StorageService>(),
-        )),
       ],
       child: Consumer<LocaleProvider>(
         builder: (context, localeProvider, child) {
@@ -149,6 +146,9 @@ class AuthWrapper extends StatefulWidget {
 
 class _AuthWrapperState extends State<AuthWrapper> {
   bool _isInitialized = false;
+  // FIX: Store subscription references to prevent memory leaks
+  StreamSubscription? _authSubscription;
+  StreamSubscription? _userDataSubscription;
 
   @override
   void initState() {
@@ -156,18 +156,36 @@ class _AuthWrapperState extends State<AuthWrapper> {
     _initializeAuth();
   }
 
+  @override
+  void dispose() {
+    // FIX: Cancel all subscriptions on dispose to prevent setState-after-dispose
+    _authSubscription?.cancel();
+    _userDataSubscription?.cancel();
+    super.dispose();
+  }
+
   Future<void> _initializeAuth() async {
     final authService = Provider.of<AuthService>(context, listen: false);
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
     final localeProvider = Provider.of<LocaleProvider>(context, listen: false);
 
-    // Listen to auth state changes
-    authService.authStateChanges.listen((user) async {
+    _authSubscription = authService.authStateChanges.listen((user) async {
+      // FIX: Cancel previous user data subscription before creating new one
+      _userDataSubscription?.cancel();
+      _userDataSubscription = null;
+
       if (user != null) {
         localeProvider.setUserId(user.uid);
 
-        // Wait for user data to load
-        firestoreService.streamUserModel(user.uid).listen((userData) {
+        _userDataSubscription = firestoreService.streamUserModel(user.uid).listen((userData) {
+          if (mounted) {
+            setState(() {
+              _isInitialized = true;
+            });
+          }
+        }, onError: (e) {
+          // FIX: Handle stream errors — prevent stuck splash screen
+          debugPrint('❌ [AuthWrapper] User data stream error: $e');
           if (mounted) {
             setState(() {
               _isInitialized = true;
@@ -213,26 +231,29 @@ class _AuthWrapperState extends State<AuthWrapper> {
           return const SplashScreen();
         }
         
+        // FIX: Handle errors gracefully — don't get stuck on splash
+        if (snapshot.hasError) {
+          debugPrint('❌ [AuthWrapper] StreamBuilder error: ${snapshot.error}');
+          // Still allow access to app — onboarding can handle missing data
+          return const OnboardingScreen();
+        }
+        
         final userData = snapshot.data;
         
         // ROOT PROFILE GUARD - Check profile completion before allowing access
-        debugPrint('[ROOT_PROFILE_GUARD] Checking profile completion...');
-        debugPrint('[ROOT_PROFILE_GUARD] userData: ${userData?.toString()}');
-        debugPrint('[ROOT_PROFILE_GUARD] profileCompleted: ${userData?.profileCompleted}');
-        debugPrint('[ROOT_PROFILE_GUARD] district: ${userData?.district}');
+        if (kDebugMode) {
+          debugPrint('[ROOT_PROFILE_GUARD] profileCompleted: ${userData?.profileCompleted}, district: ${userData?.district}');
+        }
         
         // Check if profile is completed with district
         if (userData == null) {
-          debugPrint('[ROOT_PROFILE_GUARD] User data null, showing onboarding');
           return const OnboardingScreen();
         }
         
         if (!userData.profileCompleted || userData.district == null || userData.district!.isEmpty) {
-          debugPrint('[ROOT_PROFILE_GUARD] Profile incomplete, showing district selection');
           return const OnboardingScreen();
         }
         
-        debugPrint('[ROOT_PROFILE_GUARD] Profile complete, showing MainWrapper');
         return const MainWrapperScreen();
       },
     );

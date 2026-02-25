@@ -25,6 +25,7 @@ import * as payoutLogic from './finance/payout_logic';
 // Payment Modules (New Razorpay Integration)
 import * as razorpayPayments from './payments/razorpay';
 import * as technicianPayouts from './payments/payouts';
+import { razorpayWebhookV2 } from './payments/razorpayWebhookV2';
 
 // Partner Applications
 import * as partnerApplications from './partner/applications';
@@ -37,8 +38,19 @@ import * as chat from './chat/chat';
 
 // Technician Onboarding & Management
 import * as techApp from './technician/application';
+import * as techOnboarding from './technician/onboarding'; // NEW: Secure onboarding functions
 import * as techTrack from './technician/tracking';
 import * as adminTechMgmt from './admin/technician_management';
+
+// EXPORTS FOR TECHNICIAN ONBOARDING (SECURE CLOUD FUNCTIONS)
+export const createTechnicianProfile = techOnboarding.createTechnicianProfile;
+export const saveTechnicianBasicDetails = techOnboarding.saveTechnicianBasicDetails;
+export const saveTechnicianDocuments = techOnboarding.saveTechnicianDocuments;
+export const saveTechnicianServices = techOnboarding.saveTechnicianServices;
+export const submitTechnicianKyc = techOnboarding.submitTechnicianKyc;
+export const updateTechnicianProfileData = techOnboarding.updateTechnicianProfile;
+export const updateTechnicianStatus = techOnboarding.updateTechnicianStatus;
+
 import * as matchEngine from './matching/engine';
 import * as techTriggers from './technician/triggers';
 import * as techSec from './technician/security';
@@ -691,6 +703,7 @@ export const test_resetData = testing.resetTestData;
 // Payment Functions
 export const createPaymentOrder = razorpayPayments.createPaymentOrder;
 export const razorpayWebhook = razorpayPayments.razorpayWebhook;
+export { razorpayWebhookV2 };
 export const verifyPayment = razorpayPayments.verifyPayment;
 export const initiateRefund = razorpayPayments.initiateRefund;
 

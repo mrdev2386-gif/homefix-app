@@ -1,0 +1,76 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ============================================================================
+    // P0: TECHNICIAN PROFILE - STRICT SECURITY LOCK
+    // ============================================================================
+    
+    match /technicians/{uid} {
+      // Read: Only own profile or approved technicians
+      allow read: if request.auth.uid == uid || 
+                     (get(/databases/$(database)/documents/technicians/$(request.auth.uid)).data.isApproved == true &&
+                      get(/databases/$(database)/documents/technicians/$(uid)).data.isApproved == true);
+      
+      // Write: NEVER from client (Cloud Functions only)
+      allow write: if false;
+      
+      // P0: PROTECTED FIELDS - NEVER WRITABLE BY CLIENT
+      // These can ONLY be set by Cloud Functions:
+      // - status (set by CF only)
+      // - isApproved (set by admin CF only)
+      // - adminApproved (set by admin CF only)
+      // - aadhaarHash (set by CF only, never raw Aadhaar)
+      // - profileCompleted, kycCompleted, bankCompleted, servicesCompleted (set by CF only)
+      // - submissionTimestamp (set by CF only)
+      // - rejectionReason (set by admin CF only)
+      
+      match /wallet_transactions/{txnId} {
+        allow read: if request.auth.uid == uid;
+        allow write: if false;
+      }
+      
+      match /services/{serviceId} {
+        allow read: if get(/databases/$(database)/documents/technicians/$(uid)).data.isApproved == true;
+        allow write: if request.auth.uid == uid &&
+                        get(/databases/$(database)/documents/technicians/$(uid)).data.isApproved == true &&
+                        get(/databases/$(database)/documents/technicians/$(uid)).data.adminApproved == true;
+      }
+    }
+    
+    // Bookings - technician can only see assigned bookings
+    match /bookings/{bookingId} {
+      allow read: if request.auth.uid == resource.data.customerId ||
+                     request.auth.uid == resource.data.technicianId;
+      
+      allow update: if request.auth.uid == resource.data.technicianId &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']);
+    }
+    
+    // Reviews - read-only for technicians
+    match /reviews/{reviewId} {
+      allow read: if request.auth.uid == resource.data.technicianId;
+      allow write: if false;
+    }
+    
+    // Services catalog - read-only
+    match /services/{serviceId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    
+    // Coupons - read-only
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    
+    // Support tickets
+    match /support_tickets/{ticketId} {
+      allow read: if request.auth.uid == resource.data.technicianId;
+      allow create: if request.auth.uid == request.resource.data.technicianId;
+      allow update: if request.auth.uid == resource.data.technicianId &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']);
+    }
+  }
+}

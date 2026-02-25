@@ -22,7 +22,13 @@ const db = admin.firestore();
  * - Updates booking only after verification
  * - Handles payment.captured and payment.failed events
  */
-export const razorpayWebhookV2 = functions.https.onRequest(async (req, res) => {
+export const razorpayWebhookV2 = functions
+    .runWith({
+        memory: "256MB",
+        timeoutSeconds: 60,
+        maxInstances: 5,
+    })
+    .https.onRequest(async (req, res) => {
     // Only accept POST requests
     if (req.method !== "POST") {
         res.status(405).send("Method Not Allowed");

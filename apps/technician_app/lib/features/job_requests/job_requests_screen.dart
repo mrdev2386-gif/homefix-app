@@ -322,22 +322,50 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
 
 
   void _handleAction(String bookingId, String action) async {
+    if (!mounted) return;
+    
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+    
     try {
       if (action == 'accept') {
         await _bookingService.acceptBooking(bookingId);
       } else {
         await _bookingService.rejectBooking(bookingId);
       }
+      
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Job ${action}ed successfully")),
-        );
+        Navigator.pop(context); // Dismiss loading
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text("Job ${action}ed successfully"),
+                backgroundColor: action == 'accept' ? Colors.green : Colors.orange,
+              ),
+            );
+          }
+        });
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e")),
-        );
+        Navigator.pop(context); // Dismiss loading
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text("Error: ${e.toString()}"),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        });
       }
     }
   }

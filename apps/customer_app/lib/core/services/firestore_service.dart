@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
@@ -10,7 +11,6 @@ import '../models/proposal.dart';
 import '../models/user_model.dart';
 import '../models/cart_item.dart';
 import '../models/dashboard_models.dart';
-import '../models/service_result.dart';
 import '../utils/firestore_guards.dart';
 
 class FirestoreService {
@@ -70,13 +70,13 @@ class FirestoreService {
               if (banner.active) {
                 // AUDIT: Defensive check for imageUrl
                 if (banner.imageUrl.isEmpty) {
-                  debugPrint('⚠️ [FirestoreService] Skipping banner ${doc.id} due to missing imageUrl');
+                  if (kDebugMode) debugPrint('⚠️ [FirestoreService] Skipping banner ${doc.id} due to missing imageUrl');
                   continue;
                 }
                 banners.add(banner);
               }
             } catch (e) {
-              debugPrint('❌ [FirestoreService] Error parsing banner ${doc.id}: $e');
+              if (kDebugMode) debugPrint('❌ [FirestoreService] Error parsing banner ${doc.id}: $e');
             }
           }
           // Sort by order field in-memory
@@ -137,7 +137,7 @@ class FirestoreService {
   // --- Cart Management ---
   Stream<List<CartItem>> streamCart(String userId) {
     if (!FirestoreGuards.isValidDocumentId(userId)) {
-      debugPrint('[CART] Invalid userId, returning empty stream');
+      if (kDebugMode) debugPrint('[CART] Invalid userId, returning empty stream');
       return Stream.value([]);
     }
     
@@ -152,23 +152,59 @@ class FirestoreService {
           final items = snapshot.docs.map((doc) => CartItem.fromFirestore(doc)).toList();
           
           // CLEANUP: Auto-remove invalid cart items (legacy data protection)
+          final List<CartItem> validItems = [];
           for (final item in items) {
-            if (!item.isValid) {
-              debugPrint('🧹 [CART] Removing invalid cart item: ${item.id}');
-              // Schedule removal after stream completes - use direct method call
-              Future.microtask(() => removeFromCart(userId, item.id).catchError((e) {
-                debugPrint('⚠️ [CART] Failed to remove invalid item: $e');
-              }));
+            final bool hasTechnicianId = item.technicianId != null && item.technicianId!.isNotEmpty;
+            final bool hasServiceId = item.serviceId.isNotEmpty;
+            final bool hasCategoryId = item.categoryId.isNotEmpty;
+            
+            if (!hasTechnicianId || !hasServiceId || !hasCategoryId) {
+              if (kDebugMode) {
+                final reason = !hasTechnicianId ? 'missing technicianId' 
+                    : !hasServiceId ? 'missing serviceId' 
+                    : 'missing categoryId';
+                debugPrint('🧹 [CART] Auto-cleaning legacy item ${item.id}: $reason');
+              }
+              Future.microtask(() => _safeDeleteCartItem(userId, item.id));
+            } else {
+              validItems.add(item);
             }
           }
           
-          // Return only valid items using the isValid getter
-          return items.where((item) => item.isValid).toList();
+          return validItems;
         })
-        .handleError((e) {
-          debugPrint('❌ [CART] Stream error: $e');
-          return <CartItem>[];
-        });
+        // FIX: handleError's return value is DISCARDED by Dart — it does NOT emit data.
+        // Use StreamTransformer to properly emit [] as a DATA event on error.
+        .transform(StreamTransformer<List<CartItem>, List<CartItem>>.fromHandlers(
+          handleData: (data, sink) => sink.add(data),
+          handleError: (e, stackTrace, sink) {
+            final errorStr = e.toString().toLowerCase();
+            final bool isUnavailable = errorStr.contains('unavailable') || errorStr.contains('network');
+            
+            if (kDebugMode) {
+              if (isUnavailable) {
+                debugPrint('⚠️ [CART] Network unavailable — emitting empty list');
+              } else {
+                debugPrint('❌ [CART] Stream error: $e');
+              }
+            }
+            // CRITICAL: sink.add emits a real data event → CartProvider listener fires → isLoading = false
+            sink.add(<CartItem>[]);
+          },
+        ));
+  }
+  
+  /// Safe delete cart item - never throws, for background cleanup
+  Future<void> _safeDeleteCartItem(String userId, String itemId) async {
+    try {
+      if (FirestoreGuards.isValidDocumentId(userId) && FirestoreGuards.isValidDocumentId(itemId)) {
+        await _db.collection('customers').doc(userId).collection('cart').doc(itemId).delete();
+        if (kDebugMode) debugPrint('✅ [CART] Auto-cleaned item: $itemId');
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('⚠️ [CART] Failed to auto-clean item $itemId: $e');
+      // Silent fail - don't crash
+    }
   }
 
   Future<void> addToCart(String userId, CartItem item) async {
@@ -185,12 +221,12 @@ class FirestoreService {
     assert(item.finalPriceSnapshot > 0, 'finalPriceSnapshot must be valid');
     
     try {
-      debugPrint('[CART] Adding item via callable...');
+      if (kDebugMode) debugPrint('[CART] Adding item via callable...');
       final callable = FirebaseFunctions.instance.httpsCallable('addToCartCallable');
       await callable.call(item.toMap());
-      debugPrint('✅ [CART] Item added successfully');
+      if (kDebugMode) debugPrint('✅ [CART] Item added successfully');
     } catch (e) {
-      debugPrint('❌ [CART] Add failed: $e');
+      if (kDebugMode) debugPrint('❌ [CART] Add failed: $e');
       rethrow;
     }
   }
@@ -207,15 +243,15 @@ class FirestoreService {
     }
     
     try {
-      debugPrint('[CART] Updating quantity via callable...');
+      if (kDebugMode) debugPrint('[CART] Updating quantity via callable...');
       final callable = FirebaseFunctions.instance.httpsCallable('updateCartQuantityCallable');
       await callable.call({
         'itemId': itemId,
         'quantity': quantity,
       });
-      debugPrint('✅ [CART] Quantity updated successfully');
+      if (kDebugMode) debugPrint('✅ [CART] Quantity updated successfully');
     } catch (e) {
-      debugPrint('❌ [CART] Update failed: $e');
+      if (kDebugMode) debugPrint('❌ [CART] Update failed: $e');
       rethrow;
     }
   }
@@ -232,12 +268,12 @@ class FirestoreService {
     }
     
     try {
-      debugPrint('[CART] Removing item via callable...');
+      if (kDebugMode) debugPrint('[CART] Removing item via callable...');
       final callable = FirebaseFunctions.instance.httpsCallable('removeFromCartCallable');
       await callable.call({'itemId': itemId});
-      debugPrint('✅ [CART] Item removed successfully');
+      if (kDebugMode) debugPrint('✅ [CART] Item removed successfully');
     } catch (e) {
-      debugPrint('❌ [CART] Remove failed: $e');
+      if (kDebugMode) debugPrint('❌ [CART] Remove failed: $e');
       rethrow;
     }
   }
@@ -249,12 +285,12 @@ class FirestoreService {
     }
     
     try {
-      debugPrint('[CART] Clearing cart via callable...');
+      if (kDebugMode) debugPrint('[CART] Clearing cart via callable...');
       final callable = FirebaseFunctions.instance.httpsCallable('clearCartCallable');
       await callable.call();
-      debugPrint('✅ [CART] Cart cleared successfully');
+      if (kDebugMode) debugPrint('✅ [CART] Cart cleared successfully');
     } catch (e) {
-      debugPrint('❌ [CART] Clear failed: $e');
+      if (kDebugMode) debugPrint('❌ [CART] Clear failed: $e');
       rethrow;
     }
   }
@@ -299,19 +335,19 @@ class FirestoreService {
   // --- Referrals ---
   Future<void> processReferral(String currentUserId, String referralCode) async {
     if (currentUserId.isEmpty || referralCode.isEmpty) {
-      debugPrint('[PATH GUARD] blocked empty id in processReferral');
+      if (kDebugMode) debugPrint('[PATH GUARD] blocked empty id in processReferral');
       return;
     }
     
-    debugPrint('[WRITE GUARD] Direct write blocked in processReferral');
+    if (kDebugMode) debugPrint('[WRITE GUARD] Direct write blocked in processReferral');
     try {
       final callable = FirebaseFunctions.instance.httpsCallable('processReferralCallable');
       await callable.call({
         'referralCode': referralCode,
       });
-      debugPrint('✅ [Referral] Processed via callable');
+      if (kDebugMode) debugPrint('✅ [Referral] Processed via callable');
     } catch (e) {
-      debugPrint('❌ [Referral] Process failed: $e');
+      if (kDebugMode) debugPrint('❌ [Referral] Process failed: $e');
       rethrow;
     }
   }
@@ -319,10 +355,10 @@ class FirestoreService {
   // --- User Profile ---
   Future<void> updateUserDefaultAddress(String userId, String address) async {
     if (userId.isEmpty) {
-      debugPrint('[PATH GUARD] blocked empty id in updateUserDefaultAddress');
+      if (kDebugMode) debugPrint('[PATH GUARD] blocked empty id in updateUserDefaultAddress');
       return;
     }
-    debugPrint('[WRITE GUARD] Direct write blocked in updateUserDefaultAddress');
+    if (kDebugMode) debugPrint('[WRITE GUARD] Direct write blocked in updateUserDefaultAddress');
     await updateUserProfile(userId, {'defaultAddress': address});
   }
   
@@ -333,10 +369,10 @@ class FirestoreService {
 
   Future<void> updateUserData(String userId, Map<String, dynamic> data) async {
     if (userId.isEmpty) {
-      debugPrint('[PATH GUARD] blocked empty id in updateUserData');
+      if (kDebugMode) debugPrint('[PATH GUARD] blocked empty id in updateUserData');
       return;
     }
-    debugPrint('[WRITE GUARD] Direct write blocked in updateUserData');
+    if (kDebugMode) debugPrint('[WRITE GUARD] Direct write blocked in updateUserData');
     await updateUserProfile(userId, data);
   }
 
@@ -344,10 +380,10 @@ class FirestoreService {
   /// CRITICAL: Only updates profileImageUrl field
   Future<void> updateProfileImageUrl(String userId, String imageUrl) async {
     if (userId.isEmpty) {
-      debugPrint('[PATH GUARD] blocked empty id in updateProfileImageUrl');
+      if (kDebugMode) debugPrint('[PATH GUARD] blocked empty id in updateProfileImageUrl');
       return;
     }
-    debugPrint('[WRITE GUARD] Direct write blocked in updateProfileImageUrl');
+    if (kDebugMode) debugPrint('[WRITE GUARD] Direct write blocked in updateProfileImageUrl');
     await updateUserProfile(userId, {
       'photoUrl': imageUrl,
       'profileImageUrl': imageUrl,
@@ -365,32 +401,32 @@ class FirestoreService {
 
   Future<void> updateUserProfile(String userId, Map<String, dynamic> data) async {
     if (userId.isEmpty) {
-      debugPrint('[PATH GUARD] blocked empty id in updateUserProfile');
+      if (kDebugMode) debugPrint('[PATH GUARD] blocked empty id in updateUserProfile');
       return;
     }
-    debugPrint('[WRITE GUARD] Direct write blocked in updateUserProfile');
+    if (kDebugMode) debugPrint('[WRITE GUARD] Direct write blocked in updateUserProfile');
     try {
       final callable = FirebaseFunctions.instance.httpsCallable('updateUserProfile');
       await callable.call(data);
-      debugPrint('✅ [Profile] Updated via callable');
+      if (kDebugMode) debugPrint('✅ [Profile] Updated via callable');
     } catch (e) {
-      debugPrint('❌ [Profile] Update failed: $e');
+      if (kDebugMode) debugPrint('❌ [Profile] Update failed: $e');
       rethrow;
     }
   }
 
   Future<void> becomeTechnician(String userId, Map<String, dynamic> data) async {
     if (userId.isEmpty) {
-      debugPrint('[PATH GUARD] blocked empty id in becomeTechnician');
+      if (kDebugMode) debugPrint('[PATH GUARD] blocked empty id in becomeTechnician');
       return;
     }
-    debugPrint('[WRITE GUARD] Direct write blocked in becomeTechnician');
+    if (kDebugMode) debugPrint('[WRITE GUARD] Direct write blocked in becomeTechnician');
     try {
       final callable = FirebaseFunctions.instance.httpsCallable('submitPartnerApplication');
       await callable.call(data);
-      debugPrint('✅ [Technician] Application submitted via callable');
+      if (kDebugMode) debugPrint('✅ [Technician] Application submitted via callable');
     } catch (e) {
-      debugPrint('❌ [Technician] Submission failed: $e');
+      if (kDebugMode) debugPrint('❌ [Technician] Submission failed: $e');
       rethrow;
     }
   }

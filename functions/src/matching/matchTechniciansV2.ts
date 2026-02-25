@@ -120,7 +120,13 @@ interface ScoredTechnician {
   score: number;
 }
 
-export const matchTechniciansV2 = functions.https.onCall(async (data: {
+export const matchTechniciansV2 = functions
+  .runWith({
+    memory: "256MB",
+    timeoutSeconds: 60,
+    maxInstances: 5,
+  })
+  .https.onCall(async (data: {
   serviceId: string;
   subServiceId?: string;
   location: CustomerLocation

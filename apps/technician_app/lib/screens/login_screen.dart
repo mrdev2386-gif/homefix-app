@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'otp_screen.dart';
-
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -17,6 +15,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isGoogleLoading = false;
   final _phoneController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  String? _phoneError;
 
   @override
   void dispose() {
@@ -24,44 +23,45 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _signInWithGoogle() async {
-    setState(() {
-      _isLoading = true;
-      _isGoogleLoading = true;
-    });
-    try {
-      final googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null) return;
-      final googleAuth = await googleUser.authentication;
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-      await FirebaseAuth.instance.signInWithCredential(credential);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Login failed: $e")),
-        );
-      }
-    } finally {
-      if (mounted) {
+  void _validatePhone() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _phoneError = null;
+      });
+
+      final phone = _phoneController.text.trim();
+      if (phone.isEmpty) {
         setState(() {
-          _isLoading = false;
-          _isGoogleLoading = false;
+          _phoneError = 'Please enter your phone number';
         });
+        return;
       }
-    }
+
+      if (phone.length < 10) {
+        setState(() {
+          _phoneError = 'Phone number must be 10 digits';
+        });
+        return;
+      }
+
+      if (!RegExp(r'^\d{10}$').hasMatch(phone)) {
+        setState(() {
+          _phoneError = 'Please enter a valid phone number';
+        });
+        return;
+      }
+    });
   }
 
+  // Google Sign-In disabled for technicians - Phone OTP is mandatory first step
+  // See technical specification: Phone → OTP Verify → Basic Details → Documents → Services → Review → Submit
+
   Future<void> _verifyPhone() async {
+    _validatePhone();
+    if (_phoneError != null) return;
+
     final phone = _phoneController.text.trim();
-    if (phone.isEmpty || phone.length < 10) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enter a valid phone number")),
-      );
-      return;
-    }
 
     setState(() => _isLoading = true);
 
@@ -69,33 +69,72 @@ class _LoginScreenState extends State<LoginScreen> {
       await FirebaseAuth.instance.verifyPhoneNumber(
         phoneNumber: "+91$phone",
         verificationCompleted: (PhoneAuthCredential credential) async {
-          await FirebaseAuth.instance.signInWithCredential(credential);
+          try {
+            await FirebaseAuth.instance.signInWithCredential(credential);
+          } catch (e) {
+            debugPrint('Auto verification error: $e');
+          }
         },
         verificationFailed: (FirebaseAuthException e) {
-          setState(() => _isLoading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Verification failed: ${e.message}")),
-          );
+          if (mounted) {
+            setState(() => _isLoading = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(_getPhoneErrorMessage(e)),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
         },
         codeSent: (String verificationId, int? resendToken) {
-          setState(() => _isLoading = false);
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => OtpScreen(
-                verificationId: verificationId,
-                phoneNumber: "+91$phone",
+          if (mounted) {
+            setState(() => _isLoading = false);
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => OtpScreen(
+                  verificationId: verificationId,
+                  phoneNumber: "+91$phone",
+                ),
               ),
-            ),
-          );
+            );
+          }
         },
-        codeAutoRetrievalTimeout: (String verificationId) {},
+        codeAutoRetrievalTimeout: (String verificationId) {
+          // Handle timeout - could show resend option
+        },
       );
     } catch (e) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: $e")),
-      );
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  String _getPhoneErrorMessage(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-phone-number':
+        return 'Invalid phone number format.';
+      case 'quota-exceeded':
+        return 'Too many requests. Please wait 30-60 seconds before trying again.';
+      case 'too-many-requests':
+        return 'Too many requests. Please wait a moment and try again.';
+      case 'device-blocked':
+        return 'This device has been temporarily blocked. Please try again later.';
+      case 'network-request-failed':
+        return 'Network error. Please check your internet connection.';
+      case 'user-disabled':
+        return 'This phone number has been disabled. Please contact support.';
+      case 'session-expired':
+        return 'Session expired. Please request a new OTP.';
+      default:
+        return e.message ?? 'Verification failed. Please try again.';
     }
   }
 
@@ -154,7 +193,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              TextField(
+              TextFormField(
                 controller: _phoneController,
                 keyboardType: TextInputType.phone,
                 style: GoogleFonts.plusJakartaSans(
@@ -174,92 +213,85 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                   ),
+                  errorText: _phoneError,
+                  errorStyle: const TextStyle(
+                    color: Colors.red,
+                    fontSize: 12,
+                  ),
                 ),
+                onChanged: (_) {
+                  if (_phoneError != null) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) {
+                        setState(() => _phoneError = null);
+                      }
+                    });
+                  }
+                },
               ),
               const SizedBox(height: 32),
-              _isLoading && !_isGoogleLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : ElevatedButton(
-                      onPressed: _verifyPhone,
-                      style: ElevatedButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 56),
-                        backgroundColor: const Color(0xFF6366F1),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: const Text("Continue"),
+              // Phone OTP is MANDATORY for technicians
+              // This is the entry gate to the onboarding flow
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton.icon(
+                  onPressed: _isLoading ? null : _verifyPhone,
+                  icon: _isLoading && !_isGoogleLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.phone),
+                  label: Text(
+                    'Continue with Phone',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
                     ),
-                  
-                  const SizedBox(height: 32),
-                  Row(
-                    children: [
-                      const Expanded(child: Divider()),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                        child: Text('OR', 
-                            style: GoogleFonts.plusJakartaSans(
-                                color: const Color(0xFF94A3B8), 
-                                fontSize: 12, 
-                                fontWeight: FontWeight.bold)),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6366F1),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 0,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 60),
+              Center(
+                child: RichText(
+                  textAlign: TextAlign.center,
+                  text: TextSpan(
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 13,
+                      color: const Color(0xFF64748B),
+                      height: 1.5,
+                    ),
+                    children: const [
+                      TextSpan(text: "By continuing, you agree to our "),
+                      TextSpan(
+                        text: "Terms of Service",
+                        style: TextStyle(
+                          color: Color(0xFF6366F1),
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                      const Expanded(child: Divider()),
                     ],
                   ),
-                  const SizedBox(height: 32),
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: OutlinedButton.icon(
-                      onPressed: _isLoading ? null : _signInWithGoogle,
-                      icon: _isGoogleLoading 
-                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                          : Image.network(
-                              'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1200px-Google_%22G%22_logo.svg.png',
-                              width: 20,
-                            ),
-                      label: Text('Continue with Google', 
-                          style: GoogleFonts.plusJakartaSans(
-                              fontWeight: FontWeight.bold, 
-                              fontSize: 16, 
-                              color: const Color(0xFF0F172A))),
-                      style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        side: BorderSide(color: Colors.grey[300]!),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 60),
-                  Center(
-                    child: RichText(
-                      textAlign: TextAlign.center,
-                      text: TextSpan(
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 13,
-                          color: const Color(0xFF64748B),
-                          height: 1.5,
-                        ),
-                        children: const [
-                          TextSpan(text: "By continuing, you agree to our "),
-                          TextSpan(
-                            text: "Terms of Service",
-                            style: TextStyle(
-                              color: Color(0xFF6366F1),
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                ],
+                ),
               ),
-            ),
+              const SizedBox(height: 24),
+            ],
           ),
+        ),
+      ),
     );
   }
 }

@@ -1,0 +1,100 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ============================================
+    // TECHNICIAN ONBOARDING SECURITY RULES
+    // ============================================
+    
+    // Technician profile - strict access control
+    match /technicians/{uid} {
+      // Allow read if:
+      // 1. User is reading their own profile
+      // 2. User is approved technician (for marketplace visibility)
+      allow read: if request.auth.uid == uid || 
+                     (get(/databases/$(database)/documents/technicians/$(request.auth.uid)).data.isApproved == true &&
+                      get(/databases/$(database)/documents/technicians/$(uid)).data.isApproved == true);
+      
+      // Allow write only via Cloud Functions (callable functions)
+      // Client-side writes are NEVER allowed for technician documents
+      allow write: if false;
+      
+      // Subcollections
+      match /wallet_transactions/{txnId} {
+        allow read: if request.auth.uid == uid;
+        allow write: if false; // Only Cloud Functions can write
+      }
+      
+      match /services/{serviceId} {
+        // Allow read if technician is approved
+        allow read: if get(/databases/$(database)/documents/technicians/$(uid)).data.isApproved == true;
+        
+        // Allow write only if:
+        // 1. User is the technician owner
+        // 2. Technician is approved (isApproved == true)
+        // 3. Technician has admin approval (adminApproved == true)
+        allow write: if request.auth.uid == uid &&
+                        get(/databases/$(database)/documents/technicians/$(uid)).data.isApproved == true &&
+                        get(/databases/$(database)/documents/technicians/$(uid)).data.adminApproved == true;
+      }
+    }
+    
+    // Bookings - technician can only see their assigned bookings
+    match /bookings/{bookingId} {
+      allow read: if request.auth.uid == resource.data.customerId ||
+                     request.auth.uid == resource.data.technicianId;
+      
+      allow update: if request.auth.uid == resource.data.technicianId &&
+                       // Only allow status updates
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']);
+    }
+    
+    // Reviews - read-only for technicians
+    match /reviews/{reviewId} {
+      allow read: if request.auth.uid == resource.data.technicianId;
+      allow write: if false;
+    }
+    
+    // Services catalog - read-only
+    match /services/{serviceId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    
+    // Coupons - read-only
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    
+    // Support tickets - technicians can create and read their own
+    match /support_tickets/{ticketId} {
+      allow read: if request.auth.uid == resource.data.technicianId;
+      allow create: if request.auth.uid == request.resource.data.technicianId;
+      allow update: if request.auth.uid == resource.data.technicianId &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']);
+    }
+    
+    // ============================================
+    // ADMIN OPERATIONS (via Cloud Functions only)
+    // ============================================
+    
+    // Admin can approve/reject technicians via Cloud Functions
+    // This is enforced server-side, not in Firestore rules
+    
+    // ============================================
+    // PROTECTED FIELDS - NEVER WRITABLE BY CLIENT
+    // ============================================
+    
+    // These fields can ONLY be set by Cloud Functions:
+    // - isApproved (set by admin approval)
+    // - adminApproved (set by admin for service management)
+    // - status (set by Cloud Functions)
+    // - kycStatus (set by Cloud Functions)
+    // - rating (set by Cloud Functions from reviews)
+    // - walletBalance (set by Cloud Functions)
+    // - adminNotes (set by admin only)
+    // - rejectionReason (set by admin only)
+    
+  }
+}

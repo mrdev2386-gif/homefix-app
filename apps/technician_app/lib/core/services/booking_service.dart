@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/material.dart';
+import 'package:rxdart/rxdart.dart';
 import '../models/booking.dart';
 
 class BookingService {
@@ -21,8 +23,9 @@ class BookingService {
               .toList();
         }).handleError((e) {
           debugPrint('❌ [BookingService] Error fetching pending bookings: $e');
-          return <Booking>[];
-        });
+          // FIX 6: Hard guard - never propagate error, return empty list
+        })
+        .onErrorReturn(<Booking>[]);
   }
 
   /// NEW FLOW: Get bookings that are awaiting payment
@@ -40,8 +43,9 @@ class BookingService {
               .toList();
         }).handleError((e) {
           debugPrint('❌ [BookingService] Error fetching awaiting payment bookings: $e');
-          return <Booking>[];
-        });
+          // FIX 6: Hard guard - never propagate error, return empty list
+        })
+        .onErrorReturn(<Booking>[]);
   }
 
   /// Legacy: Get available bookings (no technician assigned)
@@ -60,8 +64,9 @@ class BookingService {
               .toList();
         }).handleError((e) {
           debugPrint('❌ [BookingService] Error fetching available bookings: $e');
-          return <Booking>[];
-        });
+          // FIX 6: Hard guard - never propagate error, return empty list
+        })
+        .onErrorReturn(<Booking>[]);
   }
 
   /// Get bookings assigned to this technician (all statuses)
@@ -77,8 +82,9 @@ class BookingService {
           return bookings;
         }).handleError((e) {
           debugPrint('❌ [BookingService] Error fetching assigned bookings: $e');
-          return <Booking>[];
-        });
+          // FIX 6: Hard guard - never propagate error, return empty list
+        })
+        .onErrorReturn(<Booking>[]);
   }
 
   /// NEW FLOW: Accept a booking (technician accepts)
