@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
 import 'package:technician_app/core/providers/technician_provider.dart';
+import 'package:technician_app/core/constants/service_categories.dart';
 
 class Step1BasicIdentity extends StatefulWidget {
   final Map<String, dynamic> formData;
@@ -22,21 +23,16 @@ class Step1BasicIdentity extends StatefulWidget {
 class _Step1BasicIdentityState extends State<Step1BasicIdentity> {
   late TextEditingController _nameController;
   late TextEditingController _cityController;
+  late TextEditingController _searchController;
   File? _profilePhoto;
   String? _selectedGender;
   DateTime? _selectedDOB;
-  String? _selectedCategory;
+  List<String> _selectedCategories = [];
+  String _categorySearchQuery = '';
   bool _isUploadingPhoto = false;
+  String? _categoryError;
 
   final List<String> _genderOptions = ['Male', 'Female', 'Other'];
-  final List<Map<String, String>> _serviceCategories = [
-    {'id': 'plumbing', 'name': 'Plumbing'},
-    {'id': 'electrical', 'name': 'Electrical'},
-    {'id': 'carpentry', 'name': 'Carpentry'},
-    {'id': 'painting', 'name': 'Painting'},
-    {'id': 'cleaning', 'name': 'Cleaning'},
-    {'id': 'appliance', 'name': 'Appliance Repair'},
-  ];
 
   @override
   void initState() {
@@ -47,15 +43,22 @@ class _Step1BasicIdentityState extends State<Step1BasicIdentity> {
     _cityController = TextEditingController(
       text: widget.formData['district'] ?? '',
     );
+    _searchController = TextEditingController();
     _selectedGender = widget.formData['gender'];
     _selectedDOB = widget.formData['dob'];
-    _selectedCategory = widget.formData['primaryCategoryId'];
+    
+    // Backward compatibility: convert single category to list
+    final primaryCat = widget.formData['primaryCategoryId'];
+    if (primaryCat != null) {
+      _selectedCategories = primaryCat is List ? List<String>.from(primaryCat) : [primaryCat];
+    }
   }
 
   @override
   void dispose() {
     _nameController.dispose();
     _cityController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -295,6 +298,7 @@ class _Step1BasicIdentityState extends State<Step1BasicIdentity> {
         const SizedBox(height: 8),
         Wrap(
           spacing: 12,
+          runSpacing: 8,
           children: _genderOptions.map((gender) {
             final isSelected = _selectedGender == gender;
             return FilterChip(
@@ -374,12 +378,43 @@ class _Step1BasicIdentityState extends State<Step1BasicIdentity> {
     );
   }
 
+  List<Map<String, String>> _getFilteredCategories() {
+    if (_categorySearchQuery.isEmpty) {
+      return ServiceCategories.categories;
+    }
+    return ServiceCategories.categories
+        .where((cat) => cat['name']!.toLowerCase().contains(_categorySearchQuery.toLowerCase()))
+        .toList();
+  }
+
+  void _toggleCategory(String categoryId) {
+    setState(() {
+      if (_selectedCategories.contains(categoryId)) {
+        _selectedCategories.remove(categoryId);
+      } else {
+        _selectedCategories.add(categoryId);
+      }
+      _categoryError = null;
+    });
+    widget.onDataChanged('primaryCategoryId', _selectedCategories);
+  }
+
+  bool _validateCategories() {
+    if (_selectedCategories.isEmpty) {
+      setState(() => _categoryError = 'Select at least one category');
+      return false;
+    }
+    return true;
+  }
+
   Widget _buildCategorySelector() {
+    final filteredCategories = _getFilteredCategories();
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Primary Service Category',
+          'Service Categories',
           style: GoogleFonts.plusJakartaSans(
             fontSize: 13,
             fontWeight: FontWeight.w600,
@@ -387,43 +422,87 @@ class _Step1BasicIdentityState extends State<Step1BasicIdentity> {
           ),
         ),
         const SizedBox(height: 8),
+        // Search field
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+          ),
+          child: TextField(
+            controller: _searchController,
+            onChanged: (value) {
+              setState(() => _categorySearchQuery = value);
+            },
+            decoration: InputDecoration(
+              hintText: 'Search categories...',
+              hintStyle: const TextStyle(color: Color(0xFF9CA3AF)),
+              prefixIcon: const Icon(Icons.search, color: Color(0xFF6366F1), size: 20),
+              suffixIcon: _categorySearchQuery.isNotEmpty
+                  ? GestureDetector(
+                      onTap: () {
+                        _searchController.clear();
+                        setState(() => _categorySearchQuery = '');
+                      },
+                      child: const Icon(Icons.clear, color: Color(0xFF9CA3AF), size: 20),
+                    )
+                  : null,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Chip grid
         Container(
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: const Color(0xFFE2E8F0),
+              color: _categoryError != null ? Colors.red : const Color(0xFFE2E8F0),
               width: 1,
             ),
           ),
-          child: DropdownButton<String>(
-            value: _selectedCategory,
-            isExpanded: true,
-            underline: const SizedBox(),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            hint: Text(
-              'Select a category',
-              style: GoogleFonts.plusJakartaSans(
-                color: const Color(0xFF9CA3AF),
-              ),
-            ),
-            items: _serviceCategories.map((cat) {
-              return DropdownMenuItem(
-                value: cat['id'],
-                child: Text(cat['name']!),
+          padding: const EdgeInsets.all(12),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: filteredCategories.map((category) {
+              final isSelected = _selectedCategories.contains(category['id']);
+              return FilterChip(
+                label: Text(category['name']!),
+                selected: isSelected,
+                onSelected: (_) => _toggleCategory(category['id']!),
+                backgroundColor: Colors.white,
+                selectedColor: const Color(0xFF6366F1),
+                labelStyle: TextStyle(
+                  color: isSelected ? Colors.white : const Color(0xFF0F172A),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+                side: BorderSide(
+                  color: isSelected ? const Color(0xFF6366F1) : const Color(0xFFE2E8F0),
+                ),
               );
             }).toList(),
-            onChanged: (value) {
-              if (value != null) {
-                setState(() => _selectedCategory = value);
-                final category = _serviceCategories
-                    .firstWhere((c) => c['id'] == value);
-                widget.onDataChanged('primaryCategoryId', value);
-                widget.onDataChanged('primaryCategoryName', category['name']);
-              }
-            },
           ),
         ),
+        if (_categoryError != null) ...[const SizedBox(height: 8),
+          Text(
+            _categoryError!,
+            style: GoogleFonts.plusJakartaSans(fontSize: 12, color: Colors.red),
+          ),
+        ],
+        if (_selectedCategories.isNotEmpty) ...[const SizedBox(height: 8),
+          Text(
+            '${_selectedCategories.length} selected',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 12,
+              color: const Color(0xFF6366F1),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ],
     );
   }

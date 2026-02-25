@@ -9,12 +9,12 @@ import 'core/providers/technician_provider.dart';
 import 'core/app_theme.dart';
 import 'core/services/notifications_service.dart';
 import 'screens/login_screen.dart';
-import 'screens/onboarding_screen.dart';
 import 'screens/technician_onboarding_flow_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/limited_dashboard.dart';
 import 'screens/block_screen.dart';
 import 'screens/application_status_screen.dart';
+import 'features/technician/screens/profile_under_review_screen.dart';
 import 'core/services/technician_catalog_service.dart';
 
 
@@ -28,6 +28,7 @@ import 'package:flutter/foundation.dart';
 // Global flag to track App Check status
 bool _appCheckEnabled = false;
 bool _appCheckTokenFetched = false;
+bool _appCheckInitialized = false;
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -66,21 +67,23 @@ void main() async {
 
 /// Initialize App Check with environment-aware provider
 Future<void> _initializeAppCheck() async {
+  if (_appCheckInitialized) return;
+  _appCheckInitialized = true;
+
   try {
-    final isDebug = !bool.fromEnvironment('dart.vm.product');
-    
-    await FirebaseAppCheck.instance.activate(
-      androidProvider: isDebug 
-          ? AndroidProvider.debug 
-          : AndroidProvider.playIntegrity,
-      appleProvider: isDebug
-          ? AppleProvider.debug
-          : AppleProvider.deviceCheck,
-    );
+    if (kDebugMode) {
+      await FirebaseAppCheck.instance.activate(
+        androidProvider: AndroidProvider.debug,
+      );
+    } else {
+      await FirebaseAppCheck.instance.activate(
+        androidProvider: AndroidProvider.playIntegrity,
+      );
+    }
     
     _appCheckEnabled = true;
     _appCheckTokenFetched = true;
-    debugPrint('[AppCheck] ✅ Initialized (${isDebug ? 'DEBUG' : 'RELEASE'})');
+    debugPrint('[AppCheck] initialized');
   } catch (e) {
     debugPrint('[AppCheck] ⚠️ Failed: $e (graceful fallback)');
     _appCheckEnabled = false;
@@ -101,11 +104,29 @@ class TechnicianApp extends StatelessWidget {
       navigatorKey: navigatorKey,
       theme: AppTheme.lightTheme,
       home: const AuthGate(),
-      routes: {
-        '/home': (_) => const DashboardScreen(),
-        '/onboarding': (_) => const TechnicianOnboardingFlowScreen(),
-        '/onboarding_legacy': (_) => const OnboardingScreen(),
-        '/login': (_) => const LoginScreen(),
+      onGenerateRoute: (settings) {
+        switch (settings.name) {
+          case '/home':
+            return MaterialPageRoute(
+              builder: (_) => const DashboardScreen(),
+              settings: settings,
+            );
+          case '/onboarding':
+            return MaterialPageRoute(
+              builder: (_) => const TechnicianOnboardingFlowScreen(),
+              settings: settings,
+            );
+          case '/login':
+            return MaterialPageRoute(
+              builder: (_) => const LoginScreen(),
+              settings: settings,
+            );
+          default:
+            return MaterialPageRoute(
+              builder: (_) => const AuthGate(),
+              settings: settings,
+            );
+        }
       },
       builder: (context, child) {
         return ErrorBoundary(
@@ -513,131 +534,37 @@ class _AuthenticatedGate extends StatefulWidget {
 class _AuthenticatedGateState extends State<_AuthenticatedGate> {
   @override
   Widget build(BuildContext context) {
+    debugPrint('[FINAL VERIFY] Fresh install flow running');
     return Consumer<TechnicianProvider>(
       builder: (context, provider, _) {
-        // Wait for technician data to load
         if (provider.isLoading) {
           return const _LoadingScreen(
             message: 'Verifying account...',
           );
         }
 
-        // NO CUSTOMER DEPENDENCY: We don't check users collection role
-        // The technician app is fully standalone - any authenticated user can start onboarding
-        // Get technician data
         final tech = provider.technician;
-
-        // =============================================
-        // STRICT ROUTING ORDER (Security Critical)
-        // =============================================
-        // Order: Onboarding -> Application Status -> Dashboard
-        // Each check is explicit to prevent bypass
-
-        // Case 1: No technician record OR KYC not complete -> TechnicianOnboardingFlowScreen
-        // This is the DEFAULT for new users after OTP login
-        // The technician document is created via Cloud Function on first OTP verification
         final isKycComplete = tech?.isKycComplete ?? false;
         
+        debugPrint('[FINAL VERIFY] AuthGate: tech=${tech?.uid}, isKycComplete=$isKycComplete');
+        
         if (tech == null || !isKycComplete) {
-          if (widget.debugMode) {
-            debugPrint('[AuthGate] tech=$tech, isKycComplete=$isKycComplete -> TechnicianOnboardingFlowScreen');
-          }
           return const TechnicianOnboardingFlowScreen();
         }
-
-        // Case 2: KYC complete but NOT approved -> Limited Dashboard or Status Screen
-        final isApproved = tech.isApproved;
-        final adminApproved = tech.adminApproved;
-        final techStatus = tech.status ?? '';
         
-        if (isKycComplete && !isApproved) {
-          if (widget.debugMode) {
-            debugPrint('[AuthGate] isKycComplete=$isKycComplete, isApproved=$isApproved -> Limited Dashboard');
-          }
-          
-          // Show limited dashboard for pending_approval status
-          if (techStatus == 'pending_approval') {
-            return const LimitedDashboard();
-          }
-          
-          // Show status screen for rejected/suspended
-          String displayStatus = 'pending';
-          if (techStatus == 'rejected') {
-            displayStatus = 'rejected';
-          } else if (techStatus == 'suspended') {
-            displayStatus = 'suspended';
-          }
-          
-          return ApplicationStatusScreen(
-            status: displayStatus,
-            reason: tech.rejectionReason,
-          );
+        // Check if KYC complete but not approved -> show review screen
+        if (isKycComplete && !tech.isApproved) {
+          debugPrint('[FINAL VERIFY] KYC complete but not approved -> ProfileUnderReviewScreen');
+          return const ProfileUnderReviewScreen();
         }
         
-        // Case 2.5: Approved but NOT adminApproved -> ApplicationStatusScreen (limited access)
-        // This happens when basic KYC is approved but admin hasn't approved for service management
-        if (isKycComplete && isApproved && !adminApproved) {
-          if (widget.debugMode) {
-            debugPrint('[AuthGate] isKycComplete=$isKycComplete, isApproved=$isApproved, adminApproved=$adminApproved -> ApplicationStatusScreen (awaiting service approval)');
-          }
-          
-          return ApplicationStatusScreen(
-            status: 'pending_service_approval',
-            reason: 'Your account is approved but admin approval for service management is pending.',
-          );
-        }
-
-        // Case 3: KYC complete AND approved -> DashboardScreen
-        // Additional verification: check status is approved/active
-        if (isKycComplete && isApproved) {
-          // Handle different status states
-          if (techStatus == 'approved' || techStatus == 'active') {
-            if (widget.debugMode) {
-              debugPrint('[AuthGate] isKycComplete=$isKycComplete, isApproved=$isApproved, status=$techStatus -> DashboardScreen');
-            }
-            return const DashboardScreen();
-          }
-          
-          // Handle pending verification state
-          if (techStatus == 'pending_verification') {
-            if (widget.debugMode) {
-              debugPrint('[AuthGate] status=pending_verification -> ApplicationStatusScreen');
-            }
-            return const ApplicationStatusScreen(status: 'pending');
-          }
-          
-          // Blocked user check - highest priority
-          if (techStatus == 'blocked') {
-            if (widget.debugMode) {
-              debugPrint('[AuthGate] User is blocked -> BlockScreen');
-            }
-            return BlockScreen(
-              reason: tech.rejectionReason ?? 'Your account has been blocked. Please contact support.',
-            );
-          }
-          
-          // Rejected or suspended - show status screen
-          if (techStatus == 'rejected' || techStatus == 'suspended') {
-            if (widget.debugMode) {
-              debugPrint('[AuthGate] status=$techStatus -> BlockScreen');
-            }
-            return BlockScreen(
-              reason: tech.rejectionReason ?? 'Your account has been ${techStatus}.',
-            );
-          }
-          
-          // Default to dashboard for approved state
-          if (widget.debugMode) {
-            debugPrint('[AuthGate] Approved technician -> DashboardScreen');
-          }
+        // If KYC complete and approved -> show dashboard
+        if (isKycComplete) {
+          debugPrint('[FINAL VERIFY] Dashboard gate decision: stay=true');
           return const DashboardScreen();
         }
-
-        // Fallback - should not reach here, but safe default
-        if (widget.debugMode) {
-          debugPrint('[AuthGate] Fallthrough - defaulting to OnboardingScreen');
-        }
-        return const OnboardingScreen();
+        
+        return const TechnicianOnboardingFlowScreen();
       },
     );
   }

@@ -31,6 +31,7 @@ class _Step3KycVerificationEnhancedState extends State<Step3KycVerificationEnhan
   bool _isUploadingBack = false;
   bool _isUploadingSelfie = false;
   bool _isUploadingPan = false;
+  bool _isPickingImage = false;
 
   @override
   void initState() {
@@ -51,6 +52,9 @@ class _Step3KycVerificationEnhancedState extends State<Step3KycVerificationEnhan
   }
 
   Future<void> _captureImage(String type) async {
+    if (_isPickingImage) return;
+
+    _isPickingImage = true;
     try {
       final picker = ImagePicker();
       final image = await picker.pickImage(
@@ -58,7 +62,9 @@ class _Step3KycVerificationEnhancedState extends State<Step3KycVerificationEnhan
         imageQuality: 80,
       );
 
-      if (image != null) {
+      if (image == null) return;
+
+      if (mounted) {
         final file = File(image.path);
         final provider = context.read<TechnicianProvider>();
 
@@ -106,6 +112,8 @@ class _Step3KycVerificationEnhancedState extends State<Step3KycVerificationEnhan
       }
     } catch (e) {
       debugPrint('Error capturing image: $e');
+    } finally {
+      _isPickingImage = false;
     }
   }
 

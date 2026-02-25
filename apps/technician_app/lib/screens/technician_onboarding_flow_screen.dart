@@ -23,15 +23,17 @@ class _TechnicianOnboardingFlowScreenState
   late PageController _pageController;
   int _currentStep = 0;
   bool _isSubmitting = false;
+  bool _isSavingStep = false;
 
-  // Form data across steps
   final Map<String, dynamic> _formData = {};
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController();
-    _resumeFromLastStep();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _resumeFromLastStep();
+    });
   }
 
   @override
@@ -40,16 +42,42 @@ class _TechnicianOnboardingFlowScreenState
     super.dispose();
   }
 
-  /// Resume from last incomplete step
   void _resumeFromLastStep() {
     final provider = context.read<TechnicianProvider>();
     final tech = provider.technician;
 
     if (tech != null) {
       final step = tech.currentOnboardingStep;
-      _currentStep = step.stepIndex;
+      final stepsCompleted = tech.stepsCompleted ?? {};
+      
+      int safeStep = step.stepIndex;
+      
+      final completedSteps = [
+        if (stepsCompleted['basic'] == true) 0,
+        if (stepsCompleted['professional'] == true) 1,
+        if (stepsCompleted['kyc'] == true) 2,
+        if (stepsCompleted['bank'] == true) 3,
+        if (stepsCompleted['services'] == true) 4,
+      ];
+      
+      if (completedSteps.isNotEmpty) {
+        final highestCompleted = completedSteps.last;
+        if (highestCompleted > safeStep) {
+          safeStep = highestCompleted;
+        }
+      }
+      
+      safeStep = safeStep.clamp(0, 4);
+      
+      if (_currentStep != safeStep) {
+        setState(() {
+          _currentStep = safeStep;
+        });
+        if (_pageController.hasClients) {
+          _pageController.jumpToPage(safeStep);
+        }
+      }
 
-      // Load existing data
       _formData['fullName'] = tech.name;
       _formData['email'] = tech.email;
       _formData['district'] = tech.district;
@@ -61,27 +89,168 @@ class _TechnicianOnboardingFlowScreenState
       _formData['primaryCategoryId'] = tech.primaryCategoryId;
       _formData['primaryCategoryName'] = tech.primaryCategoryName;
       _formData['skills'] = tech.skills;
+      _formData['languagePreferences'] = tech.languagePreferences ?? [];
+      _formData['referralCode'] = tech.referralCodeUsed;
+      _formData['panNumber'] = tech.panNumber;
+      _formData['accountType'] = tech.accountType;
+      _formData['payoutPreference'] = tech.payoutPreference;
+      _formData['maxDailyJobs'] = tech.maxDailyJobs;
+      _formData['dynamicPricingAllowed'] = tech.dynamicPricingAllowed;
     }
   }
 
   Future<void> _nextStep() async {
+    if (_isSavingStep) {
+      debugPrint('[Onboarding] Blocked — already saving');
+      return;
+    }
     if (_isSubmitting) return;
 
     FocusScope.of(context).unfocus();
 
+    if (_currentStep == 0) {
+      final categories = _formData['primaryCategoryId'];
+      if (categories == null || (categories is List && categories.isEmpty)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Select at least one category'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+        return;
+      }
+    }
+
     if (_currentStep == 5) {
-      // Final submission
       await _submitApplication();
     } else {
-      _pageController.nextPage(
+      await _saveCurrentStep();
+    }
+  }
+
+  Future<void> _saveCurrentStep() async {
+    if (_isSavingStep) return;
+
+    setState(() => _isSavingStep = true);
+    final stepToSave = _currentStep;
+    debugPrint('[Onboarding] Attempt save step $stepToSave');
+
+    try {
+      final provider = context.read<TechnicianProvider>();
+      await provider.saveStepData(
+        step: stepToSave,
+        data: _getStepData(stepToSave),
+      );
+
+      debugPrint('[Onboarding] Save completed, mounted=$mounted');
+      if (!mounted) {
+        debugPrint('[Onboarding] Widget unmounted, aborting');
+        return;
+      }
+
+      final nextStep = stepToSave + 1;
+      debugPrint('[Onboarding] Setting step to $nextStep');
+      setState(() {
+        _currentStep = nextStep;
+      });
+      
+      debugPrint('[Onboarding] Moving to step $nextStep');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Step saved successfully'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      
+      debugPrint('[Onboarding] Calling nextPage');
+      
+      // CRITICAL FIX: Reset _isSavingStep BEFORE page transition
+      // This allows onPageChanged to properly sync state during programmatic navigation
+      if (mounted) {
+        setState(() => _isSavingStep = false);
+      }
+      
+      await _pageController.nextPage(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
+      debugPrint('[Onboarding] nextPage completed');
+    } catch (e, st) {
+      debugPrint('[Onboarding] ERROR: $e');
+      debugPrintStack(stackTrace: st);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Connection issue. Your progress is safe. Tap to retry.'),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 6),
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: _saveCurrentStep,
+            ),
+          ),
+        );
+      }
+    } finally {
+      // _isSavingStep already reset before nextPage() call above
+      // This is a safety reset in case of exceptions before reaching nextPage
+      if (mounted && _isSavingStep) {
+        setState(() => _isSavingStep = false);
+      }
+    }
+  }
+
+  Map<String, dynamic> _getStepData(int step) {
+    switch (step) {
+      case 0:
+        return {
+          'name': _formData['fullName'] ?? '',
+          'email': _formData['email'] ?? '',
+          'district': _formData['district'] ?? '',
+          'experienceYears': _formData['experienceYears'] ?? 0,
+          'gender': _formData['gender'],
+          'dateOfBirth': _formData['dob'],
+          'primaryCategoryId': _formData['primaryCategoryId'],
+          'primaryCategoryName': _formData['primaryCategoryName'],
+          'profilePhotoUrl': _formData['profilePhotoUrl'],
+        };
+      case 1:
+        return {
+          'bio': _formData['bio'],
+          'languagePreferences': _formData['languagePreferences'] ?? [],
+        };
+      case 2:
+        return {
+          'aadhaarNumber': _formData['aadhaarNumber'],
+          'aadhaarFrontUrl': _formData['aadhaarFrontUrl'],
+          'aadhaarBackUrl': _formData['aadhaarBackUrl'],
+          'panNumber': _formData['panNumber'],
+        };
+      case 3:
+        return {
+          'accountType': _formData['accountType'],
+          'payoutPreference': _formData['payoutPreference'],
+        };
+      case 4:
+        return {
+          'skills': _formData['skills'] ?? [],
+          'basePrice': _formData['basePrice'],
+          'visitingCharge': _formData['visitingCharge'],
+          'maxTravelDistance': _formData['maxTravelDistance'],
+          'maxDailyJobs': _formData['maxDailyJobs'],
+          'dynamicPricingAllowed': _formData['dynamicPricingAllowed'] ?? false,
+          'emergencyServiceAvailable': _formData['emergencyServiceAvailable'] ?? false,
+        };
+      default:
+        return {};
     }
   }
 
   void _previousStep() {
-    if (_currentStep > 0) {
+    if (_currentStep > 0 && !_isSubmitting && !_isSavingStep) {
       _pageController.previousPage(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
@@ -90,12 +259,12 @@ class _TechnicianOnboardingFlowScreenState
   }
 
   Future<void> _submitApplication() async {
-    if (_isSubmitting) return;
+    final provider = context.read<TechnicianProvider>();
+    if (provider.isSubmittingApplication) return;
 
     setState(() => _isSubmitting = true);
 
     try {
-      final provider = context.read<TechnicianProvider>();
       await provider.submitKycApplication();
 
       if (mounted) {
@@ -106,10 +275,19 @@ class _TechnicianOnboardingFlowScreenState
       }
     } catch (e) {
       if (mounted) {
+        final errorMsg = e.toString();
+        debugPrint('[OnboardingFlow] Submission error: $errorMsg');
+        
+        String displayMsg = errorMsg;
+        if (errorMsg.contains('unavailable')) {
+          displayMsg = 'Network issue detected. Your data is safe. Please try again.';
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: ${e.toString()}'),
+            content: Text(displayMsg),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -122,6 +300,37 @@ class _TechnicianOnboardingFlowScreenState
 
   @override
   Widget build(BuildContext context) {
+    if (_isSubmitting) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 24),
+              Text(
+                'Submitting your application...',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF0F172A),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Please do not close the app',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 14,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       resizeToAvoidBottomInset: true,
@@ -134,7 +343,10 @@ class _TechnicianOnboardingFlowScreenState
                 controller: _pageController,
                 physics: const NeverScrollableScrollPhysics(),
                 onPageChanged: (index) {
-                  setState(() => _currentStep = index);
+                  if (!_isSavingStep) {
+                    debugPrint('[Onboarding] Page changed to $index');
+                    setState(() => _currentStep = index);
+                  }
                 },
                 children: [
                   Step1BasicIdentity(
@@ -229,7 +441,7 @@ class _TechnicianOnboardingFlowScreenState
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, -2),
           ),
@@ -241,7 +453,7 @@ class _TechnicianOnboardingFlowScreenState
           children: [
             if (_currentStep > 0)
               TextButton(
-                onPressed: _isSubmitting ? null : _previousStep,
+                onPressed: (_isSubmitting || _isSavingStep) ? null : _previousStep,
                 style: TextButton.styleFrom(
                   foregroundColor: const Color(0xFF6B7280),
                   padding:
@@ -255,17 +467,18 @@ class _TechnicianOnboardingFlowScreenState
               child: SizedBox(
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: _isSubmitting ? null : _nextStep,
+                  onPressed: (_isSavingStep || _isSubmitting) ? null : _nextStep,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF6366F1),
                     foregroundColor: Colors.white,
                     disabledBackgroundColor: const Color(0xFFE5E7EB),
                     elevation: 0,
+                    minimumSize: const Size.fromHeight(52),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: _isSubmitting
+                  child: (_isSubmitting || _isSavingStep)
                       ? const SizedBox(
                           height: 20,
                           width: 20,

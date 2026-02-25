@@ -407,6 +407,8 @@ export const submitTechnicianKyc = functions.https.onCall(async (data, context) 
     assertAuthenticated(context);
     const uid = context.auth!.uid;
 
+    console.log('[KYC SUBMIT] Starting submission for uid:', uid);
+
     // Get current technician to verify all data is complete
     const techDoc = await db.collection('technicians').doc(uid).get();
     if (!techDoc.exists) {
@@ -438,23 +440,25 @@ export const submitTechnicianKyc = functions.https.onCall(async (data, context) 
         }
     }
 
+    console.log('[KYC SUBMIT] Marking technician as KYC complete:', uid);
+
     // Submit the application - this marks KYC as complete
-    await db.collection('technicians').doc(uid).update({
-        onboardingStep: 'submitted',
+    await db.collection('technicians').doc(uid).set({
         isKycComplete: true,
-        status: 'under_review',
-        kycStatus: 'submitted',
+        onboardingCompleted: true, // keep for backward compatibility
+        onboardingStep: 'submitted',
+        status: 'pending',
+        kycStatus: 'pending',
         submittedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
+    }, { merge: true });
 
-    // Log for admin notification (could trigger a notification here)
-    console.log(`Technician KYC Submitted: ${uid}`);
+    console.log('[KYC SUBMIT] Successfully marked KYC complete');
 
     return {
         success: true,
         message: 'Application submitted successfully. Pending admin approval.',
-        status: 'under_review'
+        status: 'pending'
     };
 });
 

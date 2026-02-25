@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:io';
 import 'package:technician_app/core/providers/technician_provider.dart';
+import 'package:technician_app/core/constants/service_categories.dart';
 
 class Step1BasicIdentityHardened extends StatefulWidget {
   final Map<String, dynamic> formData;
@@ -23,37 +24,40 @@ class Step1BasicIdentityHardened extends StatefulWidget {
 class _Step1BasicIdentityHardenedState extends State<Step1BasicIdentityHardened> {
   late TextEditingController _nameController;
   late TextEditingController _cityController;
+  late TextEditingController _searchController;
   File? _profilePhoto;
   String? _selectedGender;
   DateTime? _selectedDOB;
-  String? _selectedCategory;
+  List<String> _selectedCategories = [];
+  String _categorySearchQuery = '';
   bool _isUploadingPhoto = false;
+  bool _isPickingImage = false;
   String? _nameError;
+  String? _categoryError;
 
   final List<String> _genderOptions = ['Male', 'Female', 'Other'];
-  final List<Map<String, String>> _serviceCategories = [
-    {'id': 'plumbing', 'name': 'Plumbing'},
-    {'id': 'electrical', 'name': 'Electrical'},
-    {'id': 'carpentry', 'name': 'Carpentry'},
-    {'id': 'painting', 'name': 'Painting'},
-    {'id': 'cleaning', 'name': 'Cleaning'},
-    {'id': 'appliance', 'name': 'Appliance Repair'},
-  ];
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: formData['fullName'] ?? '');
     _cityController = TextEditingController(text: formData['district'] ?? '');
+    _searchController = TextEditingController();
     _selectedGender = formData['gender'];
     _selectedDOB = formData['dob'];
-    _selectedCategory = formData['primaryCategoryId'];
+    
+    // Backward compatibility: convert single category to list
+    final primaryCat = formData['primaryCategoryId'];
+    if (primaryCat != null) {
+      _selectedCategories = primaryCat is List ? List<String>.from(primaryCat) : [primaryCat];
+    }
   }
 
   @override
   void dispose() {
     _nameController.dispose();
     _cityController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -83,14 +87,49 @@ class _Step1BasicIdentityHardenedState extends State<Step1BasicIdentityHardened>
     });
   }
 
-  Future<void> _pickProfilePhoto() async {
-    if (_isUploadingPhoto) return;
+  Future<void> _showImagePickerOptions() async {
+    if (_isPickingImage || _isUploadingPhoto) return;
 
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Camera'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickImage(ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Gallery'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickImage(ImageSource.gallery);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    if (_isPickingImage || _isUploadingPhoto) return;
+
+    _isPickingImage = true;
     try {
       final picker = ImagePicker();
-      final image = await picker.pickImage(source: ImageSource.camera, imageQuality: 80);
+      final image = await picker.pickImage(source: source, imageQuality: 80);
 
-      if (image != null) {
+      if (image == null) return;
+
+      if (mounted) {
         setState(() => _isUploadingPhoto = true);
 
         final file = File(image.path);
@@ -117,6 +156,8 @@ class _Step1BasicIdentityHardenedState extends State<Step1BasicIdentityHardened>
       }
     } catch (e) {
       debugPrint('Error picking photo: $e');
+    } finally {
+      _isPickingImage = false;
     }
   }
 
@@ -188,7 +229,7 @@ class _Step1BasicIdentityHardenedState extends State<Step1BasicIdentityHardened>
 
   Widget _buildPhotoUpload() {
     return GestureDetector(
-      onTap: _isUploadingPhoto ? null : _pickProfilePhoto,
+      onTap: _isUploadingPhoto ? null : _showImagePickerOptions,
       child: Container(
         height: 140,
         decoration: BoxDecoration(
@@ -229,7 +270,7 @@ class _Step1BasicIdentityHardenedState extends State<Step1BasicIdentityHardened>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Required for verification',
+                        'Camera or Gallery',
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 12,
                           color: const Color(0xFF9CA3AF),
@@ -398,6 +439,7 @@ class _Step1BasicIdentityHardenedState extends State<Step1BasicIdentityHardened>
         const SizedBox(height: 8),
         Wrap(
           spacing: 12,
+          runSpacing: 8,
           children: _genderOptions.map((gender) {
             final isSelected = _selectedGender == gender;
             return FilterChip(
@@ -466,14 +508,45 @@ class _Step1BasicIdentityHardenedState extends State<Step1BasicIdentityHardened>
     );
   }
 
+  List<Map<String, String>> _getFilteredCategories() {
+    if (_categorySearchQuery.isEmpty) {
+      return ServiceCategories.categories;
+    }
+    return ServiceCategories.categories
+        .where((cat) => cat['name']!.toLowerCase().contains(_categorySearchQuery.toLowerCase()))
+        .toList();
+  }
+
+  void _toggleCategory(String categoryId) {
+    setState(() {
+      if (_selectedCategories.contains(categoryId)) {
+        _selectedCategories.remove(categoryId);
+      } else {
+        _selectedCategories.add(categoryId);
+      }
+      _categoryError = null;
+    });
+    onDataChanged('primaryCategoryId', _selectedCategories);
+  }
+
+  bool _validateCategories() {
+    if (_selectedCategories.isEmpty) {
+      setState(() => _categoryError = 'Select at least one category');
+      return false;
+    }
+    return true;
+  }
+
   Widget _buildCategorySelector() {
+    final filteredCategories = _getFilteredCategories();
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
             Text(
-              'Primary Service Category',
+              'Service Categories',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
@@ -492,37 +565,87 @@ class _Step1BasicIdentityHardenedState extends State<Step1BasicIdentityHardened>
           ],
         ),
         const SizedBox(height: 8),
+        // Search field
         Container(
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
           ),
-          child: DropdownButton<String>(
-            value: _selectedCategory,
-            isExpanded: true,
-            underline: const SizedBox(),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            hint: Text(
-              'Select a category',
-              style: GoogleFonts.plusJakartaSans(color: const Color(0xFF9CA3AF)),
-            ),
-            items: _serviceCategories.map((cat) {
-              return DropdownMenuItem(
-                value: cat['id'],
-                child: Text(cat['name']!),
-              );
-            }).toList(),
+          child: TextField(
+            controller: _searchController,
             onChanged: (value) {
-              if (value != null) {
-                setState(() => _selectedCategory = value);
-                final category = _serviceCategories.firstWhere((c) => c['id'] == value);
-                onDataChanged('primaryCategoryId', value);
-                onDataChanged('primaryCategoryName', category['name']);
-              }
+              setState(() => _categorySearchQuery = value);
             },
+            decoration: InputDecoration(
+              hintText: 'Search categories...',
+              hintStyle: const TextStyle(color: Color(0xFF9CA3AF)),
+              prefixIcon: const Icon(Icons.search, color: Color(0xFF6366F1), size: 20),
+              suffixIcon: _categorySearchQuery.isNotEmpty
+                  ? GestureDetector(
+                      onTap: () {
+                        _searchController.clear();
+                        setState(() => _categorySearchQuery = '');
+                      },
+                      child: const Icon(Icons.clear, color: Color(0xFF9CA3AF), size: 20),
+                    )
+                  : null,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            ),
           ),
         ),
+        const SizedBox(height: 12),
+        // Chip grid
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _categoryError != null ? Colors.red : const Color(0xFFE2E8F0),
+              width: 1,
+            ),
+          ),
+          padding: const EdgeInsets.all(12),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: filteredCategories.map((category) {
+              final isSelected = _selectedCategories.contains(category['id']);
+              return FilterChip(
+                label: Text(category['name']!),
+                selected: isSelected,
+                onSelected: (_) => _toggleCategory(category['id']!),
+                backgroundColor: Colors.white,
+                selectedColor: const Color(0xFF6366F1),
+                labelStyle: TextStyle(
+                  color: isSelected ? Colors.white : const Color(0xFF0F172A),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+                side: BorderSide(
+                  color: isSelected ? const Color(0xFF6366F1) : const Color(0xFFE2E8F0),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        if (_categoryError != null) ...[const SizedBox(height: 8),
+          Text(
+            _categoryError!,
+            style: GoogleFonts.plusJakartaSans(fontSize: 12, color: Colors.red),
+          ),
+        ],
+        if (_selectedCategories.isNotEmpty) ...[const SizedBox(height: 8),
+          Text(
+            '${_selectedCategories.length} selected',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 12,
+              color: const Color(0xFF6366F1),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ],
     );
   }

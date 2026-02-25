@@ -96,6 +96,16 @@ class Technician {
   final int? visitingCharge;
   final int? maxTravelDistance;
   final bool emergencyServiceAvailable;
+  
+  // 🔵 Production onboarding fields
+  final List<String>? languagePreferences;
+  final String? referralCodeUsed;
+  final String? panNumber;
+  final String? accountType;
+  final String? payoutPreference;
+  final int? maxDailyJobs;
+  final bool? dynamicPricingAllowed;
+  final Map<String, dynamic>? stepsCompleted;
 
   Technician({
     required this.uid,
@@ -142,6 +152,14 @@ class Technician {
     this.visitingCharge,
     this.maxTravelDistance,
     this.emergencyServiceAvailable = false,
+    this.languagePreferences,
+    this.referralCodeUsed,
+    this.panNumber,
+    this.accountType,
+    this.payoutPreference,
+    this.maxDailyJobs,
+    this.dynamicPricingAllowed,
+    this.stepsCompleted,
   });
 
   factory Technician.fromFirestore(DocumentSnapshot doc) {
@@ -171,22 +189,29 @@ class Technician {
     String status = data['status'] ?? 'pending_verification';
     String? kycStatus = data['kycStatus'];
     
-    // Determine isKycComplete and isApproved from status
-    bool isKycComplete = data['isKycComplete'] ?? false;
+    // SELF-HEALING KYC RESOLUTION - SINGLE SOURCE OF TRUTH
+    // Check multiple sources to determine if KYC is truly complete
+    final bool resolvedKyc =
+        data['isKycComplete'] == true ||
+        data['onboardingCompleted'] == true ||
+        (data['stepsCompleted']?['kyc'] == true &&
+         data['stepsCompleted']?['bank'] == true &&
+         data['stepsCompleted']?['services'] == true);
+    
+    debugPrint('[FINAL HARDEN] resolvedKyc=$resolvedKyc');
+    debugPrint('[FINAL VERIFY] Firestore raw: ${doc.data()}');
+    
+    // Use resolved value as SINGLE source of truth
+    bool isKycComplete = resolvedKyc;
     bool isApproved = data['isApproved'] ?? false;
-    bool adminApproved = data['adminApproved'] ?? false; // New field for service management
+    bool adminApproved = data['adminApproved'] ?? false;
     
     // Legacy conversion: if kycStatus is 'approved', set isApproved = true
+    // BUT DO NOT override isKycComplete - it's already resolved above
     if (kycStatus == 'approved') {
-      isKycComplete = true;
       isApproved = true;
       adminApproved = true;
-    } else if (status == 'pending_verification' || status == 'under_review') {
-      isKycComplete = false;
-      isApproved = false;
-      adminApproved = false;
     } else if (status == 'approved') {
-      isKycComplete = true;
       isApproved = true;
       adminApproved = true;
     }
@@ -268,6 +293,16 @@ class Technician {
       visitingCharge: data['visitingCharge'],
       maxTravelDistance: data['maxTravelDistance'],
       emergencyServiceAvailable: data['emergencyServiceAvailable'] ?? false,
+      languagePreferences: (data['languagePreferences'] as List?)
+          ?.map((e) => e.toString())
+          .toList(),
+      referralCodeUsed: data['referralCodeUsed'],
+      panNumber: data['panNumber'],
+      accountType: data['accountType'],
+      payoutPreference: data['payoutPreference'],
+      maxDailyJobs: data['maxDailyJobs'],
+      dynamicPricingAllowed: data['dynamicPricingAllowed'],
+      stepsCompleted: (data['stepsCompleted'] as Map?)?.cast<String, dynamic>(),
     );
   }
 
@@ -319,6 +354,14 @@ class Technician {
       'visitingCharge': visitingCharge,
       'maxTravelDistance': maxTravelDistance,
       'emergencyServiceAvailable': emergencyServiceAvailable,
+      if (languagePreferences != null) 'languagePreferences': languagePreferences,
+      if (referralCodeUsed != null) 'referralCodeUsed': referralCodeUsed,
+      if (panNumber != null) 'panNumber': panNumber,
+      if (accountType != null) 'accountType': accountType,
+      if (payoutPreference != null) 'payoutPreference': payoutPreference,
+      if (maxDailyJobs != null) 'maxDailyJobs': maxDailyJobs,
+      if (dynamicPricingAllowed != null) 'dynamicPricingAllowed': dynamicPricingAllowed,
+      if (stepsCompleted != null) 'stepsCompleted': stepsCompleted,
     };
   }
   

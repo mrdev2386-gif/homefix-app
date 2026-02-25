@@ -137,6 +137,7 @@ class Step6Success extends StatelessWidget {
                 height: 56,
                 child: ElevatedButton(
                   onPressed: () {
+                    debugPrint('[Onboarding] Navigation to dashboard success');
                     Navigator.of(context).pushNamedAndRemoveUntil(
                       '/home',
                       (route) => false,

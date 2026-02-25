@@ -2,10 +2,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:io';
 import '../services/technician_service.dart';
 import '../services/onboarding_service.dart';
-import '../services/image_compression_service.dart';
+import '../utils/image_size_guard.dart';
 import '../models/technician.dart';
 
 class TechnicianProvider extends ChangeNotifier {
@@ -24,6 +25,9 @@ class TechnicianProvider extends ChangeNotifier {
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
+
+  bool _isSubmittingApplication = false;
+  bool get isSubmittingApplication => _isSubmittingApplication;
 
   // Onboarding state
   OnboardingStep _currentOnboardingStep = OnboardingStep.phone;
@@ -67,6 +71,26 @@ class TechnicianProvider extends ChangeNotifier {
     
     _techSubscription = _techService.getTechnicianStream(uid).listen((tech) {
       if (_isDisposed) return;
+      
+      // PHASE 4 FIX: Add shallow equality guard to prevent duplicate emissions
+      // Only notify if data actually changed
+      final previousTech = _technician;
+      if (previousTech != null && tech != null) {
+        // Check if key onboarding/approval fields changed
+        final hasChanged = 
+          previousTech.isKycComplete != tech.isKycComplete ||
+          previousTech.isApproved != tech.isApproved ||
+          previousTech.adminApproved != tech.adminApproved ||
+          previousTech.currentOnboardingStep != tech.currentOnboardingStep ||
+          previousTech.status != tech.status;
+        
+        if (!hasChanged) {
+          // Data unchanged, skip notification to prevent rebuild storm
+          _technician = tech;
+          _isLoading = false;
+          return;
+        }
+      }
       
       _technician = tech;
       
@@ -217,11 +241,39 @@ class TechnicianProvider extends ChangeNotifier {
     }
   }
 
-  /// Submit the complete KYC application
-  /// SECURITY: This method ONLY submits - protected fields like isApproved, rating,
-  /// walletBalance, adminNotes are NEVER written by the client and can only be
-  /// set by admin actions via Firestore rules
+  /// Save step data during onboarding with multi-device safety
+  /// CRITICAL: Does NOT call notifyListeners to prevent rebuild during PageView transition
+  Future<void> saveStepData({
+    required int step,
+    required Map<String, dynamic> data,
+  }) async {
+    try {
+      final tech = _technician;
+      if (tech != null) {
+        final serverStep = tech.currentOnboardingStep.stepIndex;
+        if (step < serverStep) {
+          debugPrint('[Provider] Multi-device safety: ignoring stale step $step (server=$serverStep)');
+          return;
+        }
+      }
+      
+      await _onboardingService.saveStepData(step: step, data: data);
+      
+      // DO NOT refresh or notify here - let the stream handle it naturally
+      // This prevents rebuild during PageView transition
+    } catch (e) {
+      debugPrint("Error saving step: $e");
+      rethrow;
+    }
+  }
+
+  /// Submit the complete KYC application with global lock and refresh
   Future<void> submitKycApplication() async {
+    if (_isSubmittingApplication) {
+      throw Exception('Application already being submitted');
+    }
+
+    _isSubmittingApplication = true;
     _isLoading = true;
     notifyListeners();
     
@@ -229,12 +281,13 @@ class TechnicianProvider extends ChangeNotifier {
       await _onboardingService.submitApplication();
       _currentOnboardingStep = OnboardingStep.submitted;
       _isOnboardingComplete = true;
-      // SECURITY NOTE: isApproved is set by ADMIN only
-      // Client NEVER writes isApproved, rating, walletBalance, or adminNotes
+      
+      await refreshTechnicianData();
     } catch (e) {
       debugPrint("Error submitting application: $e");
       rethrow;
     } finally {
+      _isSubmittingApplication = false;
       _isLoading = false;
       notifyListeners();
     }
@@ -262,8 +315,8 @@ class TechnicianProvider extends ChangeNotifier {
           throw Exception('Provider disposed during upload');
         }
         
-        // Compress image before upload
-        compressedFile = await ImageCompressionService.compressImage(imageFile);
+        // Compress image before upload using canonical image_size_guard
+        final compressedFile = await ImageSizeGuard.validateAndCompress(imageFile);
         final bytes = await compressedFile.readAsBytes();
 
         final extension = 'jpg';
@@ -317,7 +370,37 @@ class TechnicianProvider extends ChangeNotifier {
     throw lastError ?? Exception('Upload failed after $maxRetries attempts');
   }
 
-  /// Refresh technician data (e.g., after approval)
+  /// Fetch fresh technician data from server (not cache)
+  /// Used for routing decisions to prevent state drift
+  Future<Technician?> fetchFreshTechnicianData() async {
+    final uid = _auth.currentUser?.uid;
+    debugPrint('[FINAL VERIFY] Fetching fresh data for UID: $uid');
+    if (uid == null) return null;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('technicians')
+          .doc(uid)
+          .get(const GetOptions(source: Source.server));
+      
+      if (!doc.exists) {
+        debugPrint('[FINAL VERIFY ❌] Document does not exist');
+        return null;
+      }
+      
+      debugPrint('[FINAL VERIFY] Firestore raw: ${doc.data()}');
+      
+      final tech = Technician.fromFirestore(doc);
+      
+      debugPrint('[FINAL VERIFY] isKycComplete resolved = ${tech.isKycComplete}');
+      
+      return tech;
+    } catch (e, st) {
+      debugPrint('[FINAL VERIFY ❌] Failure reason: $e');
+      debugPrintStack(stackTrace: st);
+      return null;
+    }
+  }
   Future<void> refreshTechnicianData() async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return;

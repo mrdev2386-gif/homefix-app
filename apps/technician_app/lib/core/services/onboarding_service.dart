@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_functions/cloud_functions.dart' as functions;
+import 'package:connectivity_plus/connectivity_plus.dart';
 import '../models/technician.dart';
 
 /// Service for managing technician onboarding state
@@ -18,7 +19,7 @@ class OnboardingService {
   // Cloud Functions instance
   FirebaseFunctions get _functions => FirebaseFunctions.instance;
 
-  // Helper to call Cloud Functions with error handling
+  /// Helper to call Cloud Functions with error handling
   Future<Map<String, dynamic>> _callFunction(
     String name, 
     Map<String, dynamic> data
@@ -27,11 +28,59 @@ class OnboardingService {
       final result = await _functions.httpsCallable(name)(data);
       return Map<String, dynamic>.from(result.data as Map);
     } on FirebaseFunctionsException catch (e) {
-      debugPrint('[OnboardingService] Cloud Function error: ${e.message}');
+      debugPrint('[OnboardingService] Cloud Function error: code=${e.code}, message=${e.message}');
       throw Exception(e.message ?? 'Cloud function failed');
     } catch (e) {
       debugPrint('[OnboardingService] Error calling $name: $e');
       rethrow;
+    }
+  }
+
+  /// Retry wrapper with exponential backoff for Firestore writes
+  /// Retries only on UNAVAILABLE or network errors
+  Future<Map<String, dynamic>> _retryWithBackoff(
+    Future<Map<String, dynamic>> Function() operation, {
+    int maxAttempts = 3,
+  }) async {
+    int attempt = 0;
+    Exception? lastError;
+
+    while (attempt < maxAttempts) {
+      try {
+        return await operation();
+      } on FirebaseException catch (e) {
+        lastError = e;
+        debugPrint('[OnboardingService] FirebaseException: code=${e.code}, message=${e.message}');
+        
+        // Only retry on UNAVAILABLE or network errors
+        if (e.code != 'unavailable' && e.code != 'failed-precondition') {
+          rethrow;
+        }
+        
+        attempt++;
+        if (attempt >= maxAttempts) break;
+        
+        // Exponential backoff: 500ms, 1s, 2s
+        final delayMs = 500 * (1 << (attempt - 1));
+        debugPrint('[OnboardingService] Retry attempt $attempt after ${delayMs}ms');
+        await Future.delayed(Duration(milliseconds: delayMs));
+      } catch (e) {
+        debugPrint('[OnboardingService] Non-Firebase error: $e');
+        rethrow;
+      }
+    }
+
+    throw lastError ?? Exception('Operation failed after $maxAttempts attempts');
+  }
+
+  /// Check internet connectivity
+  Future<bool> _hasInternetConnection() async {
+    try {
+      final result = await Connectivity().checkConnectivity();
+      return result != ConnectivityResult.none;
+    } catch (e) {
+      debugPrint('[OnboardingService] Error checking connectivity: $e');
+      return false;
     }
   }
 
@@ -169,21 +218,161 @@ class OnboardingService {
     debugPrint('[OnboardingService] Saved services via Cloud Function: $result');
   }
 
-  /// Submit the complete KYC application
-  /// Uses Cloud Function to transition to pending review status
-  /// 
-  /// SECURITY: This is the critical step that sets isKycComplete=true
-  /// and can only be done through the server to prevent client manipulation
+  /// Save step data with idempotency check and timestamp protection
+  /// Prevents step rewind, out-of-order writes, and stale/offline overwrites
+  Future<void> saveStepData({
+    required int step,
+    required Map<String, dynamic> data,
+  }) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) {
+      throw Exception('User not authenticated');
+    }
+
+    final hasInternet = await _hasInternetConnection();
+    if (!hasInternet) {
+      throw Exception('No internet connection. Please check your network and try again.');
+    }
+
+    await _retryWithBackoff(() async {
+      final doc = await _db.collection('technicians').doc(uid).get(
+        const GetOptions(source: Source.server),
+      );
+      
+      final currentStep = doc.data()?['onboardingStep'] as String?;
+      final currentStepIndex = _getStepIndex(currentStep);
+      final lastStepUpdatedAt = doc.data()?['lastStepUpdatedAt'] as Timestamp?;
+      
+      if (currentStepIndex > step) {
+        debugPrint('[OnboardingService] Step rewind prevented: current=$currentStepIndex, incoming=$step');
+        return {};
+      }
+      
+      if (lastStepUpdatedAt != null) {
+        final now = DateTime.now();
+        final lastUpdate = lastStepUpdatedAt.toDate();
+        if (lastUpdate.isAfter(now)) {
+          debugPrint('[OnboardingService] Stale write prevented: server timestamp is newer');
+          return {};
+        }
+      }
+      
+      final stepName = _getStepName(step);
+      final updateData = <String, dynamic>{
+        'onboardingStep': stepName,
+        'stepsCompleted': {
+          'basic': step >= 0,
+          'professional': step >= 1,
+          'kyc': step >= 2,
+          'bank': step >= 3,
+          'services': step >= 4,
+        },
+        'lastStepUpdatedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+      
+      updateData.addAll(data);
+      
+      await _db.collection('technicians').doc(uid).update(updateData);
+      
+      final verifyDoc = await _db.collection('technicians').doc(uid).get(
+        const GetOptions(source: Source.server),
+      );
+      
+      final verifyStep = verifyDoc.data()?['onboardingStep'] as String?;
+      final verifyCompleted = verifyDoc.data()?['stepsCompleted'] as Map?;
+      
+      if (verifyStep != stepName) {
+        throw FirebaseException(
+          plugin: 'cloud_firestore',
+          code: 'data-sync-failed',
+          message: 'Step verification failed',
+        );
+      }
+      
+      final stepKey = _getStepKey(step);
+      if (stepKey != null && verifyCompleted?[stepKey] != true) {
+        throw FirebaseException(
+          plugin: 'cloud_firestore',
+          code: 'data-sync-failed',
+          message: 'Step completion verification failed',
+        );
+      }
+      
+      debugPrint('[OnboardingService] Step $step saved and verified');
+      return {};
+    }, maxAttempts: 3);
+  }
+
+  String _getStepName(int step) {
+    const steps = ['basic', 'professional', 'kyc', 'bank', 'services'];
+    if (step < 0 || step >= steps.length) return 'basic';
+    return steps[step];
+  }
+
+  String? _getStepKey(int step) {
+    const keys = ['basic', 'professional', 'kyc', 'bank', 'services'];
+    return step >= 0 && step < keys.length ? keys[step] : null;
+  }
+
+  int _getStepIndex(String? step) {
+    const steps = ['phone', 'basicDetails', 'documents', 'services', 'review'];
+    if (step == null) return -1;
+    final index = steps.indexOf(step);
+    return index >= 0 ? index : -1;
+  }
+
+  /// Submit the complete KYC application with server verification
   Future<void> submitApplication() async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) {
       throw Exception('User not authenticated');
     }
 
-    // Use Cloud Function for secure submission
-    final result = await _callFunction('submitTechnicianKyc', {});
+    debugPrint('[OnboardingService] ===== SUBMITTING KYC APPLICATION =====');
+    debugPrint('[OnboardingService] UID: $uid');
 
-    debugPrint('[OnboardingService] Submitted KYC via Cloud Function: $result');
+    final hasInternet = await _hasInternetConnection();
+    if (!hasInternet) {
+      throw Exception('No internet connection. Please check your network and try again.');
+    }
+
+    await _retryWithBackoff(() async {
+      debugPrint('[OnboardingService] Calling submitTechnicianKyc Cloud Function...');
+      final result = await _callFunction('submitTechnicianKyc', {
+        'onboardingCompleted': true,
+        'status': 'pending',
+        'submittedAt': DateTime.now().toIso8601String(),
+      });
+      debugPrint('[OnboardingService] Cloud Function result: $result');
+      return result;
+    }, maxAttempts: 3);
+
+    debugPrint('[OnboardingService] Verifying submission...');
+    final verifyDoc = await _db.collection('technicians').doc(uid).get(
+      const GetOptions(source: Source.server),
+    );
+    
+    debugPrint('[OnboardingService] Raw Firestore data: ${verifyDoc.data()}');
+    
+    final isCompleted = verifyDoc.data()?['onboardingCompleted'] as bool? ?? false;
+    final isKycComplete = verifyDoc.data()?['isKycComplete'] as bool? ?? false;
+    final status = verifyDoc.data()?['status'] as String?;
+    
+    debugPrint('[OnboardingService] Verification check:');
+    debugPrint('[OnboardingService]   onboardingCompleted = $isCompleted (type=${isCompleted.runtimeType})');
+    debugPrint('[OnboardingService]   isKycComplete = $isKycComplete (type=${isKycComplete.runtimeType})');
+    debugPrint('[OnboardingService]   status = $status');
+    
+    if (!isCompleted || status != 'pending') {
+      throw FirebaseException(
+        plugin: 'cloud_firestore',
+        code: 'submit-verification-failed',
+        message: 'Submit verification failed: completed=$isCompleted, status=$status',
+      );
+    }
+    
+    debugPrint('[OnboardingService] ===== SUBMISSION VERIFIED SUCCESSFULLY =====');
   }
 
   /// Get current onboarding step from Firestore

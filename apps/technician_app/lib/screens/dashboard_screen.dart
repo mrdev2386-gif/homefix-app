@@ -15,6 +15,7 @@ import 'package:technician_app/features/job_requests/job_requests_screen.dart';
 import 'package:technician_app/features/earnings/presentation/earnings_screen.dart';
 import 'package:technician_app/features/profile/presentation/profile_screen.dart';
 import 'package:technician_app/features/services/presentation/create_service_screen.dart';
+import 'package:technician_app/screens/limited_dashboard.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -35,50 +36,185 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      resizeToAvoidBottomInset: true,
-      body: _screens[_selectedIndex],
-      bottomNavigationBar: MediaQuery(
-        data: MediaQuery.of(context).copyWith(textScaleFactor: 1.0),
-        child: SafeArea(
-          child: SizedBox(
-            height: kBottomNavigationBarHeight,
-            child: BottomNavigationBar(
-              currentIndex: _selectedIndex,
-              onTap: (index) {
-                if (!mounted) return;
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) {
-                    setState(() => _selectedIndex = index);
-                  }
-                });
-              },
-              type: BottomNavigationBarType.fixed,
-              selectedFontSize: 11,
-              unselectedFontSize: 11,
-              iconSize: 22,
-              showUnselectedLabels: true,
-              items: const [
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.home_outlined),
-                  label: 'Home',
+    return Consumer<TechnicianProvider>(
+      builder: (context, provider, _) {
+        final tech = provider.technician;
+        final isUnderReview = tech?.isUnderReview ?? false;
+        
+        // Debug log for overlay visibility
+        if (isUnderReview) {
+          debugPrint('[Dashboard] Pending overlay visible');
+        } else if (tech != null && tech.isApproved) {
+          debugPrint('[Dashboard] Technician approved — unlocking');
+        }
+        
+        return Stack(
+          children: [
+            Scaffold(
+              resizeToAvoidBottomInset: true,
+              body: _screens[_selectedIndex],
+              bottomNavigationBar: MediaQuery(
+                data: MediaQuery.of(context).copyWith(textScaleFactor: 1.0),
+                child: SafeArea(
+                  child: SizedBox(
+                    height: kBottomNavigationBarHeight,
+                    child: BottomNavigationBar(
+                      currentIndex: _selectedIndex,
+                      onTap: (index) {
+                        if (!mounted) return;
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) {
+                            setState(() => _selectedIndex = index);
+                          }
+                        });
+                      },
+                      type: BottomNavigationBarType.fixed,
+                      selectedFontSize: 11,
+                      unselectedFontSize: 11,
+                      iconSize: 22,
+                      showUnselectedLabels: true,
+                      items: const [
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.home_outlined),
+                          label: 'Home',
+                        ),
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.work_outline),
+                          label: 'Jobs',
+                        ),
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.account_balance_wallet_outlined),
+                          label: 'Earnings',
+                        ),
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.person_outline),
+                          label: 'Profile',
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.work_outline),
-                  label: 'Jobs',
-                ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.account_balance_wallet_outlined),
-                  label: 'Earnings',
-                ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.person_outline),
-                  label: 'Profile',
-                ),
-              ],
+              ),
             ),
+            // FULL-SCREEN PENDING OVERLAY
+            // Shows when KYC is complete but not yet approved
+            if (isUnderReview)
+              _buildPendingOverlay(context),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Full-screen blocking overlay shown when profile is under review
+  Widget _buildPendingOverlay(BuildContext context) {
+    return Container(
+      color: Colors.black.withOpacity(0.7),
+      child: Center(
+        child: Container(
+          margin: const EdgeInsets.all(32),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                height: 60,
+                width: 60,
+                child: CircularProgressIndicator(
+                  strokeWidth: 4,
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Profile Under Review',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF0F172A),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Our team is processing your request',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 14,
+                  color: const Color(0xFF6B7280),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '(24-48 hours)',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF6366F1),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F4FF),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      'You can:',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF6366F1),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildFeatureItem('View your profile'),
+                    _buildFeatureItem('Check job requests'),
+                    _buildFeatureItem('Update availability'),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildFeatureItem(String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.check_circle,
+            size: 16,
+            color: Color(0xFF6366F1),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 12,
+              color: const Color(0xFF6B7280),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -98,6 +234,42 @@ class _DashboardHomeState extends State<DashboardHome> {
   @override
   void initState() {
     super.initState();
+    debugPrint('[DashboardHome] initState called');
+    _enforceOnboardingGate();
+  }
+
+  void _enforceOnboardingGate() {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      
+      debugPrint('[FINAL HARDEN] Dashboard gate check starting');
+      final provider = context.read<TechnicianProvider>();
+      
+      if (provider.isLoading) {
+        debugPrint('[FINAL HARDEN] Waiting for provider...');
+        return;
+      }
+      
+      final freshTech = await provider.fetchFreshTechnicianData();
+      
+      if (freshTech == null) {
+        debugPrint('[FINAL HARDEN] Technician null — skip redirect');
+        return;
+      }
+      
+      debugPrint('[FINAL HARDEN] Dashboard using model value: ${freshTech.isKycComplete}');
+      
+      // ONLY redirect if CONFIRMED false (not null, not missing)
+      if (freshTech.isKycComplete == false) {
+        debugPrint('[FINAL HARDEN ❌] Redirecting to onboarding');
+        if (mounted) {
+          Navigator.of(context).pushReplacementNamed('/onboarding');
+        }
+        return;
+      }
+      
+      debugPrint('[FINAL VERIFY ✅] KYC complete, staying on dashboard');
+    });
   }
 
   @override
@@ -113,6 +285,7 @@ class _DashboardHomeState extends State<DashboardHome> {
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<TechnicianProvider>(context);
+    debugPrint('[DashboardHome] Building, tech=${provider.technician?.uid}');
     final tech = provider.technician;
 
     return Scaffold(
