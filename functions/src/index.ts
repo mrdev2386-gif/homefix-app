@@ -32,6 +32,7 @@ import * as partnerApplications from './partner/applications';
 
 // Technician Services (YouTube-style service listings)
 import * as technicianServices from './technician/createTechnicianService';
+import * as techServicesManagement from './technician/services_management';
 
 // Chat System
 import * as chat from './chat/chat';
@@ -132,6 +133,13 @@ export const createTechnicianService = technicianServices.createTechnicianServic
 export const updateTechnicianService = technicianServices.updateTechnicianService;
 export const deleteTechnicianService = technicianServices.deleteTechnicianService;
 export const getMyTechnicianServices = technicianServices.getMyTechnicianServices;
+export const toggleTechnicianServiceStatus = technicianServices.toggleTechnicianServiceStatus;
+
+// NEW: Technician Services Management (Single Source of Truth)
+export const addTechnicianService = techServicesManagement.addTechnicianService;
+export const updateTechnicianServiceNew = techServicesManagement.updateTechnicianService;
+export const toggleTechnicianServiceStatusNew = techServicesManagement.toggleTechnicianServiceStatus;
+export const deleteTechnicianServiceNew = techServicesManagement.deleteTechnicianService;
 
 /**
  * Scheduled function to remind users about items in their cart.
@@ -284,11 +292,18 @@ export const admin_uploadServiceImage = adminImages.uploadServiceImage;
 
 export const admin_refundBooking = adminFinance.refundBooking;
 export const admin_adjustWallet = adminFinance.adjustWallet;
+export const admin_processBookingPayout = adminFinance.processBookingPayout;
 
 export const admin_sendPushNotification = adminNotif.sendPushNotification;
 
 import * as adminRisk from './admin/risk';
 export const admin_manageRiskProfile = adminRisk.manageRiskProfile;
+
+import * as adminReviews from './admin/reviews';
+export const admin_manageReview = adminReviews.manageReview;
+
+import * as adminDisputes from './admin/disputes';
+export const admin_manageDispute = adminDisputes.manageDispute;
 
 import {
     admin_manageProfessionalVideos,

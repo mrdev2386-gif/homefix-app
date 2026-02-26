@@ -7,6 +7,9 @@ const colors: Record<string, string> = {
     pending: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
     blocked: 'bg-red-500/10 text-red-400 border-red-500/20',
     suspicious: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+    // Custom Requests
+    reviewed: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+    converted: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
     // Bookings
     // Bookings & Service Requests (New Flow)
     pending_admin: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
@@ -27,7 +30,10 @@ const colors: Record<string, string> = {
     approved: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
     rejected: 'bg-red-500/10 text-red-400 border-red-500/20',
     online: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-    offline: 'bg-slate-500/10 text-slate-400 border-slate-500/20'
+    offline: 'bg-slate-500/10 text-slate-400 border-slate-500/20',
+    // Finance
+    processing: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+    failed: 'bg-red-500/10 text-red-400 border-red-500/20'
 };
 
 export default function StatusBadge({ status }: { status: string }) {

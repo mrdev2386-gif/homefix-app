@@ -270,8 +270,8 @@ class _Step1BasicIdentityEnhancedState extends State<Step1BasicIdentityEnhanced>
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.phone_verified_outlined,
+          Icon(
+            Icons.verified_user_outlined,
             color: Color(0xFF6366F1),
             size: 20,
           ),

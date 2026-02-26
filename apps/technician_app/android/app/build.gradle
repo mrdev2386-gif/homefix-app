@@ -21,6 +21,12 @@ android {
         jvmTarget = JavaVersion.VERSION_1_8
     }
 
+    // Disable asset compression for debug builds to prevent memory issues
+    aaptOptions {
+        noCompress = ['flutter_assets', '*.png', '*.jpg', '*.jpeg', '*.gif', '*.webp', '*.svg', '*.ttf', '*.otf', '*.json']
+        ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~"
+    }
+
     defaultConfig {
         applicationId = "com.homefix.technician"
 
@@ -52,6 +58,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Disable compression for debug to prevent memory issues
+            aaptOptions {
+                noCompress = ['flutter_assets', '*.png', '*.jpg', '*.jpeg', '*.gif', '*.webp', '*.svg', '*.ttf', '*.otf', '*.json']
+            }
+        }
         release {
             signingConfig signingConfigs.release
             // Add ProGuard/R8

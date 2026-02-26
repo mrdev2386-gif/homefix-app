@@ -51,8 +51,16 @@ export const adminApi = {
      * Approve/Verify an existing Technician
      */
     approveTechnician: async (techId: string, approve: boolean, reason?: string) => {
-        const fn = httpsCallable(functions, 'admin_approveTechnician');
-        return await fn({ techId, approve, reason });
+        try {
+            console.log('[ADMIN API] Calling admin_approveTechnician with:', { techId, approve, reason });
+            const fn = httpsCallable(functions, 'admin_approveTechnician');
+            const result = await fn({ techId, approve, reason });
+            console.log('[ADMIN API] Success:', result.data);
+            return result.data;
+        } catch (error: any) {
+            console.error('[ADMIN API ❌] approveTechnician failed:', error);
+            throw error;
+        }
     },
 
     /**
@@ -96,28 +104,6 @@ export const adminApi = {
     },
 
     /**
-     * Manage Professional Video Reels
-     */
-    manageProfessionalVideos: async (data: any) => {
-        const fn = httpsCallable(functions, 'admin_manageProfessionalVideos');
-        return await fn(data);
-    },
-
-    /**
-     * Manage Cleaning Categories (Essentials)
-     */
-    manageCleaningEssentials: async (data: any) => {
-        const fn = httpsCallable(functions, 'admin_manageCleaningEssentials');
-        return await fn(data);
-    },
-    /**
-     * Manage Service Banners
-     */
-    manageServiceBanners: async (data: any) => {
-        const fn = httpsCallable(functions, 'admin_manageServiceBanners');
-        return await fn(data);
-    },
-    /**
      * Get paginated users
      */
     getUsers: async (params: { limit?: number; offset?: number; role?: string; status?: string; search?: string }) => {
@@ -154,7 +140,7 @@ export const adminApi = {
     /**
      * Get paginated technicians
      */
-    getTechnicians: async (params: { limit?: number; offset?: number; status?: string; search?: string; city?: string }) => {
+    getTechnicians: async (params: { limit?: number; offset?: number; status?: string; search?: string; city?: string; kycPending?: boolean }) => {
         const fn = httpsCallable(functions, 'admin_getTechnicians');
         const result = await fn(params);
         return result.data as { techs: any[]; total: number; limit: number; offset: number };
@@ -227,20 +213,52 @@ export const adminApi = {
         return await fn({ requestId, action: 'reject', rejectionReason: reason });
     },
 
+    // ============================================================================
+    // CUSTOM REQUESTS MANAGEMENT (new Firebase-first architecture)
+    // ============================================================================
+
     /**
-     * Manage Reviews (hide, flag, delete)
+     * Mark a custom request as reviewed
      */
-    manageReview: async (reviewId: string, action: string, reason?: string) => {
-        const fn = httpsCallable(functions, 'admin_manageReview');
-        return await fn({ reviewId, action, reason });
+    markCustomRequestAsReviewed: async (requestId: string) => {
+        const fn = httpsCallable(functions, 'markCustomRequestAsReviewed');
+        return await fn({ requestId });
     },
 
     /**
-     * Manage Disputes (resolve, reject, refund)
+     * Convert a custom request to a booking
      */
-    manageDispute: async (disputeId: string, action: string, payload: any = {}) => {
-        const fn = httpsCallable(functions, 'admin_manageDispute');
-        return await fn({ disputeId, action, ...payload });
+    convertCustomRequest: async (requestId: string) => {
+        const fn = httpsCallable(functions, 'convertCustomRequest');
+        return await fn({ requestId });
+    },
+
+    /**
+     * Reject a custom request
+     */
+    rejectCustomRequest: async (requestId: string, adminNotes: string) => {
+        const fn = httpsCallable(functions, 'rejectCustomRequest');
+        return await fn({ requestId, adminNotes });
+    },
+
+    // ============================================================================
+    // TECHNICIAN APPLICATIONS (new Firebase-first architecture)
+    // ============================================================================
+
+    /**
+     * Approve a technician application (new)
+     */
+    approveTechnicianApp: async (uid: string) => {
+        const fn = httpsCallable(functions, 'approveTechnician');
+        return await fn({ uid });
+    },
+
+    /**
+     * Reject a technician application (new)
+     */
+    rejectTechnicianApp: async (uid: string, reason: string) => {
+        const fn = httpsCallable(functions, 'rejectTechnician');
+        return await fn({ uid, reason });
     },
 
     /**

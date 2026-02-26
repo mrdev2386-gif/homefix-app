@@ -19,65 +19,100 @@ class ApplicationStatusScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildStatusIllustration(isPending, isPendingServiceApproval, isSuspended),
-                const SizedBox(height: 48),
-                Text(
-                  _getTitle(status),
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF0F172A),
-                    letterSpacing: -0.5,
-                  ),
-                  textAlign: TextAlign.center,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight,
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  _getSubtitle(isPending, reason),
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 16,
-                    color: const Color(0xFF64748B),
-                    height: 1.6,
-                    fontWeight: FontWeight.w500,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 40),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // TOP CONTENT
+                      Column(
+                        children: [
+                          const SizedBox(height: 60),
+                          _buildStatusIllustration(isPending, isPendingServiceApproval, isSuspended),
+                          const SizedBox(height: 48),
+                          Text(
+                            _getTitle(status),
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFF0F172A),
+                              letterSpacing: -0.5,
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _getSubtitle(isPending, reason),
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 16,
+                              color: const Color(0xFF64748B),
+                              height: 1.6,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            maxLines: 5,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                      // BOTTOM BUTTONS
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(0, 24, 0, 28),
+                        child: Column(
+                          children: [
+                            if (!isPending && !isPendingServiceApproval)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton(
+                                    onPressed: () {},
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF0F172A),
+                                      minimumSize: const Size(double.infinity, 56),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                    ),
+                                    child: const Text("Contact Support"),
+                                  ),
+                                ),
+                              ),
+                            SizedBox(
+                              width: double.infinity,
+                              child: TextButton(
+                                onPressed: () {
+                                  Provider.of<TechnicianProvider>(context, listen: false).signOut();
+                                },
+                                style: TextButton.styleFrom(
+                                  minimumSize: const Size(double.infinity, 56),
+                                ),
+                                child: Text(
+                                  "Sign Out",
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontWeight: FontWeight.bold,
+                                    color: const Color(0xFF64748B),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 64),
-                if (!isPending && !isPendingServiceApproval)
-                  ElevatedButton(
-                    onPressed: () {},
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0F172A),
-                      minimumSize: const Size(double.infinity, 56),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    ),
-                    child: const Text("Contact Support"),
-                  ),
-                const SizedBox(height: 12),
-                TextButton(
-                  onPressed: () {
-                    Provider.of<TechnicianProvider>(context, listen: false).signOut();
-                  },
-                  style: TextButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 56),
-                  ),
-                  child: Text(
-                    "Sign Out",
-                    style: GoogleFonts.plusJakartaSans(
-                      fontWeight: FontWeight.bold,
-                      color: const Color(0xFF64748B),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );

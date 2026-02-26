@@ -96,6 +96,11 @@ class TechnicianProvider extends ChangeNotifier {
       
       // Update onboarding state from technician data
       if (tech != null) {
+        // Debug log for approval detection
+        debugPrint('[ADMIN PIPELINE] Approval detected: ${tech.isApproved}');
+        debugPrint('[ADMIN PIPELINE] Admin approved: ${tech.adminApproved}');
+        debugPrint('[ADMIN PIPELINE] Status: ${tech.status}');
+        
         // FIX 2: Onboarding step sanity guard
         OnboardingStep step = tech.currentOnboardingStep;
         if (step.stepIndex < OnboardingStep.basicDetails.stepIndex) {

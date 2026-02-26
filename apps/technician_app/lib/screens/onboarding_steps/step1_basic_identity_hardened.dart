@@ -40,14 +40,14 @@ class _Step1BasicIdentityHardenedState extends State<Step1BasicIdentityHardened>
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: formData['fullName'] ?? '');
-    _cityController = TextEditingController(text: formData['district'] ?? '');
+    _nameController = TextEditingController(text: widget.formData['fullName'] ?? '');
+    _cityController = TextEditingController(text: widget.formData['district'] ?? '');
     _searchController = TextEditingController();
-    _selectedGender = formData['gender'];
-    _selectedDOB = formData['dob'];
+    _selectedGender = widget.formData['gender'];
+    _selectedDOB = widget.formData['dob'];
     
     // Backward compatibility: convert single category to list
-    final primaryCat = formData['primaryCategoryId'];
+    final primaryCat = widget.formData['primaryCategoryId'];
     if (primaryCat != null) {
       _selectedCategories = primaryCat is List ? List<String>.from(primaryCat) : [primaryCat];
     }
@@ -77,7 +77,7 @@ class _Step1BasicIdentityHardenedState extends State<Step1BasicIdentityHardened>
       text: capitalized,
       selection: TextSelection.collapsed(offset: capitalized.length),
     );
-    onDataChanged('fullName', capitalized);
+    widget.onDataChanged('fullName', capitalized);
     _validateName();
   }
 
@@ -143,7 +143,7 @@ class _Step1BasicIdentityHardenedState extends State<Step1BasicIdentityHardened>
               _profilePhoto = file;
               _isUploadingPhoto = false;
             });
-            onDataChanged('profilePhotoUrl', url);
+            widget.onDataChanged('profilePhotoUrl', url);
           }
         } catch (e) {
           if (mounted) {
@@ -171,7 +171,7 @@ class _Step1BasicIdentityHardenedState extends State<Step1BasicIdentityHardened>
 
     if (picked != null) {
       setState(() => _selectedDOB = picked);
-      onDataChanged('dob', picked);
+      widget.onDataChanged('dob', picked);
     }
   }
 
@@ -213,7 +213,7 @@ class _Step1BasicIdentityHardenedState extends State<Step1BasicIdentityHardened>
             label: 'City',
             hint: 'Enter your city',
             icon: Icons.location_on_outlined,
-            onChanged: (value) => onDataChanged('district', value),
+            onChanged: (value) => widget.onDataChanged('district', value),
           ),
           const SizedBox(height: 16),
           _buildGenderSelector(),
@@ -292,7 +292,7 @@ class _Step1BasicIdentityHardenedState extends State<Step1BasicIdentityHardened>
       ),
       child: Row(
         children: [
-          const Icon(Icons.phone_verified_outlined, color: Color(0xFF6366F1), size: 20),
+          Icon(Icons.verified_user_outlined, color: Color(0xFF6366F1), size: 20),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -360,7 +360,7 @@ class _Step1BasicIdentityHardenedState extends State<Step1BasicIdentityHardened>
           ),
           child: TextField(
             controller: _nameController,
-            onChanged: (value) => onDataChanged('fullName', value),
+            onChanged: (value) => widget.onDataChanged('fullName', value),
             onEditingComplete: _onNameBlur,
             decoration: InputDecoration(
               hintText: 'Enter your full name',
@@ -447,7 +447,7 @@ class _Step1BasicIdentityHardenedState extends State<Step1BasicIdentityHardened>
               selected: isSelected,
               onSelected: (selected) {
                 setState(() => _selectedGender = gender);
-                onDataChanged('gender', gender);
+                widget.onDataChanged('gender', gender);
               },
               backgroundColor: Colors.white,
               selectedColor: const Color(0xFF6366F1),
@@ -526,7 +526,7 @@ class _Step1BasicIdentityHardenedState extends State<Step1BasicIdentityHardened>
       }
       _categoryError = null;
     });
-    onDataChanged('primaryCategoryId', _selectedCategories);
+    widget.onDataChanged('primaryCategoryId', _selectedCategories);
   }
 
   bool _validateCategories() {

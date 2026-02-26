@@ -1,0 +1,2332 @@
+import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
+import 'package:shimmer/shimmer.dart';
+import '../../../core/providers/technician_provider.dart';
+import '../../../core/app_theme.dart';
+import '../../../core/models/technician.dart';
+import '../../../core/services/functions_service.dart';
+import '../../../core/widgets/safe_network_image.dart';
+import '../../services/presentation/technician_services_screen.dart';
+import '../../earnings/presentation/earnings_screen.dart';
+import '../../../../main.dart';
+
+/// Technician Profile Screen - Premium UI
+/// 
+/// SECURE: All updates go through callable Cloud Functions
+/// KYC status is read-only from Firestore
+/// Bank details are masked
+class TechnicianProfileScreen extends StatefulWidget {
+  const TechnicianProfileScreen({super.key});
+
+  @override
+  State<TechnicianProfileScreen> createState() => _TechnicianProfileScreenState();
+}
+
+class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with TickerProviderStateMixin {
+  final FunctionsService _functionsService = FunctionsService();
+  bool _notificationsEnabled = true;
+  bool _isLoggingOut = false;
+  
+  late AnimationController _fadeController;
+  late AnimationController _avatarScaleController;
+  late Animation<double> _fadeAnimation;
+  late Animation<double> _avatarScaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    _avatarScaleController = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+    _fadeAnimation = CurvedAnimation(parent: _fadeController, curve: Curves.easeOut);
+    _avatarScaleAnimation = CurvedAnimation(parent: _avatarScaleController, curve: Curves.easeOut);
+    _fadeController.forward();
+  }
+
+  @override
+  void dispose() {
+    _fadeController.dispose();
+    _avatarScaleController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.bgLight,
+      floatingActionButton: _buildEditProfileFAB(context),
+      body: SafeArea(
+        child: Consumer<TechnicianProvider>(
+          builder: (context, techProvider, child) {
+            if (techProvider.isLoading || techProvider.technician == null) {
+              return const _PremiumProfileShimmer();
+            }
+
+            final technician = techProvider.technician!;
+            
+            return FadeTransition(
+              opacity: _fadeAnimation,
+              child: RefreshIndicator(
+                onRefresh: () => techProvider.refreshTechnicianData(),
+                color: AppTheme.primaryColor,
+                child: CustomScrollView(
+                  slivers: [
+                    // PART 1: Premium Glass Profile Header
+                    SliverToBoxAdapter(
+                      child: _PremiumProfileHeader(
+                        technician: technician,
+                        onAvatarTap: () => _openFullImage(context, technician.profilePhotoUrl),
+                        avatarScaleAnimation: _avatarScaleAnimation,
+                      ),
+                    ),
+                    
+                    // PART 2: Circular Profile Completion Ring & Verification Chips
+                    SliverToBoxAdapter(
+                      child: _VerificationAndCompletionCard(technician: technician),
+                    ),
+                    
+                    // PART 3: Personal Details
+                    SliverToBoxAdapter(
+                      child: _PersonalDetailsCard(
+                        technician: technician,
+                        onEditTap: () => _navigateToEditProfile(context),
+                      ),
+                    ),
+                    
+                    // PART 4: Services Offered
+                    SliverToBoxAdapter(
+                      child: _ServicesCard(
+                        technician: technician,
+                        onEditTap: () => _navigateToEditServices(context),
+                      ),
+                    ),
+                    
+                    // PART 5: Earnings Section
+                    SliverToBoxAdapter(
+                      child: _EarningsCard(
+                        onTap: () => _navigateToEarnings(context),
+                      ),
+                    ),
+                    
+                    // PART 7: Bank & Payout Details
+                    SliverToBoxAdapter(
+                      child: _BankDetailsCard(
+                        technician: technician,
+                        onUpdateTap: () => _navigateToUpdateBank(context),
+                      ),
+                    ),
+                    
+                    // PART 6: Documents Section
+                    SliverToBoxAdapter(
+                      child: _DocumentsCard(technician: technician),
+                    ),
+                    
+                    // PART 8: Performance Summary
+                    SliverToBoxAdapter(
+                      child: _PerformanceCard(technician: technician),
+                    ),
+                    
+                    // PART 9: Availability / Working Hours
+                    SliverToBoxAdapter(
+                      child: _AvailabilityCard(
+                        technician: technician,
+                        onEditTap: () => _navigateToEditAvailability(context),
+                      ),
+                    ),
+                    
+                    // PART 9: Support & Help
+                    SliverToBoxAdapter(
+                      child: _SupportSection(
+                        onHelpCenterTap: () => _navigateToHelpCenter(context),
+                        onRaiseDisputeTap: () => _navigateToRaiseDispute(context),
+                        onContactSupportTap: () => _navigateToContactSupport(context),
+                        onFaqsTap: () => _navigateToFaqs(context),
+                      ),
+                    ),
+                    
+                    // PART 10: App Settings
+                    SliverToBoxAdapter(
+                      child: _SettingsSection(
+                        notificationsEnabled: _notificationsEnabled,
+                        onNotificationsChanged: (value) {
+                          setState(() => _notificationsEnabled = value);
+                        },
+                        onLogoutTap: () => _showLogoutSheet(context),
+                        isLoggingOut: _isLoggingOut,
+                      ),
+                    ),
+                    
+                    const SliverToBoxAdapter(
+                      child: SizedBox(height: 100),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEditProfileFAB(BuildContext context) {
+    return FloatingActionButton.extended(
+      onPressed: () {
+        HapticFeedback.lightImpact();
+        _navigateToEditProfile(context);
+      },
+      backgroundColor: AppTheme.primaryColor,
+      foregroundColor: Colors.white,
+      elevation: 4,
+      label: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.edit, size: 18),
+          SizedBox(width: 8),
+          Text('Edit Profile', style: TextStyle(fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  void _navigateToEditProfile(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+    );
+  }
+
+  void _navigateToEditServices(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const TechnicianServicesScreen()),
+    );
+  }
+
+  void _navigateToEditAvailability(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const EditAvailabilityScreen()),
+    );
+  }
+
+  void _navigateToUpdateBank(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const EditBankDetailsScreen()),
+    );
+  }
+
+  void _navigateToEarnings(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const EarningsScreen()),
+    );
+  }
+
+  void _openFullImage(BuildContext context, String? imageUrl) {
+    if (imageUrl == null || imageUrl.isEmpty) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FullImageViewScreen(imageUrl: imageUrl),
+      ),
+    );
+  }
+
+  void _navigateToHelpCenter(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const HelpCenterScreen()),
+    );
+  }
+
+  void _navigateToRaiseDispute(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const RaiseDisputeScreen()),
+    );
+  }
+
+  void _navigateToContactSupport(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ContactSupportScreen()),
+    );
+  }
+
+  void _navigateToFaqs(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const FaqsScreen()),
+    );
+  }
+
+  Future<void> _showLogoutSheet(BuildContext context) async {
+    HapticFeedback.lightImpact();
+    
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => const _LogoutBottomSheet(),
+    );
+
+    if (confirmed == true && mounted) {
+      setState(() => _isLoggingOut = true);
+      try {
+        await FirebaseAuth.instance.signOut();
+        if (mounted) {
+          navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (route) => false);
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Logout failed: $e')),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isLoggingOut = false);
+        }
+      }
+    }
+  }
+}
+
+// ============================================
+// PART 1: Premium Glass Profile Header
+// ============================================
+class _PremiumProfileHeader extends StatelessWidget {
+  final Technician technician;
+  final VoidCallback onAvatarTap;
+  final Animation<double> avatarScaleAnimation;
+
+  const _PremiumProfileHeader({
+    required this.technician,
+    required this.onAvatarTap,
+    required this.avatarScaleAnimation,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // Gradient background with blur effect
+          Container(
+            height: 200,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF6366F1),
+                  Color(0xFF8B5CF6),
+                  Color(0xFFEC4899),
+                ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.primaryColor.withOpacity(0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
+                  color: Colors.transparent,
+                  padding: const EdgeInsets.fromLTRB(24, 50, 24, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Name and rating
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  technician.name.isNotEmpty ? technician.name : 'Technician',
+                                  style: const TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.phone, size: 14, color: Colors.white70),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      technician.phone,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.white70,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Stylish rating pill
+                          _RatingPill(
+                            rating: technician.avgRating.toStringAsFixed(1),
+                            reviews: technician.totalRatings,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // Floating avatar
+          Positioned(
+            left: 24,
+            bottom: -50,
+            child: GestureDetector(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                onAvatarTap();
+              },
+              child: ScaleTransition(
+                scale: avatarScaleAnimation,
+                child: Hero(
+                  tag: 'profile_avatar',
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 4),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.primaryColor.withOpacity(0.3),
+                          blurRadius: 15,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: CircleAvatar(
+                      radius: 50,
+                      backgroundColor: AppTheme.primaryLight,
+                      backgroundImage: technician.profilePhotoUrl != null
+                          ? NetworkImage(technician.profilePhotoUrl!)
+                          : null,
+                      child: technician.profilePhotoUrl == null
+                          ? const Icon(Icons.person, size: 50, color: AppTheme.primaryColor)
+                          : null,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RatingPill extends StatelessWidget {
+  final String rating;
+  final int reviews;
+
+  const _RatingPill({required this.rating, required this.reviews});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.star, size: 16, color: Color(0xFFFCD34D)),
+          const SizedBox(width: 4),
+          Text(
+            rating,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '($reviews)',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.white.withOpacity(0.8),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================
+// PART 2: Circular Profile Completion Ring & Verification Chips
+// ============================================
+class _VerificationAndCompletionCard extends StatefulWidget {
+  final Technician technician;
+
+  const _VerificationAndCompletionCard({required this.technician});
+
+  @override
+  State<_VerificationAndCompletionCard> createState() => _VerificationAndCompletionCardState();
+}
+
+class _VerificationAndCompletionCardState extends State<_VerificationAndCompletionCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+    _animation = CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  int _getProfileCompletion(Technician tech) {
+    int completed = 0;
+    int total = 5;
+    
+    if (tech.name.isNotEmpty) completed++;
+    if (tech.profilePhotoUrl != null && tech.profilePhotoUrl!.isNotEmpty) completed++;
+    if (tech.aadhaarFrontUrl != null && tech.aadhaarFrontUrl!.isNotEmpty) completed++;
+    if (tech.payoutPreference != null && tech.payoutPreference!.isNotEmpty) completed++;
+    if (tech.primaryCategoryId != null && tech.primaryCategoryId!.isNotEmpty) completed++;
+    
+    return ((completed / total) * 100).round();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final completion = _getProfileCompletion(widget.technician);
+    
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 60, 16, 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Profile Verification',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1E293B),
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Verification chips with animation
+          Row(
+            children: [
+              Expanded(
+                child: _AnimatedVerificationChip(
+                  label: 'Aadhaar',
+                  status: _getAadhaarStatus(widget.technician),
+                  index: 0,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _AnimatedVerificationChip(
+                  label: 'Bank',
+                  status: _getBankStatus(widget.technician),
+                  index: 1,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          // Circular progress ring
+          Row(
+            children: [
+              // Circular progress
+              AnimatedBuilder(
+                animation: _animation,
+                builder: (context, child) {
+                  return SizedBox(
+                    width: 80,
+                    height: 80,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        CircularProgressIndicator(
+                          value: _animation.value * (completion / 100),
+                          strokeWidth: 8,
+                          backgroundColor: const Color(0xFFE2E8F0),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            completion == 100 ? AppTheme.success : AppTheme.warning,
+                          ),
+                        ),
+                        Text(
+                          '${(_animation.value * completion).round()}%',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1E293B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Profile Completion',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      completion == 100 
+                          ? 'Your profile is complete!' 
+                          : 'Complete your profile to get more jobs',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getAadhaarStatus(Technician tech) {
+    if (tech.aadhaarFrontUrl != null && tech.aadhaarFrontUrl!.isNotEmpty) {
+      return 'verified';
+    }
+    return 'pending';
+  }
+
+  String _getBankStatus(Technician tech) {
+    if (tech.payoutPreference != null && tech.payoutPreference!.isNotEmpty) {
+      return 'verified';
+    }
+    return 'pending';
+  }
+}
+
+class _AnimatedVerificationChip extends StatefulWidget {
+  final String label;
+  final String status;
+  final int index;
+
+  const _AnimatedVerificationChip({
+    required this.label,
+    required this.status,
+    required this.index,
+  });
+
+  @override
+  State<_AnimatedVerificationChip> createState() => _AnimatedVerificationChipState();
+}
+
+class _AnimatedVerificationChipState extends State<_AnimatedVerificationChip>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+    _fadeAnimation = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
+    );
+    Future.delayed(Duration(milliseconds: 100 * widget.index), () {
+      if (mounted) _controller.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Color color;
+    IconData icon;
+    String text;
+
+    switch (widget.status) {
+      case 'verified':
+        color = AppTheme.success;
+        icon = Icons.verified;
+        text = 'Verified';
+        break;
+      case 'pending':
+        color = AppTheme.warning;
+        icon = Icons.pending;
+        text = 'Pending';
+        break;
+      case 'rejected':
+        color = AppTheme.error;
+        icon = Icons.cancel;
+        text = 'Rejected';
+        break;
+      default:
+        color = AppTheme.warning;
+        icon = Icons.pending;
+        text = 'Unknown';
+    }
+
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: ScaleTransition(
+        scale: _scaleAnimation,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 16, color: color),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.label,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                    Text(
+                      text,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: color,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================
+// PART 3: Personal Details
+// ============================================
+class _PersonalDetailsCard extends StatelessWidget {
+  final Technician technician;
+  final VoidCallback onEditTap;
+
+  const _PersonalDetailsCard({
+    required this.technician,
+    required this.onEditTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _PremiumCard(
+      title: 'Personal Details',
+      titleAction: TextButton.icon(
+        onPressed: onEditTap,
+        icon: const Icon(Icons.edit, size: 16),
+        label: const Text('Edit'),
+        style: TextButton.styleFrom(
+          foregroundColor: AppTheme.primaryColor,
+        ),
+      ),
+      child: Column(
+        children: [
+          _DetailRow(icon: Icons.person_outline, label: 'Full Name', value: technician.name.isNotEmpty ? technician.name : '-'),
+          _DetailRow(icon: Icons.phone_outlined, label: 'Phone', value: technician.phone),
+          _DetailRow(icon: Icons.email_outlined, label: 'Email', value: technician.email.isNotEmpty ? technician.email : 'Not set'),
+          _DetailRow(icon: Icons.location_on_outlined, label: 'City/Area', value: technician.district ?? 'Not set'),
+          _DetailRow(icon: Icons.work_outline, label: 'Experience', value: technician.experienceYears != null ? '${technician.experienceYears} years' : 'Not set'),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _DetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryLight,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 18, color: AppTheme.primaryColor),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF94A3B8),
+                  ),
+                ),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================
+// PART 4: Services Offered
+// ============================================
+class _ServicesCard extends StatelessWidget {
+  final Technician technician;
+  final VoidCallback onEditTap;
+
+  const _ServicesCard({
+    required this.technician,
+    required this.onEditTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final services = technician.skills;
+    
+    return _PremiumCard(
+      title: 'Services Offered',
+      titleAction: TextButton.icon(
+        onPressed: onEditTap,
+        icon: const Icon(Icons.edit, size: 16),
+        label: const Text('Edit'),
+        style: TextButton.styleFrom(
+          foregroundColor: AppTheme.primaryColor,
+        ),
+      ),
+      child: services.isEmpty
+          ? const _EmptyState(
+              icon: Icons.build_circle_outlined,
+              message: 'No services added yet',
+              subMessage: 'Add your services to start receiving job requests',
+            )
+          : Column(
+              children: [
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: services.map((service) => _ServiceChip(service: service)).toList(),
+                ),
+                if (technician.basePrice != null) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryLight,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.currency_rupee, size: 20, color: AppTheme.primaryColor),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Starting from ₹${technician.basePrice}',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+    );
+  }
+}
+
+class _ServiceChip extends StatelessWidget {
+  final String service;
+
+  const _ServiceChip({required this.service});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppTheme.primaryColor.withOpacity(0.1),
+            AppTheme.primaryColor.withOpacity(0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
+      ),
+      child: Text(
+        service,
+        style: const TextStyle(
+          fontSize: 13,
+          color: AppTheme.primaryColor,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================
+// PART 5: Earnings Section
+// ============================================
+class _EarningsCard extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _EarningsCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        const Color(0xFF6366F1),
+                        const Color(0xFF8B5CF6),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.account_balance_wallet,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'My Earnings',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'View your earnings and transactions',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 13,
+                          color: const Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.chevron_right,
+                    color: Color(0xFF64748B),
+                    size: 20,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================
+// PART 6: Documents Section
+// ============================================
+class _DocumentsCard extends StatelessWidget {
+  final Technician technician;
+
+  const _DocumentsCard({required this.technician});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasDocuments = (technician.aadhaarFrontUrl != null && technician.aadhaarFrontUrl!.isNotEmpty) ||
+        (technician.profilePhotoUrl != null && technician.profilePhotoUrl!.isNotEmpty);
+
+    return _PremiumCard(
+      title: 'Documents',
+      child: hasDocuments
+          ? Column(
+              children: [
+                if (technician.aadhaarFrontUrl != null && technician.aadhaarFrontUrl!.isNotEmpty)
+                  _DocumentItem(
+                    icon: Icons.badge_outlined,
+                    label: 'Aadhaar Card',
+                    status: 'verified',
+                    onViewTap: () => _viewDocument(context, technician.aadhaarFrontUrl),
+                  ),
+                if (technician.panNumber != null && technician.panNumber!.isNotEmpty)
+                  _DocumentItem(
+                    icon: Icons.article_outlined,
+                    label: 'PAN Card',
+                    status: 'verified',
+                    onViewTap: () {},
+                  ),
+                _DocumentItem(
+                  icon: Icons.person_outline,
+                  label: 'Profile Photo',
+                  status: technician.profilePhotoUrl != null && technician.profilePhotoUrl!.isNotEmpty 
+                      ? 'verified' 
+                      : 'missing',
+                  onViewTap: () => _viewDocument(context, technician.profilePhotoUrl),
+                ),
+              ],
+            )
+          : const _EmptyState(
+              icon: Icons.folder_open_outlined,
+              message: 'No documents uploaded',
+              subMessage: 'Upload your documents to verify your profile',
+            ),
+    );
+  }
+
+  void _viewDocument(BuildContext context, String? url) {
+    if (url == null || url.isEmpty) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FullImageViewScreen(imageUrl: url),
+      ),
+    );
+  }
+}
+
+class _DocumentItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String status;
+  final VoidCallback onViewTap;
+
+  const _DocumentItem({
+    required this.icon,
+    required this.label,
+    required this.status,
+    required this.onViewTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isVerified = status == 'verified';
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isVerified 
+              ? AppTheme.success.withOpacity(0.2) 
+              : AppTheme.warning.withOpacity(0.2),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: isVerified 
+                  ? AppTheme.success.withOpacity(0.1) 
+                  : AppTheme.warning.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              icon,
+              size: 22,
+              color: isVerified ? AppTheme.success : AppTheme.warning,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+                Text(
+                  isVerified ? 'Verified' : 'Not uploaded',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isVerified ? AppTheme.success : AppTheme.warning,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (isVerified)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppTheme.success.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                'View',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppTheme.success,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================
+// PART 6: Bank & Payout Details (MASKED)
+// ============================================
+class _BankDetailsCard extends StatelessWidget {
+  final Technician technician;
+  final VoidCallback onUpdateTap;
+
+  const _BankDetailsCard({
+    required this.technician,
+    required this.onUpdateTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasBankDetails = technician.payoutPreference != null && technician.payoutPreference!.isNotEmpty;
+
+    return _PremiumCard(
+      title: 'Bank & Payout',
+      titleAction: TextButton.icon(
+        onPressed: onUpdateTap,
+        icon: const Icon(Icons.edit, size: 16),
+        label: const Text('Update'),
+        style: TextButton.styleFrom(
+          foregroundColor: AppTheme.primaryColor,
+        ),
+      ),
+      child: hasBankDetails
+          ? Column(
+              children: [
+                _BankInfoRow(
+                  icon: Icons.account_balance,
+                  label: 'Bank Account',
+                  value: _maskAccountNumber(technician.payoutPreference!),
+                  status: 'verified',
+                ),
+                if (technician.panNumber != null && technician.panNumber!.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _BankInfoRow(
+                    icon: Icons.article,
+                    label: 'PAN',
+                    value: _maskPanNumber(technician.panNumber!),
+                    status: 'verified',
+                  ),
+                ],
+              ],
+            )
+          : const _EmptyState(
+              icon: Icons.account_balance_outlined,
+              message: 'No payout method added',
+              subMessage: 'Add your bank details to receive payments',
+            ),
+    );
+  }
+
+  String _maskAccountNumber(String account) {
+    if (account.length <= 4) return account;
+    return '****${account.substring(account.length - 4)}';
+  }
+
+  String _maskPanNumber(String pan) {
+    if (pan.length < 5) return pan;
+    return '${pan.substring(0, 2)}***${pan.substring(pan.length - 3)}';
+  }
+}
+
+class _BankInfoRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final String status;
+
+  const _BankInfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.status,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isVerified = status == 'verified';
+    
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.success.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppTheme.success.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 20, color: AppTheme.success),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF94A3B8),
+                  ),
+                ),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1E293B),
+                    letterSpacing: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: AppTheme.success.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isVerified ? Icons.check : Icons.pending,
+              size: 14,
+              color: AppTheme.success,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================
+// PART 7: Performance Summary
+// ============================================
+class _PerformanceCard extends StatefulWidget {
+  final Technician technician;
+
+  const _PerformanceCard({required this.technician});
+
+  @override
+  State<_PerformanceCard> createState() => _PerformanceCardState();
+}
+
+class _PerformanceCardState extends State<_PerformanceCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    );
+    _animation = CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  int _calculateCompletionRate(Technician tech) {
+    if (tech.jobsDone > 0) {
+      return 95;
+    }
+    return 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _PremiumCard(
+      title: 'Performance',
+      child: Row(
+        children: [
+          Expanded(
+            child: _AnimatedStatItem(
+              animation: _animation,
+              icon: Icons.check_circle_outline,
+              label: 'Jobs Done',
+              value: widget.technician.jobsDone,
+              color: AppTheme.primaryColor,
+              index: 0,
+            ),
+          ),
+          Expanded(
+            child: _AnimatedStatItem(
+              animation: _animation,
+              icon: Icons.star_outline,
+              label: 'Avg Rating',
+              value: widget.technician.avgRating,
+              isDecimal: true,
+              color: const Color(0xFFF59E0B),
+              index: 1,
+            ),
+          ),
+          Expanded(
+            child: _AnimatedStatItem(
+              animation: _animation,
+              icon: Icons.thumb_up_outlined,
+              label: 'Completion',
+              value: _calculateCompletionRate(widget.technician),
+              suffix: '%',
+              color: AppTheme.success,
+              index: 2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnimatedStatItem extends StatelessWidget {
+  final Animation<double> animation;
+  final IconData icon;
+  final String label;
+  final dynamic value;
+  final String? suffix;
+  final Color color;
+  final int index;
+  final bool isDecimal;
+
+  const _AnimatedStatItem({
+    required this.animation,
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.suffix,
+    required this.color,
+    required this.index,
+    this.isDecimal = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        final animatedValue = isDecimal
+            ? (animation.value * (value as double)).toStringAsFixed(1)
+            : '${(animation.value * (value as int)).round()}${suffix ?? ''}';
+        
+        return Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 24, color: color),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              animatedValue,
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                color: Color(0xFF94A3B8),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ============================================
+// PART 8: Availability / Working Hours
+// ============================================
+class _AvailabilityCard extends StatelessWidget {
+  final Technician technician;
+  final VoidCallback onEditTap;
+
+  const _AvailabilityCard({
+    required this.technician,
+    required this.onEditTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasWorkHours = technician.workStartTime != null && technician.workEndTime != null;
+    
+    return _PremiumCard(
+      title: 'Availability',
+      titleAction: TextButton.icon(
+        onPressed: onEditTap,
+        icon: const Icon(Icons.edit, size: 16),
+        label: const Text('Edit'),
+        style: TextButton.styleFrom(
+          foregroundColor: AppTheme.primaryColor,
+        ),
+      ),
+      child: hasWorkHours
+          ? Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppTheme.success.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppTheme.success.withOpacity(0.2)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppTheme.success.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.access_time, size: 22, color: AppTheme.success),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${_formatTime(technician.workStartTime!)} - ${_formatTime(technician.workEndTime!)}',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1E293B),
+                              ),
+                            ),
+                            const Text(
+                              'Working Hours',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppTheme.success,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Text(
+                          'Available',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (technician.emergencyServiceAvailable) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.flash_on, size: 20, color: Color(0xFFF59E0B)),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Emergency Service Available',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF92400E),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            )
+          : const _EmptyState(
+              icon: Icons.schedule_outlined,
+              message: 'No working hours set',
+              subMessage: 'Set your availability to start receiving jobs',
+            ),
+    );
+  }
+
+  String _formatTime(TimeOfDay time) {
+    final hour = time.hour.toString().padLeft(2, '0');
+    final minute = time.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+}
+
+// ============================================
+// PART 9: Support & Help
+// ============================================
+class _SupportSection extends StatelessWidget {
+  final VoidCallback onHelpCenterTap;
+  final VoidCallback onRaiseDisputeTap;
+  final VoidCallback onContactSupportTap;
+  final VoidCallback onFaqsTap;
+
+  const _SupportSection({
+    required this.onHelpCenterTap,
+    required this.onRaiseDisputeTap,
+    required this.onContactSupportTap,
+    required this.onFaqsTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _PremiumCard(
+      title: 'Support & Help',
+      child: Column(
+        children: [
+          _SupportItem(
+            icon: Icons.help_outline,
+            label: 'Help Center',
+            onTap: onHelpCenterTap,
+          ),
+          _SupportItem(
+            icon: Icons.gavel_outlined,
+            label: 'Raise Dispute',
+            onTap: onRaiseDisputeTap,
+          ),
+          _SupportItem(
+            icon: Icons.support_agent_outlined,
+            label: 'Contact Support',
+            onTap: onContactSupportTap,
+          ),
+          _SupportItem(
+            icon: Icons.quiz_outlined,
+            label: 'FAQs',
+            onTap: onFaqsTap,
+            showDivider: false,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SupportItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool showDivider;
+
+  const _SupportItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.showDivider = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(icon, size: 20, color: const Color(0xFF64748B)),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        color: Color(0xFF1E293B),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right,
+                    size: 22,
+                    color: Color(0xFF94A3B8),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (showDivider)
+          const Divider(height: 1, indent: 56),
+      ],
+    );
+  }
+}
+
+// ============================================
+// PART 10: App Settings
+// ============================================
+class _SettingsSection extends StatelessWidget {
+  final bool notificationsEnabled;
+  final ValueChanged<bool> onNotificationsChanged;
+  final VoidCallback onLogoutTap;
+  final bool isLoggingOut;
+
+  const _SettingsSection({
+    required this.notificationsEnabled,
+    required this.onNotificationsChanged,
+    required this.onLogoutTap,
+    required this.isLoggingOut,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _PremiumCard(
+      title: 'Settings',
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.notifications_outlined, size: 20, color: Color(0xFF64748B)),
+                ),
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Text(
+                    'Notifications',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                ),
+                Switch(
+                  value: notificationsEnabled,
+                  onChanged: onNotificationsChanged,
+                  activeColor: AppTheme.primaryColor,
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 20),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: isLoggingOut ? null : onLogoutTap,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.error.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(Icons.logout, size: 20, color: AppTheme.error),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        isLoggingOut ? 'Logging out...' : 'Logout',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: AppTheme.error,
+                        ),
+                      ),
+                    ),
+                    if (isLoggingOut)
+                      const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================
+// Premium Card Widget
+// ============================================
+class _PremiumCard extends StatelessWidget {
+  final String title;
+  final Widget? titleAction;
+  final Widget child;
+
+  const _PremiumCard({
+    required this.title,
+    this.titleAction,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+              if (titleAction != null) titleAction!,
+            ],
+          ),
+          const SizedBox(height: 16),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================
+// Premium Empty State
+// ============================================
+class _EmptyState extends StatelessWidget {
+  final IconData icon;
+  final String message;
+  final String subMessage;
+
+  const _EmptyState({
+    required this.icon,
+    required this.message,
+    required this.subMessage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFFE2E8F0),
+          style: BorderStyle.solid,
+        ),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE2E8F0).withOpacity(0.5),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              size: 32,
+              color: const Color(0xFF94A3B8),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            message,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subMessage,
+            style: const TextStyle(
+              fontSize: 13,
+              color: Color(0xFF94A3B8),
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================
+// PART 9: Premium Logout Bottom Sheet
+// ============================================
+class _LogoutBottomSheet extends StatelessWidget {
+  const _LogoutBottomSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle bar
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE2E8F0),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Warning icon
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.error.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.logout,
+                size: 32,
+                color: AppTheme.error,
+              ),
+            ),
+            const SizedBox(height: 20),
+            // Title
+            const Text(
+              'Confirm Logout',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1E293B),
+              ),
+            ),
+            const SizedBox(height: 8),
+            // Message
+            const Text(
+              'Are you sure you want to logout? You will need to login again to access your account.',
+              style: TextStyle(
+                fontSize: 14,
+                color: Color(0xFF64748B),
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 28),
+            // Buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      side: const BorderSide(color: Color(0xFFE2E8F0)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.error,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text(
+                      'Logout',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================
+// PART 6: Premium Shimmer Loading
+// ============================================
+class _PremiumProfileShimmer extends StatelessWidget {
+  const _PremiumProfileShimmer();
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          // Header shimmer
+          Shimmer.fromColors(
+            baseColor: Colors.grey[300]!,
+            highlightColor: Colors.grey[100]!,
+            child: Container(
+              height: 180,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+              ),
+            ),
+          ),
+          const SizedBox(height: 70),
+          // Verification shimmer
+          Shimmer.fromColors(
+            baseColor: Colors.grey[300]!,
+            highlightColor: Colors.grey[100]!,
+            child: Container(
+              height: 180,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Details shimmer
+          Shimmer.fromColors(
+            baseColor: Colors.grey[300]!,
+            highlightColor: Colors.grey[100]!,
+            child: Container(
+              height: 220,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Services shimmer
+          Shimmer.fromColors(
+            baseColor: Colors.grey[300]!,
+            highlightColor: Colors.grey[100]!,
+            child: Container(
+              height: 140,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Documents shimmer
+          Shimmer.fromColors(
+            baseColor: Colors.grey[300]!,
+            highlightColor: Colors.grey[100]!,
+            child: Container(
+              height: 180,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Bank shimmer
+          Shimmer.fromColors(
+            baseColor: Colors.grey[300]!,
+            highlightColor: Colors.grey[100]!,
+            child: Container(
+              height: 120,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================
+// Placeholder screens for navigation
+// ============================================
+
+class FullImageViewScreen extends StatelessWidget {
+  final String imageUrl;
+  
+  const FullImageViewScreen({super.key, required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          child: SafeNetworkImage(
+            imageUrl: imageUrl,
+            fit: BoxFit.contain,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class EditProfileScreen extends StatelessWidget {
+  const EditProfileScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Edit Profile'),
+      ),
+      body: const Center(
+        child: Text('Edit Profile Screen - Use existing screens'),
+      ),
+    );
+  }
+}
+
+class EditAvailabilityScreen extends StatelessWidget {
+  const EditAvailabilityScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Edit Availability'),
+      ),
+      body: const Center(
+        child: Text('Edit Availability Screen - Use existing screens'),
+      ),
+    );
+  }
+}
+
+class EditBankDetailsScreen extends StatelessWidget {
+  const EditBankDetailsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Update Bank Details'),
+      ),
+      body: const Center(
+        child: Text('Update Bank Details Screen - Use existing screens'),
+      ),
+    );
+  }
+}
+
+class HelpCenterScreen extends StatelessWidget {
+  const HelpCenterScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Help Center'),
+      ),
+      body: const Center(
+        child: Text('Help Center Screen'),
+      ),
+    );
+  }
+}
+
+class RaiseDisputeScreen extends StatelessWidget {
+  const RaiseDisputeScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Raise Dispute'),
+      ),
+      body: const Center(
+        child: Text('Raise Dispute Screen'),
+      ),
+    );
+  }
+}
+
+class ContactSupportScreen extends StatelessWidget {
+  const ContactSupportScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Contact Support'),
+      ),
+      body: const Center(
+        child: Text('Contact Support Screen'),
+      ),
+    );
+  }
+}
+
+class FaqsScreen extends StatelessWidget {
+  const FaqsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('FAQs'),
+      ),
+      body: const Center(
+        child: Text('FAQs Screen'),
+      ),
+    );
+  }
+}

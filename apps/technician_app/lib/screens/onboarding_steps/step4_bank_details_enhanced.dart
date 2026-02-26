@@ -86,7 +86,7 @@ class _Step4BankDetailsEnhancedState extends State<Step4BankDetailsEnhanced> {
     return null;
   }
 
-  String? _validateAccountMatch() {
+  String? _validateAccountMatch(String? value) {
     if (_accountNumberController.text.isEmpty || _confirmAccountController.text.isEmpty) {
       return null;
     }

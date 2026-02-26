@@ -76,12 +76,51 @@ export const approveTechnician = functions.https.onCall(async (data, context) =>
         const techDoc = await techRef.get();
         if (!techDoc.exists) throw new functions.https.HttpsError('not-found', 'Technician not found');
 
-        await techRef.update({
-            status: approve ? 'approved' : 'suspended',
-            isVerified: approve,
-            rejectionReason: !approve ? reason : admin.firestore.FieldValue.delete(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
+        console.log('[ADMIN APPROVAL] Processing approval for:', techId, 'approve:', approve);
+
+        if (approve) {
+            // APPROVE: Set ALL required fields for technician activation
+            await techRef.update({
+                // Primary approval flags
+                isApproved: true,              // Required by technician app
+                adminApproved: true,           // Required by technician app
+                isVerified: true,              // Legacy compatibility
+                
+                // Status fields
+                status: 'approved',            // Main status
+                kycStatus: 'approved',         // KYC-specific status
+                
+                // Activation
+                isActive: true,                // Allow going online
+                
+                // Metadata
+                approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+                approvedBy: context.auth!.uid,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                
+                // Clear rejection fields
+                rejectionReason: admin.firestore.FieldValue.delete()
+            });
+
+            console.log('[ADMIN APPROVAL] ✅ Technician approved and activated:', techId);
+        } else {
+            // REJECT/SUSPEND: Clear approval flags
+            await techRef.update({
+                status: 'suspended',
+                isApproved: false,
+                adminApproved: false,
+                isVerified: false,
+                isActive: false,
+                isOnline: false,               // Force offline
+                kycStatus: 'rejected',
+                rejectionReason: reason || 'Not specified',
+                rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
+                rejectedBy: context.auth!.uid,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            console.log('[ADMIN APPROVAL] ❌ Technician suspended:', techId);
+        }
 
         await logAdminAction(context.auth!.uid, approve ? 'tech_approve' : 'tech_suspend', techId, { reason });
         return { success: true };
@@ -151,11 +190,16 @@ export const updateTechServices = functions.https.onCall(async (data, context) =
 export const getTechnicians = functions.https.onCall(async (data, context) => {
     try {
         await assertAdmin(context);
-        const { limit = 10, offset = 0, status, search, city } = data;
+        const { limit = 10, offset = 0, status, search, city, kycPending } = data;
 
         let query: admin.firestore.Query = db.collection('technicians');
 
-        if (status) {
+        // Filter for pending KYC submissions
+        if (kycPending === true) {
+            query = query
+                .where('isKycComplete', '==', true)
+                .where('kycStatus', '==', 'pending');
+        } else if (status) {
             query = query.where('status', '==', status);
         }
 
@@ -170,6 +214,7 @@ export const getTechnicians = functions.https.onCall(async (data, context) => {
             const lowerSearch = search.toLowerCase();
             techs = techs.filter((t: any) =>
                 t.name?.toLowerCase().includes(lowerSearch) ||
+                t.fullName?.toLowerCase().includes(lowerSearch) ||
                 t.email?.toLowerCase().includes(lowerSearch) ||
                 t.phone?.includes(search) ||
                 t.id.includes(search)
@@ -178,6 +223,8 @@ export const getTechnicians = functions.https.onCall(async (data, context) => {
 
         const total = techs.length;
         const paginatedTechs = techs.slice(offset, offset + limit);
+
+        console.log('[ADMIN PIPELINE] Loaded', paginatedTechs.length, 'technicians (total:', total, ')');
 
         return {
             techs: paginatedTechs,
@@ -218,9 +265,17 @@ export const getTechnicianById = functions.https.onCall(async (data, context) =>
             .get();
         const jobHistory = jobsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-        // Fetch application documents if available
-        const appDoc = await db.collection('technician_applications').doc(techId).get();
-        const documents = appDoc.exists ? appDoc.data()?.documents : null;
+        // Extract KYC documents from technician document itself
+        const documents: Record<string, string> = {};
+        if (techData.aadhaarFrontUrl) {
+            documents['Aadhaar Front'] = techData.aadhaarFrontUrl;
+        }
+        if (techData.aadhaarBackUrl) {
+            documents['Aadhaar Back'] = techData.aadhaarBackUrl;
+        }
+        if (techData.profilePhotoUrl) {
+            documents['Profile Photo'] = techData.profilePhotoUrl;
+        }
 
         // Fetch ratings & reviews (last 5)
         const reviewsSnap = await db.collection('reviews')
@@ -229,6 +284,8 @@ export const getTechnicianById = functions.https.onCall(async (data, context) =>
             .limit(5)
             .get();
         const reviews = reviewsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        console.log('[ADMIN PIPELINE] Loaded technician details with', Object.keys(documents).length, 'documents');
 
         return {
             ...techData,

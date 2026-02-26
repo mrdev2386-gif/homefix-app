@@ -964,13 +964,9 @@ export const getMyTechnicianServices = onCall(
 
         console.log(`[TECH_SERVICE] Fetching services for technician: ${technicianId}`);
 
-        // 2. Get all active, published and approved services for this technician
+        // 2. Get all active services for this technician (including inactive for management)
         const servicesSnapshot = await db.collection('technician_services')
             .where('technicianId', '==', technicianId)
-            .where('isActive', '==', true)
-            .where('status', '==', 'active')
-            .where('isPublished', '==', true)
-            .where('technicianApproved', '==', true)
             .orderBy('createdAt', 'desc')
             .get();
 
@@ -990,6 +986,85 @@ export const getMyTechnicianServices = onCall(
             success: true,
             services: services,
             count: services.length
+        };
+    }
+);
+
+/**
+ * Toggle Technician Service Status
+ * Allows technicians to toggle their service active/inactive status
+ */
+export const toggleTechnicianServiceStatus = onCall(
+    {
+        region: "us-central1",
+        cpu: 1,
+        memory: "256MiB",
+        timeoutSeconds: 30,
+        maxInstances: 5
+    },
+    async (request: CallableRequest<{
+        serviceId: string;
+    }>) => {
+        // 1. Authentication check
+        if (!request.auth) {
+            throw new https.HttpsError(
+                "unauthenticated",
+                "User must be authenticated to toggle service status"
+            );
+        }
+
+        const technicianId = request.auth.uid;
+        const { serviceId } = request.data;
+
+        if (!serviceId) {
+            throw new https.HttpsError("invalid-argument", "Service ID is required");
+        }
+
+        console.log(`[TECH_SERVICE] Toggling service ${serviceId} for technician: ${technicianId}`);
+
+        // 1.1 Check if technician exists
+        const techDoc = await db.collection('technicians').doc(technicianId).get();
+        if (!techDoc.exists) {
+            throw new https.HttpsError(
+                "not-found",
+                "Technician profile not found"
+            );
+        }
+
+        // 2. Get the existing service
+        const serviceDoc = await db.collection('technician_services').doc(serviceId).get();
+
+        if (!serviceDoc.exists) {
+            throw new https.HttpsError("not-found", "Service not found");
+        }
+
+        const serviceData = serviceDoc.data()!;
+
+        // 3. Security check - only owner can toggle
+        if (serviceData.technicianId !== technicianId) {
+            console.log(`[TECH_SERVICE] Unauthorized toggle attempt by ${technicianId}`);
+            throw new https.HttpsError(
+                "permission-denied",
+                "You can only toggle your own services"
+            );
+        }
+
+        // 4. Toggle the isActive status
+        const currentStatus = serviceData.isActive ?? true;
+        const newStatus = !currentStatus;
+
+        await db.collection('technician_services').doc(serviceId).update({
+            isActive: newStatus,
+            updatedAt: admin.firestore.Timestamp.now()
+        });
+
+        console.log(`[TECH_SERVICE] Service ${serviceId} toggled from ${currentStatus} to ${newStatus}`);
+
+        return {
+            success: true,
+            serviceId: serviceId,
+            isActive: newStatus,
+            message: newStatus ? 'Service activated' : 'Service deactivated'
         };
     }
 );

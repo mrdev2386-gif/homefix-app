@@ -74,3 +74,79 @@ export const adjustWallet = functions.https.onCall(async (data, context) => {
     await logAdminAction(context.auth!.uid, `wallet_${type}`, userId, { amount, reason });
     return { success: true };
 });
+
+/**
+ * Process a booking payout - marks it as completed
+ * Requirements: 4.2, 4.3, 15.1, 15.4, 15.8, 16.1, 16.5, 16.6
+ */
+export const processBookingPayout = functions.https.onCall(async (data, context) => {
+    // Verify admin authentication
+    await assertAdmin(context);
+
+    const { payoutId } = data;
+
+    // Validate input
+    if (!payoutId) {
+        throw new functions.https.HttpsError('invalid-argument', 'payoutId is required');
+    }
+
+    try {
+        // Use transaction to ensure atomicity
+        const result = await db.runTransaction(async (transaction) => {
+            const payoutRef = db.collection('bookingPayouts').doc(payoutId);
+            const payoutDoc = await transaction.get(payoutRef);
+
+            // Validate payout exists
+            if (!payoutDoc.exists) {
+                throw new Error('Payout not found');
+            }
+
+            const payoutData = payoutDoc.data()!;
+
+            // Validate payout status is pending
+            if (payoutData.status !== 'pending') {
+                throw new Error(`Payout is not in pending status. Current status: ${payoutData.status}`);
+            }
+
+            // Update payout status to completed
+            transaction.update(payoutRef, {
+                status: 'completed',
+                paidAt: admin.firestore.FieldValue.serverTimestamp(),
+                processedBy: context.auth!.uid
+            });
+
+            // Create audit log entry atomically
+            const auditLogRef = db.collection('auditLogs').doc();
+            transaction.set(auditLogRef, {
+                adminId: context.auth!.uid,
+                adminName: context.auth!.token.name || 'Unknown Admin',
+                adminEmail: context.auth!.token.email || '',
+                actionType: 'payout_processed',
+                entityType: 'booking_payout',
+                entityId: payoutId,
+                metadata: {
+                    bookingId: payoutData.bookingId,
+                    technicianId: payoutData.technicianId,
+                    technicianName: payoutData.technicianName,
+                    amount: payoutData.technicianEarning,
+                    bookingAmount: payoutData.bookingAmount,
+                    platformCommission: payoutData.platformCommissionAmount
+                },
+                ipAddress: context.rawRequest?.ip || 'unknown',
+                userAgent: context.rawRequest?.headers['user-agent'] || 'unknown',
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            return payoutData;
+        });
+
+        return {
+            success: true,
+            message: 'Payout processed successfully',
+            payout: result
+        };
+    } catch (error: any) {
+        console.error('[processBookingPayout] Error:', error);
+        throw new functions.https.HttpsError('internal', error.message || 'Failed to process payout');
+    }
+});

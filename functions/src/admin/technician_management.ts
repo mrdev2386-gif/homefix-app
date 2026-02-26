@@ -51,44 +51,114 @@ export const approveKYC = functions.https.onCall(async (data, context) => {
 });
 
 export const approveTechnician = functions.https.onCall(async (data, context) => {
-    await assertAdmin(context);
-    const { technicianId } = data;
+    try {
+        console.log('[ADMIN APPROVAL] Raw incoming data:', JSON.stringify(data));
+        console.log('[ADMIN APPROVAL] Context auth:', context.auth?.uid);
+        
+        await assertAdmin(context);
+        
+        // Handle both techId and technicianId parameter names
+        const technicianId = data?.techId || data?.technicianId;
+        const approve = data?.approve !== undefined ? data.approve : true;
+        const reason = data?.reason;
+        
+        console.log('[ADMIN APPROVAL] Extracted values:', {
+            technicianId,
+            approve,
+            reason,
+            originalData: data
+        });
+        
+        if (!technicianId || technicianId.trim() === '') {
+            console.error('[ADMIN APPROVAL] Invalid technicianId:', technicianId);
+            throw new functions.https.HttpsError('invalid-argument', 'Missing or empty technician ID (techId or technicianId)');
+        }
 
-    const appDoc = await db.collection('technicianApplications').doc(technicianId).get();
-    if (!appDoc.exists || appDoc.data()!.status !== 'submitted') {
-        throw new functions.https.HttpsError('failed-precondition', 'Application not in submitted state');
+        console.log('[ADMIN APPROVAL] Processing for technicianId:', technicianId, 'approve:', approve);
+
+        const techRef = db.collection('technicians').doc(technicianId);
+        const techDoc = await techRef.get();
+        
+        if (!techDoc.exists) {
+            console.error('[ADMIN APPROVAL] Technician not found:', technicianId);
+            throw new functions.https.HttpsError('not-found', 'Technician not found');
+        }
+
+        if (approve) {
+            // APPROVE: Set ALL required fields for technician activation
+            await techRef.update({
+                // Primary approval flags
+                isApproved: true,              // Required by technician app
+                adminApproved: true,           // Required by technician app
+                isVerified: true,              // Legacy compatibility
+                
+                // Status fields
+                status: 'approved',            // Main status
+                kycStatus: 'approved',         // KYC-specific status
+                
+                // Activation
+                isActive: true,                // Allow going online
+                
+                // Metadata
+                approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+                approvedBy: context.auth!.uid,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                
+                // Clear rejection fields
+                rejectionReason: admin.firestore.FieldValue.delete(),
+                suspensionReason: admin.firestore.FieldValue.delete()
+            });
+
+            console.log('[ADMIN APPROVAL] ✅ Technician approved and activated:', technicianId);
+
+            await sendPushNotification(technicianId, 'technicians', {
+                title: 'Welcome to HomeFix!',
+                body: 'Your profile has been approved. You can now go online and accept bookings.',
+                data: { type: 'profile_status', status: 'approved' }
+            });
+        } else {
+            // REJECT/SUSPEND: Clear approval flags
+            await techRef.update({
+                status: 'suspended',
+                isApproved: false,
+                adminApproved: false,
+                isVerified: false,
+                isActive: false,
+                isOnline: false,               // Force offline
+                kycStatus: 'rejected',
+                rejectionReason: reason || 'Not specified',
+                rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
+                rejectedBy: context.auth!.uid,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            console.log('[ADMIN APPROVAL] ❌ Technician suspended:', technicianId);
+
+            await sendPushNotification(technicianId, 'technicians', {
+                title: 'Profile Status Update',
+                body: reason || 'Your profile has been suspended. Contact support for details.',
+                data: { type: 'profile_status', status: 'suspended' }
+            });
+        }
+
+        return { success: true };
+    } catch (error: any) {
+        console.error('[ADMIN APPROVAL ❌] Full error details:', {
+            message: error?.message,
+            stack: error?.stack,
+            data: error?.data,
+            code: error?.code
+        });
+        
+        if (error instanceof functions.https.HttpsError) {
+            throw error;
+        }
+        
+        throw new functions.https.HttpsError(
+            'internal',
+            error?.message || 'Approval failed'
+        );
     }
-
-    const batch = db.batch();
-    const techRef = db.collection('technicians').doc(technicianId);
-    const appRef = db.collection('technicianApplications').doc(technicianId);
-
-    // Update Technician Status
-    batch.update(techRef, {
-        status: 'approved',
-        isActive: true, // Auto-activate or let tech do it? Design: "approved + active".
-        approvedBy: context.auth!.uid,
-        approvedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
-
-    // Update Application Status
-    batch.update(appRef, {
-        status: 'approved',
-        approvedBy: context.auth!.uid,
-        approvedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
-
-    await batch.commit();
-
-    await sendPushNotification(technicianId, 'technicians', {
-        title: 'Welcome to HomeFix!',
-        body: 'Your profile has been approved. You can now go online and accept bookings.',
-        data: { type: 'profile_status', status: 'approved' }
-    });
-
-    return { success: true };
 });
 
 export const suspendTechnician = functions.https.onCall(async (data, context) => {

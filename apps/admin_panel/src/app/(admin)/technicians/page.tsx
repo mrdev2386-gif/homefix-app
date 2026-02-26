@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
@@ -27,6 +26,7 @@ export default function TechniciansPage() {
     const [limit] = useState(10);
     const [statusFilter, setStatusFilter] = useState('');
     const [cityFilter, setCityFilter] = useState('');
+    const [showPendingKyc, setShowPendingKyc] = useState(false);
 
     const fetchTechs = useCallback(async () => {
         setLoading(true);
@@ -36,7 +36,8 @@ export default function TechniciansPage() {
                 offset: (page - 1) * limit,
                 search: searchTerm,
                 status: statusFilter || undefined,
-                city: cityFilter || undefined
+                city: cityFilter || undefined,
+                kycPending: showPendingKyc || undefined
             });
             setTechs(data.techs);
             setTotal(data.total);
@@ -45,7 +46,7 @@ export default function TechniciansPage() {
         } finally {
             setLoading(false);
         }
-    }, [page, limit, searchTerm, statusFilter, cityFilter]);
+    }, [page, limit, searchTerm, statusFilter, cityFilter, showPendingKyc]);
 
     useEffect(() => {
         const timeout = setTimeout(fetchTechs, 500);
@@ -56,6 +57,8 @@ export default function TechniciansPage() {
         const action = approve ? 'verify' : 'suspend';
         if (!confirm(`Are you sure you want to ${action} this technician?`)) return;
 
+        console.log('[ADMIN APPROVAL] Calling approve for uid:', techId, 'approve:', approve);
+        
         setProcessingId(techId);
         const previousTechs = [...techs];
 
@@ -64,8 +67,9 @@ export default function TechniciansPage() {
 
         try {
             await adminApi.approveTechnician(techId, approve);
+            console.log('[ADMIN APPROVAL] Success for uid:', techId);
         } catch (e: any) {
-            console.error('Action failed:', e);
+            console.error('[ADMIN PANEL ❌]', e);
             setTechs(previousTechs);
             alert(`Action failed: ${e.message}`);
         } finally {
@@ -204,6 +208,22 @@ export default function TechniciansPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
+                    <Button
+                        variant={showPendingKyc ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => {
+                            setShowPendingKyc(!showPendingKyc);
+                            if (!showPendingKyc) setStatusFilter('');
+                        }}
+                        className={`h-12 rounded-xl font-black uppercase tracking-widest text-[10px] px-6 ${
+                            showPendingKyc 
+                                ? 'bg-amber-500 text-white hover:bg-amber-400 border-none shadow-lg shadow-amber-500/20' 
+                                : 'border-slate-800 bg-slate-900/50 text-slate-400 hover:text-white'
+                        }`}
+                    >
+                        {showPendingKyc ? '✅ Showing Pending KYC' : '📋 Show Pending KYC'}
+                    </Button>
+
                     <div className="flex items-center gap-2 bg-slate-900/50 border border-slate-800 rounded-xl px-3 h-12">
                         <Filter size={14} className="text-slate-500" />
                         <select

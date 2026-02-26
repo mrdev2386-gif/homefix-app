@@ -1,223 +1,297 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, limit, startAfter, where, getDocs, QueryDocumentSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { adminApi } from '@/lib/admin-api';
-import {
-    Star, MessageSquare, User, Wrench, Calendar, Search,
-    Trash2, Flag, AlertTriangle, Tag, MoreHorizontal,
-    Activity, ShieldCheck, Filter, ArrowUpRight
-} from 'lucide-react';
-import { Card, CardHeader, CardContent } from '@/components/ui/Card';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '@/lib/firebase';
+import { Star, Search, Eye, EyeOff, Flag, XCircle, User, Wrench, Calendar, AlertTriangle } from 'lucide-react';
+import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 
+const LIMIT = 20;
+
 export default function ReviewsPage() {
     const [reviews, setReviews] = useState<any[]>([]);
-    const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
     const [ratingFilter, setRatingFilter] = useState<number | null>(null);
+    const [statusFilter, setStatusFilter] = useState<string>('all');
+    const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot | null>(null);
+    const [hasMore, setHasMore] = useState(true);
     const [processingId, setProcessingId] = useState<string | null>(null);
+    const [selectedReview, setSelectedReview] = useState<any>(null);
+
+    const fetchReviews = async (isLoadMore = false) => {
+        try {
+            setLoading(true);
+            let q = query(collection(db, 'reviews'), orderBy('createdAt', 'desc'), limit(LIMIT));
+
+            if (ratingFilter) q = query(q, where('rating', '==', ratingFilter));
+            if (statusFilter === 'hidden') q = query(q, where('isHidden', '==', true));
+            if (statusFilter === 'flagged') q = query(q, where('isFlagged', '==', true));
+            if (statusFilter === 'visible') q = query(q, where('isHidden', '==', false));
+            if (isLoadMore && lastDoc) q = query(q, startAfter(lastDoc));
+
+            const snap = await getDocs(q);
+            const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            setReviews(isLoadMore ? [...reviews, ...data] : data);
+            setLastDoc(snap.docs[snap.docs.length - 1] || null);
+            setHasMore(snap.docs.length === LIMIT);
+        } catch (e) {
+            console.error('Fetch reviews error:', e);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
-        const q = query(collection(db, 'reviews'), orderBy('createdAt', 'desc'));
-        const unsubscribe = onSnapshot(q, (snap) => {
-            setReviews(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, []);
+        fetchReviews();
+    }, [ratingFilter, statusFilter]);
 
-    const filteredReviews = reviews.filter(r => {
-        const matchesSearch =
-            r.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            r.technicianId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            r.reviewText?.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesRating = ratingFilter ? r.rating === ratingFilter : true;
-        return matchesSearch && matchesRating;
-    });
-
-    const handleDeleteReview = async (id: string) => {
-        if (!confirm('Are you sure you want to soft-delete this review?')) return;
-        setProcessingId(id);
+    const handleAction = async (reviewId: string, action: string) => {
+        if (!confirm(`Confirm ${action} action?`)) return;
+        setProcessingId(reviewId);
         try {
-            await adminApi.manageReview(id, 'hide');
+            const fn = httpsCallable(functions, 'admin_manageReview');
+            await fn({ reviewId, action });
+            await fetchReviews();
         } catch (e: any) {
-            console.error(e);
             alert(`Failed: ${e.message}`);
         } finally {
             setProcessingId(null);
         }
     };
 
-    const handleFlagReview = async (id: string) => {
-        setProcessingId(id);
-        try {
-            await adminApi.manageReview(id, 'flag');
-        } catch (e: any) {
-            console.error(e);
-            alert(`Failed: ${e.message}`);
-        } finally {
-            setProcessingId(null);
-        }
-    };
+    const filteredReviews = reviews.filter(r =>
+        r.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.technicianName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.reviewText?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
     return (
-        <div className="space-y-8 max-w-[1400px] mx-auto">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="space-y-6 max-w-[1400px] mx-auto">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-4xl font-black text-white tracking-tight leading-tight uppercase">Feedback Ledger</h1>
-                    <div className="flex items-center gap-2 mt-1">
-                        <p className="text-slate-500 text-sm font-medium">Moderate and monitor platform service quality standards.</p>
-                        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-500/10 text-amber-400 rounded-md border border-amber-500/20 text-[10px] font-black uppercase tracking-widest">
-                            <Star size={10} className="fill-amber-400" />
-                            {reviews.length} Total Logs
-                        </div>
-                    </div>
+                    <h1 className="text-3xl font-black text-white uppercase">Reviews</h1>
+                    <p className="text-slate-500 text-sm">Moderate customer feedback</p>
                 </div>
-
-                <div className="flex items-center gap-4">
-                    <div className="relative w-full md:w-80 group">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 h-4 w-4 group-focus-within:text-indigo-400 transition-colors" />
-                        <Input
-                            placeholder="Identify customer or agent..."
-                            className="pl-10 bg-slate-900/50 border-slate-800 text-slate-200 placeholder:text-slate-600 rounded-xl h-12 focus:ring-indigo-500/50"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
-                    </div>
+                <div className="relative w-full md:w-80">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 h-4 w-4" />
+                    <Input
+                        placeholder="Search reviews..."
+                        className="pl-10 bg-slate-900/50 border-slate-800"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
                 </div>
             </div>
 
-            <div className="space-y-6">
-                <div className="flex items-center gap-2 p-1 bg-slate-900/50 border border-slate-800 rounded-2xl w-fit">
-                    <button
-                        onClick={() => setRatingFilter(null)}
-                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${ratingFilter === null ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'
-                            }`}
+            <div className="flex gap-2 flex-wrap">
+                <Button
+                    variant={statusFilter === 'all' ? 'default' : 'outline'}
+                    onClick={() => setStatusFilter('all')}
+                    className="text-xs"
+                >
+                    All
+                </Button>
+                <Button
+                    variant={statusFilter === 'visible' ? 'default' : 'outline'}
+                    onClick={() => setStatusFilter('visible')}
+                    className="text-xs"
+                >
+                    Visible
+                </Button>
+                <Button
+                    variant={statusFilter === 'hidden' ? 'default' : 'outline'}
+                    onClick={() => setStatusFilter('hidden')}
+                    className="text-xs"
+                >
+                    Hidden
+                </Button>
+                <Button
+                    variant={statusFilter === 'flagged' ? 'default' : 'outline'}
+                    onClick={() => setStatusFilter('flagged')}
+                    className="text-xs"
+                >
+                    Flagged
+                </Button>
+                <div className="h-6 w-px bg-slate-800 mx-2" />
+                {[5, 4, 3, 2, 1].map(star => (
+                    <Button
+                        key={star}
+                        variant={ratingFilter === star ? 'default' : 'outline'}
+                        onClick={() => setRatingFilter(ratingFilter === star ? null : star)}
+                        className="text-xs"
                     >
-                        All Grades
-                    </button>
-                    {[5, 4, 3, 2, 1].map(star => (
-                        <button
-                            key={star}
-                            onClick={() => setRatingFilter(ratingFilter === star ? null : star)}
-                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${ratingFilter === star ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'
-                                }`}
-                        >
-                            {star} <Star size={10} className={ratingFilter === star ? 'fill-white' : 'fill-currentColor'} />
-                        </button>
-                    ))}
-                </div>
+                        {star} <Star size={12} className="ml-1" />
+                    </Button>
+                ))}
+            </div>
 
-                <div className="grid grid-cols-1 gap-4">
-                    {loading ? (
-                        [1, 2, 3].map(i => (
-                            <div key={i} className="h-48 rounded-3xl bg-slate-900/50 border border-slate-800 animate-pulse" />
-                        ))
-                    ) : filteredReviews.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-32 text-center border-2 border-dashed border-slate-800 rounded-3xl bg-slate-900/20">
-                            <div className="w-16 h-16 bg-slate-800/50 rounded-2xl flex items-center justify-center mb-6 text-slate-600">
-                                <MessageSquare size={32} />
-                            </div>
-                            <h3 className="text-xl font-bold text-slate-300">No matching logs</h3>
-                            <p className="text-slate-500 max-w-xs mt-2">Adjust your moderation criteria.</p>
-                        </div>
-                    ) : filteredReviews.map((review) => (
-                        <Card key={review.id} className="overflow-hidden border-slate-800/50 bg-slate-900/40 backdrop-blur-sm group hover:border-slate-700 transition-all duration-300">
-                            <div className="flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-slate-800/50">
-                                <div className="flex-1 p-6 md:p-8">
-                                    <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+            <div className="space-y-4">
+                {loading && reviews.length === 0 ? (
+                    [1, 2, 3].map(i => <div key={i} className="h-40 rounded-2xl bg-slate-900/50 animate-pulse" />)
+                ) : filteredReviews.length === 0 ? (
+                    <div className="text-center py-20 border-2 border-dashed border-slate-800 rounded-2xl">
+                        <p className="text-slate-500">No reviews found</p>
+                    </div>
+                ) : (
+                    filteredReviews.map((review) => (
+                        <Card key={review.id} className="border-slate-800 bg-slate-900/40">
+                            <div className="flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-slate-800">
+                                <div className="flex-1 p-6 space-y-4">
+                                    <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-1">
                                             {[1, 2, 3, 4, 5].map(s => (
                                                 <Star
                                                     key={s}
                                                     size={16}
-                                                    className={`${s <= review.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-800'} transition-all`}
+                                                    className={s <= review.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-700'}
                                                 />
                                             ))}
-                                            <div className="ml-3 h-4 w-px bg-slate-800 mx-1" />
-                                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">
-                                                {review.createdAt?.seconds ? new Date(review.createdAt.seconds * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : 'LOG_RECENT'}
-                                            </span>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            {review.rating <= 2 && (
-                                                <Badge className="bg-red-500/10 text-red-500 border-red-500/20 font-black text-[9px] uppercase tracking-widest">
-                                                    <AlertTriangle size={10} className="mr-1" /> Critical
-                                                </Badge>
-                                            )}
-                                            <span className="text-[9px] font-mono text-slate-600 bg-slate-950/50 px-2 py-1 rounded-md border border-slate-800/50 uppercase tracking-tighter">
-                                                REF_{review.id.substring(0, 8)}
-                                            </span>
+                                            {review.isHidden && <Badge className="bg-red-500/10 text-red-500 text-xs">Hidden</Badge>}
+                                            {review.isFlagged && <Badge className="bg-amber-500/10 text-amber-500 text-xs">Flagged</Badge>}
+                                            {review.rating <= 2 && <Badge className="bg-rose-500/10 text-rose-500 text-xs"><AlertTriangle size={10} className="mr-1" />Critical</Badge>}
                                         </div>
                                     </div>
 
-                                    <div className="space-y-4">
-                                        <p className="text-slate-300 font-medium text-lg leading-relaxed italic group-hover:text-white transition-colors">
-                                            &quot;{review.reviewText || 'No verbal feedback provided.'}&quot;
-                                        </p>
+                                    <p className="text-slate-300 italic">"{review.reviewText || 'No text provided'}"</p>
 
-                                        <div className="flex flex-wrap gap-2">
-                                            {review.tags?.map((tag: string) => (
-                                                <Badge key={tag} className="bg-slate-800/80 text-slate-500 border-slate-700/50 font-bold px-2 py-0.5 text-[9px] uppercase tracking-wider">
-                                                    <Tag size={10} className="mr-1.5 text-indigo-500" /> {tag}
-                                                </Badge>
-                                            ))}
+                                    <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-800">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center">
+                                                <User size={18} className="text-indigo-400" />
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-slate-500">Customer</p>
+                                                <p className="text-sm font-bold text-slate-200">{review.customerName || 'Anonymous'}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center">
+                                                <Wrench size={18} className="text-emerald-400" />
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-slate-500">Technician</p>
+                                                <p className="text-sm font-bold text-slate-200">{review.technicianName || 'N/A'}</p>
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8 pt-8 border-t border-slate-800/50">
-                                        <div className="flex items-center gap-4 group/entity">
-                                            <div className="w-12 h-12 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-indigo-400 transition-all group-hover/entity:border-indigo-500/30 group-hover/entity:bg-slate-700">
-                                                <User size={20} strokeWidth={2.5} />
-                                            </div>
-                                            <div>
-                                                <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-0.5">Originator</p>
-                                                <p className="text-sm font-black text-slate-200 group-hover/entity:text-white transition-colors">{review.customerName || 'Anonymous User'}</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-4 group/entity">
-                                            <div className="w-12 h-12 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-emerald-400 transition-all group-hover/entity:border-emerald-500/30 group-hover/entity:bg-slate-700">
-                                                <Wrench size={20} strokeWidth={2.5} />
-                                            </div>
-                                            <div>
-                                                <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-0.5">Service Agent</p>
-                                                <p className="text-sm font-black text-slate-200 group-hover/entity:text-white transition-colors">{review.serviceTitle || 'General Service'}</p>
-                                            </div>
-                                        </div>
+                                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                                        <Calendar size={12} />
+                                        {review.createdAt?.seconds ? new Date(review.createdAt.seconds * 1000).toLocaleDateString() : 'N/A'}
                                     </div>
                                 </div>
 
-                                <div className="p-6 bg-slate-950/20 md:w-64 flex flex-col justify-center items-center gap-3">
+                                <div className="p-6 lg:w-56 flex flex-col gap-2">
                                     <Button
-                                        disabled={processingId === review.id}
-                                        onClick={() => handleFlagReview(review.id)}
-                                        className="w-full bg-slate-800/50 border-slate-700 text-slate-400 h-10 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-amber-500/10 hover:text-amber-500 hover:border-amber-500/20 transition-all"
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => setSelectedReview(review)}
+                                        className="w-full"
                                     >
-                                        <Flag size={14} className="mr-2" /> Mark Flag
+                                        View Details
                                     </Button>
-                                    <Button
-                                        disabled={processingId === review.id}
-                                        onClick={() => handleDeleteReview(review.id)}
-                                        className="w-full bg-slate-800/50 border-slate-700 text-slate-400 h-10 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20 transition-all"
-                                    >
-                                        <Trash2 size={14} className="mr-2" /> Rescind
-                                    </Button>
-                                    <div className="mt-2 w-full pt-4 border-t border-slate-800/50">
-                                        <div className="flex items-center justify-between text-[9px] font-black text-slate-500 uppercase tracking-widest px-1">
-                                            <span>Integrity Status</span>
-                                            <ShieldCheck size={12} className="text-emerald-500" />
-                                        </div>
-                                    </div>
+                                    {!review.isHidden ? (
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            disabled={processingId === review.id}
+                                            onClick={() => handleAction(review.id, 'hide')}
+                                            className="w-full"
+                                        >
+                                            <EyeOff size={14} className="mr-2" /> Hide
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            disabled={processingId === review.id}
+                                            onClick={() => handleAction(review.id, 'unhide')}
+                                            className="w-full"
+                                        >
+                                            <Eye size={14} className="mr-2" /> Unhide
+                                        </Button>
+                                    )}
+                                    {!review.isFlagged ? (
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            disabled={processingId === review.id}
+                                            onClick={() => handleAction(review.id, 'flag')}
+                                            className="w-full text-amber-500 hover:text-amber-400"
+                                        >
+                                            <Flag size={14} className="mr-2" /> Flag
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            disabled={processingId === review.id}
+                                            onClick={() => handleAction(review.id, 'unflag')}
+                                            className="w-full"
+                                        >
+                                            <Flag size={14} className="mr-2" /> Unflag
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
                         </Card>
-                    ))}
-                </div>
+                    ))
+                )}
             </div>
+
+            {hasMore && !loading && (
+                <Button onClick={() => fetchReviews(true)} className="w-full">
+                    Load More
+                </Button>
+            )}
+
+            {selectedReview && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setSelectedReview(null)}>
+                    <Card className="w-full max-w-2xl bg-slate-900 border-slate-800" onClick={(e) => e.stopPropagation()}>
+                        <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+                            <h2 className="text-xl font-bold text-white">Review Details</h2>
+                            <Button variant="ghost" size="sm" onClick={() => setSelectedReview(null)}>
+                                <XCircle size={20} />
+                            </Button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="flex items-center gap-1">
+                                {[1, 2, 3, 4, 5].map(s => (
+                                    <Star key={s} size={24} className={s <= selectedReview.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-700'} />
+                                ))}
+                            </div>
+                            <p className="text-slate-300 text-lg italic">"{selectedReview.reviewText}"</p>
+                            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-800">
+                                <div>
+                                    <p className="text-xs text-slate-500 mb-1">Customer</p>
+                                    <p className="text-sm font-bold">{selectedReview.customerName}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-slate-500 mb-1">Technician</p>
+                                    <p className="text-sm font-bold">{selectedReview.technicianName}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-slate-500 mb-1">Booking ID</p>
+                                    <p className="text-sm font-mono">{selectedReview.bookingId}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-slate-500 mb-1">Date</p>
+                                    <p className="text-sm">{selectedReview.createdAt?.seconds ? new Date(selectedReview.createdAt.seconds * 1000).toLocaleString() : 'N/A'}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </Card>
+                </div>
+            )}
         </div>
     );
 }

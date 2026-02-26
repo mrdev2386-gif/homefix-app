@@ -29,22 +29,22 @@ class _Step4BankDetailsHardenedState extends State<Step4BankDetailsHardened> {
   void initState() {
     super.initState();
     _accountHolderController = TextEditingController(
-      text: formData['accountHolder'] ?? '',
+      text: widget.formData['accountHolder'] ?? '',
     );
     _accountNumberController = TextEditingController(
-      text: formData['accountNumber'] ?? '',
+      text: widget.formData['accountNumber'] ?? '',
     );
     _confirmAccountController = TextEditingController(
-      text: formData['confirmAccountNumber'] ?? '',
+      text: widget.formData['confirmAccountNumber'] ?? '',
     );
     _ifscController = TextEditingController(
-      text: formData['ifscCode'] ?? '',
+      text: widget.formData['ifscCode'] ?? '',
     );
     _bankNameController = TextEditingController(
-      text: formData['bankName'] ?? '',
+      text: widget.formData['bankName'] ?? '',
     );
     _upiController = TextEditingController(
-      text: formData['upiId'] ?? '',
+      text: widget.formData['upiId'] ?? '',
     );
   }
 
@@ -123,7 +123,7 @@ class _Step4BankDetailsHardenedState extends State<Step4BankDetailsHardened> {
             label: 'Account Holder Name',
             hint: 'Name as per bank records',
             icon: Icons.person_outline,
-            onChanged: (value) => onDataChanged('accountHolder', value),
+            onChanged: (value) => widget.onDataChanged('accountHolder', value),
           ),
           const SizedBox(height: 16),
           _buildMaskedField(
@@ -135,7 +135,7 @@ class _Step4BankDetailsHardenedState extends State<Step4BankDetailsHardened> {
             showPassword: _showAccountNumber,
             onToggle: () => setState(() => _showAccountNumber = !_showAccountNumber),
             onChanged: (value) {
-              onDataChanged('accountNumber', value);
+              widget.onDataChanged('accountNumber', value);
               setState(() {});
             },
           ),
@@ -149,7 +149,7 @@ class _Step4BankDetailsHardenedState extends State<Step4BankDetailsHardened> {
             showPassword: _showConfirmAccount,
             onToggle: () => setState(() => _showConfirmAccount = !_showConfirmAccount),
             onChanged: (value) {
-              onDataChanged('confirmAccountNumber', value);
+              widget.onDataChanged('confirmAccountNumber', value);
               setState(() {});
             },
           ),
@@ -161,7 +161,7 @@ class _Step4BankDetailsHardenedState extends State<Step4BankDetailsHardened> {
             icon: Icons.code_outlined,
             error: ifscError,
             onChanged: (value) {
-              onDataChanged('ifscCode', value);
+              widget.onDataChanged('ifscCode', value);
               setState(() {});
             },
           ),
@@ -171,7 +171,7 @@ class _Step4BankDetailsHardenedState extends State<Step4BankDetailsHardened> {
             label: 'Bank Name',
             hint: 'Your bank name',
             icon: Icons.business_outlined,
-            onChanged: (value) => onDataChanged('bankName', value),
+            onChanged: (value) => widget.onDataChanged('bankName', value),
           ),
           const SizedBox(height: 16),
           _buildTextField(
@@ -181,7 +181,7 @@ class _Step4BankDetailsHardenedState extends State<Step4BankDetailsHardened> {
             icon: Icons.payment_outlined,
             error: upiError,
             onChanged: (value) {
-              onDataChanged('upiId', value);
+              widget.onDataChanged('upiId', value);
               setState(() {});
             },
           ),

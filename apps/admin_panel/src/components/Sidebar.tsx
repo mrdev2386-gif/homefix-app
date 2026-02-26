@@ -15,14 +15,10 @@ import {
     Briefcase,
     Shield,
     X,
-    FlaskConical,
     IndianRupee,
     Star,
-    Video,
-    Sparkles,
     ShieldAlert,
     Banknote,
-    Image as ImageIcon,
 } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 
@@ -34,9 +30,6 @@ const menuItems = [
     { icon: Wrench, label: 'Technicians', href: '/technicians' },
     { icon: Users, label: 'Customers', href: '/customers' },
     { icon: Briefcase, label: 'Services', href: '/services' },
-    { icon: Video, label: 'Professional Reels', href: '/professional-reels' },
-    { icon: Sparkles, label: 'Cleaning Categories', href: '/cleaning-categories' },
-    { icon: ImageIcon, label: 'Service Banners', href: '/service-banners' },
     { icon: Star, label: 'Reviews', href: '/reviews' },
     { icon: AlertTriangle, label: 'Disputes', href: '/disputes' },
     { icon: ShieldAlert, label: 'Risk', href: '/risk' },
@@ -44,7 +37,6 @@ const menuItems = [
     { icon: Banknote, label: 'Booking Payouts', href: '/finance/booking-payouts' },
     { icon: IndianRupee, label: 'Wallet Payouts', href: '/finance/payouts' },
     { icon: ClipboardList, label: 'Audit Logs', href: '/audit-logs' },
-    { icon: FlaskConical, label: 'System Tests', href: '/system-tests' },
     { icon: Settings, label: 'Settings', href: '/settings' },
 ];
 
