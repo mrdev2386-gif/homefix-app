@@ -451,19 +451,21 @@ class _TechnicianOnboardingFlowScreenState
         top: false,
         child: Row(
           children: [
-            if (_currentStep > 0)
+            // Back button — fixed width, no flex to avoid conflict
+            if (_currentStep > 0) ...[
               TextButton(
                 onPressed: (_isSubmitting || _isSavingStep) ? null : _previousStep,
                 style: TextButton.styleFrom(
                   foregroundColor: const Color(0xFF6B7280),
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
                 child: const Text('Back'),
               ),
-            const Spacer(),
+              const SizedBox(width: 12),
+            ],
+            // Continue button fills all remaining horizontal space
             Expanded(
-              flex: _currentStep > 0 ? 2 : 3,
               child: SizedBox(
                 height: 52,
                 child: ElevatedButton(

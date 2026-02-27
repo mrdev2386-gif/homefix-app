@@ -83,11 +83,15 @@ class _JobDetailsScreenEnhancedState extends State<JobDetailsScreenEnhanced> {
           top: 20,
         ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              'Verify OTP',
-              style: GoogleFonts.plusJakartaSans(fontSize: 20, fontWeight: FontWeight.bold),
+            Flexible(
+              child: Text(
+                'Verify OTP',
+                style: GoogleFonts.plusJakartaSans(fontSize: 20, fontWeight: FontWeight.bold),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
             const SizedBox(height: 16),
             TextField(
@@ -132,17 +136,21 @@ class _JobDetailsScreenEnhancedState extends State<JobDetailsScreenEnhanced> {
       builder: (context) => Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              'Report Issue',
-              style: GoogleFonts.plusJakartaSans(fontSize: 20, fontWeight: FontWeight.bold),
+            Flexible(
+              child: Text(
+                'Report Issue',
+                style: GoogleFonts.plusJakartaSans(fontSize: 20, fontWeight: FontWeight.bold),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
             const SizedBox(height: 16),
-            _issueOption('Customer not reachable'),
-            _issueOption('Customer asked to reschedule'),
-            _issueOption('Wrong address'),
-            _issueOption('Other'),
+            Flexible(child: _issueOption('Customer not reachable')),
+            Flexible(child: _issueOption('Customer asked to reschedule')),
+            Flexible(child: _issueOption('Wrong address')),
+            Flexible(child: _issueOption('Other')),
             const SizedBox(height: 10),
           ],
         ),

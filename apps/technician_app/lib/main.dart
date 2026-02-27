@@ -196,72 +196,82 @@ class _ErrorBoundaryState extends State<ErrorBoundary> {
   @override
   Widget build(BuildContext context) {
     if (_hasError) {
-      return Scaffold(
-        body: SafeArea(
-          child: Stack(
-            children: [
-              // CENTER CONTENT
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.error_outline,
-                        size: 72,
-                        color: Colors.red.shade400,
-                      ),
-                      const SizedBox(height: 24),
-                      const Text(
-                        'Something went wrong',
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        _errorMessage,
-                        textAlign: TextAlign.center,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              // BOTTOM BUTTON (PINNED)
-              Positioned(
-                left: 24,
-                right: 24,
-                bottom: 24,
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _resetError,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Try Again'),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 56),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+      return _ErrorBody(
+        onRetry: _resetError,
+        errorMessage: _errorMessage,
       );
     }
 
     return widget.child;
+  }
+}
+
+/// Error body widget with surgical layout
+class _ErrorBody extends StatelessWidget {
+  final VoidCallback onRetry;
+  final String errorMessage;
+
+  const _ErrorBody({
+    required this.onRetry,
+    required this.errorMessage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      resizeToAvoidBottomInset: true,
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.error_outline,
+                  size: 80,
+                  color: Colors.red.shade400,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Something went wrong',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  errorMessage.isEmpty ? 'Please try again' : errorMessage,
+                  textAlign: TextAlign.center,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        child: SizedBox(
+          height: 52,
+          child: ElevatedButton(
+            onPressed: onRetry,
+            style: ElevatedButton.styleFrom(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            child: const Text('Try Again'),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -346,35 +356,40 @@ class _LoadingScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // App logo or branding
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                color: Theme.of(context).primaryColor,
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: const Icon(
-                Icons.build_circle,
-                size: 64,
-                color: Colors.white,
-              ),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).primaryColor,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: const Icon(
+                    Icons.build_circle,
+                    size: 64,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 32),
+                const CircularProgressIndicator(),
+                const SizedBox(height: 16),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 32),
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            Text(
-              message,
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey.shade600,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -396,64 +411,56 @@ class _ErrorScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: Stack(
-          children: [
-            // CENTER CONTENT
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.wifi_off,
-                      size: 72,
-                      color: Colors.orange.shade400,
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      title,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      message,
-                      textAlign: TextAlign.center,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.wifi_off,
+                  size: 80,
+                  color: Colors.orange.shade400,
                 ),
-              ),
-            ),
-            // BOTTOM BUTTON (PINNED)
-            Positioned(
-              left: 24,
-              right: 24,
-              bottom: 24,
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: onRetry,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Try Again'),
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 56),
+                const SizedBox(height: 16),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
+                const SizedBox(height: 8),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        child: SizedBox(
+          height: 52,
+          child: ElevatedButton(
+            onPressed: onRetry,
+            style: ElevatedButton.styleFrom(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
             ),
-          ],
+            child: const Text('Try Again'),
+          ),
         ),
       ),
     );
@@ -472,12 +479,11 @@ class _AppCheckFailureScreen extends StatelessWidget {
       backgroundColor: Colors.white,
       body: SafeArea(
         child: Center(
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(32),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // Shield icon with warning
                 Container(
                   width: 120,
                   height: 120,
@@ -514,23 +520,6 @@ class _AppCheckFailureScreen extends StatelessWidget {
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 32),
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton.icon(
-                    onPressed: onRetry,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Try Again'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF6366F1),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                  ),
-                ),
                 const SizedBox(height: 16),
                 Text(
                   'If the problem persists, please install the app from the official store.',
@@ -541,6 +530,24 @@ class _AppCheckFailureScreen extends StatelessWidget {
                   textAlign: TextAlign.center,
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(32, 16, 32, 16),
+        child: SizedBox(
+          height: 56,
+          child: ElevatedButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Try Again'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6366F1),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
             ),
           ),
         ),

@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/widgets/safe_network_image.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/services/functions_service.dart';
+import 'add_service_screen.dart';
 
 class ServicesScreen extends StatefulWidget {
   const ServicesScreen({super.key});
@@ -41,227 +42,16 @@ class _ServicesScreenState extends State<ServicesScreen> {
       ),
       body: _ServicesListStream(uid: uid),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddServiceDialog(context),
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AddServiceScreen()),
+          );
+        },
         backgroundColor: AppTheme.primaryColor,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add),
         label: const Text('Add Service'),
-      ),
-    );
-  }
-
-  void _showAddServiceDialog(BuildContext context) {
-    final nameController = TextEditingController();
-    final priceController = TextEditingController();
-    final descriptionController = TextEditingController();
-    final imageUrlController = TextEditingController();
-    String? selectedCategory;
-    bool isLoading = false;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Container(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Add New Service',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF0F172A),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: nameController,
-                  decoration: InputDecoration(
-                    labelText: 'Service Name *',
-                    hintText: 'e.g., AC Repair',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: selectedCategory,
-                  decoration: InputDecoration(
-                    labelText: 'Category *',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: 'ac', child: Text('AC Repair')),
-                    DropdownMenuItem(value: 'electrical', child: Text('Electrical')),
-                    DropdownMenuItem(value: 'plumbing', child: Text('Plumbing')),
-                    DropdownMenuItem(value: 'cleaning', child: Text('Cleaning')),
-                    DropdownMenuItem(value: 'appliance', child: Text('Appliance Repair')),
-                    DropdownMenuItem(value: 'other', child: Text('Other')),
-                  ],
-                  onChanged: (value) {
-                    setModalState(() => selectedCategory = value);
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: priceController,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    labelText: 'Price (₹) *',
-                    hintText: 'e.g., 500',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: imageUrlController,
-                  decoration: InputDecoration(
-                    labelText: 'Image URL *',
-                    hintText: 'https://...',
-                    helperText: 'Square image (1:1) recommended',
-                    helperStyle: const TextStyle(color: Colors.orange),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: descriptionController,
-                  maxLines: 3,
-                  decoration: InputDecoration(
-                    labelText: 'Description',
-                    hintText: 'Describe your service...',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: isLoading
-                        ? null
-                        : () async {
-                            final name = nameController.text.trim();
-                            final priceText = priceController.text.trim();
-                            final imageUrl = imageUrlController.text.trim();
-                            final description = descriptionController.text.trim();
-
-                            // VALIDATION
-                            if (name.isEmpty || name.length < 3) {
-                              _showError(context, 'Service name must be at least 3 characters');
-                              return;
-                            }
-                            if (selectedCategory == null) {
-                              _showError(context, 'Please select a category');
-                              return;
-                            }
-                            if (priceText.isEmpty) {
-                              _showError(context, 'Please enter a price');
-                              return;
-                            }
-                            final price = double.tryParse(priceText);
-                            if (price == null || price <= 0) {
-                              _showError(context, 'Please enter a valid price');
-                              return;
-                            }
-                            // IMAGE REQUIRED
-                            if (imageUrl.isEmpty) {
-                              _showError(context, 'Image is required');
-                              return;
-                            }
-                            if (!imageUrl.startsWith('http')) {
-                              _showError(context, 'Please enter a valid image URL');
-                              return;
-                            }
-
-                            setModalState(() => isLoading = true);
-
-                            try {
-                              await _functionsService.addService(
-                                name: name,
-                                price: price,
-                                imageUrl: imageUrl,
-                                category: selectedCategory!,
-                                description: description.isEmpty ? null : description,
-                              );
-
-                              if (context.mounted) {
-                                Navigator.pop(context);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Service added successfully'),
-                                    backgroundColor: Colors.green,
-                                  ),
-                                );
-                              }
-                            } catch (e) {
-                              setModalState(() => isLoading = false);
-                              if (context.mounted) {
-                                _showError(context, e.toString());
-                              }
-                            }
-                          },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        : const Text('Add Service'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showError(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
       ),
     );
   }
@@ -375,6 +165,7 @@ class _ServiceCardState extends State<_ServiceCard> {
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
@@ -384,10 +175,11 @@ class _ServiceCardState extends State<_ServiceCard> {
                 height: 80,
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     widget.service['name'] ?? 'Unnamed Service',
@@ -409,7 +201,9 @@ class _ServiceCardState extends State<_ServiceCard> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Row(
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -426,9 +220,9 @@ class _ServiceCardState extends State<_ServiceCard> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
                       if (reviews > 0)
                         Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             const Icon(Icons.star, size: 14, color: Colors.amber),
                             const SizedBox(width: 2),
@@ -450,11 +244,15 @@ class _ServiceCardState extends State<_ServiceCard> {
                       fontSize: 11,
                       color: Colors.grey[500],
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
+            const SizedBox(width: 4),
             Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
                   icon: Icon(

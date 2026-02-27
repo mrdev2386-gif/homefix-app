@@ -247,21 +247,30 @@ class _LimitedDashboardState extends State<LimitedDashboard> {
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                title,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF0F172A),
+              Flexible(
+                child: Text(
+                  title,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF0F172A),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 12,
-                  color: const Color(0xFF64748B),
+              Flexible(
+                child: Text(
+                  subtitle,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    color: const Color(0xFF64748B),
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],

@@ -194,18 +194,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         top: false,
         child: Row(
           children: [
-            if (_currentStep > 0)
+            // Back button — fixed size, no flex conflict
+            if (_currentStep > 0) ...[
               TextButton(
                 onPressed: _isSubmitting ? null : _previousStep,
                 style: TextButton.styleFrom(
                   foregroundColor: const Color(0xFF6B7280),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
                 child: const Text('Back', style: TextStyle(fontSize: 16)),
               ),
-            const Spacer(),
+              const SizedBox(width: 12),
+            ],
+            // Continue button fills all remaining space via single Expanded
             Expanded(
-              flex: _currentStep > 0 ? 2 : 3,
               child: SizedBox(
                 width: double.infinity,
                 height: 52,
@@ -256,7 +258,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const SizedBox(height: 40),
@@ -323,7 +324,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             child: Form(
               key: _formKey,
               child: Column(
-                mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const SizedBox(height: 40),

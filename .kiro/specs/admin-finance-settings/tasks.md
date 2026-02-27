@@ -147,7 +147,7 @@ This implementation plan breaks down the Admin Finance & Settings Module into di
 - [x] 6. Checkpoint - Ensure booking payouts module is working
   - Ensure all tests pass, ask the user if questions arise.
 
-- [x] 7. Implement Wallet Withdrawals List Page
+- [ ] 7. Implement Wallet Withdrawals List Page
   - [x] 7.1 Create useWalletWithdrawals custom hook with Firestore real-time listeners
     - Implement query with orderBy requestedAt descending
     - Add status filtering capability

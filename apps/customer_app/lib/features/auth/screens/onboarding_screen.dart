@@ -102,45 +102,55 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Widget _buildNameStep() {
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 40),
-          Text(
-            'What should we\ncall you?',
-            style: GoogleFonts.outfit(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              height: 1.2,
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 24),
+                Text(
+                  'What should we\ncall you?',
+                  style: GoogleFonts.outfit(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Enter your full name so we can personalize your experience.',
+                  style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 16),
+                ),
+                const SizedBox(height: 48),
+                TextField(
+                  controller: _nameController,
+                  onChanged: (val) => setState(() {}),
+                  autofocus: true,
+                  style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold),
+                  decoration: InputDecoration(
+                    hintText: 'Full Name',
+                    hintStyle: GoogleFonts.outfit(color: Colors.grey[400], fontWeight: FontWeight.normal),
+                    filled: true,
+                    fillColor: Colors.grey[50],
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.all(20),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
             ),
           ),
-          const SizedBox(height: 12),
-          Text(
-            'Enter your full name so we can personalize your experience.',
-            style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 16),
-          ),
-          const SizedBox(height: 48),
-          TextField(
-            controller: _nameController,
-            onChanged: (val) => setState(() {}),
-            autofocus: true,
-            style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold),
-            decoration: InputDecoration(
-              hintText: 'Full Name',
-              hintStyle: GoogleFonts.outfit(color: Colors.grey[400], fontWeight: FontWeight.normal),
-              filled: true,
-              fillColor: Colors.grey[50],
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide.none,
-              ),
-              contentPadding: const EdgeInsets.all(20),
-            ),
-          ),
-          const Spacer(),
-          SizedBox(
+        ),
+        // Bottom button — always visible, not pushed by Spacer
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+          child: SizedBox(
             width: double.infinity,
             height: 56,
             child: ElevatedButton(
@@ -157,70 +167,75 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               child: const Text('Next', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
             ),
           ),
-          const SizedBox(height: 20),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   Widget _buildLocationStep() {
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 24),
-          Text(
-            'Where do you\nneed service?',
-            style: GoogleFonts.outfit(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              height: 1.2,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'You\'re all set to find the best pros in your area.',
-            style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 14),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 32),
-          Expanded(
-            flex: 1,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.all(32),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF6366F1).withOpacity(0.05),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.location_on_rounded, size: 64, color: Color(0xFF6366F1)),
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : () => _completeOnboarding(),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6366F1),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 0,
-                      ),
-                      child: _isLoading 
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : const Text('Finish Onboarding', 
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white)),
-                    ),
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 24),
+                Text(
+                  'Where do you\nneed service?',
+                  style: GoogleFonts.outfit(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    height: 1.2,
                   ),
-          const SizedBox(height: 16),
-        ],
-      ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'You\'re all set to find the best pros in your area.',
+                  style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 14),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 48),
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(32),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6366F1).withOpacity(0.05),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.location_on_rounded, size: 64, color: Color(0xFF6366F1)),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        ),
+        // Bottom button — always visible, not Spacer-dependent
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+          child: SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : () => _completeOnboarding(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+              ),
+              child: _isLoading
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                : const Text('Finish Onboarding',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white)),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

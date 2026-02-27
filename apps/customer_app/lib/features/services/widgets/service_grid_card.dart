@@ -218,35 +218,43 @@ class _ServiceGridCardState extends State<ServiceGridCard>
                   padding: const EdgeInsets.all(12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       // Service name
-                      Text(
-                        widget.service.title,
-                        style: GoogleFonts.outfit(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: AppTheme.textColor,
-                          height: 1.2,
+                      Flexible(
+                        child: Text(
+                          widget.service.title,
+                          style: GoogleFonts.outfit(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.textColor,
+                            height: 1.2,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
                       ),
+                      const SizedBox(height: 8),
                       // Price and arrow
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           // Price
-                          Text(
-                            widget.service.basePrice > 0
-                                ? '₹${widget.service.basePrice.toStringAsFixed(0)}'
-                                : 'Free',
-                            style: GoogleFonts.outfit(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w900,
-                              color: AppTheme.primaryColor,
+                          Flexible(
+                            child: Text(
+                              widget.service.basePrice > 0
+                                  ? '₹${widget.service.basePrice.toStringAsFixed(0)}'
+                                  : 'Free',
+                              style: GoogleFonts.outfit(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                color: AppTheme.primaryColor,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
+                          const SizedBox(width: 4),
                           // Arrow
                           Container(
                             padding: const EdgeInsets.all(4),
@@ -310,23 +318,27 @@ class ServiceGridShimmer extends StatelessWidget {
               padding: const EdgeInsets.all(12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    height: 16,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[200],
-                      borderRadius: BorderRadius.circular(4),
+                  Flexible(
+                    child: Container(
+                      height: 16,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[200],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Container(
-                    height: 12,
-                    width: 60,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[200],
-                      borderRadius: BorderRadius.circular(4),
+                  const SizedBox(height: 8),
+                  Flexible(
+                    child: Container(
+                      height: 12,
+                      width: 60,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[200],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
                     ),
                   ),
                 ],

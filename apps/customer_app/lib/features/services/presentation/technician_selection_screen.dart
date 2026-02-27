@@ -444,12 +444,16 @@ class _TechnicianCard extends StatelessWidget {
       children: [
         Icon(icon, size: 16, color: iconColor),
         const SizedBox(width: 4),
-        Text(
-          text,
-          style: GoogleFonts.outfit(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: Colors.grey[700],
+        Flexible(
+          child: Text(
+            text,
+            style: GoogleFonts.outfit(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[700],
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],

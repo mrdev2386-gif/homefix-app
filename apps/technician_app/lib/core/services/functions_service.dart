@@ -91,6 +91,7 @@ class FunctionsService {
     required double price,
     required String imageUrl,
     required String category,
+    String? subCategory,
     String? description,
   }) async {
     try {
@@ -100,6 +101,7 @@ class FunctionsService {
         'price': price,
         'imageUrl': imageUrl,
         'category': category,
+        if (subCategory != null) 'subCategory': subCategory,
         if (description != null) 'description': description,
       });
       return Map<String, dynamic>.from(result.data);

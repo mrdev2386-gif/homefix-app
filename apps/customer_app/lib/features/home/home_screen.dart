@@ -224,23 +224,32 @@ class _HomeScreenState extends State<HomeScreen> {
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(
-                      category.name,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF1A1A2E),
+                    Flexible(
+                      child: Text(
+                        category.name,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1A1A2E),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      category.serviceCount > 0
-                          ? '${category.serviceCount} services'
-                          : 'View services',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF888888),
+                    Flexible(
+                      child: Text(
+                        category.serviceCount > 0
+                            ? '${category.serviceCount} services'
+                            : 'View services',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF888888),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],

@@ -767,20 +767,29 @@ class _AnimatedVerificationChipState extends State<_AnimatedVerificationChip>
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(
-                      widget.label,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF64748B),
+                    Flexible(
+                      child: Text(
+                        widget.label,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF64748B),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    Text(
-                      text,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: color,
+                    Flexible(
+                      child: Text(
+                        text,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: color,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -860,20 +869,29 @@ class _DetailRow extends StatelessWidget {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF94A3B8),
+                Flexible(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF94A3B8),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF1E293B),
+                Flexible(
+                  child: Text(
+                    value,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF1E293B),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
@@ -1191,21 +1209,30 @@ class _DocumentItem extends StatelessWidget {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1E293B),
+                Flexible(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1E293B),
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                Text(
-                  isVerified ? 'Verified' : 'Not uploaded',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: isVerified ? AppTheme.success : AppTheme.warning,
-                    fontWeight: FontWeight.w500,
+                Flexible(
+                  child: Text(
+                    isVerified ? 'Verified' : 'Not uploaded',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isVerified ? AppTheme.success : AppTheme.warning,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
@@ -1336,21 +1363,30 @@ class _BankInfoRow extends StatelessWidget {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF94A3B8),
+                Flexible(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF94A3B8),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1E293B),
-                    letterSpacing: 1.5,
+                Flexible(
+                  child: Text(
+                    value,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1E293B),
+                      letterSpacing: 1.5,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
@@ -1490,6 +1526,7 @@ class _AnimatedStatItem extends StatelessWidget {
             : '${(animation.value * (value as int)).round()}${suffix ?? ''}';
         
         return Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
               padding: const EdgeInsets.all(14),
@@ -1500,20 +1537,29 @@ class _AnimatedStatItem extends StatelessWidget {
               child: Icon(icon, size: 24, color: color),
             ),
             const SizedBox(height: 12),
-            Text(
-              animatedValue,
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: color,
+            Flexible(
+              child: Text(
+                animatedValue,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             const SizedBox(height: 4),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color(0xFF94A3B8),
+            Flexible(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF94A3B8),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
               ),
             ),
           ],

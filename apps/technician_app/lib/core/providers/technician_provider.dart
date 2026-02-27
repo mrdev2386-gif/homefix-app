@@ -118,8 +118,18 @@ class TechnicianProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }, onError: (e) {
-      debugPrint("Error listening to tech data: $e");
+      debugPrint("[Network Error] Firestore connection failed: $e");
       if (_isDisposed) return;
+      
+      // Check if it's a network error
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('unavailable') || 
+          errorStr.contains('network') || 
+          errorStr.contains('host') ||
+          errorStr.contains('timeout')) {
+        debugPrint('[Network Error] No internet connection detected');
+      }
+      
       _isLoading = false;
       notifyListeners();
     });
@@ -386,7 +396,11 @@ class TechnicianProvider extends ChangeNotifier {
       final doc = await FirebaseFirestore.instance
           .collection('technicians')
           .doc(uid)
-          .get(const GetOptions(source: Source.server));
+          .get(const GetOptions(source: Source.server))
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => throw TimeoutException('Firestore connection timeout'),
+          );
       
       if (!doc.exists) {
         debugPrint('[FINAL VERIFY ❌] Document does not exist');
@@ -400,6 +414,19 @@ class TechnicianProvider extends ChangeNotifier {
       debugPrint('[FINAL VERIFY] isKycComplete resolved = ${tech.isKycComplete}');
       
       return tech;
+    } on SocketException catch (e) {
+      debugPrint('[Network Error] No internet connection: $e');
+      return null;
+    } on TimeoutException catch (e) {
+      debugPrint('[Network Error] Connection timeout: $e');
+      return null;
+    } on FirebaseException catch (e) {
+      if (e.code == 'unavailable') {
+        debugPrint('[Network Error] Firestore unavailable: ${e.message}');
+      } else {
+        debugPrint('[FINAL VERIFY ❌] Firebase error: $e');
+      }
+      return null;
     } catch (e, st) {
       debugPrint('[FINAL VERIFY ❌] Failure reason: $e');
       debugPrintStack(stackTrace: st);
