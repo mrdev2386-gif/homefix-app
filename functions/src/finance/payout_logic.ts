@@ -17,7 +17,8 @@ async function getRazorpay() {
     });
 }
 import { assertAdmin, logAdminAction } from '../admin/utils';
-import { sendPushNotification } from '../shared/notifications';
+import { sendUserNotification, notifyTechnicianPayoutProcessed, notifyCustomerBookingCancelled } from '../shared/notification_helper';
+import * as notify from '../shared/notification_helper';
 
 /**
  * Admin triggers manual payout for a technician
@@ -171,11 +172,7 @@ export const razorpayPayoutWebhook = functions.https.onRequest(async (req, res) 
             });
         });
 
-        await sendPushNotification(techId, 'technicians', {
-            title: 'Payout Successful',
-            body: `Your payout of ₹${pData.amount} was successful.`,
-            data: { type: 'payout', status: 'success' }
-        });
+        await notify.notifyTechnicianPayoutProcessed(techId, pData.amount);
 
     } else if (event === 'payout.reversed' || event === 'payout.failed') {
         await db.runTransaction(async (t) => {
@@ -189,10 +186,14 @@ export const razorpayPayoutWebhook = functions.https.onRequest(async (req, res) 
             });
         });
 
-        await sendPushNotification(techId, 'technicians', {
-            title: 'Payout Failed',
-            body: `Your payout of ₹${pData.amount} failed and balance has been rolled back.`,
-            data: { type: 'payout', status: 'failed' }
+        await notify.sendUserNotification({
+            userId: techId,
+            userType: 'technician',
+            title: 'Payout Failed 🔴',
+            body: `Your payout of ₹${pData.amount} failed. Balance has been restored.`,
+            type: 'payout_processed',
+            data: { screen: 'wallet' },
+            priority: 'high'
         });
     }
 
@@ -223,10 +224,13 @@ export const settleTechnicianBalance = functions.https.onCall(async (data, conte
         });
     });
 
-    await sendPushNotification(technicianId, 'technicians', {
-        title: 'Earnings Settled',
+    await notify.sendUserNotification({
+        userId: technicianId,
+        userType: 'technician',
+        title: 'Earnings Settled 💰',
         body: `₹${pending} from pending earnings have been moved to your available balance.`,
-        data: { type: 'wallet', status: 'settled' }
+        type: 'payout_processed',
+        data: { screen: 'wallet' }
     });
 
     return { success: true, settledAmount: pending };
@@ -266,11 +270,11 @@ export async function initiateRefund(bookingId: string) {
         });
 
         // Notify Customer
-        await sendPushNotification(paymentData.userId, 'customers', {
-            title: 'Refund Initiated',
-            body: `A refund of ₹${paymentData.amount} has been initiated for your booking.`,
-            data: { type: 'payment', referenceId: bookingId }
-        });
+        await notify.notifyCustomerBookingCancelled(
+            paymentData.userId,
+            bookingId,
+            `A refund of ₹${paymentData.amount} has been initiated for your booking.`
+        );
     } catch (e) {
         console.error('Razorpay Refund Error:', e);
     }

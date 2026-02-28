@@ -11,7 +11,6 @@ import 'core/services/notifications_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/technician_onboarding_flow_screen.dart';
 import 'screens/dashboard_screen.dart';
-import 'screens/limited_dashboard.dart';
 import 'screens/block_screen.dart';
 import 'screens/application_status_screen.dart';
 import 'features/technician/screens/profile_under_review_screen.dart';
@@ -30,7 +29,10 @@ bool _appCheckEnabled = false;
 bool _appCheckTokenFetched = false;
 bool _appCheckInitialized = false;
 
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+// Top-level root navigator key - MUST be outside any class
+// This is the single source of truth for navigation in the app
+final GlobalKey<NavigatorState> rootNavigatorKey =
+    GlobalKey<NavigatorState>(debugLabel: 'rootNavigator');
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -38,6 +40,12 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 void main() async {
+  // Safety assert to detect accidental key recreation
+  assert(() {
+    debugPrint('Navigator key hash: ${rootNavigatorKey.hashCode}');
+    return true;
+  }());
+
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   
@@ -101,7 +109,7 @@ class TechnicianApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'HomeFix Technician',
-      navigatorKey: navigatorKey,
+      navigatorKey: rootNavigatorKey,
       theme: AppTheme.lightTheme,
       home: const AuthGate(),
       onGenerateRoute: (settings) {

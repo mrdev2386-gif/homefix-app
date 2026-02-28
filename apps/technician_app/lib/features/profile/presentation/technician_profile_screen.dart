@@ -1,10 +1,13 @@
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../core/providers/technician_provider.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/models/technician.dart';
@@ -180,6 +183,7 @@ class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with 
 
   Widget _buildEditProfileFAB(BuildContext context) {
     return FloatingActionButton.extended(
+      heroTag: 'fab_profile_edit',
       onPressed: () {
         HapticFeedback.lightImpact();
         _navigateToEditProfile(context);
@@ -209,6 +213,13 @@ class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with 
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const TechnicianServicesScreen()),
+    );
+  }
+
+  void _navigateToEditSkills(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const EditSkillsScreen()),
     );
   }
 
@@ -286,7 +297,7 @@ class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with 
       try {
         await FirebaseAuth.instance.signOut();
         if (mounted) {
-          navigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (route) => false);
+          rootNavigatorKey.currentState?.pushNamedAndRemoveUntil('/login', (route) => false);
         }
       } catch (e) {
         if (mounted) {
@@ -361,9 +372,11 @@ class _PremiumProfileHeader extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
+                          Flexible(
+                            fit: FlexFit.loose,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
                                   technician.name.isNotEmpty ? technician.name : 'Technician',
@@ -415,7 +428,7 @@ class _PremiumProfileHeader extends StatelessWidget {
               child: ScaleTransition(
                 scale: avatarScaleAnimation,
                 child: Hero(
-                  tag: 'profile_avatar',
+                  tag: 'profile_avatar_${technician.uid ?? 'self'}',
                   child: Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
@@ -558,6 +571,7 @@ class _VerificationAndCompletionCardState extends State<_VerificationAndCompleti
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           const Text(
             'Profile Verification',
@@ -571,7 +585,8 @@ class _VerificationAndCompletionCardState extends State<_VerificationAndCompleti
           // Verification chips with animation
           Row(
             children: [
-              Expanded(
+              Flexible(
+                fit: FlexFit.loose,
                 child: _AnimatedVerificationChip(
                   label: 'Aadhaar',
                   status: _getAadhaarStatus(widget.technician),
@@ -579,7 +594,8 @@ class _VerificationAndCompletionCardState extends State<_VerificationAndCompleti
                 ),
               ),
               const SizedBox(width: 12),
-              Expanded(
+              Flexible(
+                fit: FlexFit.loose,
                 child: _AnimatedVerificationChip(
                   label: 'Bank',
                   status: _getBankStatus(widget.technician),
@@ -624,9 +640,11 @@ class _VerificationAndCompletionCardState extends State<_VerificationAndCompleti
                 },
               ),
               const SizedBox(width: 20),
-              Expanded(
+              Flexible(
+                fit: FlexFit.loose,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text(
                       'Profile Completion',
@@ -764,10 +782,12 @@ class _AnimatedVerificationChipState extends State<_AnimatedVerificationChip>
                 child: Icon(icon, size: 16, color: color),
               ),
               const SizedBox(width: 10),
-              Expanded(
+              Flexible(
+                fit: FlexFit.loose,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Flexible(
                       child: Text(
@@ -828,6 +848,7 @@ class _PersonalDetailsCard extends StatelessWidget {
         ),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           _DetailRow(icon: Icons.person_outline, label: 'Full Name', value: technician.name.isNotEmpty ? technician.name : '-'),
           _DetailRow(icon: Icons.phone_outlined, label: 'Phone', value: technician.phone),
@@ -866,12 +887,15 @@ class _DetailRow extends StatelessWidget {
             child: Icon(icon, size: 18, color: AppTheme.primaryColor),
           ),
           const SizedBox(width: 14),
-          Expanded(
+          Flexible(
+            fit: FlexFit.loose,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Flexible(
+                  fit: FlexFit.loose,
                   child: Text(
                     label,
                     style: const TextStyle(
@@ -883,6 +907,7 @@ class _DetailRow extends StatelessWidget {
                   ),
                 ),
                 Flexible(
+                  fit: FlexFit.loose,
                   child: Text(
                     value,
                     style: const TextStyle(
@@ -936,6 +961,7 @@ class _ServicesCard extends StatelessWidget {
               subMessage: 'Add your services to start receiving job requests',
             )
           : Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Wrap(
                   spacing: 10,
@@ -1055,7 +1081,8 @@ class _EarningsCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 16),
-                Expanded(
+                Flexible(
+                  fit: FlexFit.loose,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1116,6 +1143,7 @@ class _DocumentsCard extends StatelessWidget {
       title: 'Documents',
       child: hasDocuments
           ? Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 if (technician.aadhaarFrontUrl != null && technician.aadhaarFrontUrl!.isNotEmpty)
                   _DocumentItem(
@@ -1206,12 +1234,15 @@ class _DocumentItem extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 14),
-          Expanded(
+          Flexible(
+            fit: FlexFit.loose,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Flexible(
+                  fit: FlexFit.loose,
                   child: Text(
                     label,
                     style: const TextStyle(
@@ -1224,6 +1255,7 @@ class _DocumentItem extends StatelessWidget {
                   ),
                 ),
                 Flexible(
+                  fit: FlexFit.loose,
                   child: Text(
                     isVerified ? 'Verified' : 'Not uploaded',
                     style: TextStyle(
@@ -1288,6 +1320,7 @@ class _BankDetailsCard extends StatelessWidget {
       ),
       child: hasBankDetails
           ? Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 _BankInfoRow(
                   icon: Icons.account_balance,
@@ -1360,12 +1393,15 @@ class _BankInfoRow extends StatelessWidget {
             child: Icon(icon, size: 20, color: AppTheme.success),
           ),
           const SizedBox(width: 14),
-          Expanded(
+          Flexible(
+            fit: FlexFit.loose,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Flexible(
+                  fit: FlexFit.loose,
                   child: Text(
                     label,
                     style: const TextStyle(
@@ -1377,6 +1413,7 @@ class _BankInfoRow extends StatelessWidget {
                   ),
                 ),
                 Flexible(
+                  fit: FlexFit.loose,
                   child: Text(
                     value,
                     style: const TextStyle(
@@ -1527,6 +1564,7 @@ class _AnimatedStatItem extends StatelessWidget {
         
         return Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
               padding: const EdgeInsets.all(14),
@@ -1538,6 +1576,7 @@ class _AnimatedStatItem extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Flexible(
+              fit: FlexFit.loose,
               child: Text(
                 animatedValue,
                 style: TextStyle(
@@ -1551,6 +1590,7 @@ class _AnimatedStatItem extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Flexible(
+              fit: FlexFit.loose,
               child: Text(
                 label,
                 style: const TextStyle(
@@ -1616,7 +1656,8 @@ class _AvailabilityCard extends StatelessWidget {
                         child: const Icon(Icons.access_time, size: 22, color: AppTheme.success),
                       ),
                       const SizedBox(width: 14),
-                      Expanded(
+                      Flexible(
+                        fit: FlexFit.loose,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -1941,6 +1982,7 @@ class _PremiumCard extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2152,6 +2194,7 @@ class _PremiumProfileShimmer extends StatelessWidget {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           // Header shimmer
           Shimmer.fromColors(
@@ -2265,49 +2308,1078 @@ class FullImageViewScreen extends StatelessWidget {
   }
 }
 
-class EditProfileScreen extends StatelessWidget {
+class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
+
+  @override
+  State<EditProfileScreen> createState() => _EditProfileScreenState();
+}
+
+class _EditProfileScreenState extends State<EditProfileScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _cityController = TextEditingController();
+  final _experienceController = TextEditingController();
+  final _bioController = TextEditingController();
+  
+  bool _isSaving = false;
+  bool _isUploadingPhoto = false;
+  String? _profilePhotoUrl;
+  String? _selectedGender;
+  DateTime? _selectedDOB;
+  
+  final List<String> _genderOptions = ['Male', 'Female', 'Other'];
+  Technician? _technician;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrentData();
+  }
+
+  void _loadCurrentData() {
+    final provider = context.read<TechnicianProvider>();
+    _technician = provider.technician;
+    if (_technician != null) {
+      _nameController.text = _technician!.name;
+      _cityController.text = _technician!.district ?? '';
+      _experienceController.text = _technician!.experienceYears?.toString() ?? '';
+      _bioController.text = _technician!.bio ?? '';
+      _profilePhotoUrl = _technician!.profilePhotoUrl;
+      _selectedGender = _technician!.gender;
+      _selectedDOB = _technician!.dateOfBirth;
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _cityController.dispose();
+    _experienceController.dispose();
+    _bioController.dispose();
+    super.dispose();
+  }
+
+  String _capitalizeWords(String text) {
+    if (text.isEmpty) return text;
+    return text.split(' ').map((word) => 
+      word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1).toLowerCase()
+    ).join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  Future<void> _pickImage() async {
+    if (_isSaving || _isUploadingPhoto) return;
+    
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Camera'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _getImage(useCamera: true);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Gallery'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _getImage(useCamera: false);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _getImage({required bool useCamera}) async {
+    if (_isUploadingPhoto) return;
+    
+    setState(() => _isUploadingPhoto = true);
+    
+    try {
+      final provider = context.read<TechnicianProvider>();
+      final picker = ImagePicker();
+      final source = useCamera ? ImageSource.camera : ImageSource.gallery;
+      
+      final pickedFile = await picker.pickImage(
+        source: source,
+        maxWidth: 1280,
+        maxHeight: 1280,
+        imageQuality: 70,
+      );
+      
+      if (pickedFile != null && mounted) {
+        final file = File(pickedFile.path);
+        final url = await provider.uploadDocumentImage(file, 'profile_photo');
+        
+        if (mounted) {
+          setState(() {
+            _profilePhotoUrl = url;
+            _isUploadingPhoto = false;
+          });
+        }
+      } else if (mounted) {
+        setState(() => _isUploadingPhoto = false);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isUploadingPhoto = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to upload image: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _saveProfile() async {
+    // PHASE 1: Prevent double submit
+    if (_isSaving) return;
+    
+    // PHASE 1: Validate form
+    if (!_formKey.currentState!.validate()) return;
+    
+    setState(() => _isSaving = true);
+    
+    try {
+      final provider = context.read<TechnicianProvider>();
+      
+      // PHASE 1: Update profile via provider
+      await provider.saveStepData(
+        step: 1,
+        data: {
+          'fullName': _capitalizeWords(_nameController.text.trim()),
+          'district': _capitalizeWords(_cityController.text.trim()),
+          'experienceYears': int.tryParse(_experienceController.text) ?? 0,
+          'bio': _bioController.text.trim(),
+          'gender': _selectedGender,
+          'dob': _selectedDOB?.toIso8601String(),
+          'profilePhotoUrl': _profilePhotoUrl,
+        },
+      );
+      
+      // PHASE 2: Refresh provider after update
+      await provider.refreshTechnicianData();
+      
+      if (mounted) {
+        // PHASE 1: Show success snackbar
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile updated successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        // PHASE 1: Pop screen safely
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      // PHASE 1: Wrap Firestore write in try/catch
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update profile: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Edit Profile'),
+        backgroundColor: AppTheme.primaryColor,
+        foregroundColor: Colors.white,
+        elevation: 0,
       ),
-      body: const Center(
-        child: Text('Edit Profile Screen - Use existing screens'),
-      ),
+      body: _technician == null
+          ? const Center(child: CircularProgressIndicator())
+          : Form(
+              key: _formKey,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Profile Photo
+                    Center(
+                      child: Stack(
+                        children: [
+                          CircleAvatar(
+                            radius: 60,
+                            backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.1),
+                            backgroundImage: _profilePhotoUrl != null
+                                ? NetworkImage(_profilePhotoUrl!)
+                                : null,
+                            child: _profilePhotoUrl == null
+                                ? const Icon(Icons.person, size: 60, color: AppTheme.primaryColor)
+                                : null,
+                          ),
+                          if (_isUploadingPhoto)
+                            const Positioned.fill(
+                              child: CircleAvatar(
+                                backgroundColor: Colors.black38,
+                                child: CircularProgressIndicator(color: Colors.white),
+                              ),
+                            ),
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: CircleAvatar(
+                              radius: 20,
+                              backgroundColor: AppTheme.primaryColor,
+                              child: IconButton(
+                                icon: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                                onPressed: _pickImage,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    
+                    // Name Field
+                    TextFormField(
+                      controller: _nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Full Name',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.person),
+                      ),
+                      textCapitalization: TextCapitalization.words,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Name is required';
+                        }
+                        if (value.trim().length < 2) {
+                          return 'Name must be at least 2 characters';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // City Field
+                    TextFormField(
+                      controller: _cityController,
+                      decoration: const InputDecoration(
+                        labelText: 'City/District',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.location_city),
+                      ),
+                      textCapitalization: TextCapitalization.words,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'City is required';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Experience Field
+                    TextFormField(
+                      controller: _experienceController,
+                      decoration: const InputDecoration(
+                        labelText: 'Years of Experience',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.work),
+                      ),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Gender Selection
+                    DropdownButtonFormField<String>(
+                      value: _selectedGender,
+                      decoration: const InputDecoration(
+                        labelText: 'Gender',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.wc),
+                      ),
+                      items: _genderOptions.map((gender) => DropdownMenuItem(
+                        value: gender,
+                        child: Text(gender),
+                      )).toList(),
+                      onChanged: (value) {
+                        setState(() => _selectedGender = value);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Bio Field
+                    TextFormField(
+                      controller: _bioController,
+                      decoration: const InputDecoration(
+                        labelText: 'Bio (Optional)',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.description),
+                        alignLabelWithHint: true,
+                      ),
+                      maxLines: 3,
+                      maxLength: 500,
+                    ),
+                    const SizedBox(height: 24),
+                    
+                    // Save Button
+                    ElevatedButton(
+                      onPressed: _isSaving ? null : _saveProfile,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: _isSaving
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text(
+                              'Save Profile',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                            ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
+            ),
     );
   }
 }
 
-class EditAvailabilityScreen extends StatelessWidget {
+class EditAvailabilityScreen extends StatefulWidget {
   const EditAvailabilityScreen({super.key});
 
   @override
+  State<EditAvailabilityScreen> createState() => _EditAvailabilityScreenState();
+}
+
+class _EditAvailabilityScreenState extends State<EditAvailabilityScreen> {
+  TimeOfDay _startTime = const TimeOfDay(hour: 9, minute: 0);
+  TimeOfDay _endTime = const TimeOfDay(hour: 18, minute: 0);
+  bool _isSaving = false;
+  List<int> _selectedDays = [1, 2, 3, 4, 5]; // Mon-Fri
+  bool _emergencyAvailable = false;
+
+  final List<String> _dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrentData();
+  }
+
+  void _loadCurrentData() {
+    final provider = context.read<TechnicianProvider>();
+    final tech = provider.technician;
+    if (tech != null) {
+      if (tech.workStartTime != null) {
+        _startTime = tech.workStartTime!;
+      }
+      if (tech.workEndTime != null) {
+        _endTime = tech.workEndTime!;
+      }
+      _emergencyAvailable = tech.emergencyServiceAvailable;
+    }
+  }
+
+  Future<void> _selectTime(BuildContext context, bool isStartTime) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: isStartTime ? _startTime : _endTime,
+    );
+    if (picked != null) {
+      setState(() {
+        if (isStartTime) {
+          _startTime = picked;
+        } else {
+          _endTime = picked;
+        }
+      });
+    }
+  }
+
+  Future<void> _saveAvailability() async {
+    if (_isSaving) return;
+
+    setState(() => _isSaving = true);
+
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) throw Exception('User not authenticated');
+
+      await FirebaseFirestore.instance
+          .collection('technicians')
+          .doc(uid)
+          .update({
+            'workStartTime': {'hour': _startTime.hour, 'minute': _startTime.minute},
+            'workEndTime': {'hour': _endTime.hour, 'minute': _endTime.minute},
+            'emergencyServiceAvailable': _emergencyAvailable,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+
+      if (mounted) {
+        await context.read<TechnicianProvider>().refreshTechnicianData();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Availability updated successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
-        title: const Text('Edit Availability'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'Edit Availability',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: const Color(0xFF0F172A),
+          ),
+        ),
+        centerTitle: true,
       ),
-      body: const Center(
-        child: Text('Edit Availability Screen - Use existing screens'),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Working Hours
+            Text(
+              'Working Hours',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Flexible(
+                  fit: FlexFit.loose,
+                  child: _buildTimeCard(
+                    'Start Time',
+                    _startTime,
+                    () => _selectTime(context, true),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Flexible(
+                  fit: FlexFit.loose,
+                  child: _buildTimeCard(
+                    'End Time',
+                    _endTime,
+                    () => _selectTime(context, false),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+
+            // Emergency Service
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Emergency Service',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Accept urgent jobs outside working hours',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                  Switch(
+                    value: _emergencyAvailable,
+                    onChanged: (value) => setState(() => _emergencyAvailable = value),
+                    activeColor: const Color(0xFF6366F1),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 32),
+
+            // Save Button
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton(
+                onPressed: _isSaving ? null : _saveAvailability,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6366F1),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: _isSaving
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : Text(
+                        'Save Availability',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTimeCard(String label, TimeOfDay time, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 12,
+                color: Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              time.format(context),
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF0F172A),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class EditBankDetailsScreen extends StatelessWidget {
-  const EditBankDetailsScreen({super.key});
+class EditSkillsScreen extends StatefulWidget {
+  const EditSkillsScreen({super.key});
+
+  @override
+  State<EditSkillsScreen> createState() => _EditSkillsScreenState();
+}
+
+class _EditSkillsScreenState extends State<EditSkillsScreen> {
+  final Set<String> _selectedSkills = {};
+  bool _isLoading = true;
+  bool _isSaving = false;
+  List<String> _availableSkills = [];
+
+  // Common skills for technicians
+  final List<String> _commonSkills = [
+    'AC Repair',
+    'Plumbing',
+    'Electrical',
+    'Carpentry',
+    'Painting',
+    'Appliance Repair',
+    'Cleaning',
+    'Pest Control',
+    'Home Security',
+    'Smart Home Installation',
+    'Water Heater Repair',
+    'Kitchen Equipment',
+    'Bathroom Fixtures',
+    'Window Repair',
+    'Furniture Assembly',
+    'TV Mounting',
+    'Locksmith',
+    'Masonry',
+    'Tile Work',
+    'Glass Work',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSkills();
+  }
+
+  void _loadSkills() {
+    final provider = context.read<TechnicianProvider>();
+    final tech = provider.technician;
+    
+    if (tech != null && tech.skills.isNotEmpty) {
+      _selectedSkills.addAll(tech.skills);
+    }
+    
+    // Use common skills as available options
+    setState(() {
+      _availableSkills = _commonSkills;
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _saveSkills() async {
+    if (_isSaving) return;
+
+    setState(() => _isSaving = true);
+
+    try {
+      await context.read<TechnicianProvider>().updateSkills(_selectedSkills.toList());
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Skills updated successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update skills: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
-        title: const Text('Update Bank Details'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'Edit Skills',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: const Color(0xFF0F172A),
+          ),
+        ),
+        centerTitle: true,
       ),
-      body: const Center(
-        child: Text('Update Bank Details Screen - Use existing screens'),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                // Info
+                Container(
+                  margin: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline, color: Color(0xFF6366F1)),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Select the skills you are proficient in. This helps customers find you.',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 14,
+                            color: const Color(0xFF6366F1),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Skills Grid
+                Expanded(
+                  child: GridView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      childAspectRatio: 3,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                    ),
+                    itemCount: _availableSkills.length,
+                    itemBuilder: (context, index) {
+                      final skill = _availableSkills[index];
+                      final isSelected = _selectedSkills.contains(skill);
+                      return InkWell(
+                        onTap: () {
+                          setState(() {
+                            if (isSelected) {
+                              _selectedSkills.remove(skill);
+                            } else {
+                              _selectedSkills.add(skill);
+                            }
+                          });
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? const Color(0xFF6366F1)
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected
+                                  ? const Color(0xFF6366F1)
+                                  : const Color(0xFFE2E8F0),
+                            ),
+                          ),
+                          child: Center(
+                            child: Text(
+                              skill,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: isSelected
+                                    ? Colors.white
+                                    : const Color(0xFF0F172A),
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+
+                // Save Button
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton(
+                      onPressed: _isSaving ? null : _saveSkills,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF6366F1),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: _isSaving
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : Text(
+                              'Save Skills (${_selectedSkills.length} selected)',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+class EditBankDetailsScreen extends StatefulWidget {
+  const EditBankDetailsScreen({super.key});
+
+  @override
+  State<EditBankDetailsScreen> createState() => _EditBankDetailsScreenState();
+}
+
+class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _accountHolderController = TextEditingController();
+  final _accountNumberController = TextEditingController();
+  final _ifscCodeController = TextEditingController();
+  final _bankNameController = TextEditingController();
+  
+  bool _isSaving = false;
+  bool _showAccountNumber = false;
+  Technician? _technician;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrentData();
+  }
+
+  void _loadCurrentData() {
+    final provider = context.read<TechnicianProvider>();
+    _technician = provider.technician;
+    // Pre-fill if bank details exist - would need bankDetails in technician model
+    // For now, leave empty for new entry
+  }
+
+  @override
+  void dispose() {
+    _accountHolderController.dispose();
+    _accountNumberController.dispose();
+    _ifscCodeController.dispose();
+    _bankNameController.dispose();
+    super.dispose();
+  }
+
+  String? _validateIfscCode(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'IFSC Code is required';
+    }
+    // IFSC code format: 11 characters, first 4 letters (bank code), 5th character 0, last 6 digits
+    final ifscRegex = RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}$');
+    if (!ifscRegex.hasMatch(value.toUpperCase())) {
+      return 'Invalid IFSC Code format';
+    }
+    return null;
+  }
+
+  String? _validateAccountNumber(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Account number required';
+    }
+
+    final cleaned = value.trim();
+
+    if (!RegExp(r'^[0-9]{9,18}$').hasMatch(cleaned)) {
+      return 'Invalid Account Number';
+    }
+
+    return null;
+  }
+
+  Future<void> _saveBankDetails() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_isSaving) return;
+
+    setState(() => _isSaving = true);
+
+    try {
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+
+      await FirebaseFirestore.instance
+          .collection('technicians')
+          .doc(uid)
+          .update({
+        'accountHolder': _accountHolderController.text.trim(),
+        'accountNumber': _accountNumberController.text.trim(),
+        'ifscCode': _ifscCodeController.text.trim().toUpperCase(),
+        'bankName': _bankNameController.text.trim(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+
+      await context.read<TechnicianProvider>().refreshTechnicianData();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bank details saved')),
+      );
+
+      Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F6FA),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text('Bank Details', style: GoogleFonts.plusJakartaSans(fontSize: 20, fontWeight: FontWeight.bold, color: const Color(0xFF0F172A))),
+        centerTitle: true,
+      ),
+      body: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: const Color(0xFF10B981).withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                child: Row(
+                  children: [
+                    const Icon(Icons.security, color: Color(0xFF10B981)),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      fit: FlexFit.loose,
+                      child: Text('Your bank details are securely encrypted and stored.', style: GoogleFonts.plusJakartaSans(fontSize: 14, color: const Color(0xFF10B981))),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text('Account Holder Name', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _accountHolderController,
+                decoration: InputDecoration(hintText: 'Enter account holder name', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                validator: (value) => value == null || value.trim().isEmpty ? 'Account holder name is required' : value.trim().length < 3 ? 'Name must be at least 3 characters' : null,
+              ),
+              const SizedBox(height: 20),
+              Text('Bank Name', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _bankNameController,
+                decoration: InputDecoration(hintText: 'Enter bank name', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                validator: (value) => value == null || value.trim().isEmpty ? 'Bank name is required' : null,
+              ),
+              const SizedBox(height: 20),
+              Text('Account Number', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _accountNumberController,
+                keyboardType: TextInputType.number,
+                obscureText: !_showAccountNumber,
+                decoration: InputDecoration(
+                  hintText: 'Enter account number',
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  suffixIcon: IconButton(icon: Icon(_showAccountNumber ? Icons.visibility_off : Icons.visibility), onPressed: () => setState(() => _showAccountNumber = !_showAccountNumber)),
+                ),
+                validator: _validateAccountNumber,
+              ),
+              const SizedBox(height: 20),
+              Text('IFSC Code', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _ifscCodeController,
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(hintText: 'e.g., SBIN0001234', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                validator: _validateIfscCode,
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _isSaving ? null : _saveBankDetails,
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6366F1), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                  child: _isSaving ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white))) : Text('Save Bank Details', style: GoogleFonts.plusJakartaSans(fontSize: 16, fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2319,12 +3391,15 @@ class HelpCenterScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
-        title: const Text('Help Center'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)), onPressed: () => Navigator.pop(context)),
+        title: Text('Help Center', style: GoogleFonts.plusJakartaSans(fontSize: 20, fontWeight: FontWeight.bold, color: const Color(0xFF0F172A))),
+        centerTitle: true,
       ),
-      body: const Center(
-        child: Text('Help Center Screen'),
-      ),
+      body: const Center(child: Text('Help Center - Coming Soon')),
     );
   }
 }
@@ -2335,12 +3410,15 @@ class RaiseDisputeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
-        title: const Text('Raise Dispute'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)), onPressed: () => Navigator.pop(context)),
+        title: Text('Raise Dispute', style: GoogleFonts.plusJakartaSans(fontSize: 20, fontWeight: FontWeight.bold, color: const Color(0xFF0F172A))),
+        centerTitle: true,
       ),
-      body: const Center(
-        child: Text('Raise Dispute Screen'),
-      ),
+      body: const Center(child: Text('Raise Dispute - Coming Soon')),
     );
   }
 }
@@ -2351,12 +3429,15 @@ class ContactSupportScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
-        title: const Text('Contact Support'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)), onPressed: () => Navigator.pop(context)),
+        title: Text('Contact Support', style: GoogleFonts.plusJakartaSans(fontSize: 20, fontWeight: FontWeight.bold, color: const Color(0xFF0F172A))),
+        centerTitle: true,
       ),
-      body: const Center(
-        child: Text('Contact Support Screen'),
-      ),
+      body: const Center(child: Text('Contact Support - Coming Soon')),
     );
   }
 }
@@ -2367,12 +3448,16 @@ class FaqsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
-        title: const Text('FAQs'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)), onPressed: () => Navigator.pop(context)),
+        title: Text('FAQs', style: GoogleFonts.plusJakartaSans(fontSize: 20, fontWeight: FontWeight.bold, color: const Color(0xFF0F172A))),
+        centerTitle: true,
       ),
-      body: const Center(
-        child: Text('FAQs Screen'),
-      ),
+      body: const Center(child: Text('FAQs - Coming Soon')),
     );
   }
 }
+

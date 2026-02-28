@@ -104,8 +104,9 @@ class _MainWrapperScreenState extends State<MainWrapperScreen> {
         ],
       ),
       child: SafeArea(
+        top: false,
         child: Container(
-          height: 80,
+          height: 70,
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,

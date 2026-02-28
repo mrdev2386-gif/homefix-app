@@ -155,7 +155,8 @@ class ReviewsScreen extends StatelessWidget {
                             style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(width: 8),
-                          Expanded(
+                          Flexible(
+                            fit: FlexFit.loose,
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(4),
                               child: LinearProgressIndicator(

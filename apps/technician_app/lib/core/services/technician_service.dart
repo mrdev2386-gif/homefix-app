@@ -31,8 +31,19 @@ class TechnicianService {
     await callable.call({'isOnline': isOnline});
   }
 
-
-
+  /// Update technician skills
+  Future<void> updateSkills(String uid, List<String> skills) async {
+    try {
+      await _db.collection('technicians').doc(uid).update({
+        'skills': skills,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      debugPrint('[TechnicianService] Skills updated successfully');
+    } catch (e) {
+      debugPrint('[TechnicianService] Error updating skills: $e');
+      rethrow;
+    }
+  }
   Future<Technician?> getTechnician(String uid) async {
     final doc = await _db.collection('technicians').doc(uid).get();
     if (!doc.exists) return null;

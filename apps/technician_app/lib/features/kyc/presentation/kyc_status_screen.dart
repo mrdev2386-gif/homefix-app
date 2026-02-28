@@ -190,8 +190,10 @@ class _KycStatusScreenState extends State<KycStatusScreen> {
               child: Icon(isCamera ? Icons.camera_alt_rounded : Icons.upload_file_rounded, color: const Color(0xFF6366F1)),
             ),
             const SizedBox(width: 20),
-            Expanded(
+            Flexible(
+              fit: FlexFit.loose,
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(label, style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: const Color(0xFF1E293B))),

@@ -67,6 +67,7 @@ class _Step5ServiceSetupState extends State<Step5ServiceSetup> {
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.all(24),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
@@ -190,7 +191,8 @@ class _Step5ServiceSetupState extends State<Step5ServiceSetup> {
         const SizedBox(height: 12),
         Row(
           children: [
-            Expanded(
+            Flexible(
+              fit: FlexFit.loose,
               child: _buildPriceField(
                 controller: _basePriceController,
                 label: 'Base Price',
@@ -202,7 +204,8 @@ class _Step5ServiceSetupState extends State<Step5ServiceSetup> {
               ),
             ),
             const SizedBox(width: 12),
-            Expanded(
+            Flexible(
+              fit: FlexFit.loose,
               child: _buildPriceField(
                 controller: _visitingChargeController,
                 label: 'Visiting Charge',

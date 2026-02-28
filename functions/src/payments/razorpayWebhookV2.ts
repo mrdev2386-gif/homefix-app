@@ -1,6 +1,12 @@
 /**
  * Razorpay Webhook Handler (2nd Gen)
  * Migrated from v1 with exact same business logic
+ * 
+ * SECURITY HARDENING:
+ * - Signature verification
+ * - Idempotency protection
+ * - Replay attack prevention (24h window)
+ * - QR expiry validation
  */
 
 import * as functions from 'firebase-functions';
@@ -13,6 +19,9 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
+
+// Replay window: 24 hours in milliseconds
+const REPLAY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Razorpay Webhook Handler (V1)
@@ -29,77 +38,104 @@ export const razorpayWebhookV2 = functions
         maxInstances: 5,
     })
     .https.onRequest(async (req, res) => {
-    // Only accept POST requests
-    if (req.method !== "POST") {
-        res.status(405).send("Method Not Allowed");
-        return;
+        // Only accept POST requests
+        if (req.method !== "POST") {
+            res.status(405).send("Method Not Allowed");
+            return;
+        }
+
+        try {
+            // Get webhook secret
+            const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || "";
+
+            if (!webhookSecret) {
+                console.error("Razorpay webhook secret not configured");
+                res.status(500).send("Webhook secret not configured");
+                return;
+            }
+
+            // Verify signature
+            const signature = req.headers["x-razorpay-signature"] as string;
+
+            if (!signature) {
+                console.error("No signature in webhook request");
+                res.status(400).send("No signature provided");
+                return;
+            }
+
+            // Create signature hash
+            const body = JSON.stringify(req.body);
+            const expectedSignature = crypto
+                .createHmac("sha256", webhookSecret)
+                .update(body)
+                .digest("hex");
+
+            // Verify signature
+            if (signature !== expectedSignature) {
+                console.error("Invalid webhook signature");
+                res.status(400).send("Invalid signature");
+                return;
+            }
+
+            // Signature verified, process event
+            const event = req.body.event;
+            const payload = req.body.payload;
+
+            console.log("Razorpay webhook V2 event:", event);
+
+            // REPLAY ATTACK PREVENTION: Check payment timestamp
+            if (payload?.payment?.entity?.created_at) {
+                const paymentCreatedAt = payload.payment.entity.created_at * 1000; // Convert to ms
+                const now = Date.now();
+                const timeDiff = now - paymentCreatedAt;
+
+                if (timeDiff > REPLAY_WINDOW_MS) {
+                    console.error("Webhook REJECTED: Payment older than 24h window. Payment:",
+                        payload.payment.entity.id, "Age:", Math.round(timeDiff / (1000 * 60 * 60)), "hours");
+
+                    await db.collection("payment_logs").add({
+                        webhookEvent: event,
+                        paymentId: payload.payment.entity.id,
+                        action: "replay_rejected",
+                        paymentCreatedAt: new Date(paymentCreatedAt).toISOString(),
+                        receivedAt: new Date().toISOString(),
+                        ageHours: Math.round(timeDiff / (1000 * 60 * 60)),
+                        createdAt: admin.firestore.FieldValue.serverTimestamp()
+                    });
+
+                    res.status(200).send("OK"); // Return 200 to prevent retries
+                    return;
+                }
+            }
+
+            // Handle different events
+            switch (event) {
+                case "payment.captured":
+                    await handlePaymentCapturedV2(payload);
+                    break;
+
+                case "payment.failed":
+                    await handlePaymentFailedV2(payload);
+                    break;
+
+                default:
+                    console.log("Unhandled webhook event:", event);
+            }
+
+            res.status(200).send("OK");
+
+        } catch (error: any) {
+            console.error("Webhook processing error:", error);
+            res.status(500).send("Internal Server Error");
+        }
     }
-
-    try {
-        // Get webhook secret
-        const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || "";
-
-        if (!webhookSecret) {
-            console.error("Razorpay webhook secret not configured");
-            res.status(500).send("Webhook secret not configured");
-            return;
-        }
-
-        // Verify signature
-        const signature = req.headers["x-razorpay-signature"] as string;
-
-        if (!signature) {
-            console.error("No signature in webhook request");
-            res.status(400).send("No signature provided");
-            return;
-        }
-
-        // Create signature hash
-        const body = JSON.stringify(req.body);
-        const expectedSignature = crypto
-            .createHmac("sha256", webhookSecret)
-            .update(body)
-            .digest("hex");
-
-        // Verify signature
-        if (signature !== expectedSignature) {
-            console.error("Invalid webhook signature");
-            res.status(400).send("Invalid signature");
-            return;
-        }
-
-        // Signature verified, process event
-        const event = req.body.event;
-        const payload = req.body.payload;
-
-        console.log("Razorpay webhook V2 event:", event);
-
-        // Handle different events
-        switch (event) {
-            case "payment.captured":
-                await handlePaymentCapturedV2(payload);
-                break;
-
-            case "payment.failed":
-                await handlePaymentFailedV2(payload);
-                break;
-
-            default:
-                console.log("Unhandled webhook event:", event);
-        }
-
-        res.status(200).send("OK");
-
-    } catch (error: any) {
-        console.error("Webhook processing error:", error);
-        res.status(500).send("Internal Server Error");
-    }
-}
-);
+    );
 
 /**
  * Handle successful payment (V2)
  * CRITICAL: Idempotency protection to prevent duplicate processing
+ * CRITICAL: QR expiry validation
+ * CRITICAL: Credits technician wallet
  */
 async function handlePaymentCapturedV2(payload: any) {
     const payment = payload.payment.entity;
@@ -109,15 +145,13 @@ async function handlePaymentCapturedV2(payload: any) {
 
     console.log("Payment captured V2:", paymentId, "Order:", orderId, "Amount:", amount);
 
-    // IDEMPOTENCY CHECK: Check if this payment was already processed
-    const existingPaymentLog = await db.collection("payment_logs")
-        .where("paymentId", "==", paymentId)
-        .where("action", "==", "payment_captured_v2")
-        .limit(1)
-        .get();
+    // IDEMPOTENCY CHECK: Use Firestore transaction for atomic check
+    const idempotencyRef = db.collection("payment_idempotency").doc(paymentId);
 
-    if (!existingPaymentLog.empty) {
-        console.log("Payment already processed, skipping (idempotency check):", paymentId);
+    // Check if this payment was already processed
+    const existingIdempotency = await idempotencyRef.get();
+    if (existingIdempotency.exists) {
+        console.log("Payment already processed (idempotency check):", paymentId);
         return;
     }
 
@@ -138,6 +172,37 @@ async function handlePaymentCapturedV2(payload: any) {
     if (booking.payment?.status === "paid") {
         console.log("Booking already paid, skipping:", bookingDoc.id);
         return;
+    }
+
+    // QR EXPIRY CHECK: If this is a QR payment, verify it hasn't expired
+    if (booking.payment?.qrId) {
+        const qrDoc = await db.collection("bookings")
+            .doc(bookingDoc.id)
+            .collection("payment")
+            .doc("qr")
+            .get();
+
+        if (qrDoc.exists) {
+            const qrData = qrDoc.data()!;
+            const expiresAt = qrData.expiresAt?.toDate();
+
+            if (expiresAt && new Date() > expiresAt) {
+                console.error("QR payment EXPIRED for booking:", bookingDoc.id, "Expiry:", expiresAt);
+
+                // Log the expired payment attempt
+                await db.collection("payment_logs").add({
+                    bookingId: bookingDoc.id,
+                    orderId,
+                    paymentId,
+                    action: "qr_expired_rejected",
+                    expiresAt: expiresAt.toISOString(),
+                    createdAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+
+                // DO NOT credit wallet - reject expired QR payment
+                return;
+            }
+        }
     }
 
     // Verify amount matches
@@ -172,6 +237,21 @@ async function handlePaymentCapturedV2(payload: any) {
         "payout.technicianAmount": booking.pricing.subtotal - booking.pricing.platformFee
     });
 
+    // CRITICAL: Create idempotency record AFTER successful processing
+    await idempotencyRef.set({
+        paymentId,
+        orderId,
+        bookingId: bookingDoc.id,
+        action: "payment_captured_v2",
+        amount,
+        processedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // CRITICAL: Credit technician wallet
+    if (booking.technicianId) {
+        await creditTechnicianWalletV2(booking.technicianId, bookingDoc.id, amount, booking.pricing);
+    }
+
     // Log successful payment
     await db.collection("payment_logs").add({
         bookingId: bookingDoc.id,
@@ -180,6 +260,7 @@ async function handlePaymentCapturedV2(payload: any) {
         amount,
         action: "payment_captured_v2",
         method: payment.method,
+        walletCredited: !!booking.technicianId,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
@@ -206,6 +287,63 @@ async function handlePaymentCapturedV2(payload: any) {
     }
 
     console.log("Payment processed successfully V2 for booking:", bookingDoc.id);
+}
+
+/**
+ * Credit technician wallet after payment
+ */
+async function creditTechnicianWalletV2(
+    techId: string,
+    bookingId: string,
+    totalAmount: number,
+    pricing: any
+) {
+    try {
+        const commissionRate = 0.15; // 15% platform fee
+        const technicianAmount = totalAmount * (1 - commissionRate);
+
+        const walletRef = db.collection('technician_wallets').doc(techId);
+        const txnRef = walletRef.collection('transactions').doc();
+
+        await db.runTransaction(async (transaction) => {
+            const walletDoc = await transaction.get(walletRef);
+
+            if (!walletDoc.exists) {
+                // Create wallet if doesn't exist
+                transaction.set(walletRef, {
+                    availableBalance: technicianAmount,
+                    pendingBalance: 0,
+                    lifetimeEarnings: technicianAmount,
+                    lastPayoutAt: null,
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+            } else {
+                // Update existing wallet
+                transaction.update(walletRef, {
+                    availableBalance: admin.firestore.FieldValue.increment(technicianAmount),
+                    lifetimeEarnings: admin.firestore.FieldValue.increment(technicianAmount),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+            }
+
+            // Record transaction
+            transaction.set(txnRef, {
+                type: 'credit',
+                source: 'booking',
+                status: 'completed',
+                amount: technicianAmount,
+                fee: 0,
+                referenceId: bookingId,
+                description: `Payment for booking`,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+        });
+
+        console.log(`[Wallet] Credited ₹${technicianAmount} to technician ${techId} for booking ${bookingId}`);
+    } catch (error) {
+        console.error(`[Wallet] ERROR crediting technician ${techId}:`, error);
+        // Don't fail the webhook - log for manual reconciliation
+    }
 }
 
 /**

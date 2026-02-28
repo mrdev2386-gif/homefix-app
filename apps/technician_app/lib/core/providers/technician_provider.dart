@@ -118,20 +118,65 @@ class TechnicianProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }, onError: (e) {
-      debugPrint("[Network Error] Firestore connection failed: $e");
+      // PART 6 & 7: Handle different error types with specific FirebaseException codes
+      debugPrint('[Stream Error] Firestore listener error: $e');
       if (_isDisposed) return;
       
-      // Check if it's a network error
-      final errorStr = e.toString().toLowerCase();
-      if (errorStr.contains('unavailable') || 
-          errorStr.contains('network') || 
-          errorStr.contains('host') ||
-          errorStr.contains('timeout')) {
-        debugPrint('[Network Error] No internet connection detected');
+      // Handle FirebaseException specifically
+      if (e is FirebaseException) {
+        switch (e.code) {
+          case 'permission-denied':
+            debugPrint('[FirebaseException] permission-denied - user may not have access to this data');
+            break;
+          case 'unavailable':
+            debugPrint('[FirebaseException] unavailable - network is down or service unavailable');
+            break;
+          case 'deadline-exceeded':
+            debugPrint('[FirebaseException] deadline-exceeded - operation took too long');
+            break;
+          case 'not-found':
+            debugPrint('[FirebaseException] not-found - document or resource does not exist');
+            break;
+          case 'cancelled':
+            debugPrint('[FirebaseException] cancelled - operation was cancelled');
+            break;
+          case 'aborted':
+            debugPrint('[FirebaseException] aborted - operation was aborted');
+            break;
+          case 'quota-exceeded':
+            debugPrint('[FirebaseException] quota-exceeded - quota limit exceeded');
+            break;
+          case 'network-error':
+            debugPrint('[FirebaseException] network-error - network connection failed');
+            break;
+          default:
+            debugPrint('[FirebaseException] ${e.code}: ${e.message}');
+        }
+      } else {
+        // Fallback to string matching for other error types
+        final errorStr = e.toString().toLowerCase();
+        
+        if (errorStr.contains('permission-denied') || errorStr.contains('unauthorized')) {
+          debugPrint('[Stream Error] Permission denied - user may not have access');
+        } else if (errorStr.contains('unavailable') || 
+                   errorStr.contains('network') || 
+                   errorStr.contains('host') ||
+                   errorStr.contains('timeout') ||
+                   errorStr.contains('deadline')) {
+          debugPrint('[Stream Error] Network error - no internet connection detected');
+        } else if (errorStr.contains('cancelled') || errorStr.contains('abort')) {
+          debugPrint('[Stream Error] Stream was cancelled');
+        } else {
+          debugPrint('[Stream Error] Unknown error: $e');
+        }
       }
       
+      // Keep showing existing data if available, don't clear it
       _isLoading = false;
-      notifyListeners();
+      // PART 6: Only notifyListeners if mounted
+      if (!_isDisposed) {
+        notifyListeners();
+      }
     });
   }
 
@@ -456,6 +501,26 @@ class TechnicianProvider extends ChangeNotifier {
     final user = _auth.currentUser;
     if (user == null) return;
     await _techService.saveTechnicianProfile(user, skills: skills);
+  }
+
+  /// Update technician skills
+  Future<void> updateSkills(List<String> skills) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+    
+    _isLoading = true;
+    notifyListeners();
+    
+    try {
+      await _techService.updateSkills(uid, skills);
+      await refreshTechnicianData();
+    } catch (e) {
+      debugPrint('Error updating skills: $e');
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<void> signOut() async {

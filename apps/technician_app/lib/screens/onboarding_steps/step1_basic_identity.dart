@@ -125,6 +125,7 @@ class _Step1BasicIdentityState extends State<Step1BasicIdentity> {
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.all(24),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(

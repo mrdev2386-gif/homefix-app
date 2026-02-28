@@ -160,8 +160,10 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
                       borderRadius: 18,
                     ),
                     const SizedBox(width: 16),
-                    Expanded(
+                    Flexible(
+                      fit: FlexFit.loose,
                       child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Container(
@@ -389,8 +391,10 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
               children: [
                 Container(width: 64, height: 64, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18))),
                 const SizedBox(width: 16),
-                Expanded(
+                Flexible(
+                  fit: FlexFit.loose,
                   child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(width: 80, height: 12, color: Colors.white),

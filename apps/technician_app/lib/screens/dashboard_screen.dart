@@ -45,14 +45,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         },
         type: BottomNavigationBarType.fixed,
         selectedFontSize: 11,
-        unselectedFontSize: 11,
+        unselectedFontSize: 10,
         iconSize: 22,
         selectedLabelStyle: const TextStyle(
           fontSize: 11,
           height: 1.1,
         ),
         unselectedLabelStyle: const TextStyle(
-          fontSize: 11,
+          fontSize: 10,
           height: 1.1,
         ),
         items: const [

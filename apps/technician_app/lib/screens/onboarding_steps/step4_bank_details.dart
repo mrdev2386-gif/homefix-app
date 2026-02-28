@@ -87,6 +87,7 @@ class _Step4BankDetailsState extends State<Step4BankDetails> {
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.all(24),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
@@ -180,7 +181,8 @@ class _Step4BankDetailsState extends State<Step4BankDetails> {
             size: 20,
           ),
           const SizedBox(width: 12),
-          Expanded(
+          Flexible(
+            fit: FlexFit.loose,
             child: Text(
               'Your bank details are encrypted and stored securely. We use industry-standard security protocols.',
               style: GoogleFonts.plusJakartaSans(

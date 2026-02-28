@@ -162,7 +162,6 @@ class NotificationsService extends ChangeNotifier {
 
   Future<void> _saveTokenWithRetry() async {
     const maxRetries = 3;
-    const retryDelay = Duration(seconds: 2);
     
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -175,7 +174,9 @@ class NotificationsService extends ChangeNotifier {
       } catch (e) {
         debugPrint('[Notifications] Token save attempt $attempt failed: $e');
         if (attempt < maxRetries) {
-          await Future.delayed(retryDelay);
+          // PHASE 3: Exponential backoff
+          final delay = Duration(seconds: 2 * attempt);
+          await Future.delayed(delay);
         }
       }
     }
@@ -200,11 +201,15 @@ class NotificationsService extends ChangeNotifier {
 
   Future<void> _saveToken(String token) async {
     try {
+      // PHASE 3: Generate idempotency key for token save
+      final idempotencyKey = '${token}_${DateTime.now().millisecondsSinceEpoch}';
+      
       final callable = FirebaseFunctions.instance.httpsCallable('saveFcmToken');
       await callable.call({
         'token': token,
         'platform': defaultTargetPlatform.toString().split('.').last,
         'userType': 'technician',
+        'idempotencyKey': idempotencyKey,
       });
     } catch (e) {
       debugPrint('[Notifications] Token save error: $e');
@@ -228,8 +233,8 @@ class NotificationsService extends ChangeNotifier {
 
     if (bookingId != null) {
       final booking = await BookingService().getBooking(bookingId);
-      if (booking != null && navigatorKey.currentState != null) {
-        navigatorKey.currentState!.push(
+      if (booking != null && rootNavigatorKey.currentState != null) {
+        rootNavigatorKey.currentState!.push(
           MaterialPageRoute(builder: (_) => JobDetailsScreen(booking: booking))
         );
       }
@@ -240,8 +245,11 @@ class NotificationsService extends ChangeNotifier {
     if (kIsWeb) return;
     final notification = message.notification;
     if (notification != null) {
+      // PHASE 3: Generate dedupe key to prevent duplicate notifications
+      final dedupeKey = '${message.data['type'] ?? 'general'}_${message.data['bookingId'] ?? message.messageId}';
+      
       _localNotif.show(
-        notification.hashCode,
+        dedupeKey.hashCode,
         notification.title,
         notification.body,
         const NotificationDetails(

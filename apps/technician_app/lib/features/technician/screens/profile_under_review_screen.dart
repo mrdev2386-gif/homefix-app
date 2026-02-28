@@ -73,6 +73,7 @@ class _ProfileUnderReviewScreenState extends State<ProfileUnderReviewScreen> {
               padding: const EdgeInsets.all(24),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   _buildStatusIcon(),
                   const SizedBox(height: 32),

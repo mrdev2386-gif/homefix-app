@@ -97,6 +97,7 @@ class _Step2ProfessionalDetailsState extends State<Step2ProfessionalDetails> {
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.all(24),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
@@ -341,7 +342,8 @@ class _Step2ProfessionalDetailsState extends State<Step2ProfessionalDetails> {
         const SizedBox(height: 12),
         Row(
           children: [
-            Expanded(
+            Flexible(
+              fit: FlexFit.loose,
               child: GestureDetector(
                 onTap: () => _selectTime(true),
                 child: Container(
@@ -380,7 +382,8 @@ class _Step2ProfessionalDetailsState extends State<Step2ProfessionalDetails> {
               ),
             ),
             const SizedBox(width: 12),
-            Expanded(
+            Flexible(
+              fit: FlexFit.loose,
               child: GestureDetector(
                 onTap: () => _selectTime(false),
                 child: Container(

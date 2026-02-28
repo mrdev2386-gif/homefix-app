@@ -253,6 +253,14 @@ service cloud.firestore {
       allow write: if false; // Only Cloud Functions
     }
     
+    // Payment Idempotency - Prevents duplicate payment processing
+    match /payment_idempotency/{paymentId} {
+      allow read: if isAdmin();
+      allow write: if false; // Only Cloud Functions
+    }
+    
+    // Payment Logs - Audit trail
+    
     // ==========================================
     // REVIEWS
     // ==========================================
@@ -505,6 +513,80 @@ service cloud.firestore {
         allow update: if false;
         allow delete: if false;
       }
+    }
+
+    // ==========================================
+    // TECHNICIAN WALLETS & PAYOUTS (CRITICAL)
+    // ==========================================
+    
+    // Technician Wallets - NO direct client writes
+    match /technician_wallets/{techId} {
+      // Read: Only owner or admin
+      allow read: if isAuthenticated() && (isAdmin() || request.auth.uid == techId);
+      // Write: NEVER via client - only Cloud Functions
+      allow write: if false;
+      
+      // Transactions subcollection
+      match /transactions/{txnId} {
+        allow read: if isAuthenticated() && (isAdmin() || request.auth.uid == techId);
+        allow write: if false; // Only Cloud Functions
+      }
+    }
+    
+    // Technician Payouts - NO direct client writes
+    match /technician_payouts/{payoutId} {
+      // Read: Owner technician or admin
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.technicianId == request.auth.uid
+      );
+      // Write: NEVER via client
+      allow write: if false;
+    }
+    
+    // Technician Bank Accounts
+    match /technician_bank_accounts/{accountId} {
+      // Read: Owner or admin
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.technicianId == request.auth.uid
+      );
+      // Write: Only via onboarding flow (authenticated + owner)
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.technicianId;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // Suspicious Wallets - Admin only
+    match /suspicious_wallets/{techId} {
+      allow read: if isAdmin();
+      allow write: if false; // Functions only
+    }
+
+    // Reconciliation Reports - Admin only
+    match /reconciliation_reports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if false; // Functions only
+      allow write: if false;
+    }
+
+    // Wallet Review Logs - Admin only
+    match /wallet_review_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow write: if false;
+    }
+
+    // Payment Idempotency - Functions only (internal use)
+    match /payment_idempotency/{paymentId} {
+      allow read, write: if false; // Functions only via admin SDK
+    }
+
+    // Payment Logs - Admin and Functions
+    match /payment_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if false; // Webhook only via functions
+      allow write: if false;
     }
 
     // ==========================================

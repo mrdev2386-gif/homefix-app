@@ -11,6 +11,7 @@ class Step6Success extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
@@ -100,8 +101,10 @@ class Step6Success extends StatelessWidget {
                     size: 20,
                   ),
                   const SizedBox(width: 12),
-                  Expanded(
+                  Flexible(
+                    fit: FlexFit.loose,
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(

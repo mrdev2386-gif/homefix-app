@@ -512,8 +512,10 @@ class _EarningsScreenState extends State<EarningsScreen> {
             ),
           ),
           const SizedBox(width: 12),
-          Expanded(
+          Flexible(
+            fit: FlexFit.loose,
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(

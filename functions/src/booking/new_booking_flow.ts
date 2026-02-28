@@ -13,6 +13,7 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { processTechnicianEarning } from '../finance/wallet_logic';
 import { checkRateLimit } from '../shared/utils';
+import * as notify from '../shared/notification_helper';
 
 if (!admin.apps.length) {
     admin.initializeApp();
@@ -27,47 +28,6 @@ const db = admin.firestore();
 async function isAdmin(uid: string): Promise<boolean> {
     const adminDoc = await db.collection('admins').doc(uid).get();
     return adminDoc.exists;
-}
-
-async function sendNotification(
-    userId: string,
-    userType: 'customer' | 'technician' | 'admin',
-    title: string,
-    body: string,
-    data: Record<string, string> = {}
-) {
-    try {
-        // Get user's FCM tokens
-        const tokensSnapshot = await db.collection(userType === 'technician' ? 'technicians' : 'customers')
-            .doc(userId)
-            .collection('fcmTokens')
-            .where('isActive', '==', true)
-            .get();
-
-        if (tokensSnapshot.empty) {
-            console.log(`[Notification] No active tokens for ${userType}:${userId}`);
-            return;
-        }
-
-        const tokens = tokensSnapshot.docs.map(doc => doc.data().token);
-
-        // Send to all tokens
-        const messages = tokens.map(token => ({
-            token,
-            notification: { title, body },
-            data,
-        }));
-
-        // Batch send in chunks of 500
-        for (let i = 0; i < messages.length; i += 500) {
-            const chunk = messages.slice(i, i + 500);
-            await admin.messaging().sendAll(chunk);
-        }
-
-        console.log(`[Notification] Sent to ${userType}:${userId}, tokens: ${tokens.length}`);
-    } catch (error) {
-        console.error(`[Notification] Failed to send to ${userType}:${userId}:`, error);
-    }
 }
 
 function createBookingNumber(): string {
@@ -291,14 +251,15 @@ export const createBookingRequest = functions.https.onCall(
 
             console.log(`[createBookingRequest] Created booking ${bookingId} with status: pending_admin`);
 
-            // 9. Send notification to admin
-            await sendNotification(
-                'admin',
-                'admin',
-                'New Booking Request',
-                `New booking from ${context.auth!.token?.name || 'Customer'} for ${serviceData.name || 'Service'}`,
-                { bookingId, type: 'new_booking' }
-            );
+            // 9. Send notification to admin (Keep using raw send if no special admin helper)
+            await notify.sendUserNotification({
+                userId: 'admin',
+                userType: 'admin',
+                title: 'New Booking Request',
+                body: `New booking from ${context.auth!.token?.name || 'Customer'} for ${serviceData.name || 'Service'}`,
+                type: 'new_request_nearby', // Closest type
+                data: { bookingId }
+            });
 
             return {
                 success: true,
@@ -395,12 +356,11 @@ export const adminApproveBooking = functions.https.onCall(
 
                 // Notify technician
                 if (booking.technicianId) {
-                    await sendNotification(
+                    await notify.notifyTechnicianNewInstantBooking(
                         booking.technicianId,
-                        'technician',
-                        'New Booking Assignment',
-                        `You have a new booking request for ${booking.serviceName || 'Service'}`,
-                        { bookingId, type: 'booking_assigned' }
+                        bookingId,
+                        booking.serviceName || 'Service',
+                        booking.addressSnapshot?.address || 'Your Location'
                     );
                 }
 
@@ -417,12 +377,10 @@ export const adminApproveBooking = functions.https.onCall(
                 });
 
                 // Notify customer
-                await sendNotification(
+                await notify.notifyCustomerBookingCancelled(
                     booking.customerId,
-                    'customer',
-                    'Booking Rejected',
-                    `Your booking for ${booking.serviceName || 'Service'} has been rejected. ${rejectionReason || ''}`,
-                    { bookingId, type: 'booking_rejected' }
+                    bookingId,
+                    rejectionReason || 'Booking rejected by admin'
                 );
             }
 
@@ -512,13 +470,15 @@ export const technicianRespondBooking = functions.https.onCall(
                 });
 
                 // Notify customer to pay
-                await sendNotification(
-                    booking.customerId,
-                    'customer',
-                    'Technician Accepted!',
-                    `${booking.technicianName || 'Technician'} has accepted your booking. Please proceed with payment.`,
-                    { bookingId, type: 'payment_required' }
-                );
+                await notify.sendUserNotification({
+                    userId: booking.customerId,
+                    userType: 'customer',
+                    title: 'Technician Accepted!',
+                    body: `${booking.technicianName || 'Technician'} has accepted your booking. Please proceed with payment.`,
+                    type: 'booking_confirmed',
+                    data: { bookingId, screen: 'payment_checkout' },
+                    priority: 'high'
+                });
 
             } else {
                 // Reject
@@ -533,22 +493,21 @@ export const technicianRespondBooking = functions.https.onCall(
                 });
 
                 // Notify customer
-                await sendNotification(
+                await notify.notifyCustomerBookingCancelled(
                     booking.customerId,
-                    'customer',
-                    'Booking Declined',
-                    `The technician has declined your booking. Please select another technician.`,
-                    { bookingId, type: 'booking_declined' }
+                    bookingId,
+                    'The technician has declined your booking.'
                 );
 
                 // Notify admin
-                await sendNotification(
-                    'admin',
-                    'admin',
-                    'Technician Declined Booking',
-                    `Technician ${booking.technicianName} declined booking ${bookingId}`,
-                    { bookingId, type: 'booking_declined' }
-                );
+                await notify.sendUserNotification({
+                    userId: 'admin',
+                    userType: 'admin',
+                    title: 'Technician Declined Booking',
+                    body: `Technician ${booking.technicianName} declined booking ${bookingId}`,
+                    type: 'booking_cancelled',
+                    data: { bookingId }
+                });
             }
 
             return {
@@ -651,12 +610,10 @@ export const customerConfirmPayment = functions.https.onCall(
             });
 
             // Notify technician
-            await sendNotification(
+            await notify.notifyTechnicianNewPayment(
                 booking.technicianId,
-                'technician',
-                'Booking Confirmed',
-                `Booking confirmed by customer. Please arrive at scheduled time.`,
-                { bookingId, type: 'booking_confirmed' }
+                bookingId,
+                booking.finalAmount || 0
             );
 
             return {
@@ -782,12 +739,10 @@ export const updateBookingStatusGeneric = functions.https.onCall(
                 updateData.startedAt = now;
 
                 // Notify customer
-                await sendNotification(
+                await notify.notifyCustomerTechnicianEnRoute(
                     booking.customerId,
-                    'customer',
-                    'Service Started',
-                    'The technician has started your service.',
-                    { bookingId, type: 'service_started' }
+                    bookingId,
+                    booking.technicianName || 'Technician'
                 );
             }
 
@@ -795,23 +750,25 @@ export const updateBookingStatusGeneric = functions.https.onCall(
 
             // Send notifications based on status
             if (status === 'completed') {
-                await sendNotification(
+                await notify.notifyCustomerJobCompleted(
                     booking.customerId,
-                    'customer',
-                    'Service Completed',
-                    `Your ${booking.serviceName || 'service'} has been completed. Please rate your experience.`,
-                    { bookingId, type: 'booking_completed' }
+                    bookingId,
+                    booking.technicianName || 'Technician'
                 );
             } else if (status === 'cancelled') {
-                const otherParty = isCustomer ? booking.technicianId : booking.customerId;
-                const otherType = isCustomer ? 'technician' : 'customer';
-                await sendNotification(
-                    otherParty,
-                    otherType,
-                    'Booking Cancelled',
-                    `The booking has been cancelled. ${reason || ''}`,
-                    { bookingId, type: 'booking_cancelled' }
-                );
+                if (isCustomer && booking.technicianId) {
+                    await notify.notifyTechnicianBookingCancelled(
+                        booking.technicianId,
+                        bookingId,
+                        reason || 'Cancelled by customer'
+                    );
+                } else {
+                    await notify.notifyCustomerBookingCancelled(
+                        booking.customerId,
+                        bookingId,
+                        reason || 'Cancelled by technician'
+                    );
+                }
             }
 
             return {

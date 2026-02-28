@@ -51,6 +51,40 @@ class SubCategoryData {
   }
 }
 
+/// Service data model - for loading services from 'services' collection
+class ServiceData {
+  final String id;
+  final String name;
+  final String? categoryId;
+  final String? description;
+  final double? basePrice;
+  final bool isActive;
+  final int? sortOrder;
+
+  ServiceData({
+    required this.id,
+    required this.name,
+    this.categoryId,
+    this.description,
+    this.basePrice,
+    this.isActive = true,
+    this.sortOrder,
+  });
+
+  factory ServiceData.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return ServiceData(
+      id: doc.id,
+      name: data['name'] as String? ?? data['serviceName'] as String? ?? '',
+      categoryId: data['categoryId'] as String?,
+      description: data['description'] as String?,
+      basePrice: (data['basePrice'] as num?)?.toDouble() ?? (data['price'] as num?)?.toDouble(),
+      isActive: data['isActive'] as bool? ?? true,
+      sortOrder: data['sortOrder'] as int? ?? data['order'] as int?,
+    );
+  }
+}
+
 /// Category Data Service - Fetches categories and subcategories from Firestore
 class CategoryDataService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -80,6 +114,7 @@ class CategoryDataService {
 
   /// Get active categories from Firestore
   /// Uses collection: service_categories (or falls back to categories)
+  /// PART 7: Firestore query safety with try/catch and FirebaseException handling
   Future<List<CategoryData>> getCategories() async {
     // Return cached if valid
     if (_isCategoriesCacheValid && _cachedCategories != null) {
@@ -88,50 +123,99 @@ class CategoryDataService {
     }
 
     try {
-      // Try service_categories first
-      QuerySnapshot snapshot = await _firestore
-          .collection('service_categories')
-          .where('isActive', isEqualTo: true)
-          .orderBy('sortOrder')
-          .orderBy('name')
-          .get();
+      // Try service_categories first with orderBy using both possible field names
+      try {
+        QuerySnapshot snapshot = await _firestore
+            .collection('service_categories')
+            .where('isActive', isEqualTo: true)
+            .orderBy('order')
+            .get();
 
-      if (snapshot.docs.isEmpty) {
-        // Fallback to categories collection
-        snapshot = await _firestore
+        if (snapshot.docs.isNotEmpty) {
+          _cachedCategories = snapshot.docs
+              .map((doc) => CategoryData.fromFirestore(doc))
+              .toList();
+          _categoriesCacheTime = DateTime.now();
+          debugPrint('[CategoryDataService] Fetched categories: ${_cachedCategories!.length}');
+          return _cachedCategories!;
+        }
+      } catch (e) {
+        debugPrint('[CategoryDataService] orderBy "order" failed, trying "sortOrder": $e');
+      }
+
+      // Try with sortOrder field
+      try {
+        QuerySnapshot snapshot = await _firestore
+            .collection('service_categories')
+            .where('isActive', isEqualTo: true)
+            .orderBy('sortOrder')
+            .get();
+
+        if (snapshot.docs.isNotEmpty) {
+          _cachedCategories = snapshot.docs
+              .map((doc) => CategoryData.fromFirestore(doc))
+              .toList();
+          _categoriesCacheTime = DateTime.now();
+          debugPrint('[CategoryDataService] Fetched categories: ${_cachedCategories!.length}');
+          return _cachedCategories!;
+        }
+      } catch (e) {
+        debugPrint('[CategoryDataService] orderBy "sortOrder" also failed: $e');
+      }
+
+      // Fallback to categories collection
+      try {
+        QuerySnapshot snapshot = await _firestore
             .collection('categories')
             .where('isActive', isEqualTo: true)
             .orderBy('sortOrder')
-            .orderBy('name')
             .get();
+
+        if (snapshot.docs.isNotEmpty) {
+          _cachedCategories = snapshot.docs
+              .map((doc) => CategoryData.fromFirestore(doc))
+              .toList();
+          _categoriesCacheTime = DateTime.now();
+          debugPrint('[CategoryDataService] Fetched categories: ${_cachedCategories!.length}');
+          return _cachedCategories!;
+        }
+      } catch (e) {
+        debugPrint('[CategoryDataService] Fallback to categories failed: $e');
       }
 
-      if (snapshot.docs.isEmpty) {
-        // Fallback to technician_categories
-        snapshot = await _firestore
-            .collection('technician_categories')
+      // Last resort - no ordering
+      try {
+        QuerySnapshot snapshot = await _firestore
+            .collection('service_categories')
             .where('isActive', isEqualTo: true)
-            .orderBy('sortOrder')
-            .orderBy('name')
             .get();
+
+        _cachedCategories = snapshot.docs
+            .map((doc) => CategoryData.fromFirestore(doc))
+            .toList();
+        _categoriesCacheTime = DateTime.now();
+        debugPrint('[CategoryDataService] Fetched categories (no order): ${_cachedCategories!.length}');
+        return _cachedCategories!;
+      } catch (e) {
+        debugPrint('[CategoryDataService] Final fallback failed: $e');
       }
 
-      _cachedCategories = snapshot.docs
-          .map((doc) => CategoryData.fromFirestore(doc))
-          .toList();
+      _cachedCategories = [];
       _categoriesCacheTime = DateTime.now();
-
-      debugPrint('[CategoryDataService] Fetched categories: ${_cachedCategories!.length}');
       return _cachedCategories!;
+    } on FirebaseException catch (e) {
+      // PART 7: Handle FirebaseException with user-friendly messages
+      debugPrint('[CategoryDataService] FirebaseException: ${e.code} - ${e.message}');
+      return _cachedCategories ?? [];
     } catch (e) {
       debugPrint('[CategoryDataService] Error fetching categories: $e');
-      // Return cached if available, otherwise empty list
       return _cachedCategories ?? [];
     }
   }
 
   /// Get subcategories from Firestore
   /// Uses collection: technician_subcategories
+  /// PART 7: Firestore query safety with try/catch and FirebaseException handling
   Future<List<SubCategoryData>> getSubCategories({String? categoryId}) async {
     // Return cached if valid
     if (_isSubCategoriesCacheValid && _cachedSubCategories != null) {
@@ -186,6 +270,10 @@ class CategoryDataService {
       }
 
       return _cachedSubCategories!;
+    } on FirebaseException catch (e) {
+      // PART 7: Handle FirebaseException with user-friendly messages
+      debugPrint('[CategoryDataService] FirebaseException: ${e.code} - ${e.message}');
+      return _cachedSubCategories ?? [];
     } catch (e) {
       debugPrint('[CategoryDataService] Error fetching subcategories: $e');
       return _cachedSubCategories ?? [];
@@ -222,5 +310,65 @@ class CategoryDataService {
     _cachedSubCategories = null;
     _subCategoriesCacheTime = null;
     debugPrint('[CategoryDataService] Cache cleared');
+  }
+
+  /// Get services from Firestore by category
+  /// Uses collection: services
+  /// Query: .where("categoryId", isEqualTo: selectedCategoryId).where("isActive", isEqualTo: true)
+  /// PART 7: Firestore query safety with try/catch and FirebaseException handling
+  Future<List<ServiceData>> getServicesByCategory(String categoryId) async {
+    try {
+      // Query services collection with categoryId and isActive filters
+      QuerySnapshot snapshot = await _firestore
+          .collection('services')
+          .where('categoryId', isEqualTo: categoryId)
+          .where('isActive', isEqualTo: true)
+          .orderBy('name')
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        // Try alternative field name
+        snapshot = await _firestore
+            .collection('services')
+            .where('parentCategoryId', isEqualTo: categoryId)
+            .where('isActive', isEqualTo: true)
+            .orderBy('name')
+            .get();
+      }
+
+      final services = snapshot.docs
+          .map((doc) => ServiceData.fromFirestore(doc))
+          .toList();
+
+      debugPrint('[CategoryDataService] Fetched services for category $categoryId: ${services.length}');
+      return services;
+    } on FirebaseException catch (e) {
+      // PART 7: Handle FirebaseException with user-friendly messages
+      debugPrint('[CategoryDataService] FirebaseException: ${e.code} - ${e.message}');
+      
+      String userMessage;
+      switch (e.code) {
+        case 'permission-denied':
+          userMessage = 'Access denied. Please check your permissions.';
+          break;
+        case 'unavailable':
+          userMessage = 'Service unavailable. Please check your network connection.';
+          break;
+        case 'deadline-exceeded':
+          userMessage = 'Request timed out. Please try again.';
+          break;
+        case 'not-found':
+          userMessage = 'No services found for this category.';
+          break;
+        default:
+          userMessage = 'Failed to load services. Please try again.';
+      }
+      
+      debugPrint('[CategoryDataService] User-friendly error: $userMessage');
+      return [];
+    } catch (e) {
+      debugPrint('[CategoryDataService] Error fetching services: $e');
+      return [];
+    }
   }
 }

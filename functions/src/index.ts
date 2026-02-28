@@ -21,6 +21,8 @@ import * as notificationsMgmt from './notifications_management';
 import * as adminDynamic from './admin/dynamic_content';
 import * as technicianFinance from './finance/wallet_logic';
 import * as payoutLogic from './finance/payout_logic';
+import * as technicianWithdrawal from './finance/technician_withdrawal';
+import * as walletReconciliation from './finance/wallet_reconciliation';
 
 // Payment Modules (New Razorpay Integration)
 import * as razorpayPayments from './payments/razorpay';
@@ -342,6 +344,17 @@ export const triggerTechnicianPayout = payoutLogic.triggerTechnicianPayout;
 export const razorpayPayoutWebhook = payoutLogic.razorpayPayoutWebhook;
 export const settleTechnicianBalance = payoutLogic.settleTechnicianBalance;
 
+// Technician Withdrawal & QR
+export const requestWithdrawal = technicianWithdrawal.requestWithdrawal;
+export const getTransactionHistory = technicianWithdrawal.getTransactionHistory;
+export const generateBookingQR = technicianWithdrawal.generateBookingQR;
+
+// Wallet Reconciliation (Scheduled & Admin)
+export const runWalletReconciliation = walletReconciliation.runWalletReconciliation;
+export const triggerManualReconciliation = walletReconciliation.triggerManualReconciliation;
+export const getReconciliationAnomalies = walletReconciliation.getReconciliationAnomalies;
+export const markWalletReviewed = walletReconciliation.markWalletReviewed;
+
 
 // Fraud & Abuse Protection
 export const onBookingStatusUpdateRiskCheck = fraudProtection.onBookingStatusUpdateRiskCheck;
@@ -387,23 +400,12 @@ export const saveFcmToken = functions.https.onCall(async (data, context) => {
         const collectionPath = userType === 'technician' ? 'technicians' : 'customers';
         const userDocRef = db.collection(collectionPath).doc(uid);
 
-        // Check if user document exists
-        const userDoc = await userDocRef.get();
-        if (!userDoc.exists) {
-            // Try the other collection
-            const otherCollection = userType === 'technician' ? 'customers' : 'technicians';
-            const otherUserDoc = await db.collection(otherCollection).doc(uid).get();
-            if (!otherUserDoc.exists) {
-                throw new functions.https.HttpsError("not-found", "User not found");
-            }
-            // Use the correct collection
-        }
-
-        // Generate a unique token ID (using hash of token + platform for consistency)
-        const tokenId = `${platform}_${token.substring(0, 8)}_${Date.now()}`;
+        // Use base64 encoded token as doc ID (safe and unique)
+        const tokenHash = Buffer.from(token).toString('base64').substring(0, 150);
+        const tokenDocRef = userDocRef.collection('fcmTokens').doc(tokenHash);
 
         // Save token to subcollection
-        await userDocRef.collection('fcmTokens').doc(tokenId).set({
+        await tokenDocRef.set({
             token,
             platform,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -412,8 +414,11 @@ export const saveFcmToken = functions.https.onCall(async (data, context) => {
             isActive: true,
         }, { merge: true });
 
+        // Update legacy field for backward compatibility
+        await userDocRef.set({ fcmToken: token }, { merge: true });
+
         console.log(`[FCM] Token saved for ${userType}:${uid}`);
-        return { success: true, tokenId };
+        return { success: true, tokenId: tokenHash };
     } catch (error: any) {
         console.error(`[FCM] Failed to save token for ${uid}:`, error);
         throw new functions.https.HttpsError("internal", "Failed to save token");
@@ -568,26 +573,12 @@ export const onUserCreated = functions.auth.user().onCreate(async (user: admin.a
 // 4. TECHNICIAN ONBOARDING (NEW)
 // ==========================================
 
-export const onTechnicianApplicationUpdate = functions.firestore
-    .document('technician_applications/{appId}')
-    .onUpdate(async (change, context) => {
-        const after = change.after.data();
-        const before = change.before.data();
-        if (!after || !before) return;
+import * as notificationTriggers from './notification_triggers';
 
-        if (before.status !== after.status) {
-            const userId = context.params.appId;
-            let title = 'Application Update';
-            if (after.status === 'approved') title = 'Application Approved';
-            else if (after.status === 'rejected') title = 'Application Rejected';
-
-            await sendPushNotification(userId, 'technicians', {
-                title,
-                body: `Your application status is now: ${after.status}`,
-                data: { type: 'application_status', status: after.status }
-            });
-        }
-    });
+export const onNewReviewNotification = notificationTriggers.onNewReviewNotification;
+export const onBookingCancelledNotification = notificationTriggers.onBookingCancelledNotification;
+export const onTechnicianLikeNotification = notificationTriggers.onTechnicianLikeNotification;
+export const onTechnicianApplicationStatusTrigger = notificationTriggers.onTechnicianApplicationStatusTrigger;
 
 // ==========================================
 // 4. TECHNICIAN ONBOARDING (NEW)
@@ -616,10 +607,6 @@ export const suspendTechnician = adminTechMgmt.suspendTechnician;
 export const bindDevice = techSec.bindDevice;
 export const updateLocation = techTrack.updateLocation;
 export const toggleOnlineStatus = techTrack.toggleOnlineStatus;
-
-// Matching & Booking
-// export const onNewBookingMatch = onBookingCreatedMatch; // Trigger Removed
-// export const respondToBooking = matchEngine.respondToBooking; // Use handleAssignmentResponse instead
 
 export const onCustomRequestCreatedAlertTechnicians = techAlerts.onCustomRequestCreatedAlertTechnicians;
 

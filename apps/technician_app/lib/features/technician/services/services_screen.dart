@@ -42,6 +42,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
       ),
       body: _ServicesListStream(uid: uid),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'fab_services_add',
         onPressed: () {
           Navigator.push(
             context,
@@ -176,10 +177,11 @@ class _ServiceCardState extends State<_ServiceCard> {
               ),
             ),
             const SizedBox(width: 12),
-            Expanded(
+            Flexible(
+              fit: FlexFit.loose,
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     widget.service['name'] ?? 'Unnamed Service',

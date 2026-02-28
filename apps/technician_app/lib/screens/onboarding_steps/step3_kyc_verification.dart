@@ -107,6 +107,7 @@ class _Step3KycVerificationState extends State<Step3KycVerification> {
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.all(24),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
@@ -164,7 +165,8 @@ class _Step3KycVerificationState extends State<Step3KycVerification> {
             size: 20,
           ),
           const SizedBox(width: 12),
-          Expanded(
+          Flexible(
+            fit: FlexFit.loose,
             child: Text(
               'Your documents are encrypted and stored securely. We never share your personal information.',
               style: GoogleFonts.plusJakartaSans(

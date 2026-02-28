@@ -23,31 +23,32 @@ class JobDetailsScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Stack(
-              children: [
-                SafeNetworkImage(
-                  imageUrl: booking.serviceImage,
-                  height: 240,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Stack(
+                children: [
+                  SafeNetworkImage(
+                    imageUrl: booking.serviceImage,
+                    height: 240,
+                    width: double.infinity,
+                  ),
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: _buildStatusPill(booking.status),
+                  ),
+                ],
+              ),
+              Transform.translate(
+                offset: const Offset(0, -24),
+                child: Container(
                   width: double.infinity,
-                ),
-                Positioned(
-                  top: 16,
-                  right: 16,
-                  child: _buildStatusPill(booking.status),
-                ),
-              ],
-            ),
-            Transform.translate(
-              offset: const Offset(0, -24),
-              child: Container(
-                width: double.infinity,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
@@ -159,9 +160,10 @@ class JobDetailsScreen extends StatelessWidget {
           ],
         ),
       ),
-      bottomSheet: _buildBottomSheet(context),
-    );
-  }
+    ),
+    bottomSheet: _buildBottomSheet(context),
+  );
+}
 
   Widget? _buildBottomSheet(BuildContext context) {
     if (booking.status == 'technician_pending') {
@@ -329,8 +331,10 @@ class JobDetailsScreen extends StatelessWidget {
           child: Icon(icon, size: 20, color: const Color(0xFF6366F1)),
         ),
         const SizedBox(width: 16),
-        Expanded(
+        Flexible(
+          fit: FlexFit.loose,
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(

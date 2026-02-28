@@ -31,6 +31,10 @@ export type NotificationType =
   | 'payout_processed'
   | 'new_review'
   | 'custom_request_accepted'
+  | 'admin_broadcast'
+  | 'application_approved'
+  | 'application_rejected'
+  | 'new_payment_received'
   | 'general';
 
 export type NotificationPriority = 'high' | 'normal';
@@ -43,6 +47,8 @@ interface FcmPayload {
   type?: string;
   priority?: NotificationPriority;
   imageUrl?: string;
+  idempotencyKey?: string;
+  createdAt?: string;
 }
 
 export interface SendNotificationInput {
@@ -52,6 +58,7 @@ export interface SendNotificationInput {
   body: string;
   type: NotificationType;
   eventId?: string; // Optional event ID for deduplication
+  idempotencyKey?: string; // Optional idempotency key for guaranteed single delivery
   data?: {
     bookingId?: string;
     requestId?: string;
@@ -79,6 +86,19 @@ function generateDedupeKey(
 }
 
 /**
+ * Generates a unique idempotency key for notification
+ */
+function generateIdempotencyKey(
+  userId: string,
+  type: NotificationType,
+  data?: { bookingId?: string; requestId?: string }
+): string {
+  const targetId = data?.bookingId ?? data?.requestId ?? '';
+  const timestamp = Date.now();
+  return `${userId}:${type}:${targetId}:${timestamp}`;
+}
+
+/**
  * Checks for duplicate notification within the time window
  * Returns true if duplicate found (should skip)
  */
@@ -87,13 +107,13 @@ async function checkDuplicate(
   timeWindowSeconds: number = 60
 ): Promise<boolean> {
   const cutoff = Date.now() - (timeWindowSeconds * 1000);
-  
+
   const snapshot = await db.collection('notifications')
     .where('dedupeKey', '==', dedupeKey)
     .where('createdAt', '>', admin.firestore.Timestamp.fromMillis(cutoff))
     .limit(1)
     .get();
-  
+
   return !snapshot.empty;
 }
 
@@ -127,16 +147,23 @@ export async function sendUserNotification(input: SendNotificationInput): Promis
     // Step 0: Duplicate check
     const dedupeKey = generateDedupeKey(userId, type, data);
     const isDuplicate = await checkDuplicate(dedupeKey);
-    
+
     if (isDuplicate) {
       console.log(`[NOTIFICATION] SKIPPED duplicate: ${dedupeKey}`);
       return { success: true, skipped: true };
     }
 
     // Step 1: Create notification document with dedupeKey
-    const notificationRef = db.collection('notifications').doc();
+    const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const notificationRef = db.collection('notifications').doc(notificationId);
+
+    // Generate idempotency key if not provided
+    const finalIdempotencyKey = input.idempotencyKey || generateIdempotencyKey(userId, type, data);
+    const createdAt = admin.firestore.FieldValue.serverTimestamp();
+
     const notificationData = {
-      id: notificationRef.id,
+      id: notificationId,
+      idempotencyKey: finalIdempotencyKey,
       dedupeKey, // For fast duplicate detection
       userId,
       userType,
@@ -150,13 +177,13 @@ export async function sendUserNotification(input: SendNotificationInput): Promis
       isRead: false,
       imageUrl: imageUrl ?? null,
       priority,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt,
     };
 
     await notificationRef.set(notificationData);
 
     // Step 2: Fetch all FCM tokens
-    const tokensCollection = userType === 'customer' 
+    const tokensCollection = (userType === 'customer' || userType === 'customers' as any)
       ? db.collection('customers').doc(userId).collection('fcmTokens')
       : db.collection('technicians').doc(userId).collection('fcmTokens');
 
@@ -164,10 +191,28 @@ export async function sendUserNotification(input: SendNotificationInput): Promis
 
     if (tokensSnapshot.empty) {
       console.log(`[NOTIFICATION] No FCM tokens found for ${userType}:${userId}`);
+      // Also check for legacy token
+      const userDoc = await db.collection(userType === 'customer' ? 'customers' : 'technicians').doc(userId).get();
+      const legacyToken = userDoc.data()?.fcmToken;
+      if (legacyToken) {
+        await sendPushToToken(legacyToken, {
+          title,
+          body,
+          data: {
+            ...data,
+            notificationId: notificationRef.id,
+            type,
+            screen: data.screen ?? getDefaultScreen(type),
+          },
+          priority,
+          imageUrl,
+        }, userType);
+      }
       return { success: true, notificationId: notificationRef.id };
     }
 
     // Step 3: Send push to all tokens using Promise.allSettled
+    const createdAtTimestamp = new Date().toISOString();
     const tokenPromises = tokensSnapshot.docs.map(async (doc) => {
       const token = doc.data().token;
       if (!token) return;
@@ -184,6 +229,8 @@ export async function sendUserNotification(input: SendNotificationInput): Promis
           },
           priority,
           imageUrl,
+          idempotencyKey: finalIdempotencyKey,
+          createdAt: createdAtTimestamp,
         }, userType);
 
         // Clean up invalid token if needed
@@ -193,17 +240,17 @@ export async function sendUserNotification(input: SendNotificationInput): Promis
         }
       } catch (error: any) {
         console.error(`[NOTIFICATION] Failed to send to token ${doc.id}:`, error.code);
-        
+
         // Remove invalid tokens
         if (error.code === 'messaging/registration-token-not-registered' ||
-            error.code === 'messaging/invalid-registration-token') {
-          await doc.ref.delete().catch(() => {});
+          error.code === 'messaging/invalid-registration-token') {
+          await doc.ref.delete().catch(() => { });
         }
-        
+
         // Increment invalid count
         await doc.ref.update({
           invalidCount: admin.firestore.FieldValue.increment(1),
-        }).catch(() => {});
+        }).catch(() => { });
       }
     });
 
@@ -242,7 +289,7 @@ async function sendPushToToken(
     android: {
       priority: payload.priority === 'high' ? 'high' : 'normal',
       notification: {
-        channelId: userType === 'customer' ? 'high_importance_channel' : 'job_alerts_channel',
+        channelId: (userType === 'customer' || userType === 'customers' as any) ? 'high_importance_channel' : 'job_alerts_channel',
         clickAction: 'FLUTTER_NOTIFICATION_CLICK',
         imageUrl: payload.imageUrl,
       },
@@ -267,6 +314,8 @@ async function sendPushToToken(
       screen: payload.data?.screen || '',
       bookingId: payload.data?.bookingId || '',
       deepLink: buildDeepLink(payload.type, payload.data),
+      idempotencyKey: payload.idempotencyKey || '',
+      createdAt: payload.createdAt || new Date().toISOString(),
     },
   };
 
@@ -301,6 +350,10 @@ function getDefaultScreen(type: NotificationType): string {
     payout_processed: 'wallet',
     new_review: 'reviews',
     custom_request_accepted: 'custom_request_details',
+    admin_broadcast: 'notifications',
+    application_approved: 'onboarding_success',
+    application_rejected: 'onboarding',
+    new_payment_received: 'wallet',
     general: 'notifications',
   };
   return screenMap[type] || 'notifications';
@@ -308,9 +361,9 @@ function getDefaultScreen(type: NotificationType): string {
 
 function buildDeepLink(type: string | undefined, data: any): string {
   const base = 'homefix://app';
-  
+
   if (!type) return base;
-  
+
   switch (type) {
     case 'booking_confirmed':
     case 'booking_cancelled':
@@ -356,7 +409,7 @@ export async function sendBulkNotification(
   );
 
   const results = await Promise.allSettled(promises);
-  
+
   let success = 0;
   let failed = 0;
 
@@ -384,7 +437,7 @@ export async function notifyCustomerBookingConfirmed(
     userId: customerId,
     userType: 'customer',
     title: 'Booking Confirmed! 🎉',
-    body: `$technicianName has accepted your booking and will arrive soon.`,
+    body: `${technicianName} has accepted your booking and will arrive soon.`,
     type: 'booking_confirmed',
     data: { bookingId },
     priority: 'high',
@@ -400,7 +453,7 @@ export async function notifyCustomerTechnicianEnRoute(
     userId: customerId,
     userType: 'customer',
     title: 'Technician On The Way! 🚗',
-    body: `$technicianName is heading to your location.`,
+    body: `${technicianName} is heading to your location.`,
     type: 'technician_en_route',
     data: { bookingId },
     priority: 'high',
@@ -416,7 +469,7 @@ export async function notifyCustomerTechnicianArrived(
     userId: customerId,
     userType: 'customer',
     title: 'Technician Has Arrived! 👷',
-    body: `$technicianName is at your location and ready to start.`,
+    body: `${technicianName} is at your location and ready to start.`,
     type: 'technician_arrived',
     data: { bookingId },
     priority: 'high',
@@ -432,7 +485,7 @@ export async function notifyCustomerJobCompleted(
     userId: customerId,
     userType: 'customer',
     title: 'Job Completed! ✅',
-    body: `$technicianName has completed the service. Please rate your experience.`,
+    body: `${technicianName} has completed the service. Please rate your experience.`,
     type: 'job_completed',
     data: { bookingId },
     priority: 'normal',
@@ -464,7 +517,7 @@ export async function notifyCustomerPaymentSuccess(
     userId: customerId,
     userType: 'customer',
     title: 'Payment Successful! 💳',
-    body: `₹$amount has been received. Thank you for choosing HomeFix!`,
+    body: `₹${amount} has been received. Thank you for choosing HomeFix!`,
     type: 'payment_success',
     data: { bookingId },
     priority: 'normal',
@@ -481,7 +534,7 @@ export async function notifyTechnicianNewRequest(
     userId: technicianId,
     userType: 'technician',
     title: 'New Service Request! 🔔',
-    body: `$serviceName job at ${address.substring(0, 40)}...`,
+    body: `${serviceName} job at ${address.substring(0, 40)}...`,
     type: 'new_request_nearby',
     data: { requestId, screen: 'request_details' },
     priority: 'high',
@@ -498,7 +551,7 @@ export async function notifyTechnicianNewInstantBooking(
     userId: technicianId,
     userType: 'technician',
     title: 'New Instant Booking! ⚡',
-    body: `$serviceName job at ${address.substring(0, 40)}...`,
+    body: `${serviceName} job at ${address.substring(0, 40)}...`,
     type: 'new_instant_booking',
     data: { bookingId, screen: 'booking_details' },
     priority: 'high',
@@ -513,7 +566,7 @@ export async function notifyTechnicianPayoutProcessed(
     userId: technicianId,
     userType: 'technician',
     title: 'Payout Processed! 💰',
-    body: `₹$amount has been credited to your wallet.`,
+    body: `₹${amount} has been credited to your wallet.`,
     type: 'payout_processed',
     data: { screen: 'wallet' },
     priority: 'normal',
@@ -530,9 +583,41 @@ export async function notifyTechnicianNewReview(
     userId: technicianId,
     userType: 'technician',
     title: 'New Review Received! ⭐',
-    body: `$customerName gave you $rating stars. Keep up the great work!`,
+    body: `${customerName} gave you ${rating} stars. Keep up the great work!`,
     type: 'new_review',
     data: { bookingId, screen: 'reviews' },
     priority: 'normal',
+  });
+}
+
+export async function notifyTechnicianNewPayment(
+  technicianId: string,
+  bookingId: string,
+  amount: number
+): Promise<void> {
+  await sendUserNotification({
+    userId: technicianId,
+    userType: 'technician',
+    title: 'Payment Received! 💵',
+    body: `You received ₹${amount} for booking #${bookingId.substring(0, 6)}.`,
+    type: 'new_payment_received',
+    data: { bookingId, screen: 'wallet' },
+    priority: 'high',
+  });
+}
+
+export async function notifyTechnicianBookingCancelled(
+  technicianId: string,
+  bookingId: string,
+  reason?: string
+): Promise<void> {
+  await sendUserNotification({
+    userId: technicianId,
+    userType: 'technician',
+    title: 'Booking Cancelled 🔴',
+    body: reason || `Booking #${bookingId.substring(0, 6)} has been cancelled by the customer.`,
+    type: 'booking_cancelled',
+    data: { bookingId },
+    priority: 'high',
   });
 }

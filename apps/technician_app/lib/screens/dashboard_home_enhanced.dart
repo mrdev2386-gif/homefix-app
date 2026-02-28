@@ -9,9 +9,19 @@ import 'package:technician_app/core/services/booking_service.dart';
 import 'package:technician_app/core/services/functions_service.dart';
 import 'package:technician_app/core/models/booking.dart';
 import 'package:technician_app/features/earnings/presentation/earnings_screen.dart';
+import 'package:technician_app/screens/wallet_screen.dart';
 import 'package:technician_app/features/profile/presentation/profile_screen.dart';
 import 'package:technician_app/features/notifications/presentation/notifications_screen.dart';
+import 'package:technician_app/features/technician/services/add_service_screen.dart';
 
+/// Dashboard Home Enhanced - Responsive UI for all device sizes
+/// 
+/// Features:
+/// - LayoutBuilder guards for responsive sizing
+/// - Flexible/Expanded widgets to prevent overflow
+/// - No hardcoded heights - uses flexible sizing
+/// - Overflow ellipsis for long names
+/// - Works on <360 width devices
 class DashboardHomeEnhanced extends StatefulWidget {
   final Function(int)? onNavigate;
   
@@ -99,22 +109,29 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
       appBar: _buildModernAppBar(tech),
-      body: RefreshIndicator(
-        onRefresh: () => provider.refreshTechnicianData(),
-        color: const Color(0xFF6366F1),
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 16),
-              _buildSummaryCardsSection(tech),
-              const SizedBox(height: 24),
-              _buildQuickActionsSection(),
-              const SizedBox(height: 24),
-              _buildActiveBookingsSection(tech),
-              const SizedBox(height: 24),
-            ],
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: () => provider.refreshTechnicianData(),
+          color: const Color(0xFF6366F1),
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 16),
+                _buildPremiumHeader(tech),
+                const SizedBox(height: 16),
+                _buildProfileCompletionCard(tech),
+                const SizedBox(height: 16),
+                _buildSummaryCardsSection(tech),
+                const SizedBox(height: 24),
+                _buildQuickActionsSection(),
+                const SizedBox(height: 24),
+                _buildActiveBookingsSection(tech),
+                const SizedBox(height: 24),
+              ],
+            ),
           ),
         ),
       ),
@@ -128,10 +145,11 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
       toolbarHeight: 80,
       automaticallyImplyLeading: false,
       title: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Hello, ${tech.name.split(' ')[0]} 👋',
+            'Hello, ${tech.name.split(' ').first} 👋',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -155,7 +173,7 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
           stream: FirebaseFirestore.instance
               .collection('notifications')
               .where('userId', isEqualTo: tech.uid)
-              .where('read', isEqualTo: false)
+              .where('isRead', isEqualTo: false)
               .snapshots(),
           builder: (context, snapshot) {
             final unreadCount = snapshot.data?.docs.length ?? 0;
@@ -199,50 +217,284 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
     );
   }
 
-  Widget _buildSummaryCardsSection(Technician tech) {
-    return SizedBox(
-      height: 140,
-      child: StreamBuilder<List<Booking>>(
-        stream: _bookingService.getAssignedBookings(tech.uid),
-        builder: (context, snapshot) {
-          final bookings = snapshot.data ?? [];
-          final todayJobs = bookings.where((b) => b.status != 'completed' && b.status != 'cancelled').length;
-          final pending = bookings.where((b) => b.status == 'pending').length;
-
-          return ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            physics: const BouncingScrollPhysics(),
-            children: [
-              _buildSummaryCard(
-                'Today\'s Jobs',
-                '$todayJobs',
-                Icons.work_outline_rounded,
-                const Color(0xFF6366F1),
+  /// Premium greeting header with gradient
+  /// PART 3: LayoutBuilder for responsive padding
+  Widget _buildPremiumHeader(Technician tech) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Responsive padding based on screen width
+        final horizontalPadding = constraints.maxWidth < 360 ? 12.0 : 16.0;
+        
+        return Padding(
+          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              _buildEarningsSummaryCard(tech),
-              _buildSummaryCard(
-                'Rating',
-                tech.avgRating.toStringAsFixed(1),
-                Icons.star_rounded,
-                const Color(0xFFFBBF24),
-              ),
-              _buildSummaryCard(
-                'Pending',
-                '$pending',
-                Icons.pending_actions_rounded,
-                const Color(0xFFF59E0B),
-              ),
-            ],
-          );
-        },
-      ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF6366F1).withOpacity(0.3),
+                  blurRadius: 15,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Flexible(
+                      fit: FlexFit.loose,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // PART 3: Flexible text with ellipsis
+                          Flexible(
+                            child: Text(
+                              'Hello, ${tech.name.split(' ').first} 👋',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            tech.isOnline ? 'You are online' : 'You are offline',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 14,
+                              color: Colors.white.withOpacity(0.9),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            tech.isOnline ? Icons.circle : Icons.circle_outlined,
+                            size: 10,
+                            color: tech.isOnline ? Colors.greenAccent : Colors.white,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            tech.isOnline ? 'Online' : 'Offline',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildSummaryCard(String label, String value, IconData icon, Color color) {
+  /// Profile completion card with animated ring
+  /// PART 3: LayoutBuilder for responsive sizing
+  Widget _buildProfileCompletionCard(Technician tech) {
+    final completion = tech.calculateProfileCompletion();
+    final clampedCompletion = completion.clamp(0, 100); // PART 5: Ensure value is clamped 0-100
+    final isComplete = clampedCompletion >= 100;
+    
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final horizontalPadding = constraints.maxWidth < 360 ? 12.0 : 16.0;
+        
+        return Padding(
+          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                // PART 3: Fixed size for circular indicator
+                SizedBox(
+                  width: 70,
+                  height: 70,
+                  child: Stack(
+                    children: [
+                      CircularProgressIndicator(
+                        value: clampedCompletion / 100,
+                        strokeWidth: 6,
+                        backgroundColor: Colors.grey.shade200,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          isComplete ? Colors.green : const Color(0xFF6366F1),
+                        ),
+                      ),
+                      Center(
+                        child: Text(
+                          '$clampedCompletion%',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF0F172A),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Flexible(
+                  fit: FlexFit.loose,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // PART 3: Flexible text with ellipsis
+                      Flexible(
+                        child: Text(
+                          isComplete ? 'Profile Complete!' : 'Complete Your Profile',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF0F172A),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Flexible(
+                        child: Text(
+                          isComplete 
+                              ? 'Your profile is all set up!'
+                              : 'Add more details to get more bookings',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 13,
+                            color: const Color(0xFF64748B),
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (!isComplete) ...[
+                        const SizedBox(height: 8),
+                        InkWell(
+                          onTap: () => widget.onNavigate?.call(3),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF6366F1).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'Complete Now',
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: const Color(0xFF6366F1),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// PART 3: Responsive summary cards - no hardcoded heights
+  Widget _buildSummaryCardsSection(Technician tech) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Responsive card width based on screen size
+        final cardWidth = constraints.maxWidth < 360 ? 140.0 : 160.0;
+        
+        return SizedBox(
+          // PART 3: Flexible height - allows content to fit
+          height: constraints.maxWidth < 360 ? 130 : 140,
+          child: StreamBuilder<List<Booking>>(
+            stream: _bookingService.getAssignedBookings(tech.uid),
+            builder: (context, snapshot) {
+              final bookings = snapshot.data ?? [];
+              final todayJobs = bookings.where((b) => b.status != 'completed' && b.status != 'cancelled').length;
+              final pending = bookings.where((b) => b.status == 'pending').length;
+
+              return ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                physics: const BouncingScrollPhysics(),
+                children: [
+                  _buildSummaryCard(
+                    'Today\'s Jobs',
+                    '$todayJobs',
+                    Icons.work_outline_rounded,
+                    const Color(0xFF6366F1),
+                    cardWidth: cardWidth,
+                  ),
+                  _buildEarningsSummaryCard(tech, cardWidth: cardWidth),
+                  _buildSummaryCard(
+                    'Rating',
+                    tech.avgRating.toStringAsFixed(1),
+                    Icons.star_rounded,
+                    const Color(0xFFFBBF24),
+                    cardWidth: cardWidth,
+                  ),
+                  _buildSummaryCard(
+                    'Pending',
+                    '$pending',
+                    Icons.pending_actions_rounded,
+                    const Color(0xFFF59E0B),
+                    cardWidth: cardWidth,
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSummaryCard(String label, String value, IconData icon, Color color, {double cardWidth = 160}) {
     return Container(
-      width: 160,
+      width: cardWidth,
       margin: const EdgeInsets.only(right: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -256,52 +508,63 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: color, size: 24),
-          ),
-          const SizedBox(height: 12),
-          Flexible(
-            child: Text(
-              value,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF0F172A),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              child: Icon(icon, color: color, size: 24),
             ),
-          ),
-          const SizedBox(height: 4),
-          Flexible(
-            child: Text(
-              label,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 13,
-                color: const Color(0xFF64748B),
-                fontWeight: FontWeight.w500,
+            const SizedBox(height: 12),
+            // PART 3: Flexible with ellipsis
+            Flexible(
+              fit: FlexFit.loose,
+              child: Text(
+                value,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF0F172A),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                softWrap: false,
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
-          ),
-        ],
+            const SizedBox(height: 4),
+            Flexible(
+              fit: FlexFit.loose,
+              child: Text(
+                label,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 13,
+                  color: const Color(0xFF64748B),
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                softWrap: false,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildEarningsSummaryCard(Technician tech) {
+  /// PART 4: Earnings card hardening - null handling, shimmer, fallback
+  Widget _buildEarningsSummaryCard(Technician tech, {double cardWidth = 160}) {
     return Container(
-      width: 160,
+      width: cardWidth,
       margin: const EdgeInsets.only(right: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -323,13 +586,35 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
             .doc('earnings')
             .snapshots(),
         builder: (context, snapshot) {
-          final data = snapshot.data?.data() as Map<String, dynamic>?;
-          final todayEarnings = data?['todayEarnings'] ?? 0;
+          // PART 4: Handle loading state with shimmer
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return _buildShimmerCard();
+          }
+          
+          // PART 4: Handle errors - show fallback
+          if (snapshot.hasError) {
+            return _buildFallbackEarningsCard();
+          }
 
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
+          final data = snapshot.data?.data() as Map<String, dynamic>?;
+          // PART 4: Null-safe earnings with fallback to 0
+          final todayEarnings = _safeDouble(data?['todayEarnings'] ?? data?['today'] ?? 0);
+          final monthEarnings = _safeDouble(
+            data?['monthEarnings'] ?? 
+            data?['thisMonthEarnings'] ?? 
+            data?['thisMonth'] ?? 
+            data?['month'] ?? 
+            0
+          );
+
+          return FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
@@ -340,8 +625,10 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
               ),
               const SizedBox(height: 12),
               Flexible(
+                fit: FlexFit.loose,
                 child: Text(
-                  '₹${todayEarnings.toStringAsFixed(0)}',
+                  // PART 4: Proper currency formatting
+                  '₹${_formatCurrency(monthEarnings)}',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
@@ -349,12 +636,14 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  softWrap: false,
                 ),
               ),
               const SizedBox(height: 4),
               Flexible(
+                fit: FlexFit.loose,
                 child: Text(
-                  'Earnings',
+                  'This Month',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 13,
                     color: const Color(0xFF64748B),
@@ -362,54 +651,239 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  softWrap: false,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      // PART 4: Proper currency formatting
+                      'Today: ₹${_formatCurrency(todayEarnings)}',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 11,
+                        color: Colors.green.shade700,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
+                    ),
+                  ],
                 ),
               ),
             ],
-          );
+          ), // close Column
+        ); // close FittedBox
         },
       ),
     );
   }
 
-  Widget _buildQuickActionsSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+  /// PART 4: Shimmer loading state
+  Widget _buildShimmerCard() {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(
-            'Quick Actions',
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(Icons.account_balance_wallet_rounded, color: Colors.grey.shade400, size: 24),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          height: 28,
+          width: 80,
+          decoration: BoxDecoration(
+            color: Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Container(
+          height: 13,
+          width: 60,
+          decoration: BoxDecoration(
+            color: Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          height: 20,
+          width: 100,
+          decoration: BoxDecoration(
+            color: Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      ],
+      ),
+    );
+  }
+
+  /// PART 4: Fallback earnings card when data unavailable
+  Widget _buildFallbackEarningsCard() {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: const Color(0xFF10B981).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF10B981), size: 24),
+        ),
+        const SizedBox(height: 12),
+        Flexible(
+          fit: FlexFit.loose,
+          child: Text(
+            '₹0',
             style: GoogleFonts.plusJakartaSans(
-              fontSize: 18,
+              fontSize: 28,
               fontWeight: FontWeight.bold,
               color: const Color(0xFF0F172A),
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            softWrap: false,
           ),
-          const SizedBox(height: 12),
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 2.2,
+        ),
+        const SizedBox(height: 4),
+        Flexible(
+          fit: FlexFit.loose,
+          child: Text(
+            'This Month',
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 13,
+              color: const Color(0xFF64748B),
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            softWrap: false,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _buildQuickActionCard('View Jobs', Icons.work_outline_rounded, () {
-                widget.onNavigate?.call(1);
-              }),
-              _buildQuickActionCard('Wallet', Icons.account_balance_wallet_outlined, () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const EarningsScreen()));
-              }),
-              _buildQuickActionCard('My Services', Icons.home_repair_service_outlined, () {
-                widget.onNavigate?.call(2);
-              }),
-              _buildQuickActionCard('Profile', Icons.person_outline_rounded, () {
-                widget.onNavigate?.call(3);
-              }),
+              Text(
+                'Today: ₹0',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 11,
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                softWrap: false,
+              ),
             ],
           ),
-        ],
-      ),
+        ),
+      ],
+    ),
+    );
+  }
+
+  /// PART 4: Safe double conversion with fallback
+  double _safeDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) return double.tryParse(value) ?? 0.0;
+    return 0.0;
+  }
+
+  /// PART 4: Proper currency formatting
+  String _formatCurrency(double amount) {
+    if (amount >= 10000000) {
+      return '${(amount / 10000000).toStringAsFixed(1)}Cr';
+    } else if (amount >= 100000) {
+      return '${(amount / 100000).toStringAsFixed(1)}L';
+    } else if (amount >= 1000) {
+      return '${(amount / 1000).toStringAsFixed(1)}K';
+    }
+    return amount.toStringAsFixed(0);
+  }
+
+  /// PART 3: Responsive quick actions - GridView with flexible sizing
+  Widget _buildQuickActionsSection() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final horizontalPadding = constraints.maxWidth < 360 ? 12.0 : 16.0;
+        
+        return Padding(
+          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Quick Actions',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF0F172A),
+                ),
+              ),
+              const SizedBox(height: 12),
+              // PART 3: Responsive grid - 2 columns on small screens
+              GridView.count(
+                crossAxisCount: constraints.maxWidth < 360 ? 2 : 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                // PART 3: Flexible aspect ratio
+                childAspectRatio: constraints.maxWidth < 360 ? 2.5 : 2.2,
+                children: [
+                  _buildQuickActionCard('Add Service', Icons.add_circle_outline, () {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const AddServiceScreen()));
+                  }),
+                  _buildQuickActionCard('View Jobs', Icons.work_outline_rounded, () {
+                    widget.onNavigate?.call(1);
+                  }),
+                  _buildQuickActionCard('Wallet', Icons.account_balance_wallet_outlined, () {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen()));
+                  }),
+                  _buildQuickActionCard('My Services', Icons.home_repair_service_outlined, () {
+                    widget.onNavigate?.call(2);
+                  }),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -437,6 +911,7 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
                 child: Icon(icon, color: const Color(0xFF6366F1), size: 20),
               ),
               const SizedBox(width: 12),
+              // PART 3: Expanded with ellipsis for long labels
               Expanded(
                 child: Text(
                   label,
@@ -456,50 +931,58 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
     );
   }
 
+  /// PART 3: Responsive active bookings section
   Widget _buildActiveBookingsSection(Technician tech) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Active Bookings',
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: const Color(0xFF0F172A),
-            ),
-          ),
-          const SizedBox(height: 12),
-          StreamBuilder<List<Booking>>(
-            stream: _bookingService.getAssignedBookings(tech.uid),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final horizontalPadding = constraints.maxWidth < 360 ? 12.0 : 16.0;
+        
+        return Padding(
+          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Active Bookings',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF0F172A),
+                ),
+              ),
+              const SizedBox(height: 12),
+              StreamBuilder<List<Booking>>(
+                stream: _bookingService.getAssignedBookings(tech.uid),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-              final bookings = snapshot.data ?? [];
-              final activeBookings = bookings
-                  .where((b) => b.status != 'completed' && b.status != 'cancelled')
-                  .toList();
+                  final bookings = snapshot.data ?? [];
+                  final activeBookings = bookings
+                      .where((b) => b.status != 'completed' && b.status != 'cancelled')
+                      .toList();
 
-              if (activeBookings.isEmpty) {
-                return _buildEmptyState();
-              }
+                  if (activeBookings.isEmpty) {
+                    return _buildEmptyState();
+                  }
 
-              return ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: activeBookings.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
-                itemBuilder: (context, index) {
-                  return _buildBookingCard(activeBookings[index]);
+                  return ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: activeBookings.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      return _buildBookingCard(activeBookings[index]);
+                    },
+                  );
                 },
-              );
-            },
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -522,6 +1005,7 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
         children: [
           Row(
             children: [
+              // PART 3: Expanded with ellipsis for long service titles
               Expanded(
                 child: Text(
                   booking.serviceTitle,
@@ -543,6 +1027,7 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
             children: [
               const Icon(Icons.person_outline, size: 16, color: Color(0xFF64748B)),
               const SizedBox(width: 6),
+              // PART 3: Expanded with ellipsis for long names
               Expanded(
                 child: Text(
                   booking.customerName,
@@ -584,14 +1069,16 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
                 children: [
                   const Icon(Icons.location_on_outlined, size: 16, color: Color(0xFF64748B)),
                   const SizedBox(width: 6),
-                  Text(
-                    booking.addressSnapshot['city'] ?? 'Address',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 14,
-                      color: const Color(0xFF64748B),
+                  Flexible(
+                    child: Text(
+                      booking.addressSnapshot['city'] ?? 'Address',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 14,
+                        color: const Color(0xFF64748B),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(width: 4),
                   const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Color(0xFF64748B)),

@@ -72,6 +72,7 @@ class _SearchableDropdownState<T extends DropdownItem> extends State<SearchableD
   List<T> _filteredItems = [];
   Timer? _debounceTimer;
   bool _isOpen = false;
+  bool _isDisposed = false;
 
   @override
   void initState() {
@@ -89,16 +90,24 @@ class _SearchableDropdownState<T extends DropdownItem> extends State<SearchableD
 
   @override
   void dispose() {
+    // Mark disposed first
+    _isDisposed = true;
+
+    // Clean up resources
+    _debounceTimer?.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();
-    _debounceTimer?.cancel();
-    _removeOverlay();
+
+    // Remove overlay safely WITHOUT rebuild
+    _removeOverlay(fromDispose: true);
+
     super.dispose();
   }
 
   void _filterItems(String query) {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted || _isDisposed) return;
       if (query.isEmpty) {
         setState(() => _filteredItems = widget.items);
       } else {
@@ -115,17 +124,22 @@ class _SearchableDropdownState<T extends DropdownItem> extends State<SearchableD
   }
 
   void _showOverlay() {
-    if (_overlayEntry != null) return;
+    if (_overlayEntry != null || !mounted || _isDisposed) return;
 
     final RenderBox renderBox = context.findRenderObject() as RenderBox;
     _overlayEntry = _createOverlayEntry(renderBox);
 
+    if (!mounted || _isDisposed) return;
     Overlay.of(context).insert(_overlayEntry!);
-    setState(() => _isOpen = true);
+    if (mounted) {
+      setState(() => _isOpen = true);
+    }
 
     // Focus search field
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _searchFocusNode.requestFocus();
+      if (mounted && !_isDisposed) {
+        _searchFocusNode.requestFocus();
+      }
     });
   }
 
@@ -289,8 +303,10 @@ class _SearchableDropdownState<T extends DropdownItem> extends State<SearchableD
                   ),
                   const SizedBox(width: 12),
                 ],
-                Expanded(
+                Flexible(
+                  fit: FlexFit.loose,
                   child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
@@ -329,16 +345,28 @@ class _SearchableDropdownState<T extends DropdownItem> extends State<SearchableD
   }
 
   void _selectItem(T item) {
+    if (!mounted || _isDisposed) return;
     widget.onChanged(item);
     _removeOverlay();
     _searchController.clear();
     _filterItems('');
   }
 
-  void _removeOverlay() {
-    _overlayEntry?.remove();
-    _overlayEntry = null;
-    setState(() => _isOpen = false);
+  void _removeOverlay({bool fromDispose = false}) {
+    // Safely remove overlay if present
+    if (_overlayEntry != null) {
+      try {
+        _overlayEntry!.remove();
+      } catch (_) {
+        // ignore if already removed
+      }
+      _overlayEntry = null;
+    }
+
+    // Never trigger rebuild during dispose
+    if (!fromDispose && mounted) {
+      setState(() {});
+    }
   }
 
   @override

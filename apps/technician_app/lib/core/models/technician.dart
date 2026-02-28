@@ -106,6 +106,15 @@ class Technician {
   final int? maxDailyJobs;
   final bool? dynamicPricingAllowed;
   final Map<String, dynamic>? stepsCompleted;
+  
+  // Bank details fields
+  final String? bankName;
+  final String? accountNumber;
+  final String? ifscCode;
+  final String? accountHolderName;
+
+  // Custom services added by technician
+  final List<String>? customServices;
 
   Technician({
     required this.uid,
@@ -160,6 +169,11 @@ class Technician {
     this.maxDailyJobs,
     this.dynamicPricingAllowed,
     this.stepsCompleted,
+    this.bankName,
+    this.accountNumber,
+    this.ifscCode,
+    this.accountHolderName,
+    this.customServices,
   });
 
   factory Technician.fromFirestore(DocumentSnapshot doc) {
@@ -303,6 +317,12 @@ class Technician {
       maxDailyJobs: data['maxDailyJobs'],
       dynamicPricingAllowed: data['dynamicPricingAllowed'],
       stepsCompleted: (data['stepsCompleted'] as Map?)?.cast<String, dynamic>(),
+      // Bank details from nested object
+      bankName: data['bankDetails']?['bankName'],
+      accountNumber: data['bankDetails']?['accountNumber'],
+      ifscCode: data['bankDetails']?['ifscCode'],
+      accountHolderName: data['bankDetails']?['accountHolder'],
+      customServices: (data['customServices'] as List?)?.map((e) => e.toString()).toList(),
     );
   }
 
@@ -389,5 +409,47 @@ class Technician {
   /// Check if technician is under review
   bool get isUnderReview {
     return isKycComplete && !isApproved;
+  }
+
+  /// Calculate profile completion percentage
+  /// Based on: name, phone, profilePhoto, skills, experience, bankDetails, documents, customServices
+  /// PART 5: Value clamped between 0-100
+  int calculateProfileCompletion() {
+    int completed = 0;
+    int total = 8; // 8 fields to check (added customServices)
+
+    // 1. Name (non-empty)
+    if (name.isNotEmpty) completed++;
+
+    // 2. Phone (non-empty)
+    if (phone.isNotEmpty) completed++;
+
+    // 3. Profile Photo
+    if (profilePhotoUrl != null && profilePhotoUrl!.isNotEmpty) completed++;
+
+    // 4. Skills
+    if (skills.isNotEmpty) completed++;
+
+    // 5. Experience
+    if (experienceYears != null && experienceYears! > 0) completed++;
+
+    // 6. Bank Details
+    final hasBankDetails = bankName != null && bankName!.isNotEmpty &&
+        accountNumber != null && accountNumber!.isNotEmpty &&
+        ifscCode != null && ifscCode!.isNotEmpty;
+    if (hasBankDetails) completed++;
+
+    // 7. Documents (Aadhaar or PAN)
+    if ((aadhaarFrontUrl != null && aadhaarFrontUrl!.isNotEmpty) ||
+        (panNumber != null && panNumber!.isNotEmpty)) completed++;
+
+    // 8. Custom Services or Regular Services
+    final hasServices = (customServices != null && customServices!.isNotEmpty) ||
+        (skills.isNotEmpty);
+    if (hasServices) completed++;
+
+    // PART 5: Clamp result between 0 and 100
+    final rawResult = ((completed / total) * 100).round();
+    return rawResult.clamp(0, 100);
   }
 }
