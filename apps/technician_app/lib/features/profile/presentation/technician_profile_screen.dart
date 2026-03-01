@@ -12,6 +12,7 @@ import '../../../core/providers/technician_provider.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/models/technician.dart';
 import '../../../core/services/functions_service.dart';
+import '../../../core/services/faq_service.dart';
 import '../../../core/widgets/safe_network_image.dart';
 import '../../services/presentation/technician_services_screen.dart';
 import '../../earnings/presentation/earnings_screen.dart';
@@ -539,16 +540,7 @@ class _VerificationAndCompletionCardState extends State<_VerificationAndCompleti
   }
 
   int _getProfileCompletion(Technician tech) {
-    int completed = 0;
-    int total = 5;
-    
-    if (tech.name.isNotEmpty) completed++;
-    if (tech.profilePhotoUrl != null && tech.profilePhotoUrl!.isNotEmpty) completed++;
-    if (tech.aadhaarFrontUrl != null && tech.aadhaarFrontUrl!.isNotEmpty) completed++;
-    if (tech.payoutPreference != null && tech.payoutPreference!.isNotEmpty) completed++;
-    if (tech.primaryCategoryId != null && tech.primaryCategoryId!.isNotEmpty) completed++;
-    
-    return ((completed / total) * 100).round();
+    return tech.calculateProfileCompletion();
   }
 
   @override
@@ -682,7 +674,12 @@ class _VerificationAndCompletionCardState extends State<_VerificationAndCompleti
   }
 
   String _getBankStatus(Technician tech) {
-    if (tech.payoutPreference != null && tech.payoutPreference!.isNotEmpty) {
+    final hasDetails = (tech.bankName?.isNotEmpty ?? false) &&
+        (tech.accountNumber?.isNotEmpty ?? false) &&
+        (tech.ifscCode?.isNotEmpty ?? false) &&
+        (tech.accountHolderName?.isNotEmpty ?? false);
+
+    if (hasDetails) {
       return 'verified';
     }
     return 'pending';
@@ -3257,10 +3254,11 @@ class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
 
-      await FirebaseFirestore.instance
+      final docRef = FirebaseFirestore.instance
           .collection('technicians')
-          .doc(uid)
-          .update({
+          .doc(uid);
+      
+      await docRef.update({
         'accountHolder': _accountHolderController.text.trim(),
         'accountNumber': _accountNumberController.text.trim(),
         'ifscCode': _ifscCodeController.text.trim().toUpperCase(),
@@ -3268,9 +3266,14 @@ class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
+      // WRITE VERIFY: Ensure write actually reached server
+      await docRef.get();
+      debugPrint('[WRITE VERIFY] bank details updated');
+
       if (!mounted) return;
 
       await context.read<TechnicianProvider>().refreshTechnicianData();
+      debugPrint('[Provider] refreshed');
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Bank details saved')),
@@ -3385,65 +3388,609 @@ class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
   }
 }
 
-class HelpCenterScreen extends StatelessWidget {
+class HelpCenterScreen extends StatefulWidget {
   const HelpCenterScreen({super.key});
 
   @override
+  State<HelpCenterScreen> createState() => _HelpCenterScreenState();
+}
+
+class _HelpCenterScreenState extends State<HelpCenterScreen> {
+  final FaqService _faqService = FaqService();
+  late Future<List<dynamic>> _faqsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFaqs();
+  }
+
+  void _loadFaqs() {
+    _faqsFuture = _faqService.fetchFaqs().then((faqs) => faqs as List<dynamic>);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)), onPressed: () => Navigator.pop(context)),
-        title: Text('Help Center', style: GoogleFonts.plusJakartaSans(fontSize: 20, fontWeight: FontWeight.bold, color: const Color(0xFF0F172A))),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'Help Center',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: const Color(0xFF0F172A),
+          ),
+        ),
         centerTitle: true,
       ),
-      body: const Center(child: Text('Help Center - Coming Soon')),
+      body: FutureBuilder<List<dynamic>>(
+        future: _faqsFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: AppTheme.primaryColor),
+            );
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    size: 48,
+                    color: Color(0xFF94A3B8),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Failed to load FAQs',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 16,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        _loadFaqs();
+                      });
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          final faqs = snapshot.data ?? [];
+
+          if (faqs.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.help_outline,
+                    size: 64,
+                    color: Color(0xFF94A3B8),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No FAQs available',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 16,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: faqs.length,
+            itemBuilder: (context, index) {
+              final faq = faqs[index];
+              return _FaqExpansionTile(faq: faq);
+            },
+          );
+        },
+      ),
     );
   }
 }
 
-class RaiseDisputeScreen extends StatelessWidget {
+class _FaqExpansionTile extends StatelessWidget {
+  final dynamic faq;
+
+  const _FaqExpansionTile({required this.faq});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        iconColor: AppTheme.primaryColor,
+        collapsedIconColor: const Color(0xFF94A3B8),
+        title: Text(
+          faq.question,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF1E293B),
+          ),
+        ),
+        children: [
+          Text(
+            faq.answer,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 14,
+              color: const Color(0xFF64748B),
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class RaiseDisputeScreen extends StatefulWidget {
   const RaiseDisputeScreen({super.key});
 
   @override
+  State<RaiseDisputeScreen> createState() => _RaiseDisputeScreenState();
+}
+
+class _RaiseDisputeScreenState extends State<RaiseDisputeScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _descriptionController = TextEditingController();
+  final _jobIdController = TextEditingController();
+  bool _isSubmitting = false;
+  String? _selectedReason;
+
+  final List<String> _reasons = [
+    'Payment Not Received',
+    'Incorrect Payment Amount',
+    'Customer Not Satisfied',
+    'Job Cancellation Issue',
+    'Service Quality Issue',
+    'Other',
+  ];
+
+  @override
+  void dispose() {
+    _descriptionController.dispose();
+    _jobIdController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submitDispute() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_isSubmitting) return;
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please login to submit a dispute')),
+        );
+      }
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final trimmedDescription = _descriptionController.text.trim();
+      final jobIdText = _jobIdController.text.trim();
+      final jobId = jobIdText.isEmpty ? null : jobIdText;
+
+      // Write to Firestore
+      final docRef = await FirebaseFirestore.instance
+          .collection('disputes')
+          .add({
+            'uid': user.uid,
+            'jobId': jobId,
+            'reason': _selectedReason,
+            'description': trimmedDescription,
+            'status': 'open',
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+
+      // Verify write
+      final docSnapshot = await docRef.get();
+      
+      if (docSnapshot.exists) {
+        debugPrint('[WRITE VERIFY] dispute created: ${docRef.id}');
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Dispute submitted successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context);
+        }
+      } else {
+        throw Exception('Failed to verify dispute creation');
+      }
+    } on FirebaseException catch (e) {
+      debugPrint('[RaiseDispute] Firebase error: ${e.code} - ${e.message}');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.message}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[RaiseDispute] Error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)), onPressed: () => Navigator.pop(context)),
-        title: Text('Raise Dispute', style: GoogleFonts.plusJakartaSans(fontSize: 20, fontWeight: FontWeight.bold, color: const Color(0xFF0F172A))),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'Raise Dispute',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: const Color(0xFF0F172A),
+          ),
+        ),
         centerTitle: true,
       ),
-      body: const Center(child: Text('Raise Dispute - Coming Soon')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Info Card
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF3C7),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      color: Color(0xFFF59E0B),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Please provide detailed information about your dispute. Our team will review it within 48 hours.',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 14,
+                          color: const Color(0xFF64748B),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Job ID Field (Optional)
+              Text(
+                'Job ID (Optional)',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF1E293B),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: TextFormField(
+                  controller: _jobIdController,
+                  decoration: InputDecoration(
+                    contentPadding: const EdgeInsets.all(16),
+                    border: InputBorder.none,
+                    hintText: 'Enter Job ID if related to a specific job',
+                    hintStyle: GoogleFonts.plusJakartaSans(
+                      color: const Color(0xFF94A3B8),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Reason Dropdown
+              Text(
+                'Reason *',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF1E293B),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: DropdownButtonFormField<String>(
+                  value: _selectedReason,
+                  decoration: const InputDecoration(
+                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    border: InputBorder.none,
+                  ),
+                  hint: Text(
+                    'Select a reason',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: const Color(0xFF94A3B8),
+                    ),
+                  ),
+                  items: _reasons.map((reason) {
+                    return DropdownMenuItem(
+                      value: reason,
+                      child: Text(
+                        reason,
+                        style: GoogleFonts.plusJakartaSans(
+                          color: const Color(0xFF1E293B),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() => _selectedReason = value);
+                  },
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please select a reason';
+                    }
+                    return null;
+                  },
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Description Field
+              Text(
+                'Description *',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF1E293B),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: TextFormField(
+                  controller: _descriptionController,
+                  maxLines: 6,
+                  decoration: InputDecoration(
+                    contentPadding: const EdgeInsets.all(16),
+                    border: InputBorder.none,
+                    hintText: 'Describe your dispute in detail...',
+                    hintStyle: GoogleFonts.plusJakartaSans(
+                      color: const Color(0xFF94A3B8),
+                    ),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter a description';
+                    }
+                    if (value.trim().length < 20) {
+                      return 'Description must be at least 20 characters';
+                    }
+                    return null;
+                  },
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              // Submit Button
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _isSubmitting ? null : _submitDispute,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFEF4444),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : Text(
+                          'Submit Dispute',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
 
-class ContactSupportScreen extends StatelessWidget {
+class ContactSupportScreen extends StatefulWidget {
   const ContactSupportScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)), onPressed: () => Navigator.pop(context)),
-        title: Text('Contact Support', style: GoogleFonts.plusJakartaSans(fontSize: 20, fontWeight: FontWeight.bold, color: const Color(0xFF0F172A))),
-        centerTitle: true,
-      ),
-      body: const Center(child: Text('Contact Support - Coming Soon')),
-    );
-  }
+  State<ContactSupportScreen> createState() => _ContactSupportScreenState();
 }
 
-class FaqsScreen extends StatelessWidget {
-  const FaqsScreen({super.key});
+class _ContactSupportScreenState extends State<ContactSupportScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _messageController = TextEditingController();
+  bool _isSubmitting = false;
+  String? _selectedCategory;
+
+  final List<String> _categories = [
+    'Payment Issue',
+    'Booking Problem',
+    'Account Issue',
+    'Technical Problem',
+    'Other',
+  ];
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submitTicket() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_isSubmitting) return;
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please login to submit a ticket')),
+        );
+      }
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final trimmedMessage = _messageController.text.trim();
+
+      // Write to Firestore
+      final docRef = await FirebaseFirestore.instance
+          .collection('support_tickets')
+          .add({
+            'uid': user.uid,
+            'message': trimmedMessage,
+            'category': _selectedCategory,
+            'type': 'support',
+            'status': 'open',
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+
+      // Verify write
+      final docSnapshot = await docRef.get();
+      
+      if (docSnapshot.exists) {
+        debugPrint('[WRITE VERIFY] support ticket created: ${docRef.id}');
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Support ticket submitted successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context);
+        }
+      } else {
+        throw Exception('Failed to verify ticket creation');
+      }
+    } on FirebaseException catch (e) {
+      debugPrint('[ContactSupport] Firebase error: ${e.code} - ${e.message}');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.message}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[ContactSupport] Error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3452,11 +3999,303 @@ class FaqsScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)), onPressed: () => Navigator.pop(context)),
-        title: Text('FAQs', style: GoogleFonts.plusJakartaSans(fontSize: 20, fontWeight: FontWeight.bold, color: const Color(0xFF0F172A))),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'Contact Support',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: const Color(0xFF0F172A),
+          ),
+        ),
         centerTitle: true,
       ),
-      body: const Center(child: Text('FAQs - Coming Soon')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Info Card
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEEF2FF),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.info_outline,
+                      color: AppTheme.primaryColor,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Submit a support ticket and our team will get back to you within 24 hours.',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 14,
+                          color: const Color(0xFF64748B),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Category Dropdown
+              Text(
+                'Category (Optional)',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF1E293B),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: DropdownButtonFormField<String>(
+                  value: _selectedCategory,
+                  decoration: const InputDecoration(
+                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    border: InputBorder.none,
+                  ),
+                  hint: Text(
+                    'Select a category',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: const Color(0xFF94A3B8),
+                    ),
+                  ),
+                  items: _categories.map((category) {
+                    return DropdownMenuItem(
+                      value: category,
+                      child: Text(
+                        category,
+                        style: GoogleFonts.plusJakartaSans(
+                          color: const Color(0xFF1E293B),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() => _selectedCategory = value);
+                  },
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Message Field
+              Text(
+                'Message *',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF1E293B),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: TextFormField(
+                  controller: _messageController,
+                  maxLines: 6,
+                  decoration: InputDecoration(
+                    contentPadding: const EdgeInsets.all(16),
+                    border: InputBorder.none,
+                    hintText: 'Describe your issue in detail...',
+                    hintStyle: GoogleFonts.plusJakartaSans(
+                      color: const Color(0xFF94A3B8),
+                    ),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter your message';
+                    }
+                    if (value.trim().length < 10) {
+                      return 'Message must be at least 10 characters';
+                    }
+                    return null;
+                  },
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              // Submit Button
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _isSubmitting ? null : _submitTicket,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : Text(
+                          'Submit Ticket',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class FaqsScreen extends StatefulWidget {
+  const FaqsScreen({super.key});
+
+  @override
+  State<FaqsScreen> createState() => _FaqsScreenState();
+}
+
+class _FaqsScreenState extends State<FaqsScreen> {
+  final FaqService _faqService = FaqService();
+  late Future<List<dynamic>> _faqsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFaqs();
+  }
+
+  void _loadFaqs() {
+    _faqsFuture = _faqService.fetchFaqs().then((faqs) => faqs as List<dynamic>);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F6FA),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'FAQs',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: const Color(0xFF0F172A),
+          ),
+        ),
+        centerTitle: true,
+      ),
+      body: FutureBuilder<List<dynamic>>(
+        future: _faqsFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: AppTheme.primaryColor),
+            );
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    size: 48,
+                    color: Color(0xFF94A3B8),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Failed to load FAQs',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 16,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        _loadFaqs();
+                      });
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          final faqs = snapshot.data ?? [];
+
+          if (faqs.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.quiz_outlined,
+                    size: 64,
+                    color: Color(0xFF94A3B8),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No FAQs available',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 16,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: faqs.length,
+            itemBuilder: (context, index) {
+              final faq = faqs[index];
+              return _FaqExpansionTile(faq: faq);
+            },
+          );
+        },
+      ),
     );
   }
 }

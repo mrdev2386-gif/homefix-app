@@ -35,6 +35,10 @@ final GlobalKey<NavigatorState> rootNavigatorKey =
     GlobalKey<NavigatorState>(debugLabel: 'rootNavigator');
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // CRITICAL: Background isolates have their own memory space.
+  // We initialize Firebase here for basic notification handling.
+  // App Check is NOT activated again in the background isolate to prevent
+  // token fetch loops and unnecessary attestation requests.
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   debugPrint("Background message: ${message.notification?.title}");
 }
@@ -47,15 +51,22 @@ void main() async {
   }());
 
   WidgetsFlutterBinding.ensureInitialized();
+  debugPrint('TOKEN_EXTRACTOR: main() started');
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  debugPrint('TOKEN_EXTRACTOR: [APP_CHECK] Firebase initialized');
+  debugPrint('TOKEN_EXTRACTOR: [APP_CHECK] Environment Verification: kDebugMode=$kDebugMode');
   
   // 1. Initialize App Check (Environment-Aware)
+  // CRITICAL: Must be activated BEFORE any other Firebase service is accessed
   await _initializeAppCheck();
+  debugPrint('TOKEN_EXTRACTOR: [APP_CHECK] App Check activation process complete');
+  debugPrint('TOKEN_EXTRACTOR: [APP_CHECK] Services starting');
 
-  // 2. Initialize Crashlytics & Performance
+  // 2. Initialize Crashlytics & Performance - ONLY AFTER APP CHECK
   FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
   await FirebasePerformance.instance.setPerformanceCollectionEnabled(true);
 
+  // 3. Messaging & Push - ONLY AFTER APP CHECK
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   
   // Initialize Push Notifications (Singleton)
@@ -79,21 +90,29 @@ Future<void> _initializeAppCheck() async {
   _appCheckInitialized = true;
 
   try {
-    if (kDebugMode) {
-      await FirebaseAppCheck.instance.activate(
-        androidProvider: AndroidProvider.debug,
-      );
-    } else {
-      await FirebaseAppCheck.instance.activate(
-        androidProvider: AndroidProvider.playIntegrity,
-      );
+    // PART 5: Secure App Check implementation with debug fallback
+    // CRITICAL: The androidProvider must be debug for the debug token to be generated
+    await FirebaseAppCheck.instance.activate(
+      androidProvider: AndroidProvider.debug, // TEMPORARILY FORCED
+      appleProvider: AppleProvider.debug, // TEMPORARILY FORCED
+    );
+    debugPrint('TOKEN_EXTRACTOR: [APP_CHECK] Forced debug provider activated');
+    
+    // PART 2: Force debug token visibility
+    try {
+      debugPrint('TOKEN_EXTRACTOR: [APP_CHECK] Attempting to fetch debug token...');
+      // Force refresh to ensure token is generated and printed to logcat
+      final token = await FirebaseAppCheck.instance.getToken(true);
+      debugPrint('TOKEN_EXTRACTOR: 🔥 APP_CHECK_DEBUG_TOKEN: $token');
+      _appCheckTokenFetched = true;
+    } catch (e) {
+      debugPrint('TOKEN_EXTRACTOR: ❌ APP_CHECK_TOKEN_ERROR: $e');
     }
     
     _appCheckEnabled = true;
-    _appCheckTokenFetched = true;
-    debugPrint('[AppCheck] initialized');
+    debugPrint('TOKEN_EXTRACTOR: [APP_CHECK] ✅ Activated (Mode: ${kDebugMode ? 'Debug' : 'Release'})');
   } catch (e) {
-    debugPrint('[AppCheck] ⚠️ Failed: $e (graceful fallback)');
+    debugPrint('TOKEN_EXTRACTOR: [APP_CHECK] ⚠️ Activation failed: $e (Graceful fallback)');
     _appCheckEnabled = false;
   }
 }

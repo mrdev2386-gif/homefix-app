@@ -316,7 +316,7 @@ export default function TechnicianDetailPage() {
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Liquid Capital</label>
                                     <div className="flex items-center justify-between">
-                                        <div className="text-4xl font-black text-white tracking-tighter">₹{(tech.wallet?.balance || 0).toLocaleString()}</div>
+                                        <div className="text-4xl font-black text-white tracking-tighter">₹{(tech.wallet?.availableBalance || 0).toLocaleString()}</div>
                                         <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shadow-lg shadow-indigo-500/10 text-indigo-400">
                                             <IndianRupee size={24} />
                                         </div>

@@ -94,6 +94,10 @@ class _TechnicianOnboardingFlowScreenState
       _formData['panNumber'] = tech.panNumber;
       _formData['accountType'] = tech.accountType;
       _formData['payoutPreference'] = tech.payoutPreference;
+      _formData['bankName'] = tech.bankName;
+      _formData['accountNumber'] = tech.accountNumber;
+      _formData['ifscCode'] = tech.ifscCode;
+      _formData['accountHolder'] = tech.accountHolderName;
       _formData['maxDailyJobs'] = tech.maxDailyJobs;
       _formData['dynamicPricingAllowed'] = tech.dynamicPricingAllowed;
     }
@@ -137,9 +141,12 @@ class _TechnicianOnboardingFlowScreenState
 
     try {
       final provider = context.read<TechnicianProvider>();
+      final data = _getStepData(stepToSave);
+      debugPrint('[ONBOARD_SAVE] payload=$data');
+      
       await provider.saveStepData(
         step: stepToSave,
-        data: _getStepData(stepToSave),
+        data: data,
       );
 
       debugPrint('[Onboarding] Save completed, mounted=$mounted');
@@ -233,6 +240,13 @@ class _TechnicianOnboardingFlowScreenState
         return {
           'accountType': _formData['accountType'],
           'payoutPreference': _formData['payoutPreference'],
+          'bankDetails': {
+            'bankName': _formData['bankName'],
+            'accountNumber': _formData['accountNumber'],
+            'ifscCode': _formData['ifscCode'],
+            'accountHolder': _formData['accountHolder'],
+            'upiId': _formData['upiId'],
+          },
         };
       case 4:
         return {

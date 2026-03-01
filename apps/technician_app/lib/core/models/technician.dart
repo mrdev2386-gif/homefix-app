@@ -199,6 +199,13 @@ class Technician {
       breakdown = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0};
     }
 
+    // PART 2: PROFILE NULL-SAFE MAPPING
+    final fullName = (data['fullName'] ?? data['name'] ?? '').toString();
+    final email = (data['email'] ?? '').toString();
+    final stepsMap = (data['stepsCompleted'] ?? {}) as Map<String, dynamic>;
+
+    debugPrint('[TECH PROFILE] fullName=$fullName email=$email');
+
     // Handle legacy status field
     String status = data['status'] ?? 'pending_verification';
     String? kycStatus = data['kycStatus'];
@@ -208,12 +215,11 @@ class Technician {
     final bool resolvedKyc =
         data['isKycComplete'] == true ||
         data['onboardingCompleted'] == true ||
-        (data['stepsCompleted']?['kyc'] == true &&
-         data['stepsCompleted']?['bank'] == true &&
-         data['stepsCompleted']?['services'] == true);
+        (stepsMap['kyc'] == true &&
+         stepsMap['bank'] == true &&
+         stepsMap['services'] == true);
     
     debugPrint('[FINAL HARDEN] resolvedKyc=$resolvedKyc');
-    debugPrint('[FINAL VERIFY] Firestore raw: ${doc.data()}');
     
     // Use resolved value as SINGLE source of truth
     bool isKycComplete = resolvedKyc;
@@ -252,9 +258,9 @@ class Technician {
 
     return Technician(
       uid: data['uid'] ?? doc.id,
-      name: data['name'] ?? '',
+      name: fullName,
       phone: data['phone'] ?? data['phoneNumber'] ?? '',
-      email: data['email'] ?? '',
+      email: email,
       photoUrl: data['photoUrl'] ?? data['profilePhotoUrl'],
       skills: skillsList,
       isOnline: data['isOnline'] ?? false,
@@ -316,7 +322,7 @@ class Technician {
       payoutPreference: data['payoutPreference'],
       maxDailyJobs: data['maxDailyJobs'],
       dynamicPricingAllowed: data['dynamicPricingAllowed'],
-      stepsCompleted: (data['stepsCompleted'] as Map?)?.cast<String, dynamic>(),
+      stepsCompleted: stepsMap,
       // Bank details from nested object
       bankName: data['bankDetails']?['bankName'],
       accountNumber: data['bankDetails']?['accountNumber'],
@@ -390,6 +396,9 @@ class Technician {
     return OnboardingStepExtension.fromString(onboardingStep);
   }
   
+  /// Safe computed full name (prevents null issues)
+  String get fullName => name.isNotEmpty ? name : 'Technician';
+  
   /// Check if technician can access dashboard
   bool get canAccessDashboard {
     return isKycComplete && isApproved;
@@ -412,11 +421,29 @@ class Technician {
   }
 
   /// Calculate profile completion percentage
-  /// Based on: name, phone, profilePhoto, skills, experience, bankDetails, documents, customServices
-  /// PART 5: Value clamped between 0-100
+  /// Based on: stepsCompleted map from Firestore if available, otherwise fall back to field checks
+  /// Uses: stepsCompleted map with 5 total steps
   int calculateProfileCompletion() {
+    // PRIMARY: Use stepsCompleted map from Firestore (5-step onboarding)
+    if (stepsCompleted != null && stepsCompleted!.isNotEmpty) {
+      final totalSteps = 5;
+      int completedSteps = 0;
+      
+      // Count true values in stepsCompleted map
+      for (final entry in stepsCompleted!.entries) {
+        if (entry.value == true) {
+          completedSteps++;
+        }
+      }
+      
+      // Clamp between 0-100
+      final rawResult = ((completedSteps / totalSteps) * 100).round();
+      return rawResult.clamp(0, 100);
+    }
+    
+    // FALLBACK: Use field-based calculation
     int completed = 0;
-    int total = 8; // 8 fields to check (added customServices)
+    int total = 8;
 
     // 1. Name (non-empty)
     if (name.isNotEmpty) completed++;
@@ -448,7 +475,7 @@ class Technician {
         (skills.isNotEmpty);
     if (hasServices) completed++;
 
-    // PART 5: Clamp result between 0 and 100
+    // Clamp result between 0 and 100
     final rawResult = ((completed / total) * 100).round();
     return rawResult.clamp(0, 100);
   }

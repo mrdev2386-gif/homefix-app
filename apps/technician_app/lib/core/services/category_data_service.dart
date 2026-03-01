@@ -227,48 +227,112 @@ class CategoryDataService {
     }
 
     try {
-      // Try technician_subcategories first
-      QuerySnapshot snapshot = await _firestore
-          .collection('technician_subcategories')
-          .where('isActive', isEqualTo: true)
-          .orderBy('sortOrder')
-          .orderBy('name')
-          .get();
+      // Try technician_subcategories first with orderBy
+      try {
+        QuerySnapshot snapshot = await _firestore
+            .collection('technician_subcategories')
+            .where('isActive', isEqualTo: true)
+            .orderBy('sortOrder')
+            .orderBy('name')
+            .get();
 
-      if (snapshot.docs.isEmpty) {
-        // Fallback to sub_categories collection
-        snapshot = await _firestore
+        if (snapshot.docs.isNotEmpty) {
+          _cachedSubCategories = snapshot.docs
+              .map((doc) => SubCategoryData.fromFirestore(doc))
+              .toList();
+          _subCategoriesCacheTime = DateTime.now();
+          debugPrint('[CategoryDataService] Fetched subcategories: ${_cachedSubCategories!.length}');
+          
+          if (categoryId != null) {
+            return _cachedSubCategories!
+                .where((s) => s.categoryId == categoryId || s.categoryId == null)
+                .toList();
+          }
+          return _cachedSubCategories!;
+        }
+      } catch (e) {
+        debugPrint('[CategoryDataService] orderBy in technician_subcategories failed: $e');
+      }
+
+      // Try alternative collection with orderBy
+      try {
+        QuerySnapshot snapshot = await _firestore
             .collection('sub_categories')
             .where('isActive', isEqualTo: true)
             .orderBy('sortOrder')
             .orderBy('name')
             .get();
+
+        if (snapshot.docs.isNotEmpty) {
+          _cachedSubCategories = snapshot.docs
+              .map((doc) => SubCategoryData.fromFirestore(doc))
+              .toList();
+          _subCategoriesCacheTime = DateTime.now();
+          debugPrint('[CategoryDataService] Fetched subcategories: ${_cachedSubCategories!.length}');
+          
+          if (categoryId != null) {
+            return _cachedSubCategories!
+                .where((s) => s.categoryId == categoryId || s.categoryId == null)
+                .toList();
+          }
+          return _cachedSubCategories!;
+        }
+      } catch (e) {
+        debugPrint('[CategoryDataService] orderBy in sub_categories failed: $e');
       }
 
-      if (snapshot.docs.isEmpty) {
-        // Fallback to service_subcategories collection
-        snapshot = await _firestore
+      // Try service_subcategories with orderBy
+      try {
+        QuerySnapshot snapshot = await _firestore
             .collection('service_subcategories')
             .where('isActive', isEqualTo: true)
             .orderBy('sortOrder')
             .orderBy('name')
             .get();
+
+        if (snapshot.docs.isNotEmpty) {
+          _cachedSubCategories = snapshot.docs
+              .map((doc) => SubCategoryData.fromFirestore(doc))
+              .toList();
+          _subCategoriesCacheTime = DateTime.now();
+          debugPrint('[CategoryDataService] Fetched subcategories: ${_cachedSubCategories!.length}');
+          
+          if (categoryId != null) {
+            return _cachedSubCategories!
+                .where((s) => s.categoryId == categoryId || s.categoryId == null)
+                .toList();
+          }
+          return _cachedSubCategories!;
+        }
+      } catch (e) {
+        debugPrint('[CategoryDataService] orderBy in service_subcategories failed: $e');
       }
 
-      _cachedSubCategories = snapshot.docs
-          .map((doc) => SubCategoryData.fromFirestore(doc))
-          .toList();
-      _subCategoriesCacheTime = DateTime.now();
+      // Last resort - fallback WITHOUT orderBy
+      try {
+        QuerySnapshot snapshot = await _firestore
+            .collection('technician_subcategories')
+            .where('isActive', isEqualTo: true)
+            .get();
 
-      debugPrint('[CategoryDataService] Fetched subcategories: ${_cachedSubCategories!.length}');
-
-      // Filter by category if provided
-      if (categoryId != null) {
-        return _cachedSubCategories!
-            .where((s) => s.categoryId == categoryId || s.categoryId == null)
+        _cachedSubCategories = snapshot.docs
+            .map((doc) => SubCategoryData.fromFirestore(doc))
             .toList();
+        _subCategoriesCacheTime = DateTime.now();
+        debugPrint('[CategoryDataService] Fetched subcategories (no order): ${_cachedSubCategories!.length}');
+        
+        if (categoryId != null) {
+          return _cachedSubCategories!
+              .where((s) => s.categoryId == categoryId || s.categoryId == null)
+              .toList();
+        }
+        return _cachedSubCategories!;
+      } catch (e) {
+        debugPrint('[CategoryDataService] Final fallback failed: $e');
       }
 
+      _cachedSubCategories = [];
+      _subCategoriesCacheTime = DateTime.now();
       return _cachedSubCategories!;
     } on FirebaseException catch (e) {
       // PART 7: Handle FirebaseException with user-friendly messages
@@ -318,30 +382,64 @@ class CategoryDataService {
   /// PART 7: Firestore query safety with try/catch and FirebaseException handling
   Future<List<ServiceData>> getServicesByCategory(String categoryId) async {
     try {
-      // Query services collection with categoryId and isActive filters
-      QuerySnapshot snapshot = await _firestore
-          .collection('services')
-          .where('categoryId', isEqualTo: categoryId)
-          .where('isActive', isEqualTo: true)
-          .orderBy('name')
-          .get();
+      // Try with orderBy - may fail if index is missing
+      try {
+        QuerySnapshot snapshot = await _firestore
+            .collection('services')
+            .where('categoryId', isEqualTo: categoryId)
+            .where('isActive', isEqualTo: true)
+            .orderBy('name')
+            .get();
 
-      if (snapshot.docs.isEmpty) {
-        // Try alternative field name
-        snapshot = await _firestore
+        if (snapshot.docs.isNotEmpty) {
+          final services = snapshot.docs
+              .map((doc) => ServiceData.fromFirestore(doc))
+              .toList();
+          debugPrint('[CategoryDataService] Fetched services for category $categoryId: ${services.length}');
+          return services;
+        }
+      } catch (e) {
+        debugPrint('[CategoryDataService] orderBy in services failed: $e');
+      }
+
+      // Try alternative field name with orderBy
+      try {
+        QuerySnapshot snapshot = await _firestore
             .collection('services')
             .where('parentCategoryId', isEqualTo: categoryId)
             .where('isActive', isEqualTo: true)
             .orderBy('name')
             .get();
+
+        if (snapshot.docs.isNotEmpty) {
+          final services = snapshot.docs
+              .map((doc) => ServiceData.fromFirestore(doc))
+              .toList();
+          debugPrint('[CategoryDataService] Fetched services for category $categoryId: ${services.length}');
+          return services;
+        }
+      } catch (e) {
+        debugPrint('[CategoryDataService] orderBy with parentCategoryId failed: $e');
       }
 
-      final services = snapshot.docs
-          .map((doc) => ServiceData.fromFirestore(doc))
-          .toList();
+      // Last resort - fallback WITHOUT orderBy
+      try {
+        QuerySnapshot snapshot = await _firestore
+            .collection('services')
+            .where('categoryId', isEqualTo: categoryId)
+            .where('isActive', isEqualTo: true)
+            .get();
 
-      debugPrint('[CategoryDataService] Fetched services for category $categoryId: ${services.length}');
-      return services;
+        final services = snapshot.docs
+            .map((doc) => ServiceData.fromFirestore(doc))
+            .toList();
+        debugPrint('[CategoryDataService] Fetched services for category $categoryId (no order): ${services.length}');
+        return services;
+      } catch (e) {
+        debugPrint('[CategoryDataService] Final fallback failed: $e');
+      }
+
+      return [];
     } on FirebaseException catch (e) {
       // PART 7: Handle FirebaseException with user-friendly messages
       debugPrint('[CategoryDataService] FirebaseException: ${e.code} - ${e.message}');

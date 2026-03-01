@@ -257,15 +257,15 @@ export const adminApi = {
      * Reject a technician application (new)
      */
     rejectTechnicianApp: async (uid: string, reason: string) => {
-        const fn = httpsCallable(functions, 'rejectTechnician');
-        return await fn({ uid, reason });
+        const fn = httpsCallable(functions, 'approveTechnician');
+        return await fn({ techId: uid, approve: false, reason });
     },
 
     /**
      * Get Finance Data
      */
     getFinanceData: async (params: { limit?: number; startDate?: string; endDate?: string }) => {
-        const fn = httpsCallable(functions, 'admin_getFinanceData');
+        const fn = httpsCallable(functions, 'getFinanceData');
         const result = await fn(params);
         return result.data;
     },
@@ -274,7 +274,7 @@ export const adminApi = {
      * Process Refund
      */
     processRefund: async (bookingId: string, amount?: number, reason?: string) => {
-        const fn = httpsCallable(functions, 'admin_processRefund');
+        const fn = httpsCallable(functions, 'admin_refundBooking');
         return await fn({ bookingId, amount, reason });
     },
 

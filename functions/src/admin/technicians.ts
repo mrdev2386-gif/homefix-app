@@ -253,9 +253,9 @@ export const getTechnicianById = functions.https.onCall(async (data, context) =>
 
         const techData = techDoc.data()!;
 
-        // Fetch wallet & earnings
-        const walletDoc = await db.collection('wallets').doc(techId).get();
-        const wallet = walletDoc.exists ? walletDoc.data() : { balance: 0, pendingBalance: 0 };
+        // STEP 3: Use canonical wallet path - technician_wallets/{techId}
+        const walletDoc = await db.collection('technician_wallets').doc(techId).get();
+        const wallet = walletDoc.exists ? walletDoc.data() : { availableBalance: 0, pendingBalance: 0 };
 
         // Fetch job history (last 5)
         const jobsSnap = await db.collection('bookings')

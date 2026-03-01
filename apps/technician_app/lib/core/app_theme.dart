@@ -23,6 +23,12 @@ class AppTheme {
   static const Color error = Color(0xFFEF4444);
   static const Color info = Color(0xFF3B82F6);
 
+  // Aliases for backward compatibility
+  static const Color successColor = success;
+  static const Color warningColor = warning;
+  static const Color errorColor = error;
+  static const Color infoColor = info;
+
   static ThemeData get lightTheme {
     return ThemeData(
       useMaterial3: true,

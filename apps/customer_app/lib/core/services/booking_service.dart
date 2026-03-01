@@ -82,7 +82,7 @@ class BookingService {
   /// Cancel a booking
   Future<void> cancelBooking(String bookingId, String reason) async {
     try {
-      final HttpsCallable callable = _functions.httpsCallable('updateBookingStatus');
+      final HttpsCallable callable = _functions.httpsCallable('updateBookingStatusNew');
       await callable.call({
         'bookingId': bookingId,
         'status': 'cancelled',

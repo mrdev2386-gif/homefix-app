@@ -31,7 +31,7 @@ class JobDetailsScreen extends StatelessWidget {
               return;
             }
             debugPrint('[WRITE GUARD] Direct write blocked in _cancelBooking');
-            final callable = FirebaseFunctions.instance.httpsCallable('cancelBookingCallable');
+            final callable = FirebaseFunctions.instance.httpsCallable('cancelBooking');
             await callable.call({'bookingId': bookingId});
             
             if(context.mounted) {

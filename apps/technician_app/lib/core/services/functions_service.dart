@@ -1,7 +1,9 @@
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/foundation.dart';
 
 class FunctionsService {
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  // Use region-safe instance for us-central1 to avoid NOT_FOUND errors
+  final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
 
   /// Technician: Get inbox of pending custom requests
   Future<Map<String, dynamic>> getTechnicianInbox({int limit = 20, String? startAfter}) async {
@@ -46,17 +48,19 @@ class FunctionsService {
   /// Update technician online status via Cloud Function
   Future<void> updateTechnicianOnlineStatus(bool isOnline) async {
     try {
-      HttpsCallable callable = _functions.httpsCallable('updateTechnicianOnlineStatus');
+      HttpsCallable callable = _functions.httpsCallable('toggleOnlineStatus');
       await callable.call({'isOnline': isOnline});
+      debugPrint('[Functions] online status updated: $isOnline');
     } catch (e) {
-      rethrow;
+      debugPrint('[Functions] online status failed: $e');
+      // App must not depend on function success - silently fail
     }
   }
 
   /// Update booking status via Cloud Function
   Future<void> updateBookingStatus(String bookingId, String status, {String? otp}) async {
     try {
-      HttpsCallable callable = _functions.httpsCallable('updateBookingStatus');
+      HttpsCallable callable = _functions.httpsCallable('updateBookingStatusNew');
       await callable.call({
         'bookingId': bookingId,
         'status': status,
@@ -75,6 +79,23 @@ class FunctionsService {
         'bookingId': bookingId,
         'reason': reason,
       });
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Create Razorpay order for wallet credit
+  Future<Map<String, dynamic>> createRazorpayOrder({
+    required double amount,
+    String? notes,
+  }) async {
+    try {
+      HttpsCallable callable = _functions.httpsCallable('createRazorpayOrder');
+      final result = await callable.call({
+        'amount': amount,
+        if (notes != null) 'notes': notes,
+      });
+      return Map<String, dynamic>.from(result.data);
     } catch (e) {
       rethrow;
     }

@@ -273,7 +273,7 @@ class OnboardingService {
       
       updateData.addAll(data);
       
-      await _db.collection('technicians').doc(uid).update(updateData);
+      await _db.collection('technicians').doc(uid).set(updateData, SetOptions(merge: true));
       
       final verifyDoc = await _db.collection('technicians').doc(uid).get(
         const GetOptions(source: Source.server),

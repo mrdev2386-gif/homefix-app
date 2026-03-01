@@ -14,16 +14,17 @@ class BookingService {
     return _db.collection('bookings')
         .where('technicianId', isEqualTo: techId)
         .where('status', isEqualTo: 'technician_pending')
-        .orderBy('createdAt', descending: true)
         .limit(20)
         .snapshots()
         .map((snapshot) {
-          return snapshot.docs
+          final bookings = snapshot.docs
               .map((doc) => Booking.fromFirestore(doc))
               .toList();
+          // Sort in memory to avoid composite index requirement
+          bookings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          return bookings;
         }).handleError((e) {
           debugPrint('❌ [BookingService] Error fetching pending bookings: $e');
-          // FIX 6: Hard guard - never propagate error, return empty list
         })
         .onErrorReturn(<Booking>[]);
   }
@@ -34,16 +35,17 @@ class BookingService {
     return _db.collection('bookings')
         .where('technicianId', isEqualTo: techId)
         .where('status', isEqualTo: 'awaiting_payment')
-        .orderBy('createdAt', descending: true)
         .limit(20)
         .snapshots()
         .map((snapshot) {
-          return snapshot.docs
+          final bookings = snapshot.docs
               .map((doc) => Booking.fromFirestore(doc))
               .toList();
+          // Sort in memory to avoid composite index requirement
+          bookings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          return bookings;
         }).handleError((e) {
           debugPrint('❌ [BookingService] Error fetching awaiting payment bookings: $e');
-          // FIX 6: Hard guard - never propagate error, return empty list
         })
         .onErrorReturn(<Booking>[]);
   }
@@ -64,7 +66,6 @@ class BookingService {
               .toList();
         }).handleError((e) {
           debugPrint('❌ [BookingService] Error fetching available bookings: $e');
-          // FIX 6: Hard guard - never propagate error, return empty list
         })
         .onErrorReturn(<Booking>[]);
   }
@@ -73,16 +74,34 @@ class BookingService {
   Stream<List<Booking>> getAssignedBookings(String techId) {
     return _db.collection('bookings')
         .where('technicianId', isEqualTo: techId)
-        .orderBy('createdAt', descending: true)
         .limit(50)
         .snapshots()
         .map((snapshot) {
           final bookings = snapshot.docs.map((doc) => Booking.fromFirestore(doc)).toList();
-          bookings.sort((a, b) => b.scheduledAt.compareTo(a.scheduledAt));
+          bookings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
           return bookings;
         }).handleError((e) {
           debugPrint('❌ [BookingService] Error fetching assigned bookings: $e');
-          // FIX 6: Hard guard - never propagate error, return empty list
+        })
+        .onErrorReturn(<Booking>[]);
+  }
+
+  /// Get active bookings for dashboard (assigned, accepted, in_progress)
+  Stream<List<Booking>> getActiveBookings(String techId) {
+    return _db.collection('bookings')
+        .where('technicianId', isEqualTo: techId)
+        .where('status', whereIn: ['assigned', 'accepted', 'in_progress'])
+        .snapshots()
+        .map((snapshot) {
+          return snapshot.docs
+              .map((doc) => Booking.fromFirestore(doc))
+              .toList();
+        }).handleError((e) {
+          // PART 1: Robust error handling
+          debugPrint('❌ [BookingService] Error fetching active bookings: $e');
+          if (e.toString().contains('FAILED_PRECONDITION')) {
+            debugPrint('⚠️ [BookingService] Missing index for active bookings query');
+          }
         })
         .onErrorReturn(<Booking>[]);
   }
@@ -137,7 +156,7 @@ class BookingService {
   }
 
   Future<void> updateBookingStatus(String bookingId, String status) async {
-    await _functions.httpsCallable('updateBookingStatus').call({
+    await _functions.httpsCallable('updateBookingStatusNew').call({
       'bookingId': bookingId,
       'status': status,
     });

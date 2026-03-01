@@ -651,7 +651,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
     setState(() => _isWithdrawing = true);
 
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('requestPayout');
+      final callable = FirebaseFunctions.instance.httpsCallable('requestWithdrawal');
       await callable.call({'amount': amount});
 
       if (mounted) {

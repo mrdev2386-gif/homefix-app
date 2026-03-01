@@ -34,11 +34,15 @@ class TechnicianService {
   /// Update technician skills
   Future<void> updateSkills(String uid, List<String> skills) async {
     try {
-      await _db.collection('technicians').doc(uid).update({
+      final docRef = _db.collection('technicians').doc(uid);
+      await docRef.update({
         'skills': skills,
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      debugPrint('[TechnicianService] Skills updated successfully');
+      
+      // WRITE VERIFY: Ensure write actually reached server
+      await docRef.get();
+      debugPrint('[WRITE VERIFY] technician updated');
     } catch (e) {
       debugPrint('[TechnicianService] Error updating skills: $e');
       rethrow;

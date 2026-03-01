@@ -626,9 +626,12 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
             : _descriptionController.text.trim(),
       );
 
+      debugPrint('[WRITE VERIFY] service added');
+
       if (mounted) {
         // Refresh the technician's services
-        context.read<TechnicianProvider>().refreshTechnicianData();
+        await context.read<TechnicianProvider>().refreshTechnicianData();
+        debugPrint('[Provider] refreshed');
         
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(

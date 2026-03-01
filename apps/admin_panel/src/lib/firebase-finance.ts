@@ -8,12 +8,12 @@
 
 'use client';
 
-import { 
-  collection, 
-  doc, 
-  query, 
-  where, 
-  orderBy, 
+import {
+  collection,
+  doc,
+  query,
+  where,
+  orderBy,
   limit,
   getDocs,
   getDoc,
@@ -48,7 +48,7 @@ import type {
 
 export const COLLECTIONS = {
   BOOKING_PAYOUTS: 'bookingPayouts',
-  WALLET_WITHDRAWALS: 'walletWithdrawals',
+  WALLET_WITHDRAWALS: 'withdrawalRequests', // Updated to use canonical withdrawalRequests collection
   AUDIT_LOGS: 'auditLogs',
   APP_SETTINGS: 'appSettings'
 } as const;
@@ -119,7 +119,7 @@ export function subscribeToPayouts(
 export async function getPayoutById(payoutId: string): Promise<BookingPayout | null> {
   const docRef = doc(db, COLLECTIONS.BOOKING_PAYOUTS, payoutId);
   const docSnap = await getDoc(docRef);
-  
+
   if (!docSnap.exists()) {
     return null;
   }
@@ -147,7 +147,7 @@ export function subscribeToPayoutById(
         onUpdate(null);
         return;
       }
-      
+
       const payout = {
         id: snapshot.id,
         ...snapshot.data()
@@ -225,7 +225,7 @@ export function subscribeToWithdrawals(
 export async function getWithdrawalById(withdrawalId: string): Promise<WalletWithdrawal | null> {
   const docRef = doc(db, COLLECTIONS.WALLET_WITHDRAWALS, withdrawalId);
   const docSnap = await getDoc(docRef);
-  
+
   if (!docSnap.exists()) {
     return null;
   }
@@ -253,7 +253,7 @@ export function subscribeToWithdrawalById(
         onUpdate(null);
         return;
       }
-      
+
       const withdrawal = {
         id: snapshot.id,
         ...snapshot.data()
@@ -346,7 +346,7 @@ export function getAppSettingsRef() {
 export async function getAppSettings(): Promise<AppSettings | null> {
   const docRef = getAppSettingsRef();
   const docSnap = await getDoc(docRef);
-  
+
   if (!docSnap.exists()) {
     return null;
   }
@@ -370,7 +370,7 @@ export function subscribeToAppSettings(
         onUpdate(null);
         return;
       }
-      
+
       const settings = snapshot.data() as AppSettings;
       onUpdate(settings);
     },
@@ -395,7 +395,7 @@ export async function processBookingPayout(
     const processPayoutFn = httpsCallable<
       ProcessBookingPayoutRequest,
       ProcessBookingPayoutResponse
-    >(functions, 'processBookingPayout');
+    >(functions, 'admin_processBookingPayout');
 
     const result = await processPayoutFn(request);
     return result.data;
@@ -481,7 +481,7 @@ export function filterPayoutsBySearch(
   }
 
   const term = searchTerm.toLowerCase();
-  return payouts.filter(payout => 
+  return payouts.filter(payout =>
     payout.technicianName.toLowerCase().includes(term) ||
     payout.bookingId.toLowerCase().includes(term)
   );
@@ -499,7 +499,7 @@ export function filterWithdrawalsBySearch(
   }
 
   const term = searchTerm.toLowerCase();
-  return withdrawals.filter(withdrawal => 
+  return withdrawals.filter(withdrawal =>
     withdrawal.technicianName.toLowerCase().includes(term)
   );
 }

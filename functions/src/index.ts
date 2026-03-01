@@ -49,10 +49,10 @@ import * as adminTechMgmt from './admin/technician_management';
 export const createTechnicianProfile = techOnboarding.createTechnicianProfile;
 export const saveTechnicianBasicDetails = techOnboarding.saveTechnicianBasicDetails;
 export const saveTechnicianDocuments = techOnboarding.saveTechnicianDocuments;
-export const saveTechnicianServices = techOnboarding.saveTechnicianServices;
-export const submitTechnicianKyc = techOnboarding.submitTechnicianKyc;
-export const updateTechnicianProfileData = techOnboarding.updateTechnicianProfile;
-export const updateTechnicianStatus = techOnboarding.updateTechnicianStatus;
+export const saveTechnicianServices = techOnboarding.saveTechnicianServices; // TODO: verify usage before deletion
+export const submitTechnicianKyc = techOnboarding.submitTechnicianKyc; // TODO: verify usage before deletion
+// export const updateTechnicianProfileData = techOnboarding.updateTechnicianProfile; // TODO: verify usage before deletion
+export const updateTechnicianStatus = techOnboarding.updateTechnicianStatus; // TODO: verify usage before deletion
 
 import * as matchEngine from './matching/engine';
 import * as techTriggers from './technician/triggers';
@@ -90,20 +90,21 @@ import * as customerFeatures from './customer_features';
 import { matchAndAssignBooking, handleAssignmentResponse } from './matching/matching_v2';
 import { matchTechnicians as matchTechs, updateTechnicianAssignment, cleanupStaleTechnicianStatus } from './matching/technician_matching';
 export { matchTechniciansV2 } from './matching/matchTechniciansV2';
-export { getEligibleTechnicians } from './matching/engine';
+// export { getEligibleTechnicians } from './matching/engine';
 
-export const matchTechnicians = matchTechs;
-export const matchTechniciansForService = matchTechs;
-export const updateTechnicianLastAssignment = updateTechnicianAssignment;
+// export const matchTechnicians = matchTechs;
+// TODO: matchTechniciansForService is a duplicate of matchTechnicians - remove in next release
+// export const matchTechniciansForService = matchTechs; 
+// export const updateTechnicianLastAssignment = updateTechnicianAssignment;
 export const onStaleTechnicianCleanup = cleanupStaleTechnicianStatus;
 
-// NEW Booking Flow Functions (Admin-First Flow - ONLY ACTIVE SYSTEM)
 export {
     createBookingRequest,
     adminApproveBooking,
     technicianRespondBooking,
     customerConfirmPayment,
-    updateBookingStatusGeneric as updateBookingStatusNew
+    updateBookingStatusGeneric as updateBookingStatusNew,
+    updateBookingStatusGeneric as updateBookingStatus
 } from './booking/new_booking_flow';
 
 // Production Hardening
@@ -131,11 +132,15 @@ export { checkRateLimit } from './shared/utils';
 // TECHNICIAN SERVICE LISTINGS (YouTube-style)
 // ==========================================
 
+// TODO: verify usage before deletion
 export const createTechnicianService = technicianServices.createTechnicianService;
+// TODO: verify usage before deletion
 export const updateTechnicianService = technicianServices.updateTechnicianService;
+// TODO: verify usage before deletion
 export const deleteTechnicianService = technicianServices.deleteTechnicianService;
 export const getMyTechnicianServices = technicianServices.getMyTechnicianServices;
-export const toggleTechnicianServiceStatus = technicianServices.toggleTechnicianServiceStatus;
+// TODO: verify usage before deletion
+// export const toggleTechnicianServiceStatus = technicianServices.toggleTechnicianServiceStatus;
 
 // NEW: Technician Services Management (Single Source of Truth)
 export const addTechnicianService = techServicesManagement.addTechnicianService;
@@ -229,11 +234,15 @@ export const verifyRazorpayPayment = razorpayPayments.verifyPayment;
 export const processWalletTransaction = technicianFinance.processWalletTransaction;
 
 export const updateUserProfile = customerFeatures.updateUserProfile;
-export const updateTechnicianProfile = customerFeatures.updateTechnicianProfile;
-export const deleteAccount = customerFeatures.deleteAccount;
+export const updateTechnicianProfile = customerFeatures.updateTechnicianProfile; // TODO: verify usage before deletion
+export const cancelBooking = customerFeatures.cancelBooking;
+// TODO: verify usage before deletion
+// export const deleteAccount = customerFeatures.deleteAccount;
 export const manageAddress = customerFeatures.manageAddress;
-export const managePaymentMethod = customerFeatures.managePaymentMethod;
-export const updatePrivacySettings = customerFeatures.updatePrivacySettings;
+// TODO: verify usage before deletion
+export const managePaymentMethod = customerFeatures.managePaymentMethod; // TODO: verify usage before deletion
+// TODO: verify usage before deletion
+// export const updatePrivacySettings = customerFeatures.updatePrivacySettings; // TODO: verify usage before deletion
 export const validateReferralCode = customerFeatures.validateReferralCode;
 export const submitServiceRating = customerFeatures.submitServiceRating;
 export const submitSupportRequest = customerFeatures.submitSupportRequest;
@@ -277,6 +286,7 @@ export const admin_updateTechServices = adminTechs.updateTechServices;
 
 export const admin_manageService = adminServices.manageService;
 export const createService = adminServices.createService;
+export const updateService = adminServices.updateService;
 export const createSubService = adminServices.createSubService;
 export const updateSubService = adminServices.updateSubService;
 export const deleteService = adminServices.deleteService;
@@ -285,7 +295,7 @@ export const deleteSubService = adminServices.deleteSubService;
 export const getSubServicePriceHistory = adminServices.getSubServicePriceHistory;
 
 // Service Nesting Migration (PHASE 12)
-export const migrateServicesToNested = adminServices.migrateServicesToNested;
+// export const migrateServicesToNested = adminServices.migrateServicesToNested;
 
 export const admin_manageBooking = adminBookings.adminManageBooking;
 
@@ -316,27 +326,40 @@ import {
     admin_manageHomeSections,
     admin_manageCategory,
     admin_manageNestedService,
-    admin_manageNestedSubService
+    admin_manageNestedSubService,
+    findEligibleTechniciansCount
 } from './admin/dynamic_content';
 
 import { admin_initializeHomeContent, admin_backfillImages } from './admin/system_initialization';
 import { admin_auditServiceCatalog } from './admin/catalog_audit';
-export { temp_recovery_diag } from './temp_audit';
+// export { temp_recovery_diag } from './temp_audit';
 
+
+// export {
+//     admin_manageProfessionalVideos,
+//     admin_manageCleaningEssentials,
+//     admin_manageServiceBanners,
+//     admin_manageTechnicianCategories,
+//     admin_manageTechnicianSubcategories,
+//     admin_manageHomeSections,
+//     admin_manageCategory,
+//     admin_manageNestedService,
+//     admin_manageNestedSubService,
+//     admin_initializeHomeContent,
+//     admin_backfillImages,
+//     admin_auditServiceCatalog,
+//     findEligibleTechniciansCount
+// };
 
 export {
-    admin_manageProfessionalVideos,
-    admin_manageCleaningEssentials,
-    admin_manageServiceBanners,
-    admin_manageTechnicianCategories,
-    admin_manageTechnicianSubcategories,
     admin_manageHomeSections,
     admin_manageCategory,
     admin_manageNestedService,
     admin_manageNestedSubService,
     admin_initializeHomeContent,
     admin_backfillImages,
-    admin_auditServiceCatalog
+    admin_auditServiceCatalog,
+    findEligibleTechniciansCount
 };
 
 // Technician Finance & Payouts
@@ -344,16 +367,21 @@ export const triggerTechnicianPayout = payoutLogic.triggerTechnicianPayout;
 export const razorpayPayoutWebhook = payoutLogic.razorpayPayoutWebhook;
 export const settleTechnicianBalance = payoutLogic.settleTechnicianBalance;
 
-// Technician Withdrawal & QR
+// Technician Withdrawal & QR (Admin-Controlled)
 export const requestWithdrawal = technicianWithdrawal.requestWithdrawal;
+export const approveWithdrawal = technicianWithdrawal.approveWithdrawal;
+export const rejectWithdrawal = technicianWithdrawal.rejectWithdrawal;
+export const getWithdrawalRequests = technicianWithdrawal.getWithdrawalRequests;
+export const getPendingWithdrawalRequests = technicianWithdrawal.getPendingWithdrawalRequests;
 export const getTransactionHistory = technicianWithdrawal.getTransactionHistory;
+export const getTechnicianPayoutHistory = technicianWithdrawal.getPayoutHistory;
 export const generateBookingQR = technicianWithdrawal.generateBookingQR;
 
 // Wallet Reconciliation (Scheduled & Admin)
 export const runWalletReconciliation = walletReconciliation.runWalletReconciliation;
-export const triggerManualReconciliation = walletReconciliation.triggerManualReconciliation;
-export const getReconciliationAnomalies = walletReconciliation.getReconciliationAnomalies;
-export const markWalletReviewed = walletReconciliation.markWalletReviewed;
+// export const triggerManualReconciliation = walletReconciliation.triggerManualReconciliation;
+// export const getReconciliationAnomalies = walletReconciliation.getReconciliationAnomalies;
+// export const markWalletReviewed = walletReconciliation.markWalletReviewed;
 
 
 // Fraud & Abuse Protection
@@ -468,6 +496,7 @@ export const removeFcmToken = functions.https.onCall(async (data, context) => {
  * Removes all FCM tokens for a user
  * Called on complete logout
  */
+/*
 export const removeAllFcmTokens = functions.https.onCall(async (data, context) => {
     const uid = context.auth?.uid;
     if (!uid) {
@@ -501,10 +530,12 @@ export const removeAllFcmTokens = functions.https.onCall(async (data, context) =
         throw new functions.https.HttpsError("internal", "Failed to remove tokens");
     }
 });
+*/
 
 /**
  * Gets all FCM tokens for a user (admin use only)
  */
+/*
 export const getFcmTokens = functions.https.onCall(async (data, context) => {
     const uid = context.auth?.uid;
     if (!uid) {
@@ -533,6 +564,7 @@ export const getFcmTokens = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError("internal", "Failed to get tokens");
     }
 });
+*/
 
 
 // Notification Management
@@ -585,17 +617,17 @@ export const onTechnicianApplicationStatusTrigger = notificationTriggers.onTechn
 // ==========================================
 
 // Application Flow
-export const initiatePhoneVerification = techApp.initiatePhoneVerification;
-export const savePersonalDetails = techApp.savePersonalDetails;
+// export const initiatePhoneVerification = techApp.initiatePhoneVerification;
+// export const savePersonalDetails = techApp.savePersonalDetails;
 export const submitKYC = techApp.submitKYC;
-export const saveSkillSelection = techApp.saveSkillSelection;
-export const saveExperienceDetails = techApp.saveExperienceDetails;
-export const saveAvailability = techApp.saveAvailability;
-export const saveServiceArea = techApp.saveServiceArea;
-export const saveBankDetails = techApp.saveBankDetails;
-export const completeTraining = techApp.completeTraining;
-export const submitApplication = techApp.submitApplication;
-export const submitFullApplication = techApp.submitTechnicianApplication;
+// export const saveSkillSelection = techApp.saveSkillSelection;
+// export const saveExperienceDetails = techApp.saveExperienceDetails;
+// export const saveAvailability = techApp.saveAvailability;
+// export const saveServiceArea = techApp.saveServiceArea;
+// export const saveBankDetails = techApp.saveBankDetails;
+// export const completeTraining = techApp.completeTraining;
+// export const submitApplication = techApp.submitApplication;
+// export const submitFullApplication = techApp.submitTechnicianApplication;
 export const syncTechnicianApprovalToServices = techTriggers.syncTechnicianApprovalToServices;
 
 // Admin Management
@@ -604,8 +636,8 @@ export const approveTechnician = adminTechMgmt.approveTechnician;
 export const suspendTechnician = adminTechMgmt.suspendTechnician;
 
 // Tracking & Security
-export const bindDevice = techSec.bindDevice;
-export const updateLocation = techTrack.updateLocation;
+// export const bindDevice = techSec.bindDevice;
+// export const updateLocation = techTrack.updateLocation;
 export const toggleOnlineStatus = techTrack.toggleOnlineStatus;
 
 export const onCustomRequestCreatedAlertTechnicians = techAlerts.onCustomRequestCreatedAlertTechnicians;
@@ -616,108 +648,43 @@ export const onCustomRequestCreatedAlertTechnicians = techAlerts.onCustomRequest
 
 // onPaymentUpdate Trigger Removed
 
-export const migrateDatabaseReq = functions.https.onRequest(async (req: any, res: any) => {
-    console.log('Starting migration via Request...');
-
-    const results: any = {};
-
-    // 1. Services
-    const servicesSnap = await db.collection('services').get();
-    const serviceBatch = db.batch();
-    servicesSnap.docs.forEach(doc => {
-        const d = doc.data();
-        const update: any = {};
-        if (d.title && !d.name) { update.name = d.title; update.title = admin.firestore.FieldValue.delete(); }
-        if (d.basePrice !== undefined && d.price === undefined) { update.price = Number(d.basePrice); update.basePrice = admin.firestore.FieldValue.delete(); }
-        if (d.category && !d.categoryId) { update.categoryId = d.category; update.category = admin.firestore.FieldValue.delete(); }
-        const img = d.image || d.imageUrl || d.imageAssetPath || "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&q=80";
-        update.image = img;
-        if (d.imageUrl) update.imageUrl = admin.firestore.FieldValue.delete();
-        if (d.imageAssetPath) update.imageAssetPath = admin.firestore.FieldValue.delete();
-        if (d.serviceId !== doc.id) update.serviceId = doc.id;
-        if (Object.keys(update).length > 0) serviceBatch.update(doc.ref, update);
-    });
-    await serviceBatch.commit();
-    results.servicesUpdated = servicesSnap.size;
-
-    // 2. Technicians
-    const techsSnap = await db.collection('technicians').get();
-    const techBatch = db.batch();
-    techsSnap.docs.forEach(doc => {
-        const d = doc.data();
-        const update: any = {};
-        if (d.skills && typeof d.skills === 'string') {
-            update.skills = d.skills.split(',').map((s: string) => s.trim());
-        }
-        if (Object.keys(update).length > 0) techBatch.update(doc.ref, update);
-    });
-    await techBatch.commit();
-    results.techsUpdated = techsSnap.size;
-
-    // 3. Reviews
-    const reviewsSnap = await db.collection('reviews').get();
-    const reviewBatch = db.batch();
-    reviewsSnap.docs.forEach(doc => {
-        const d = doc.data();
-        if (d.rating !== undefined && typeof d.rating !== 'number') {
-            reviewBatch.update(doc.ref, { rating: Number(d.rating) });
-        }
-    });
-    await reviewBatch.commit();
-    results.reviewsUpdated = reviewsSnap.size;
-
-    // 4. Users
-    const usersSnap = await db.collection('users').get();
-    const userBatch = db.batch();
-    usersSnap.docs.forEach(doc => {
-        const d = doc.data();
-        const update: any = {};
-        if (d.phone || d.phoneNumber) {
-            let p = d.phone || d.phoneNumber;
-            if (/^\d{10}$/.test(p)) update.phoneNumber = '+91' + p;
-            else update.phoneNumber = p;
-            if (d.phone) update.phone = admin.firestore.FieldValue.delete();
-        }
-        if (d.role && !['customer', 'technician', 'admin'].includes(d.role)) update.role = 'customer';
-        if (Object.keys(update).length > 0) userBatch.update(doc.ref, update);
-    });
-    await userBatch.commit();
-    results.usersUpdated = usersSnap.size;
-
-    res.json({ success: true, results });
-});
+// Database migration tool (Disabled for production safety)
+// export const migrateDatabaseReq = functions.https.onRequest(async (req: any, res: any) => { ... });
 
 export const onBookingCompletedAwardReferral = customerFeatures.onBookingCompletedAwardReferral;
 
 // ==========================================
 // 4. TESTING TOOLS
 // ==========================================
-export const test_createCustomer = testing.createTestCustomer;
-export const test_createTechnician = testing.createTestTechnician;
-export const test_generateBooking = testing.generateTestBooking;
-export const test_simulatePayment = testing.simulatePayment;
-export const test_resetData = testing.resetTestData;
+// export const test_createCustomer = testing.createTestCustomer;
+// export const test_createTechnician = testing.createTestTechnician;
+// export const test_generateBooking = testing.generateTestBooking;
+// export const test_simulatePayment = testing.simulatePayment;
+// export const test_resetData = testing.resetTestData;
 
 // ==========================================
 // 5. RAZORPAY PAYMENT INTEGRATION
 // ==========================================
 
 // Payment Functions
-export const createPaymentOrder = razorpayPayments.createPaymentOrder;
-export const razorpayWebhook = razorpayPayments.razorpayWebhook;
+// export const createPaymentOrder = razorpayPayments.createPaymentOrder; // Duplicate of initiateRazorpayPayment
+// razorpayWebhook removed - use razorpayWebhookV2 only (see below)
 export { razorpayWebhookV2 };
-export const verifyPayment = razorpayPayments.verifyPayment;
+// export const verifyPayment = razorpayPayments.verifyPayment; // Duplicate of verifyRazorpayPayment
 export const initiateRefund = razorpayPayments.initiateRefund;
+
+// Technician wallet credit - NEW secure callable
+export const createRazorpayOrder = razorpayPayments.createRazorpayOrder;
 
 // Payout Functions (Admin)
 export const getPendingPayouts = technicianPayouts.getPendingPayouts;
 export const getPayoutHistory = technicianPayouts.getPayoutHistory;
 export const getPayoutSummary = technicianPayouts.getPayoutSummary;
-export const markPayoutPaid = technicianPayouts.markPayoutPaid;
-export const putPayoutOnHold = technicianPayouts.putPayoutOnHold;
-export const releasePayoutFromHold = technicianPayouts.releasePayoutFromHold;
-export const bulkMarkPayoutsPaid = technicianPayouts.bulkMarkPayoutsPaid;
-export const getPayoutAnalytics = technicianPayouts.getPayoutAnalytics;
+// export const markPayoutPaid = technicianPayouts.markPayoutPaid;
+// export const putPayoutOnHold = technicianPayouts.putPayoutOnHold;
+// export const releasePayoutFromHold = technicianPayouts.releasePayoutFromHold;
+// export const bulkMarkPayoutsPaid = technicianPayouts.bulkMarkPayoutsPaid;
+// export const getPayoutAnalytics = technicianPayouts.getPayoutAnalytics;
 
 // ==========================================
 // 6. CHAT SYSTEM

@@ -21,6 +21,7 @@ import 'presentation/favorite_services_screen.dart';
 import 'presentation/about_screen.dart';
 import 'presentation/policy_screen.dart';
 import 'widgets/profile_shimmer.dart';
+import '../wallet/presentation/wallet_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -384,10 +385,8 @@ class _ProfileContentState extends State<_ProfileContent> {
                         color: Colors.green,
                         title: l10n.translate('walletBalance'),
                         value: '₹${widget.user.walletBalance.toStringAsFixed(2)}',
-                        trailing: TextButton(
-                          onPressed: () {},
-                          child: Text(l10n.translate('addMoney'), style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 12)),
-                        ),
+                        trailing: Icon(Icons.chevron_right, color: Colors.grey[400]),
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CustomerWalletScreen())),
                       ),
                     ],
                   ),
@@ -507,8 +506,8 @@ class _ProfileContentState extends State<_ProfileContent> {
     );
   }
 
-  Widget _buildInfoRow({required IconData icon, required Color color, required String title, required String value, Widget? trailing}) {
-    return Row(
+  Widget _buildInfoRow({required IconData icon, required Color color, required String title, required String value, Widget? trailing, VoidCallback? onTap}) {
+    final content = Row(
       children: [
         Container(
           padding: const EdgeInsets.all(12),
@@ -528,6 +527,10 @@ class _ProfileContentState extends State<_ProfileContent> {
         if (trailing != null) trailing,
       ],
     );
+    if (onTap != null) {
+      return InkWell(onTap: onTap, borderRadius: BorderRadius.circular(12), child: content);
+    }
+    return content;
   }
 
   void _confirmLogout(BuildContext context, AuthService auth, AppLocalizations l10n) {

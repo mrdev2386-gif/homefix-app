@@ -15,6 +15,10 @@
  * 4. Customer pays via Razorpay Checkout
  * 5. Webhook verifies and updates booking
  * 6. Admin manually processes technician payout
+ * 
+ * TECHNICIANS:
+ * - Use createRazorpayOrder to add money to wallet
+ * - Use razorpayWebhookV2 for processing
  */
 
 import * as functions from 'firebase-functions';
@@ -45,6 +49,158 @@ const getRazorpayInstance = () => {
         key_secret: razorpayKeySecret
     });
 };
+
+// ============================================================================
+// RAZORPAY ORDER SOURCE OF TRUTH
+// ============================================================================
+
+interface RazorpayOrderData {
+    orderId: string;
+    amount: number;
+    currency: string;
+    status: 'created' | 'paid' | 'failed' | 'expired';
+    technicianId?: string;
+    bookingId?: string;
+    paymentId?: string;
+    createdAt: admin.firestore.Timestamp;
+    paidAt?: admin.firestore.Timestamp;
+    error?: string;
+}
+
+/**
+ * Create a Razorpay order document in Firestore as source of truth
+ * This is used by both booking payments and technician wallet credits
+ */
+async function createRazorpayOrderDoc(
+    orderId: string,
+    amount: number,
+    options: {
+        technicianId?: string;
+        bookingId?: string;
+        currency?: string;
+        notes?: string;
+    }
+): Promise<RazorpayOrderData> {
+    const orderRef = db.collection('razorpayOrders').doc(orderId);
+    
+    const orderData: RazorpayOrderData = {
+        orderId,
+        amount,
+        currency: options.currency || 'INR',
+        status: 'created',
+        technicianId: options.technicianId,
+        bookingId: options.bookingId,
+        createdAt: admin.firestore.FieldValue.serverTimestamp() as any
+    };
+
+    await orderRef.set(orderData);
+    return orderData;
+}
+
+// ============================================================================
+// TECHNICIAN WALLET CREDIT - Create Razorpay Order
+// ============================================================================
+
+/**
+ * Create Razorpay order for technician wallet credit
+ * 
+ * SECURITY:
+ * - Validates user is authenticated technician
+ * - Validates amount server-side (min/max limits)
+ * - Creates order in razorpayOrders collection as source of truth
+ * - NEVER trusts client-provided amount
+ * 
+ * Called by: Technician app to add money to wallet
+ */
+export const createRazorpayOrder = functions.https.onCall(async (data, context) => {
+    // Authentication check
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+    }
+
+    const technicianId = context.auth.uid;
+    const { amount, notes } = data;
+
+    // Validate amount - NEVER trust client
+    const minAmount = 100; // ₹100 minimum
+    const maxAmount = 50000; // ₹50,000 maximum
+
+    if (!amount || typeof amount !== 'number') {
+        throw new functions.https.HttpsError('invalid-argument', 'Amount is required');
+    }
+
+    if (amount < minAmount) {
+        throw new functions.https.HttpsError('invalid-argument', `Minimum amount is ₹${minAmount}`);
+    }
+
+    if (amount > maxAmount) {
+        throw new functions.https.HttpsError('invalid-argument', `Maximum amount is ₹${maxAmount}`);
+    }
+
+    // Verify technician exists
+    const techRef = db.collection('technicians').doc(technicianId);
+    const techDoc = await techRef.get();
+
+    if (!techDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'Technician profile not found');
+    }
+
+    try {
+        const razorpay = getRazorpayInstance();
+
+        // Create Razorpay order
+        const order = await razorpay.orders.create({
+            amount: Math.round(amount * 100), // Amount in paise
+            currency: 'INR',
+            receipt: `wallet_${technicianId}_${Date.now()}`,
+            notes: {
+                technicianId,
+                type: 'wallet_credit',
+                notes: notes || 'Wallet credit'
+            }
+        });
+
+        // Store order in Firestore as source of truth
+        await createRazorpayOrderDoc(order.id, amount, {
+            technicianId,
+            notes
+        });
+
+        // Log order creation
+        await db.collection('payment_logs').add({
+            orderId: order.id,
+            amount,
+            type: 'wallet_credit',
+            technicianId,
+            action: 'technician_order_created',
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        return {
+            success: true,
+            orderId: order.id,
+            amount,
+            currency: 'INR'
+        };
+
+    } catch (error: any) {
+        console.error('Error creating Razorpay order for wallet credit:', error);
+
+        // Log failure
+        await db.collection('payment_logs').add({
+            amount,
+            technicianId,
+            action: 'technician_order_creation_failed',
+            error: error.message,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        throw new functions.https.HttpsError(
+            'internal',
+            `Failed to create payment order: ${error.message}`
+        );
+    }
+});
 
 // ============================================================================
 // PAYMENT ORDER CREATION
@@ -149,6 +305,12 @@ export const createPaymentOrder = functions.https.onCall(async (data, context) =
             }
         });
 
+        // Store order in razorpayOrders collection as SOURCE OF TRUTH
+        await createRazorpayOrderDoc(order.id, booking.pricing.total, {
+            bookingId,
+            technicianId: booking.technicianId
+        });
+
         // Update booking with order details
         await bookingRef.update({
             'payment.razorpayOrderId': order.id,
@@ -219,6 +381,12 @@ export const createPaymentOrder = functions.https.onCall(async (data, context) =
  * 4. Copy webhook secret
  * 5. Set in Firebase: firebase functions:config:set razorpay.webhook_secret="xxx"
  */
+/**
+ * @DEPRECATED - Use razorpayWebhookV2 instead
+ * This webhook is kept for backward compatibility but is NOT used.
+ * All payments should go through razorpayWebhookV2.
+ */
+/*
 export const razorpayWebhook = functions.https.onRequest(async (req, res) => {
     // Only accept POST requests
     if (req.method !== 'POST') {
@@ -286,9 +454,12 @@ export const razorpayWebhook = functions.https.onRequest(async (req, res) => {
         res.status(500).send('Internal Server Error');
     }
 });
+*/
 
+// Keep helper functions for reference but they're not used
 /**
  * Handle successful payment
+ * @deprecated - Use razorpayWebhookV2
  */
 async function handlePaymentCaptured(payload: any) {
     const payment = payload.payment.entity;

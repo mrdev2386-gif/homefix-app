@@ -41,8 +41,9 @@ export default function PayoutsPage() {
         setLoading(true);
         try {
             const techSnap = await getDocs(query(collection(db, 'technicians'), where('status', '==', 'approved')));
+            // STEP 3: Use canonical wallet path - technician_wallets/{techId}
             const techs = await Promise.all(techSnap.docs.map(async (d) => {
-                const walletSnap = await getDoc(doc(db, 'technicians', d.id, 'wallet', 'main'));
+                const walletSnap = await getDoc(doc(db, 'technician_wallets', d.id));
                 const wallet = walletSnap.data();
                 return { id: d.id, ...d.data(), wallet: wallet || { availableBalance: 0, pendingBalance: 0 } };
             }));
