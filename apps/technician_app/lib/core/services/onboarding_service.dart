@@ -220,6 +220,7 @@ class OnboardingService {
 
   /// Save step data with idempotency check and timestamp protection
   /// Prevents step rewind, out-of-order writes, and stale/offline overwrites
+  /// Uses Cloud Function for secure server-side write (required by Firestore rules)
   Future<void> saveStepData({
     required int step,
     required Map<String, dynamic> data,
@@ -234,74 +235,40 @@ class OnboardingService {
       throw Exception('No internet connection. Please check your network and try again.');
     }
 
-    await _retryWithBackoff(() async {
-      final doc = await _db.collection('technicians').doc(uid).get(
-        const GetOptions(source: Source.server),
-      );
+    // Use Cloud Function for secure write (Firestore rules block direct writes)
+    final stepName = _getStepName(step);
+    final stepKey = _getStepKey(step);
+    
+    final updateData = <String, dynamic>{
+      'onboardingStep': stepName,
+      'stepsCompleted': {
+        'basic': step >= 0,
+        'professional': step >= 1,
+        'kyc': step >= 2,
+        'bank': step >= 3,
+        'services': step >= 4,
+      },
+    };
+    updateData.addAll(data);
+    
+    debugPrint('[TECH WRITE] START uid=$uid step=$stepName');
+    debugPrint('[TECH WRITE] payload=$updateData');
+    debugPrint('[TECH WRITE] user=${_auth.currentUser?.uid}');
+    
+    try {
+      // Use Cloud Function - this is required because Firestore rules block direct writes
+      final result = await _callFunction('saveTechnicianStepData', {
+        'step': step,
+        'stepName': stepName,
+        'stepKey': stepKey,
+        'data': updateData,
+      });
       
-      final currentStep = doc.data()?['onboardingStep'] as String?;
-      final currentStepIndex = _getStepIndex(currentStep);
-      final lastStepUpdatedAt = doc.data()?['lastStepUpdatedAt'] as Timestamp?;
-      
-      if (currentStepIndex > step) {
-        debugPrint('[OnboardingService] Step rewind prevented: current=$currentStepIndex, incoming=$step');
-        return {};
-      }
-      
-      if (lastStepUpdatedAt != null) {
-        final now = DateTime.now();
-        final lastUpdate = lastStepUpdatedAt.toDate();
-        if (lastUpdate.isAfter(now)) {
-          debugPrint('[OnboardingService] Stale write prevented: server timestamp is newer');
-          return {};
-        }
-      }
-      
-      final stepName = _getStepName(step);
-      final updateData = <String, dynamic>{
-        'onboardingStep': stepName,
-        'stepsCompleted': {
-          'basic': step >= 0,
-          'professional': step >= 1,
-          'kyc': step >= 2,
-          'bank': step >= 3,
-          'services': step >= 4,
-        },
-        'lastStepUpdatedAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-      
-      updateData.addAll(data);
-      
-      await _db.collection('technicians').doc(uid).set(updateData, SetOptions(merge: true));
-      
-      final verifyDoc = await _db.collection('technicians').doc(uid).get(
-        const GetOptions(source: Source.server),
-      );
-      
-      final verifyStep = verifyDoc.data()?['onboardingStep'] as String?;
-      final verifyCompleted = verifyDoc.data()?['stepsCompleted'] as Map?;
-      
-      if (verifyStep != stepName) {
-        throw FirebaseException(
-          plugin: 'cloud_firestore',
-          code: 'data-sync-failed',
-          message: 'Step verification failed',
-        );
-      }
-      
-      final stepKey = _getStepKey(step);
-      if (stepKey != null && verifyCompleted?[stepKey] != true) {
-        throw FirebaseException(
-          plugin: 'cloud_firestore',
-          code: 'data-sync-failed',
-          message: 'Step completion verification failed',
-        );
-      }
-      
-      debugPrint('[OnboardingService] Step $step saved and verified');
-      return {};
-    }, maxAttempts: 3);
+      debugPrint('[TECH WRITE] SUCCESS via CF: ${result.toString()}');
+    } catch (e) {
+      debugPrint('[TECH WRITE] ERROR: $e');
+      rethrow;
+    }
   }
 
   String _getStepName(int step) {

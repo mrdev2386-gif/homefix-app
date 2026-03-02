@@ -18,6 +18,162 @@ import '../../services/presentation/technician_services_screen.dart';
 import '../../earnings/presentation/earnings_screen.dart';
 import '../../../../main.dart';
 
+// ============================================================================
+// REUSABLE WIDGET: Profile Completion Circle (Enhanced)
+// ============================================================================
+/// A premium circular progress indicator with gradient stroke and centered percentage.
+/// 
+/// Specifications:
+/// - Size: 72x72 (customizable)
+/// - Stroke width: 6 (customizable)
+/// - Background track: light grey (#F1F5F9)
+/// - Foreground: gradient purple → pink
+/// - Percentage text perfectly centered
+/// - Smooth rounded caps
+/// - No clipping or overflow
+/// - Smooth and crisp on all screen sizes
+class ProfileCompletionCircle extends StatelessWidget {
+  /// Value from 0.0 to 1.0
+  final double value;
+  
+  /// Size of the circle (default 72)
+  final double size;
+  
+  /// Stroke width (default 6)
+  final double strokeWidth;
+  
+  /// Background track color
+  final Color backgroundColor;
+  
+  /// Primary gradient start color
+  final Color primaryColor;
+  
+  /// Secondary gradient end color  
+  final Color secondaryColor;
+  
+  const ProfileCompletionCircle({
+    super.key,
+    required this.value,
+    this.size = 72,
+    this.strokeWidth = 6,
+    this.backgroundColor = const Color(0xFFF1F5F9),
+    this.primaryColor = const Color(0xFF6366F1),
+    this.secondaryColor = const Color(0xFF8B5CF6),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Clamp value between 0 and 1
+    final clampedValue = value.clamp(0.0, 1.0);
+    final percentage = (clampedValue * 100).round();
+    
+    return SizedBox(
+      width: size,
+      height: size,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: clampedValue),
+        duration: const Duration(milliseconds: 1500),
+        curve: Curves.easeOutCubic,
+        builder: (context, animatedValue, child) {
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              // Background track
+              CustomPaint(
+                size: Size(size, size),
+                painter: _GradientCirclePainter(
+                  progress: animatedValue,
+                  strokeWidth: strokeWidth,
+                  backgroundColor: backgroundColor,
+                  primaryColor: primaryColor,
+                  secondaryColor: secondaryColor,
+                ),
+              ),
+              // Center percentage text - perfectly centered
+              Center(
+                child: Text(
+                  '$percentage%',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: size * 0.22,
+                    color: const Color(0xFF1E293B),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Custom painter for gradient circle progress
+class _GradientCirclePainter extends CustomPainter {
+  final double progress;
+  final double strokeWidth;
+  final Color backgroundColor;
+  final Color primaryColor;
+  final Color secondaryColor;
+  
+  _GradientCirclePainter({
+    required this.progress,
+    required this.strokeWidth,
+    required this.backgroundColor,
+    required this.primaryColor,
+    required this.secondaryColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width - strokeWidth) / 2;
+    
+    // Draw background track
+    final backgroundPaint = Paint()
+      ..color = backgroundColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+    
+    canvas.drawCircle(center, radius, backgroundPaint);
+    
+    // Draw gradient progress arc
+    if (progress > 0) {
+      final rect = Rect.fromCircle(center: center, radius: radius);
+      final gradient = SweepGradient(
+        startAngle: -90 * (3.14159 / 180),
+        colors: [primaryColor, secondaryColor, primaryColor],
+        stops: const [0.0, 0.5, 1.0],
+      );
+      
+      final progressPaint = Paint()
+        ..shader = gradient.createShader(rect)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.round;
+      
+      final sweepAngle = 2 * 3.14159 * progress;
+      canvas.drawArc(
+        rect,
+        -90 * (3.14159 / 180),
+        sweepAngle,
+        false,
+        progressPaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GradientCirclePainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.strokeWidth != strokeWidth ||
+        oldDelegate.backgroundColor != backgroundColor ||
+        oldDelegate.primaryColor != primaryColor ||
+        oldDelegate.secondaryColor != secondaryColor;
+  }
+}
+
 /// Technician Profile Screen - Premium UI
 /// 
 /// SECURE: All updates go through callable Cloud Functions
@@ -546,120 +702,64 @@ class _VerificationAndCompletionCardState extends State<_VerificationAndCompleti
   @override
   Widget build(BuildContext context) {
     final completion = _getProfileCompletion(widget.technician);
+    final profilePercent = completion / 100.0;
     
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 60, 16, 16),
-      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const Text(
-            'Profile Verification',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1E293B),
+          // Profile completion circle with animation
+          AnimatedBuilder(
+            animation: _animation,
+            builder: (context, child) {
+              return ProfileCompletionCircle(
+                value: _animation.value * profilePercent,
+              );
+            },
+          ),
+
+          const SizedBox(width: 16),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Profile Complete',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.black54,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  completion == 100 
+                      ? 'Your profile is complete!' 
+                      : 'Complete your profile to get more jobs',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Colors.black45,
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 20),
-          // Verification chips with animation
-          Row(
-            children: [
-              Flexible(
-                fit: FlexFit.loose,
-                child: _AnimatedVerificationChip(
-                  label: 'Aadhaar',
-                  status: _getAadhaarStatus(widget.technician),
-                  index: 0,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Flexible(
-                fit: FlexFit.loose,
-                child: _AnimatedVerificationChip(
-                  label: 'Bank',
-                  status: _getBankStatus(widget.technician),
-                  index: 1,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          // Circular progress ring
-          Row(
-            children: [
-              // Circular progress
-              AnimatedBuilder(
-                animation: _animation,
-                builder: (context, child) {
-                  return SizedBox(
-                    width: 80,
-                    height: 80,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        CircularProgressIndicator(
-                          value: _animation.value * (completion / 100),
-                          strokeWidth: 8,
-                          backgroundColor: const Color(0xFFE2E8F0),
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            completion == 100 ? AppTheme.success : AppTheme.warning,
-                          ),
-                        ),
-                        Text(
-                          '${(_animation.value * completion).round()}%',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1E293B),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(width: 20),
-              Flexible(
-                fit: FlexFit.loose,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      'Profile Completion',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF1E293B),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      completion == 100 
-                          ? 'Your profile is complete!' 
-                          : 'Complete your profile to get more jobs',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
           ),
         ],
       ),
@@ -1808,8 +1908,8 @@ class _SupportItem extends StatelessWidget {
           child: InkWell(
             onTap: onTap,
             borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               child: Row(
                 children: [
                   Container(
@@ -1820,7 +1920,7 @@ class _SupportItem extends StatelessWidget {
                     ),
                     child: Icon(icon, size: 20, color: const Color(0xFF64748B)),
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       label,

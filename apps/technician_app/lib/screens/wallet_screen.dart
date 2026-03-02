@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../core/app_theme.dart';
 import '../core/services/wallet_service.dart';
@@ -15,17 +16,16 @@ import '../core/models/bank_account.dart';
 import '../core/providers/technician_provider.dart';
 import 'add_bank_account_screen.dart';
 
-/// Premium Technician Wallet Screen
+/// Modern Premium Technician Wallet Screen
 /// 
 /// Features:
-/// - Glass morphism wallet header card
+/// - Modern glassmorphism balance hero card
+/// - Quick stats with animated counters
+/// - Sleek action buttons with haptic feedback
+/// - QR Code card for receiving payments
+/// - Enhanced transaction history
 /// - Real-time balance updates via StreamBuilder
-/// - Secure withdrawal flow via Cloud Functions
-/// - Transaction history with grouping by date
-/// - Shimmer loading states
-/// - Premium fintech-style UI
-/// 
-/// NO Add Money feature - per requirements
+/// - Ultra-modern fintech-style UI with animations
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
 
@@ -77,6 +77,7 @@ class _WalletScreenState extends State<WalletScreen> {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('[WALLET] screen built');
     return Scaffold(
       backgroundColor: AppTheme.bgLight,
       body: SafeArea(
@@ -120,12 +121,20 @@ class _WalletScreenState extends State<WalletScreen> {
                   SliverToBoxAdapter(
                     child: Column(
                       children: [
-                        _buildGlassHeader(wallet),
+                        const SizedBox(height: 16),
+                        // Step 1: Premium Balance Hero Card
+                        _buildBalanceHero(wallet),
+                        const SizedBox(height: 12),
+                        // Step 3: Action Buttons Row
+                        _buildActionButtonsRow(wallet),
+                        const SizedBox(height: 12),
+                        // Step 5: QR Code Card
+                        _buildQRCard(),
                         const SizedBox(height: 20),
-                        _buildQuickActions(wallet),
-                        const SizedBox(height: 20),
+                        // Bank Accounts Section
                         _buildBankAccountsSection(),
                         const SizedBox(height: 20),
+                        // Transaction History
                         _buildTransactionHistory(transactions),
                         const SizedBox(height: 32),
                       ],
@@ -140,6 +149,341 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
+  /// Step 1: Premium Balance Hero Card (Urban Company style)
+  Widget _buildBalanceHero(TechnicianWallet wallet) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF667EEA).withValues(alpha: 0.35),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          // Decorative circles
+          Positioned(
+            right: -30,
+            top: -30,
+            child: Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.08),
+              ),
+            ),
+          ),
+          Positioned(
+            left: -20,
+            bottom: -20,
+            child: Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.06),
+              ),
+            ),
+          ),
+          // Main content
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header with icon
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        Icons.account_balance_wallet,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+                    ),
+                    // KYC Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            wallet.isKycVerified ? Icons.verified : Icons.pending,
+                            color: Colors.white,
+                            size: 14,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            wallet.isKycVerified ? 'Verified' : 'KYC Pending',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                // Available Balance Label
+                const Text(
+                  'Available Balance',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                // Balance Amount
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Text(
+                      '₹',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                    Text(
+                      wallet.availableBalance.toStringAsFixed(0),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 38,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: -1,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                // Mini Stats Row (Pending, On Hold, Lifetime)
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _WalletMiniStat(
+                          label: 'Pending',
+                          value: wallet.pendingBalance,
+                        ),
+                      ),
+                      Expanded(
+                        child: _WalletMiniStat(
+                          label: 'On Hold',
+                          value: wallet.onHoldBalance,
+                        ),
+                      ),
+                      Expanded(
+                        child: _WalletMiniStat(
+                          label: 'Lifetime',
+                          value: wallet.lifetimeEarnings,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Step 3: Action Buttons Row
+  Widget _buildActionButtonsRow(TechnicianWallet wallet) {
+    final hasBalance = wallet.availableBalance > 0;
+    final canWithdraw = hasBalance && wallet.canWithdraw && !_isWithdrawing && _bankAccounts.isNotEmpty;
+    
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: _WalletActionButton(
+              icon: Icons.account_balance,
+              label: 'Add Bank',
+              onTap: _showAddBankDialog,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _WalletActionButton(
+              icon: Icons.download_rounded,
+              label: 'Withdraw',
+              onTap: canWithdraw ? () => _showWithdrawBottomSheet(wallet) : null,
+              isPrimary: true,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Step 5: QR Code Card - Premium Design
+  Widget _buildQRCard() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: _showReceiveQRSheet,
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF10B981), Color(0xFF059669)],
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(
+                              Icons.qr_code_2,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Receive Payment',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              Text(
+                                'Scan QR to receive money',
+                                style: TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor.withValues(alpha: 0.08),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.arrow_forward_ios,
+                          color: AppTheme.primaryColor,
+                          size: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: const Color(0xFFE2E8F0),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.qr_code_scanner,
+                                    size: 40,
+                                    color: AppTheme.primaryColor.withValues(alpha: 0.6),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Expanded(
+                                    child: Text(
+                                      'Show this QR code to receive payments from customers',
+                                      style: TextStyle(
+                                        color: Colors.grey,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Shimmer loading state for premium feel
   Widget _buildShimmerLoading() {
     return SingleChildScrollView(
@@ -150,7 +494,7 @@ class _WalletScreenState extends State<WalletScreen> {
         child: Column(
           children: [
             const SizedBox(height: 16),
-            // Glass header shimmer
+            // Balance hero shimmer
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 16),
               height: 200,
@@ -160,20 +504,30 @@ class _WalletScreenState extends State<WalletScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            // Quick actions shimmer
+            // Action buttons shimmer
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: List.generate(2, (index) => Expanded(
                   child: Container(
-                    height: 80,
-                    margin: EdgeInsets.only(left: index == 0 ? 0 : 8),
+                    height: 52,
+                    margin: EdgeInsets.only(left: index == 0 ? 0 : 6),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
                     ),
                   ),
                 )),
+              ),
+            ),
+            const SizedBox(height: 20),
+            // QR card shimmer
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              height: 180,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
               ),
             ),
             const SizedBox(height: 20),
@@ -197,274 +551,7 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-  /// Premium glass morphism header card
-  Widget _buildGlassHeader(TechnicianWallet wallet) {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF6366F1),
-            Color(0xFF8B5CF6),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF6366F1).withValues(alpha: 0.4),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.white.withValues(alpha: 0.15),
-              Colors.white.withValues(alpha: 0.05),
-            ],
-          ),
-        ),
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header row with title and KYC badge
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Available Balance',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        wallet.isKycVerified ? Icons.verified : Icons.pending,
-                        color: Colors.white,
-                        size: 14,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        wallet.isKycVerified ? 'Verified' : 'KYC Pending',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            // Large balance display
-            Text(
-              '₹${_formatAmount(wallet.availableBalance)}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 42,
-                fontWeight: FontWeight.bold,
-                letterSpacing: -1.5,
-              ),
-            ),
-            const SizedBox(height: 24),
-            // Balance breakdown row
-            Row(
-              children: [
-                Expanded(
-                  child: _buildBalanceChip(
-                    'Pending',
-                    wallet.pendingBalance,
-                    Icons.hourglass_empty,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildBalanceChip(
-                    'On Hold',
-                    wallet.onHoldBalance,
-                    Icons.lock_outline,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildBalanceChip(
-                    'Lifetime',
-                    wallet.lifetimeEarnings,
-                    Icons.trending_up,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBalanceChip(String label, double amount, IconData icon) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: Colors.white60, size: 18),
-          const SizedBox(height: 4),
-          Text(
-            '₹${_formatAmount(amount)}',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white60,
-              fontSize: 10,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Quick actions row with QR Receive
-  Widget _buildQuickActions(TechnicianWallet wallet) {
-    final hasBalance = wallet.availableBalance > 0;
-    final canWithdraw = hasBalance && wallet.canWithdraw && !_isWithdrawing && _bankAccounts.isNotEmpty;
-    
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildActionButton(
-              icon: Icons.qr_code_2,
-              label: 'Receive QR',
-              onTap: _showReceiveQRSheet,
-              gradient: const [Color(0xFF10B981), Color(0xFF059669)],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _buildActionButton(
-              icon: Icons.account_balance,
-              label: 'Add Bank',
-              onTap: _showAddBankDialog,
-              gradient: const [Color(0xFF3B82F6), Color(0xFF2563EB)],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 2,
-            child: _buildActionButton(
-              icon: _isWithdrawing ? Icons.hourglass_empty : Icons.arrow_downward,
-              label: _isWithdrawing ? 'Processing...' : 'Withdraw',
-              onTap: canWithdraw ? () => _showWithdrawBottomSheet(wallet) : null,
-              isPrimary: true,
-              isLoading: _isWithdrawing,
-              gradient: const [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActionButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback? onTap,
-    required List<Color> gradient,
-    bool isPrimary = false,
-    bool isLoading = false,
-  }) {
-    final isDisabled = onTap == null || isLoading;
-    
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            gradient: isDisabled 
-                ? null 
-                : LinearGradient(colors: gradient, begin: Alignment.topLeft, end: Alignment.bottomRight),
-            color: isDisabled ? Colors.grey[300] : null,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: isDisabled ? null : [
-              BoxShadow(
-                color: gradient.first.withValues(alpha: 0.3),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (isLoading)
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      isPrimary ? Colors.white : gradient.first,
-                    ),
-                  ),
-                )
-              else
-                Icon(
-                  icon,
-                  color: isDisabled ? Colors.grey[500] : Colors.white,
-                  size: 22,
-                ),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  color: isDisabled ? Colors.grey[500] : Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Bank accounts section
+  /// Bank accounts section - Premium Design
   Widget _buildBankAccountsSection() {
     if (_isLoadingBanks) {
       return const Padding(
@@ -477,51 +564,94 @@ class _WalletScreenState extends State<WalletScreen> {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Container(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.grey.shade100),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 20,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Column(
             children: [
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                  gradient: LinearGradient(
+                    colors: [
+                      AppTheme.primaryColor.withValues(alpha: 0.1),
+                      AppTheme.primaryColor.withValues(alpha: 0.05),
+                    ],
+                  ),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   Icons.account_balance_outlined,
-                  size: 32,
+                  size: 36,
                   color: AppTheme.primaryColor,
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               const Text(
                 'No bank account linked',
                 style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: Color(0xFF1E293B),
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 8),
               Text(
-                'Add a bank account to withdraw your earnings',
+                'Add a bank account to withdraw your earnings directly to your bank',
                 style: TextStyle(
-                  color: Colors.grey[600],
+                  color: Colors.grey[500],
                   fontSize: 13,
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: _showAddBankDialog,
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add Bank Account'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              const SizedBox(height: 24),
+              Container(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF667EEA).withValues(alpha: 0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: _showAddBankDialog,
+                    borderRadius: BorderRadius.circular(14),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.add_circle_outline, color: Colors.white, size: 20),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Add Bank Account',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -535,92 +665,129 @@ class _WalletScreenState extends State<WalletScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.only(left: 4, bottom: 12),
-            child: Text(
-              'Linked Bank Account',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          ..._bankAccounts.map((account) => Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.grey.shade100),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.03),
-                  blurRadius: 10,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 16),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                const Text(
+                  'Linked Bank Accounts',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
                 Container(
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppTheme.primaryColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(
-                    Icons.account_balance,
-                    color: AppTheme.primaryColor,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        account.bankName,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${account.accountHolderName} • ${account.maskedAccountNumber}',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (account.isVerified)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppTheme.successColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
+                  child: Text(
+                    '${_bankAccounts.length} ${_bankAccounts.length == 1 ? 'Account' : 'Accounts'}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primaryColor,
                     ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ..._bankAccounts.map((account) => Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {},
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
                     child: Row(
-                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.check_circle, size: 14, color: AppTheme.successColor),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Verified',
-                          style: TextStyle(
-                            color: AppTheme.successColor,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                AppTheme.primaryColor.withValues(alpha: 0.1),
+                                AppTheme.primaryColor.withValues(alpha: 0.05),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Icon(
+                            Icons.account_balance,
+                            color: AppTheme.primaryColor,
+                            size: 24,
                           ),
                         ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                account.bankName,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 15,
+                                  color: Color(0xFF1E293B),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${account.accountHolderName} • ${account.maskedAccountNumber}',
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (account.isVerified)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppTheme.successColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.check_circle, size: 14, color: AppTheme.successColor),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Verified',
+                                  style: TextStyle(
+                                    color: AppTheme.successColor,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                       ],
                     ),
                   ),
-              ],
+                ),
+              ),
             ),
           )),
         ],
@@ -1143,7 +1310,6 @@ class _WalletScreenState extends State<WalletScreen> {
                           IconButton(
                             icon: const Icon(Icons.keyboard_arrow_down),
                             onPressed: () {
-                              // Show bank selection dialog
                               _showBankSelectionDialog(wallet, selectedAccount, (account) {
                                 setModalState(() => selectedAccount = account);
                               });
@@ -1536,6 +1702,165 @@ class _WalletScreenState extends State<WalletScreen> {
       return '${(amount / 1000).toStringAsFixed(2)}K';
     }
     return amount.toStringAsFixed(2);
+  }
+}
+
+// ============ STEP 2: MINI STAT WIDGET (Enhanced) ============
+
+/// Reusable mini stat widget for wallet balance breakdown
+class _WalletMiniStat extends StatelessWidget {
+  final String label;
+  final double value;
+
+  const _WalletMiniStat({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Text(
+            '₹${_formatCompactAmount(value)}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 15,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatCompactAmount(double amount) {
+    if (amount >= 100000) {
+      return '${(amount / 100000).toStringAsFixed(1)}L';
+    } else if (amount >= 1000) {
+      return '${(amount / 1000).toStringAsFixed(1)}K';
+    }
+    return amount.toStringAsFixed(0);
+  }
+}
+
+// ============ STEP 4: ACTION BUTTON WIDGET (Enhanced) ============
+
+/// Reusable action button widget for wallet actions
+class _WalletActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+  final bool isPrimary;
+
+  const _WalletActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.isPrimary = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDisabled = onTap == null;
+    
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          height: 56,
+          decoration: BoxDecoration(
+            gradient: isPrimary && !isDisabled
+                ? const LinearGradient(
+                    colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : null,
+            color: isPrimary && !isDisabled
+                ? null
+                : isDisabled
+                    ? Colors.grey[100]
+                    : Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: isPrimary
+                ? null
+                : Border.all(
+                    color: isDisabled ? Colors.grey[200]! : const Color(0xFFE2E8F0),
+                  ),
+            boxShadow: isPrimary && !isDisabled
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFF667EEA).withValues(alpha: 0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 8,
+                    ),
+                  ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (isPrimary)
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 18,
+                    color: Colors.white,
+                  ),
+                )
+              else
+                Icon(
+                  icon,
+                  size: 20,
+                  color: isDisabled ? Colors.grey[400] : const Color(0xFF64748B),
+                ),
+              const SizedBox(width: 10),
+              Text(
+                label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                  color: isDisabled
+                      ? Colors.grey[400]
+                      : isPrimary
+                          ? Colors.white
+                          : const Color(0xFF1E293B),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

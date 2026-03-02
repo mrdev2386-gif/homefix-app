@@ -31,18 +31,20 @@ class TechnicianService {
     await callable.call({'isOnline': isOnline});
   }
 
-  /// Update technician skills
+  /// Update technician skills via Cloud Function (required by Firestore rules)
   Future<void> updateSkills(String uid, List<String> skills) async {
     try {
-      final docRef = _db.collection('technicians').doc(uid);
-      await docRef.update({
+      // Use Cloud Function - Firestore rules block direct writes
+      final callable = _functions.httpsCallable('updateTechnicianSkills');
+      final result = await callable.call({
         'skills': skills,
-        'updatedAt': FieldValue.serverTimestamp(),
       });
       
-      // WRITE VERIFY: Ensure write actually reached server
-      await docRef.get();
-      debugPrint('[WRITE VERIFY] technician updated');
+      if (result.data['success'] == true) {
+        debugPrint('[WRITE VERIFY] technician skills updated via CF');
+      } else {
+        throw Exception(result.data['message'] ?? 'Failed to update skills');
+      }
     } catch (e) {
       debugPrint('[TechnicianService] Error updating skills: $e');
       rethrow;

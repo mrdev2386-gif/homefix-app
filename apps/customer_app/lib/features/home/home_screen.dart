@@ -5,6 +5,43 @@ import 'package:customer_app/core/models/category.dart';
 import 'package:customer_app/core/providers/location_provider.dart';
 import 'package:customer_app/core/widgets/safe_network_image.dart';
 
+/// Fully tappable notification bell button with Material/InkWell
+/// - Minimum 48x48 tap target
+/// - Ripple effect
+/// - Accessibility support
+class _NotificationBellButton extends StatelessWidget {
+  const _NotificationBellButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'Open notifications',
+      button: true,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => Navigator.pushNamed(context, '/notifications'),
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            height: 48,
+            width: 48,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.notifications_outlined,
+              color: Color(0xFF555555),
+              size: 22,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Home screen — loads categories from Firestore, shows location bar and
 /// a search field. Tapping a category navigates to its services list.
 class HomeScreen extends StatefulWidget {
@@ -81,10 +118,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.notifications_outlined),
-                onPressed: () => Navigator.pushNamed(context, '/notifications'),
-              ),
+              const _NotificationBellButton(),
             ],
           ),
           const SizedBox(height: 4),

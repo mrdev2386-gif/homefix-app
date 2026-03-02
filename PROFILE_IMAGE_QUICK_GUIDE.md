@@ -1,173 +1,40 @@
-# Profile Image Upload - Quick Reference
+I have completed the forensic diagnosis and implemented the forced extraction logic. Per your request, I have stopped all command execution. Below is the summary of the changes made and the Critical Debug Finding discovered in the process.
 
-## What Was Fixed
+🛠️ Diagnostic Changes (Reversible)
+I modified 
 
-### Before ❌
-- Images not persisting
-- No validation
-- Poor error handling
-- Multiple files created
-- No loading states
+lib/main.dart
+ to perform a "Hard Extraction" of the token:
 
-### After ✅
-- Images persist across restarts
-- 5MB file size limit
-- User-friendly error messages
-- Single file per user (overwrites)
-- Loading indicators
+Forced Debug Provider: Overrode the environment check to force AndroidProvider.debug.
+Token Refresh: Added FirebaseAppCheck.instance.getToken(true) with the forceRefresh flag set to true. This is required to trigger the local generation and logging of a new debug token.
+Log Unmasking: Switched all diagnostic logs to use print() with a unique TOKEN_EXTRACTOR prefix to ensure they appear in the system logcat even if the Flutter console filters them.
+Build Fix: Added missing color aliases (successColor, warningColor, etc.) to 
 
-## How It Works
+AppTheme
+ to resolve compilation errors in 
 
-### Upload Flow
-```
-Tap Avatar → Choose Source → Pick Image → Validate → Upload → Update Firestore → Done
-```
+wallet_screen.dart
+ that were blocking the build.
+🚨 CRITICAL FINDING: Network Connectivity Failure
+Based on the logs captured in Step 1061, the root cause of the missing token and App Check failures has been identified:
 
-### Storage Path
-```
-users/{userId}/profile/profile.jpg  ← Always same filename
-```
+text
+W/Firestore: Caused by: android.system.GaiException: android_getaddrinfo failed: 
+EAI_NODATA (No address associated with hostname)
+W/Firestore: Caused by: java.net.UnknownHostException: Unable to resolve host "firestore.googleapis.com"
+Diagnosis:
 
-### Firestore Field
-```json
-{
-  "photoUrl": "https://firebasestorage.googleapis.com/.../profile.jpg"
-}
-```
+The device (RMX3741) is currently unable to resolve Google hostnames.
+Impact: App Check cannot generate a debug token because it must perform an initial handshake with the Firebase backend. Since the DNS resolution for firestore.googleapis.com (and likely other Google services) is failing with EAI_NODATA, the activation loop hangs or fails silently.
+📍 Current Diagnostic Status
+Debug Token Generated?: No.
+Failure Point: Network Layer. The device is connected to a network but cannot reach Google servers.
+Environment Problems: DNS resolution failure on the real device.
+🚀 Recommended Action
+Verify the internet connection on the physical device. Once the device can successfully ping google.com or reach the Firebase backend, the code I implemented will immediately print the token to your console with the following marker:
 
-## Key Features
+TOKEN_EXTRACTOR: 🔥 APP_CHECK_DEBUG_TOKEN: <your_token_here>
 
-### 1. Source Selection
-- Gallery option
-- Camera option
-- User can cancel
+No further commands will be run. You can now monitor your logs locally.
 
-### 2. Validation
-- Max 5MB file size
-- JPG and PNG only
-- File exists check
-
-### 3. Upload
-- Compresses image (70% quality)
-- Max dimensions: 1024x1024
-- Overwrites old image
-- Sets proper metadata
-
-### 4. Error Handling
-- File too large → "Image size (X MB) exceeds 5MB limit"
-- Network error → "Upload failed. Please check your internet connection"
-- Permission denied → "You do not have permission to upload images"
-- Invalid format → "Only JPG and PNG images are supported"
-
-### 5. UI States
-- **Normal:** Avatar with camera icon
-- **Uploading:** Loading overlay, not tappable
-- **Success:** Green SnackBar with checkmark
-- **Error:** Red SnackBar with error message
-
-### 6. Persistence
-- URL saved to Firestore
-- StreamBuilder loads from Firestore
-- Works across app restarts
-- Works across devices
-
-## Files Changed
-
-### 1. StorageService
-**Path:** `apps/customer_app/lib/core/services/storage_service.dart`
-
-**Key Method:**
-```dart
-Future<String> uploadProfilePhoto({
-  required String userId,
-  required XFile file,
-})
-```
-
-**What it does:**
-- Validates file size
-- Uploads to consistent path
-- Returns download URL
-- Throws user-friendly errors
-
-### 2. FirestoreService
-**Path:** `apps/customer_app/lib/core/services/firestore_service.dart`
-
-**New Method:**
-```dart
-Future<void> updateProfileImageUrl(String userId, String imageUrl)
-```
-
-**What it does:**
-- Updates photoUrl in Firestore
-- Sets updatedAt timestamp
-- Merges with existing data
-
-### 3. ProfileScreen
-**Path:** `apps/customer_app/lib/features/profile/profile_screen.dart`
-
-**Enhanced:**
-- Source selection dialog
-- File size validation
-- Loading state management
-- Error handling
-- Success feedback
-- Image display with fallback
-
-## Testing
-
-### Quick Test
-1. Tap avatar
-2. Select Gallery
-3. Pick image
-4. Wait for upload
-5. See success message
-6. Close app
-7. Reopen app
-8. Image still there ✓
-
-### Error Test
-1. Select 10MB image
-2. See error: "Image size exceeds 5MB limit"
-3. Select 2MB image
-4. Upload succeeds ✓
-
-## Security
-
-### Storage Rules
-```javascript
-// User can only write to their own folder
-// Max 5MB file size
-// Images only
-```
-
-### Firestore Rules
-```javascript
-// User can only update their own photoUrl
-```
-
-## Common Issues
-
-### Image Not Showing After Upload
-**Fix:** Check if `updateProfileImageUrl` is called
-
-### Upload Fails Silently
-**Fix:** Check try-catch blocks
-
-### Multiple Files in Storage
-**Fix:** Already fixed - uses same filename
-
-### Image Disappears on Restart
-**Fix:** Already fixed - saves to Firestore
-
-## Summary
-
-✅ Production-grade implementation
-✅ Proper validation (5MB limit)
-✅ Secure architecture
-✅ Persistent storage
-✅ User-friendly errors
-✅ Loading states
-✅ Zero compilation errors
-
-**Result:** Profile image upload is now 100% working and production-ready!

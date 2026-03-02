@@ -567,3 +567,51 @@ export const updateTechnicianStatus = functions.https.onCall(async (data, contex
         isOnline: isOnline
     };
 });
+
+/**
+ * Save technician step data (generic step saver)
+ * Used for flexible onboarding step updates
+ */
+export const saveTechnicianStepData = functions.https.onCall(async (data, context) => {
+    assertAuthenticated(context);
+    const uid = context.auth!.uid;
+    const { step, stepName, stepKey, data: updateData } = data;
+
+    console.log(`[CF saveTechnicianStepData] authUid=${uid}`);
+    console.log(`[CF saveTechnicianStepData] payload=`, JSON.stringify(data));
+
+    // Verify technician exists
+    const techDoc = await db.collection('technicians').doc(uid).get();
+    if (!techDoc.exists) {
+        console.error(`[CF saveTechnicianStepData] ERROR: technician not found`);
+        throw new functions.https.HttpsError(
+            'not-found',
+            'Technician profile not found'
+        );
+    }
+
+    // Filter out admin-only fields
+    const filteredData: Record<string, any> = {};
+    for (const [key, value] of Object.entries(updateData || {})) {
+        if (!ADMIN_ONLY_FIELDS.includes(key)) {
+            filteredData[key] = value;
+        }
+    }
+
+    // Add server timestamp
+    filteredData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+
+    try {
+        // Update with merge
+        await db.collection('technicians').doc(uid).set(filteredData, { merge: true });
+        console.log(`[CF saveTechnicianStepData] WRITE SUCCESS`);
+    } catch (error) {
+        console.error(`[CF saveTechnicianStepData] ERROR:`, error);
+        throw error;
+    }
+
+    return {
+        success: true,
+        step: stepName
+    };
+});

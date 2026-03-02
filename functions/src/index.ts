@@ -53,6 +53,7 @@ export const saveTechnicianServices = techOnboarding.saveTechnicianServices; // 
 export const submitTechnicianKyc = techOnboarding.submitTechnicianKyc; // TODO: verify usage before deletion
 // export const updateTechnicianProfileData = techOnboarding.updateTechnicianProfile; // TODO: verify usage before deletion
 export const updateTechnicianStatus = techOnboarding.updateTechnicianStatus; // TODO: verify usage before deletion
+export const saveTechnicianStepData = techOnboarding.saveTechnicianStepData;
 
 import * as matchEngine from './matching/engine';
 import * as techTriggers from './technician/triggers';

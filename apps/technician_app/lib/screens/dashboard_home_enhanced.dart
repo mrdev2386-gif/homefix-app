@@ -14,6 +14,164 @@ import 'package:technician_app/features/notifications/presentation/notifications
 import 'package:technician_app/features/technician/services/add_service_screen.dart';
 import 'package:technician_app/screens/job_details_screen.dart';
 
+// ============================================================================
+// REUSABLE WIDGET: Profile Completion Circle
+// ============================================================================
+/// A premium circular progress indicator with gradient stroke and centered percentage.
+/// 
+/// Specifications:
+/// - Size: 72x72
+/// - Stroke width: 6
+/// - Background track: light grey (#F1F5F9)
+/// - Foreground: gradient purple (#6366F1 to #8B5CF6)
+/// - Center text: bold percentage (e.g., 100%)
+/// - Smooth rounded caps
+class ProfileCompletionCircle extends StatelessWidget {
+  /// Value from 0.0 to 1.0
+  final double value;
+  
+  /// Size of the circle (default 72)
+  final double size;
+  
+  /// Stroke width (default 6)
+  final double strokeWidth;
+  
+  /// Background track color
+  final Color backgroundColor;
+  
+  /// Primary gradient start color
+  final Color primaryColor;
+  
+  /// Secondary gradient end color  
+  final Color secondaryColor;
+  
+  const ProfileCompletionCircle({
+    super.key,
+    required this.value,
+    this.size = 72,
+    this.strokeWidth = 6,
+    this.backgroundColor = const Color(0xFFF1F5F9),
+    this.primaryColor = const Color(0xFF6366F1),
+    this.secondaryColor = const Color(0xFF8B5CF6),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Clamp value between 0 and 1
+    final clampedValue = value.clamp(0.0, 1.0);
+    final percentage = (clampedValue * 100).round();
+    
+    return SizedBox(
+      width: size,
+      height: size,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.0, end: clampedValue),
+        duration: const Duration(milliseconds: 1500),
+        curve: Curves.easeOutBack,
+        builder: (context, animatedValue, child) {
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              // Background track
+              CustomPaint(
+                size: Size(size, size),
+                painter: _GradientCirclePainter(
+                  progress: animatedValue,
+                  strokeWidth: strokeWidth,
+                  backgroundColor: backgroundColor,
+                  primaryColor: primaryColor,
+                  secondaryColor: secondaryColor,
+                ),
+              ),
+              // Center percentage text
+              Text(
+                '$percentage%',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: size * 0.25, // 18 for 72px
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF1E293B),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Custom painter for gradient circle progress
+class _GradientCirclePainter extends CustomPainter {
+  final double progress;
+  final double strokeWidth;
+  final Color backgroundColor;
+  final Color primaryColor;
+  final Color secondaryColor;
+  
+  _GradientCirclePainter({
+    required this.progress,
+    required this.strokeWidth,
+    required this.backgroundColor,
+    required this.primaryColor,
+    required this.secondaryColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width - strokeWidth) / 2;
+    
+    // Draw background track
+    final backgroundPaint = Paint()
+      ..color = backgroundColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+    
+    canvas.drawCircle(center, radius, backgroundPaint);
+    
+    // Draw gradient progress arc
+    if (progress > 0) {
+      final rect = Rect.fromCircle(center: center, radius: radius);
+      final gradient = SweepGradient(
+        startAngle: -90 * (3.14159 / 180), // Start from top
+        colors: [primaryColor, secondaryColor, primaryColor],
+        stops: const [0.0, 0.5, 1.0],
+        transform: const GradientRotation(-90 * (3.14159 / 180)),
+      );
+      
+      final progressPaint = Paint()
+        ..shader = gradient.createShader(rect)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.round;
+      
+      // Draw arc from top (-90 degrees) clockwise
+      final sweepAngle = 2 * 3.14159 * progress;
+      canvas.drawArc(
+        rect,
+        -90 * (3.14159 / 180), // Start angle
+        sweepAngle, // Sweep angle
+        false,
+        progressPaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GradientCirclePainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.strokeWidth != strokeWidth ||
+        oldDelegate.backgroundColor != backgroundColor ||
+        oldDelegate.primaryColor != primaryColor ||
+        oldDelegate.secondaryColor != secondaryColor;
+  }
+}
+
+// ============================================================================
+// MAIN DASHBOARD HOME SCREEN
+// ============================================================================
+
 /// Dashboard Home Enhanced - ULTRA MODERN UI Redesign
 /// 
 /// Features:
@@ -168,31 +326,44 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
       body: FadeTransition(
         opacity: _fadeAnimation,
         child: SafeArea(
-          child: RefreshIndicator(
-            onRefresh: () => provider.refreshTechnicianData(),
-            color: const Color(0xFF6366F1),
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(height: 16),
-                  _buildPremiumHeader(tech),
-                  const SizedBox(height: 16),
-                  _buildProfileCompletionCard(tech),
-                  const SizedBox(height: 16),
-                  _buildStatsGridSection(tech),
-                  const SizedBox(height: 20),
-                  _buildPrimaryActionCard(),
-                  const SizedBox(height: 24),
-                  _buildQuickActionsSection(),
-                  const SizedBox(height: 24),
-                  _buildActiveBookingsSection(tech),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return RefreshIndicator(
+                onRefresh: () => provider.refreshTechnicianData(),
+                color: const Color(0xFF6366F1),
+                child: Listener(
+                  behavior: HitTestBehavior.translucent,
+                  onPointerDown: (event) {
+                    debugPrint('🌍 Global tap at: ${event.position}');
+                  },
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox(height: 16),
+                          _buildPremiumHeader(tech),
+                          const SizedBox(height: 16),
+                          _buildProfileCompletionCard(tech),
+                          const SizedBox(height: 16),
+                          _buildStatsRowSection(tech),
+                          const SizedBox(height: 20),
+                          _buildPrimaryActionCard(),
+                          const SizedBox(height: 24),
+                          _buildQuickActionsSection(),
+                          const SizedBox(height: 24),
+                          _buildActiveBookingsSection(tech),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
         ),
       ),
@@ -200,6 +371,7 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
   }
 
   /// ULTRA MODERN Premium greeting header with glassmorphism + gradient
+  /// IMPROVED: Better typography and spacing
   Widget _buildPremiumHeader(Technician tech) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -220,90 +392,122 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
               ],
             ),
             child: Stack(
+              clipBehavior: Clip.none,
               children: [
-                // Solid/Gradient Background
-                Container(
-                  padding: const EdgeInsets.all(28),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(32),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Top Row: Animated Greeting + Notification
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: TweenAnimationBuilder<double>(
-                              tween: Tween(begin: 0.0, end: 1.0),
-                              duration: const Duration(milliseconds: 1000),
-                              curve: Curves.easeOutCubic,
-                              builder: (context, value, child) {
-                                return Transform.translate(
-                                  offset: Offset(0, 20 * (1 - value)),
-                                  child: Opacity(
-                                    opacity: value,
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Hello, ${tech.name.split(' ').first} 👋',
-                                          style: GoogleFonts.plusJakartaSans(
-                                            fontSize: 28,
-                                            fontWeight: FontWeight.w800,
-                                            color: Colors.white,
-                                            letterSpacing: -0.5,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          tech.isOnline 
-                                              ? 'Active & Ready for jobs' 
-                                              : 'Currently Offline',
-                                          style: GoogleFonts.plusJakartaSans(
-                                            fontSize: 15,
-                                            color: Colors.white.withOpacity(0.85),
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                          _buildNotificationButton(tech),
-                        ],
+                // Solid/Gradient Background (wrapped with IgnorePointer to prevent gesture blocking)
+                IgnorePointer(
+                  ignoring: true,
+                  child: Container(
+                    padding: const EdgeInsets.all(28),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                      const SizedBox(height: 28),
-                      // Status Section
-                      _buildStatusPill(tech.isOnline),
-                    ],
+                      borderRadius: BorderRadius.circular(32),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Top Row: Animated Greeting + Notification placeholder
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: TweenAnimationBuilder<double>(
+                                tween: Tween(begin: 0.0, end: 1.0),
+                                duration: const Duration(milliseconds: 1000),
+                                curve: Curves.easeOutCubic,
+                                builder: (context, value, child) {
+                                  return Transform.translate(
+                                    offset: Offset(0, 20 * (1 - value)),
+                                    child: Opacity(
+                                      opacity: value,
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          // IMPROVED: "Good morning," → medium weight
+                                          Text(
+                                            'Good morning,',
+                                            style: GoogleFonts.plusJakartaSans(
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.w500, // Medium weight
+                                              color: Colors.white.withOpacity(0.9),
+                                              letterSpacing: 0.2,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 2),
+                                          // ADDED: Technician name dynamically below greeting
+                                          Text(
+                                            tech.name.split(' ').first,
+                                            style: GoogleFonts.plusJakartaSans(
+                                              fontSize: 26,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                              letterSpacing: 0.2,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 8),
+                                          // IMPROVED: "Currently Offline" → smaller subtitle with status color
+                                          Text(
+                                            tech.isOnline 
+                                                ? _getGreetingMessage() 
+                                                : 'Currently Offline',
+                                            style: GoogleFonts.plusJakartaSans(
+                                              fontSize: 14,
+                                              color: tech.isOnline 
+                                                  ? Colors.white.withOpacity(0.85)
+                                                  : Colors.white.withOpacity(0.7),
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                            // Notification button moved to Positioned at end of Stack
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+                        // Status Section
+                        _buildStatusPill(tech.isOnline),
+                      ],
+                    ),
                   ),
                 ),
                 
-                // Subtle Glass Highlight Overlay
+                // Subtle Glass Highlight Overlay (also ignore pointer events)
                 Positioned(
                   top: -50,
                   right: -50,
-                  child: Container(
-                    width: 150,
-                    height: 150,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.1),
+                  child: IgnorePointer(
+                    ignoring: true,
+                    child: Container(
+                      width: 150,
+                      height: 150,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withOpacity(0.1),
+                      ),
                     ),
                   ),
+                ),
+                
+                // FIXED: Notification bell as LAST child - Positioned to be on top
+                // Changed from right: 0 to right: 16 to fix edge tap bug
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: _buildHardenedNotificationBell(tech),
                 ),
               ],
             ),
@@ -313,46 +517,80 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
     );
   }
 
-  /// Premium notification button with glass background
-  Widget _buildNotificationButton(Technician tech) {
+  /// HARDENED: Notification bell with forced safe tap structure
+  /// - Positioned as LAST child of Stack (on top)
+  /// - Explicit 48x48 tap target
+  /// - Debug print on tap
+  /// - Listener with opaque hit test for edge cases
+  Widget _buildHardenedNotificationBell(Technician tech) {
     return StreamBuilder<QuerySnapshot>(
       stream: _notificationsStream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           debugPrint('❌ [Dashboard] Notifications stream error: ${snapshot.error}');
-          return IconButton(
-            icon: const Icon(Icons.notifications_active_outlined, color: Colors.white, size: 22),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-            ),
-          );
+          return _buildHardenedBellContent(0);
         }
         
         final unreadCount = snapshot.data?.docs.length ?? 0;
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+        return _buildHardenedBellContent(unreadCount);
+      },
+    );
+  }
+
+  /// Hardened bell content with Positioned and explicit tap zone
+  Widget _buildHardenedBellContent(int unreadCount) {
+    return Semantics(
+      label: 'Open notifications',
+      button: true,
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: (_) {
+          debugPrint('👆 Pointer detected on bell');
+        },
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              debugPrint('🔔 Notification bell tapped — LEVEL 1');
+
+              Future.microtask(() {
+                debugPrint('🔔 Notification navigation firing — LEVEL 2');
+                
+                if (!context.mounted) {
+                  debugPrint('❌ Context not mounted');
+                  return;
+                }
+                
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                );
+              });
+            },
+            borderRadius: BorderRadius.circular(14),
             child: Container(
+              height: 48,
+              width: 48,
+              alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),
+                color: Colors.red.withOpacity(0.3), // DEBUG: Visual hit test - remove after verification
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.25),
+                ),
               ),
               child: Stack(
+                clipBehavior: Clip.none,
                 children: [
-                  IconButton(
-                    icon: const Icon(Icons.notifications_active_outlined, color: Colors.white, size: 22),
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-                    ),
+                  const Icon(
+                    Icons.notifications_outlined,
+                    color: Colors.white,
+                    size: 22,
                   ),
                   if (unreadCount > 0)
                     Positioned(
-                      right: 8,
-                      top: 8,
+                      right: -4,
+                      top: -4,
                       child: Container(
                         padding: const EdgeInsets.all(2),
                         decoration: const BoxDecoration(
@@ -375,12 +613,96 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
               ),
             ),
           ),
-        );
+        ),
+      ),
+    );
+  }
+
+  /// OLD: Notification button - kept for reference but not used anymore
+  Widget _buildNotificationButton(Technician tech) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _notificationsStream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          debugPrint('❌ [Dashboard] Notifications stream error: ${snapshot.error}');
+          return _buildNotificationButtonContent(0);
+        }
+        
+        final unreadCount = snapshot.data?.docs.length ?? 0;
+        return _buildNotificationButtonContent(unreadCount);
       },
     );
   }
 
+  /// Helper widget for notification button content
+  Widget _buildNotificationButtonContent(int unreadCount) {
+    // Use IconButton with minimum 48x48 tap target
+    return Semantics(
+      label: 'Notifications',
+      hint: 'Tap to view notifications',
+      button: true,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+          ),
+          borderRadius: BorderRadius.circular(16),
+          splashColor: Colors.white.withOpacity(0.2),
+          child: Container(
+            constraints: const BoxConstraints(
+              minWidth: 48,
+              minHeight: 48,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.2),
+                width: 1,
+              ),
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                const Icon(
+                  Icons.notifications_active_outlined,
+                  color: Colors.white,
+                  size: 22,
+                ),
+                if (unreadCount > 0)
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFF43F5E),
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
+                      child: Text(
+                        unreadCount > 9 ? '9+' : '$unreadCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 8,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Modern animated status pill with premium styling
+  /// IMPROVED: More modern OFFLINE pill with rounded full pill, subtle border, small status dot
   Widget _buildStatusPill(bool isOnline) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 500),
@@ -390,7 +712,7 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
         color: isOnline 
             ? const Color(0xFF10B981).withOpacity(0.2) 
             : Colors.white.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24), // Full pill rounded
         border: Border.all(
           color: isOnline 
               ? const Color(0xFF10B981).withOpacity(0.4) 
@@ -423,6 +745,7 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
                       ),
                       transform: Matrix4.identity()..scale(scale * 1.5),
                     ),
+                  // Small status dot
                   Container(
                     width: 10,
                     height: 10,
@@ -461,6 +784,7 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
   }
 
   /// Profile completion card with dynamic calculation & animated ring
+  /// IMPROVED: Uses new ProfileCompletionCircle widget with proper gradient
   Widget _buildProfileCompletionCard(Technician tech) {
     // PART 3: Dynamic calculation from Firestore map
     final steps = tech.stepsCompleted ?? {};
@@ -491,46 +815,11 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
             ),
             child: Row(
               children: [
-                // Animated Progress Ring
-                SizedBox(
-                  width: 80,
-                  height: 80,
-                  child: TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0.0, end: progress),
-                    duration: const Duration(milliseconds: 1500),
-                    curve: Curves.easeOutBack,
-                    builder: (context, value, child) {
-                      return Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          ShaderMask(
-                            shaderCallback: (rect) {
-                              return const LinearGradient(
-                                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                              ).createShader(rect);
-                            },
-                            child: CircularProgressIndicator(
-                              value: value,
-                              strokeWidth: 8,
-                              strokeCap: StrokeCap.round,
-                              backgroundColor: const Color(0xFFF1F5F9),
-                              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          ),
-                          Text(
-                            '${(value * 100).round()}%',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                              color: const Color(0xFF1E293B),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
+                // IMPROVED: Use new ProfileCompletionCircle widget
+                ProfileCompletionCircle(
+                  value: progress,
+                  size: 72,
+                  strokeWidth: 6,
                 ),
                 const SizedBox(width: 20),
                 Expanded(
@@ -602,8 +891,8 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
     );
   }
 
-  /// MODERN 2-column responsive grid for stats - Glass/soft card style
-  Widget _buildStatsGridSection(Technician tech) {
+  /// MODERN 3-column responsive row for stats - Premium card style
+  Widget _buildStatsRowSection(Technician tech) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final horizontalPadding = constraints.maxWidth < 360 ? 12.0 : 16.0;
@@ -618,31 +907,25 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
               }
               final bookings = bookingsSnapshot.data ?? [];
               final todayJobs = bookings.where((b) => b.status != 'completed' && b.status != 'cancelled').length;
-              final pending = bookings.where((b) => b.status == 'pending').length;
 
-              return GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: constraints.maxWidth < 360 ? 1.3 : 1.2,
-                ),
-                itemCount: 4,
-                itemBuilder: (context, index) {
-                  // For earnings card (index 1), use StreamBuilder
-                  if (index == 1) {
-                    return ScaleTransition(
-                      scale: _scaleAnimation,
-                      child: _buildEarningsStatCard(tech),
-                    );
-                  }
-                  return ScaleTransition(
-                    scale: _scaleAnimation,
-                    child: _buildSimpleStatCard(index, todayJobs, pending),
-                  );
-                },
+              return Row(
+                children: [
+                  Expanded(child: _buildCompactStatCard(
+                    icon: Icons.work_outline_rounded,
+                    value: '$todayJobs',
+                    label: "Today Jobs",
+                    color: const Color(0xFF6366F1),
+                  )),
+                  const SizedBox(width: 12),
+                  Expanded(child: _buildEarningsCompactCard(tech)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _buildCompactStatCard(
+                    icon: Icons.star_rounded,
+                    value: '0.0',
+                    label: 'Rating',
+                    color: const Color(0xFFFBBF24),
+                  )),
+                ],
               );
             },
           ),
@@ -651,19 +934,21 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
     );
   }
 
-  /// Simple stat card without external data
-  Widget _buildSimpleStatCard(int index, int todayJobs, int pending) {
-    final cardData = _getSimpleStatCardData(index, todayJobs, pending);
-    final cardColor = cardData['color'] as Color;
-    
+  /// Compact stat card for 3-column row
+  Widget _buildCompactStatCard({
+    required IconData icon,
+    required String value,
+    required String label,
+    required Color color,
+  }) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: cardColor.withOpacity(0.15),
+            color: color.withOpacity(0.15),
             blurRadius: 15,
             offset: const Offset(0, 4),
           ),
@@ -675,33 +960,29 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: cardColor.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(14),
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(
-              cardData['icon'] as IconData,
-              color: cardColor,
-              size: 22,
-            ),
+            child: Icon(icon, color: color, size: 18),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Text(
-            cardData['value'] as String,
+            value,
             style: GoogleFonts.plusJakartaSans(
-              fontSize: 24,
+              fontSize: 22,
               fontWeight: FontWeight.bold,
               color: const Color(0xFF0F172A),
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Text(
-            cardData['label'] as String,
+            label,
             style: GoogleFonts.plusJakartaSans(
-              fontSize: 12,
+              fontSize: 11,
               color: const Color(0xFF64748B),
               fontWeight: FontWeight.w500,
             ),
@@ -713,13 +994,13 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
     );
   }
 
-  /// Earnings stat card with Firestore stream
-  Widget _buildEarningsStatCard(Technician tech) {
+  /// Compact earnings card for 3-column row
+  Widget _buildEarningsCompactCard(Technician tech) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF10B981).withOpacity(0.15),
@@ -732,7 +1013,7 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
         stream: _earningsStream,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-             debugPrint('❌ [Dashboard] Earnings stream error: ${snapshot.error}');
+            debugPrint('❌ [Dashboard] Earnings stream error: ${snapshot.error}');
           }
           double monthEarnings = 0;
           if (snapshot.hasData && snapshot.data != null) {
@@ -754,33 +1035,33 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: const Color(0xFF10B981).withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(
                   Icons.account_balance_wallet_rounded,
                   color: Color(0xFF10B981),
-                  size: 22,
+                  size: 18,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               Text(
                 '₹${_formatCurrency(monthEarnings)}',
                 style: GoogleFonts.plusJakartaSans(
-                  fontSize: 24,
+                  fontSize: 22,
                   fontWeight: FontWeight.bold,
                   color: const Color(0xFF0F172A),
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               Text(
-                'This Month',
+                'Earnings',
                 style: GoogleFonts.plusJakartaSans(
-                  fontSize: 12,
+                  fontSize: 11,
                   color: const Color(0xFF64748B),
                   fontWeight: FontWeight.w500,
                 ),
@@ -794,41 +1075,8 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
     );
   }
 
-  /// Get simple stat card data based on index
-  Map<String, dynamic> _getSimpleStatCardData(int index, int todayJobs, int pending) {
-    switch (index) {
-      case 0:
-        return {
-          'icon': Icons.work_outline_rounded,
-          'value': '$todayJobs',
-          'label': "Today's Jobs",
-          'color': const Color(0xFF6366F1),
-        };
-      case 2:
-        return {
-          'icon': Icons.star_rounded,
-          'value': '0.0',
-          'label': 'Rating',
-          'color': const Color(0xFFFBBF24),
-        };
-      case 3:
-        return {
-          'icon': Icons.pending_actions_rounded,
-          'value': '$pending',
-          'label': 'Pending',
-          'color': const Color(0xFFF59E0B),
-        };
-      default:
-        return {
-          'icon': Icons.info_outline,
-          'value': '0',
-          'label': 'N/A',
-          'color': const Color(0xFF64748B),
-        };
-    }
-  }
-
   /// PRIMARY ACTION CARD - Ready to receive jobs CTA
+  /// IMPROVED: Fixed text overflow, consistent button height, better spacing
   Widget _buildPrimaryActionCard() {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -884,7 +1132,7 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
                     ),
                   ),
                   const SizedBox(width: 16),
-                  // Text content
+                  // Text content - IMPROVED: Better overflow handling
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -914,10 +1162,14 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // CTA Button
+                  // CTA Button - IMPROVED: Minimum height 44
                   GestureDetector(
                     onTap: () => widget.onNavigate?.call(1),
                     child: Container(
+                      constraints: const BoxConstraints(
+                        minWidth: 90,
+                        minHeight: 44, // Minimum height 44
+                      ),
                       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
@@ -934,12 +1186,14 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
                           ),
                         ],
                       ),
-                      child: Text(
-                        'View Jobs',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
+                      child: Center(
+                        child: Text(
+                          'View Jobs',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),
@@ -960,6 +1214,18 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
     if (value is int) return value.toDouble();
     if (value is String) return double.tryParse(value) ?? 0.0;
     return 0.0;
+  }
+
+  /// Get time-based greeting message
+  String _getGreetingMessage() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) {
+      return 'Good morning! Ready for jobs';
+    } else if (hour < 17) {
+      return 'Good afternoon! Ready for jobs';
+    } else {
+      return 'Good evening! Ready for jobs';
+    }
   }
 
   /// Proper currency formatting
@@ -1360,7 +1626,7 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
           ),
           const SizedBox(height: 24),
           Text(
-            'Ready for work?',
+            'No active jobs yet',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 20,
               fontWeight: FontWeight.w800,

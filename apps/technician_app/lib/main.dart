@@ -15,19 +15,13 @@ import 'screens/block_screen.dart';
 import 'screens/application_status_screen.dart';
 import 'features/technician/screens/profile_under_review_screen.dart';
 import 'core/services/technician_catalog_service.dart';
-
+import 'core/firebase/firebase_init.dart';
 
 import 'firebase_options.dart';
 
-import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_performance/firebase_performance.dart';
 import 'package:flutter/foundation.dart';
-
-// Global flag to track App Check status
-bool _appCheckEnabled = false;
-bool _appCheckTokenFetched = false;
-bool _appCheckInitialized = false;
 
 // Top-level root navigator key - MUST be outside any class
 // This is the single source of truth for navigation in the app
@@ -35,42 +29,29 @@ final GlobalKey<NavigatorState> rootNavigatorKey =
     GlobalKey<NavigatorState>(debugLabel: 'rootNavigator');
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // CRITICAL: Background isolates have their own memory space.
-  // We initialize Firebase here for basic notification handling.
-  // App Check is NOT activated again in the background isolate to prevent
-  // token fetch loops and unnecessary attestation requests.
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // Background isolate - Firebase already initialized in main isolate
+  // DO NOT reinitialize to avoid App Check conflicts
   debugPrint("Background message: ${message.notification?.title}");
 }
 
 void main() async {
-  // Safety assert to detect accidental key recreation
-  assert(() {
-    debugPrint('Navigator key hash: ${rootNavigatorKey.hashCode}');
-    return true;
-  }());
-
   WidgetsFlutterBinding.ensureInitialized();
-  debugPrint('TOKEN_EXTRACTOR: main() started');
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  debugPrint('TOKEN_EXTRACTOR: [APP_CHECK] Firebase initialized');
-  debugPrint('TOKEN_EXTRACTOR: [APP_CHECK] Environment Verification: kDebugMode=$kDebugMode');
   
-  // 1. Initialize App Check (Environment-Aware)
-  // CRITICAL: Must be activated BEFORE any other Firebase service is accessed
-  await _initializeAppCheck();
-  debugPrint('TOKEN_EXTRACTOR: [APP_CHECK] App Check activation process complete');
-  debugPrint('TOKEN_EXTRACTOR: [APP_CHECK] Services starting');
-
-  // 2. Initialize Crashlytics & Performance - ONLY AFTER APP CHECK
+  // CRITICAL: Initialize Firebase with App Check FIRST
+  await FirebaseInit.init();
+  debugPrint('[MAIN] Firebase initialization complete');
+  
+  // Initialize Crashlytics & Performance AFTER App Check
   FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
   await FirebasePerformance.instance.setPerformanceCollectionEnabled(true);
 
-  // 3. Messaging & Push - ONLY AFTER APP CHECK
+  // Initialize Messaging AFTER App Check
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  debugPrint('[MAIN] Background message handler set');
   
-  // Initialize Push Notifications (Singleton)
+  // Initialize Push Notifications AFTER App Check
   await NotificationsService().initialize();
+  debugPrint('[MAIN] Notifications service initialized');
 
   runApp(
     MultiProvider(
@@ -84,41 +65,7 @@ void main() async {
   );
 }
 
-/// Initialize App Check with environment-aware provider
-Future<void> _initializeAppCheck() async {
-  if (_appCheckInitialized) return;
-  _appCheckInitialized = true;
 
-  try {
-    // PART 5: Secure App Check implementation with debug fallback
-    // CRITICAL: The androidProvider must be debug for the debug token to be generated
-    await FirebaseAppCheck.instance.activate(
-      androidProvider: AndroidProvider.debug, // TEMPORARILY FORCED
-      appleProvider: AppleProvider.debug, // TEMPORARILY FORCED
-    );
-    debugPrint('TOKEN_EXTRACTOR: [APP_CHECK] Forced debug provider activated');
-    
-    // PART 2: Force debug token visibility
-    try {
-      debugPrint('TOKEN_EXTRACTOR: [APP_CHECK] Attempting to fetch debug token...');
-      // Force refresh to ensure token is generated and printed to logcat
-      final token = await FirebaseAppCheck.instance.getToken(true);
-      debugPrint('TOKEN_EXTRACTOR: 🔥 APP_CHECK_DEBUG_TOKEN: $token');
-      _appCheckTokenFetched = true;
-    } catch (e) {
-      debugPrint('TOKEN_EXTRACTOR: ❌ APP_CHECK_TOKEN_ERROR: $e');
-    }
-    
-    _appCheckEnabled = true;
-    debugPrint('TOKEN_EXTRACTOR: [APP_CHECK] ✅ Activated (Mode: ${kDebugMode ? 'Debug' : 'Release'})');
-  } catch (e) {
-    debugPrint('TOKEN_EXTRACTOR: [APP_CHECK] ⚠️ Activation failed: $e (Graceful fallback)');
-    _appCheckEnabled = false;
-  }
-}
-
-/// Check if App Check is enabled
-bool get isAppCheckEnabled => _appCheckEnabled;
 
 class TechnicianApp extends StatelessWidget {
   const TechnicianApp({super.key});

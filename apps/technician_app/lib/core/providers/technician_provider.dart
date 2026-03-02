@@ -72,6 +72,11 @@ class TechnicianProvider extends ChangeNotifier {
     _techSubscription = _techService.getTechnicianStream(uid).listen((tech) {
       if (_isDisposed) return;
       
+      debugPrint('[TECH PROVIDER] snapshot received=${tech != null}');
+      if (tech != null) {
+        debugPrint('[TECH PROVIDER] data={isKycComplete: ${tech.isKycComplete}, isApproved: ${tech.isApproved}, step: ${tech.currentOnboardingStep}}');
+      }
+      
       // PHASE 4 FIX: Add shallow equality guard to prevent duplicate emissions
       // Only notify if data actually changed
       final previousTech = _technician;

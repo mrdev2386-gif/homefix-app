@@ -124,6 +124,7 @@ class CategoryDataService {
 
     try {
       // Try service_categories first with orderBy using both possible field names
+      debugPrint('[CATEGORY] START: fetching from service_categories...');
       try {
         QuerySnapshot snapshot = await _firestore
             .collection('service_categories')
@@ -131,16 +132,19 @@ class CategoryDataService {
             .orderBy('order')
             .get();
 
+        debugPrint('[CATEGORY] docs=${snapshot.docs.length}');
         if (snapshot.docs.isNotEmpty) {
           _cachedCategories = snapshot.docs
               .map((doc) => CategoryData.fromFirestore(doc))
               .toList();
           _categoriesCacheTime = DateTime.now();
-          debugPrint('[CategoryDataService] Fetched categories: ${_cachedCategories!.length}');
+          debugPrint('[CategoryDataService] SUCCESS: Fetched categories: ${_cachedCategories!.length}');
           return _cachedCategories!;
+        } else {
+          debugPrint('[CATEGORY] ZERO docs in service_categories - trying fallback');
         }
       } catch (e) {
-        debugPrint('[CategoryDataService] orderBy "order" failed, trying "sortOrder": $e');
+        debugPrint('[CATEGORY] ERROR: orderBy "order" failed: $e');
       }
 
       // Try with sortOrder field
@@ -202,6 +206,7 @@ class CategoryDataService {
 
       _cachedCategories = [];
       _categoriesCacheTime = DateTime.now();
+      debugPrint('[CATEGORY] WARNING: no active categories found');
       return _cachedCategories!;
     } on FirebaseException catch (e) {
       // PART 7: Handle FirebaseException with user-friendly messages

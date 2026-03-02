@@ -28,7 +28,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyADfM4cMfTlz3Cth0QwalYntQv3AoU9daI',
-    appId: '1:663243229047:android:8c42de21fe943a63f44372',
+    appId: '1:663243229047:android:7cab612c44e5b787f44372',
     messagingSenderId: '663243229047',
     projectId: 'homefix-aa42d',
     storageBucket: 'homefix-aa42d.firebasestorage.app',

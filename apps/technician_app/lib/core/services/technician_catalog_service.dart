@@ -31,14 +31,22 @@ class TechnicianCatalogService {
 
   /// Create a new technician service via Cloud Function
   Future<TechnicianService> createService(CreateTechnicianServiceInput input) async {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final payload = input.toMap();
+    
+    debugPrint('[SERVICE CREATE] START');
+    debugPrint('[SERVICE CREATE] payload=${payload..['technicianId'] = currentUid}');
+    
     try {
       // First check if technician can manage services
       final canManage = await canManageServices();
       if (!canManage) {
+        debugPrint('[SERVICE CREATE] ERROR: not approved');
         throw Exception('You must be approved by admin to add or manage services. Please wait for admin approval.');
       }
       final validationError = input.validate();
       if (validationError != null) {
+        debugPrint('[SERVICE CREATE] ERROR: validation failed - $validationError');
         throw Exception(validationError);
       }
 
@@ -46,6 +54,7 @@ class TechnicianCatalogService {
       final result = await callable.call<Map<String, dynamic>>(input.toMap());
 
       if (result.data['success'] == true) {
+        debugPrint('[SERVICE CREATE] SUCCESS');
         final serviceData = result.data['data'];
         return TechnicianService(
           id: serviceData['id'],
@@ -66,10 +75,10 @@ class TechnicianCatalogService {
         throw Exception(result.data['message'] ?? 'Failed to create service');
       }
     } on FirebaseFunctionsException catch (e) {
-      debugPrint('❌ [TechnicianService] FirebaseFunctionsException: ${e.message}');
+      debugPrint('[SERVICE CREATE] ERROR: FirebaseFunctionsException - ${e.code}: ${e.message}');
       throw Exception(_getErrorMessage(e));
     } catch (e) {
-      debugPrint('❌ [TechnicianService] Error creating service: $e');
+      debugPrint('[SERVICE CREATE] ERROR: $e');
       rethrow;
     }
   }
