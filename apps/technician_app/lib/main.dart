@@ -5,19 +5,20 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'core/providers/technician_provider.dart';
 import 'core/app_theme.dart';
 import 'core/services/notifications_service.dart';
+import 'screens/app_onboarding_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/technician_onboarding_flow_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/block_screen.dart';
 import 'screens/application_status_screen.dart';
 import 'features/technician/screens/profile_under_review_screen.dart';
+import 'features/technician/services/add_service_screen.dart';
 import 'core/services/technician_catalog_service.dart';
 import 'core/firebase/firebase_init.dart';
-
-import 'firebase_options.dart';
 
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_performance/firebase_performance.dart';
@@ -40,6 +41,12 @@ void main() async {
   // CRITICAL: Initialize Firebase with App Check FIRST
   await FirebaseInit.init();
   debugPrint('[MAIN] Firebase initialization complete');
+  
+  // Debug diagnostic (debug only)
+  if (!kReleaseMode) {
+    debugPrint('[MAIN_DIAG] App running in DEBUG mode');
+    debugPrint('[MAIN_DIAG] Check logs above for 🔥 APP_CHECK_TOKEN_* entries');
+  }
   
   // Initialize Crashlytics & Performance AFTER App Check
   FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
@@ -90,9 +97,19 @@ class TechnicianApp extends StatelessWidget {
               builder: (_) => const TechnicianOnboardingFlowScreen(),
               settings: settings,
             );
+          case '/app-onboarding':
+            return MaterialPageRoute(
+              builder: (_) => const AppOnboardingScreen(),
+              settings: settings,
+            );
           case '/login':
             return MaterialPageRoute(
               builder: (_) => const LoginScreen(),
+              settings: settings,
+            );
+          case '/add-service':
+            return MaterialPageRoute(
+              builder: (_) => const AddServiceScreen(),
               settings: settings,
             );
           default:
@@ -274,7 +291,6 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> {
-  // Debug mode flag - set to false in production
   static const bool _kDebugMode = bool.fromEnvironment('dart.vm.product', defaultValue: false);
 
   @override
@@ -282,41 +298,79 @@ class _AuthGateState extends State<AuthGate> {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // State 1: Waiting for auth state (initial load)
+        // PRIORITY 1: Check auth state first (loading)
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const _LoadingScreen(
-            message: 'Checking authentication...',
-          );
+          return const _LoadingScreen(message: 'Checking authentication...');
         }
 
-        // State 2: Network/connection error
-        if (snapshot.hasError) {
-          // Simply rebuild to retry
-          return _ErrorScreen(
-            title: 'Connection Error',
-            message: 'Unable to connect. Please check your internet connection.',
-            onRetry: () {
-              // Trigger rebuild by calling setState
-              (context as Element).markNeedsBuild();
-            },
-          );
-        }
-
-        // State 3: Not logged in - show phone auth
-        if (!snapshot.hasData || snapshot.data == null) {
-          if (_kDebugMode) {
-            debugPrint('[AuthGate] User not logged in -> LoginScreen');
+        // PRIORITY 2: If user is logged in, ALWAYS go to authenticated flow
+        if (snapshot.hasData && snapshot.data != null) {
+          if (kDebugMode) {
+            debugPrint('[AuthGate] ✅ User logged in: ${snapshot.data!.uid}');
           }
-          return const LoginScreen();
+          return _AuthenticatedGate(
+            user: snapshot.data!,
+            debugMode: _kDebugMode,
+          );
         }
 
-        // User IS logged in - check technician state
-        return _AuthenticatedGate(
-          user: snapshot.data!,
-          debugMode: _kDebugMode,
-        );
+        // PRIORITY 3: User not logged in - check onboarding
+        if (kDebugMode) {
+          debugPrint('[AuthGate] ❌ User not logged in - checking onboarding');
+        }
+        return _UnauthenticatedGate(debugMode: _kDebugMode);
       },
     );
+  }
+}
+
+/// Unauthenticated gate - checks if user has seen onboarding
+class _UnauthenticatedGate extends StatefulWidget {
+  final bool debugMode;
+  
+  const _UnauthenticatedGate({required this.debugMode});
+
+  @override
+  State<_UnauthenticatedGate> createState() => _UnauthenticatedGateState();
+}
+
+class _UnauthenticatedGateState extends State<_UnauthenticatedGate> {
+  bool? _hasSeenOnboarding;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkOnboardingStatus();
+  }
+
+  Future<void> _checkOnboardingStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final seen = prefs.getBool('technician_onboarding_done') ?? false;
+    if (kDebugMode) {
+      debugPrint('[UnauthGate] Onboarding done: $seen');
+    }
+    if (mounted) {
+      setState(() => _hasSeenOnboarding = seen);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_hasSeenOnboarding == null) {
+      return const _LoadingScreen(message: 'Loading...');
+    }
+
+    if (_hasSeenOnboarding == false) {
+      if (kDebugMode) {
+        debugPrint('[UnauthGate] → AppOnboardingScreen');
+      }
+      return const AppOnboardingScreen();
+    }
+
+    if (kDebugMode) {
+      debugPrint('[UnauthGate] → LoginScreen');
+    }
+    return const LoginScreen();
   }
 }
 

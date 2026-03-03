@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:rxdart/rxdart.dart';
 import 'package:technician_app/core/models/technician.dart';
 import 'package:technician_app/core/providers/technician_provider.dart';
 import 'package:technician_app/core/services/booking_service.dart';
@@ -208,6 +209,62 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
   late final Stream<List<Booking>> _assignedBookingsStream;
   late final Stream<QuerySnapshot> _notificationsStream;
   late final Stream<DocumentSnapshot> _earningsStream;
+  
+  // Real-time stats stream
+  Stream<Map<String, dynamic>> _statsStream(String technicianId) {
+    if (technicianId.isEmpty) {
+      return Stream.value({
+        'todayJobs': 0,
+        'todayEarnings': 0.0,
+        'rating': 0.0,
+        'totalReviews': 0,
+      });
+    }
+    
+    final todayStart = DateTime.now();
+    final startOfDay = DateTime(todayStart.year, todayStart.month, todayStart.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+
+    final bookingsQuery = FirebaseFirestore.instance
+        .collection('bookings')
+        .where('technicianId', isEqualTo: technicianId)
+        .where('scheduledAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .where('scheduledAt', isLessThan: Timestamp.fromDate(endOfDay));
+
+    final technicianDoc = FirebaseFirestore.instance
+        .collection('technicians')
+        .doc(technicianId);
+
+    return Rx.combineLatest2(
+      bookingsQuery.snapshots(),
+      technicianDoc.snapshots(),
+      (QuerySnapshot bookingsSnap, DocumentSnapshot techSnap) {
+        int todayJobs = 0;
+        double todayEarnings = 0;
+
+        for (final doc in bookingsSnap.docs) {
+          final data = doc.data() as Map<String, dynamic>;
+
+          if (data['status'] == 'completed') {
+            todayJobs++;
+            final amount = (data['technicianAmount'] as num?)?.toDouble() ?? 0;
+            todayEarnings += amount;
+          }
+        }
+
+        final techData = techSnap.data() as Map<String, dynamic>?;
+        final rating = (techData?['averageRating'] as num?)?.toDouble() ?? 0.0;
+        final totalReviews = (techData?['totalReviews'] as num?)?.toInt() ?? 0;
+
+        return {
+          'todayJobs': todayJobs,
+          'todayEarnings': todayEarnings,
+          'rating': rating,
+          'totalReviews': totalReviews,
+        };
+      },
+    );
+  }
 
   @override
   void initState() {
@@ -893,36 +950,48 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
 
   /// MODERN 3-column responsive row for stats - Premium card style
   Widget _buildStatsRowSection(Technician tech) {
+    if (tech.uid.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    
     return LayoutBuilder(
       builder: (context, constraints) {
         final horizontalPadding = constraints.maxWidth < 360 ? 12.0 : 16.0;
         
         return Padding(
           padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-          child: StreamBuilder<List<Booking>>(
-            stream: _assignedBookingsStream,
-            builder: (context, bookingsSnapshot) {
-              if (bookingsSnapshot.hasError) {
-                debugPrint('❌ [Dashboard] Assigned bookings stream error: ${bookingsSnapshot.error}');
+          child: StreamBuilder<Map<String, dynamic>>(
+            stream: _statsStream(tech.uid),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const SizedBox(
+                  height: 120,
+                  child: Center(child: CircularProgressIndicator()),
+                );
               }
-              final bookings = bookingsSnapshot.data ?? [];
-              final todayJobs = bookings.where((b) => b.status != 'completed' && b.status != 'cancelled').length;
+
+              final stats = snapshot.data!;
 
               return Row(
                 children: [
                   Expanded(child: _buildCompactStatCard(
                     icon: Icons.work_outline_rounded,
-                    value: '$todayJobs',
+                    value: stats['todayJobs'].toString(),
                     label: "Today Jobs",
                     color: const Color(0xFF6366F1),
                   )),
                   const SizedBox(width: 12),
-                  Expanded(child: _buildEarningsCompactCard(tech)),
+                  Expanded(child: _buildCompactStatCard(
+                    icon: Icons.account_balance_wallet_rounded,
+                    value: '₹${stats['todayEarnings'].toStringAsFixed(0)}',
+                    label: 'Earnings',
+                    color: const Color(0xFF10B981),
+                  )),
                   const SizedBox(width: 12),
                   Expanded(child: _buildCompactStatCard(
                     icon: Icons.star_rounded,
-                    value: '0.0',
-                    label: 'Rating',
+                    value: stats['rating'] > 0 ? stats['rating'].toStringAsFixed(1) : '—',
+                    label: '${stats['totalReviews']} reviews',
                     color: const Color(0xFFFBBF24),
                   )),
                 ],
@@ -990,87 +1059,6 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
             overflow: TextOverflow.ellipsis,
           ),
         ],
-      ),
-    );
-  }
-
-  /// Compact earnings card for 3-column row
-  Widget _buildEarningsCompactCard(Technician tech) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF10B981).withOpacity(0.15),
-            blurRadius: 15,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: StreamBuilder<DocumentSnapshot>(
-        stream: _earningsStream,
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            debugPrint('❌ [Dashboard] Earnings stream error: ${snapshot.error}');
-          }
-          double monthEarnings = 0;
-          if (snapshot.hasData && snapshot.data != null) {
-            final data = snapshot.data!.data() as Map<String, dynamic>?;
-            if (data != null) {
-              monthEarnings = _safeDouble(
-                data['monthEarnings'] ?? 
-                data['thisMonthEarnings'] ?? 
-                data['thisMonth'] ?? 
-                data['month'] ?? 
-                0
-              );
-            }
-          }
-          
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.account_balance_wallet_rounded,
-                  color: Color(0xFF10B981),
-                  size: 18,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                '₹${_formatCurrency(monthEarnings)}',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFF0F172A),
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Earnings',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 11,
-                  color: const Color(0xFF64748B),
-                  fontWeight: FontWeight.w500,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          );
-        },
       ),
     );
   }

@@ -165,7 +165,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 32),
               Text(
-                "Welcome Back,",
+                "Welcome Technician 👋",
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
@@ -175,7 +175,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                "Partner with HomeFix and start earning today.",
+                "Login to manage your services and jobs.",
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 16,
                   color: const Color(0xFF64748B),

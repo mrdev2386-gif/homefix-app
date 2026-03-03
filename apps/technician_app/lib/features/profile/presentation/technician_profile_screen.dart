@@ -12,10 +12,9 @@ import '../../../core/providers/technician_provider.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/models/technician.dart';
 import '../../../core/services/functions_service.dart';
-import '../../../core/services/faq_service.dart';
+import '../../support/faqs_screen.dart';
 import '../../../core/widgets/safe_network_image.dart';
 import '../../services/presentation/technician_services_screen.dart';
-import '../../earnings/presentation/earnings_screen.dart';
 import '../../../../main.dart';
 
 // ============================================================================
@@ -270,13 +269,6 @@ class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with 
                       ),
                     ),
                     
-                    // PART 5: Earnings Section
-                    SliverToBoxAdapter(
-                      child: _EarningsCard(
-                        onTap: () => _navigateToEarnings(context),
-                      ),
-                    ),
-                    
                     // PART 7: Bank & Payout Details
                     SliverToBoxAdapter(
                       child: _BankDetailsCard(
@@ -306,7 +298,6 @@ class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with 
                     // PART 9: Support & Help
                     SliverToBoxAdapter(
                       child: _SupportSection(
-                        onHelpCenterTap: () => _navigateToHelpCenter(context),
                         onRaiseDisputeTap: () => _navigateToRaiseDispute(context),
                         onContactSupportTap: () => _navigateToContactSupport(context),
                         onFaqsTap: () => _navigateToFaqs(context),
@@ -394,13 +385,6 @@ class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with 
     );
   }
 
-  void _navigateToEarnings(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const EarningsScreen()),
-    );
-  }
-
   void _openFullImage(BuildContext context, String? imageUrl) {
     if (imageUrl == null || imageUrl.isEmpty) return;
     Navigator.push(
@@ -411,10 +395,10 @@ class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with 
     );
   }
 
-  void _navigateToHelpCenter(BuildContext context) {
+  void _navigateToFaqs(BuildContext context) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const HelpCenterScreen()),
+      MaterialPageRoute(builder: (_) => const FaqsScreen()),
     );
   }
 
@@ -429,13 +413,6 @@ class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with 
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const ContactSupportScreen()),
-    );
-  }
-
-  void _navigateToFaqs(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const FaqsScreen()),
     );
   }
 
@@ -1127,103 +1104,6 @@ class _ServiceChip extends StatelessWidget {
 }
 
 // ============================================
-// PART 5: Earnings Section
-// ============================================
-class _EarningsCard extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _EarningsCard({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        const Color(0xFF6366F1),
-                        const Color(0xFF8B5CF6),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(
-                    Icons.account_balance_wallet,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Flexible(
-                  fit: FlexFit.loose,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'My Earnings',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF0F172A),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'View your earnings and transactions',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 13,
-                          color: const Color(0xFF64748B),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.chevron_right,
-                    color: Color(0xFF64748B),
-                    size: 20,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ============================================
 // PART 6: Documents Section
 // ============================================
 class _DocumentsCard extends StatelessWidget {
@@ -1720,7 +1600,31 @@ class _AvailabilityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasWorkHours = technician.workStartTime != null && technician.workEndTime != null;
+    // Check both new and old formats for availability data
+    final techData = technician.toMap();
+    final availabilityData = techData['availability'] as Map<String, dynamic>?;
+    
+    bool hasWorkHours = false;
+    String workHoursText = '';
+    bool isEmergencyAvailable = false;
+    
+    if (availabilityData != null) {
+      final startTimeStr = availabilityData['startTime'] as String?;
+      final endTimeStr = availabilityData['endTime'] as String?;
+      isEmergencyAvailable = availabilityData['isEmergencyOn'] as bool? ?? false;
+      
+      if (startTimeStr != null && endTimeStr != null) {
+        hasWorkHours = true;
+        workHoursText = '$startTimeStr - $endTimeStr';
+      }
+    } else {
+      // Fallback to old format
+      hasWorkHours = technician.workStartTime != null && technician.workEndTime != null;
+      if (hasWorkHours) {
+        workHoursText = '${_formatTime(technician.workStartTime!)} - ${_formatTime(technician.workEndTime!)}';
+      }
+      isEmergencyAvailable = technician.emergencyServiceAvailable;
+    }
     
     return _PremiumCard(
       title: 'Availability',
@@ -1759,7 +1663,7 @@ class _AvailabilityCard extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${_formatTime(technician.workStartTime!)} - ${_formatTime(technician.workEndTime!)}',
+                              workHoursText,
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
@@ -1794,7 +1698,7 @@ class _AvailabilityCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (technician.emergencyServiceAvailable) ...[
+                if (isEmergencyAvailable) ...[
                   const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.all(14),
@@ -1841,13 +1745,11 @@ class _AvailabilityCard extends StatelessWidget {
 // PART 9: Support & Help
 // ============================================
 class _SupportSection extends StatelessWidget {
-  final VoidCallback onHelpCenterTap;
   final VoidCallback onRaiseDisputeTap;
   final VoidCallback onContactSupportTap;
   final VoidCallback onFaqsTap;
 
   const _SupportSection({
-    required this.onHelpCenterTap,
     required this.onRaiseDisputeTap,
     required this.onContactSupportTap,
     required this.onFaqsTap,
@@ -1859,11 +1761,6 @@ class _SupportSection extends StatelessWidget {
       title: 'Support & Help',
       child: Column(
         children: [
-          _SupportItem(
-            icon: Icons.help_outline,
-            label: 'Help Center',
-            onTap: onHelpCenterTap,
-          ),
           _SupportItem(
             icon: Icons.gavel_outlined,
             label: 'Raise Dispute',
@@ -2795,13 +2692,43 @@ class _EditAvailabilityScreenState extends State<EditAvailabilityScreen> {
     final provider = context.read<TechnicianProvider>();
     final tech = provider.technician;
     if (tech != null) {
-      if (tech.workStartTime != null) {
-        _startTime = tech.workStartTime!;
+      // Try to load from new availability format first
+      final availabilityData = tech.toMap()['availability'] as Map<String, dynamic>?;
+      if (availabilityData != null) {
+        final startTimeStr = availabilityData['startTime'] as String?;
+        final endTimeStr = availabilityData['endTime'] as String?;
+        
+        if (startTimeStr != null) {
+          final parts = startTimeStr.split(':');
+          if (parts.length == 2) {
+            _startTime = TimeOfDay(
+              hour: int.tryParse(parts[0]) ?? 9,
+              minute: int.tryParse(parts[1]) ?? 0,
+            );
+          }
+        }
+        
+        if (endTimeStr != null) {
+          final parts = endTimeStr.split(':');
+          if (parts.length == 2) {
+            _endTime = TimeOfDay(
+              hour: int.tryParse(parts[0]) ?? 18,
+              minute: int.tryParse(parts[1]) ?? 0,
+            );
+          }
+        }
+        
+        _emergencyAvailable = availabilityData['isEmergencyOn'] as bool? ?? false;
+      } else {
+        // Fallback to old format
+        if (tech.workStartTime != null) {
+          _startTime = tech.workStartTime!;
+        }
+        if (tech.workEndTime != null) {
+          _endTime = tech.workEndTime!;
+        }
+        _emergencyAvailable = tech.emergencyServiceAvailable;
       }
-      if (tech.workEndTime != null) {
-        _endTime = tech.workEndTime!;
-      }
-      _emergencyAvailable = tech.emergencyServiceAvailable;
     }
   }
 
@@ -2824,16 +2751,38 @@ class _EditAvailabilityScreenState extends State<EditAvailabilityScreen> {
   Future<void> _saveAvailability() async {
     if (_isSaving) return;
 
+    // Validation
+    if (_startTime.hour > _endTime.hour || 
+        (_startTime.hour == _endTime.hour && _startTime.minute >= _endTime.minute)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('End time must be after start time'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) throw Exception('User not authenticated');
 
+      // Format times as HH:mm strings
+      final startTimeStr = '${_startTime.hour.toString().padLeft(2, '0')}:${_startTime.minute.toString().padLeft(2, '0')}';
+      final endTimeStr = '${_endTime.hour.toString().padLeft(2, '0')}:${_endTime.minute.toString().padLeft(2, '0')}';
+
       await FirebaseFirestore.instance
           .collection('technicians')
           .doc(uid)
           .update({
+            'availability': {
+              'startTime': startTimeStr,
+              'endTime': endTimeStr,
+              'isEmergencyOn': _emergencyAvailable,
+              'timezone': 'Asia/Kolkata',
+            },
             'workStartTime': {'hour': _startTime.hour, 'minute': _startTime.minute},
             'workEndTime': {'hour': _endTime.hour, 'minute': _endTime.minute},
             'emergencyServiceAvailable': _emergencyAvailable,
@@ -3488,180 +3437,6 @@ class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
   }
 }
 
-class HelpCenterScreen extends StatefulWidget {
-  const HelpCenterScreen({super.key});
-
-  @override
-  State<HelpCenterScreen> createState() => _HelpCenterScreenState();
-}
-
-class _HelpCenterScreenState extends State<HelpCenterScreen> {
-  final FaqService _faqService = FaqService();
-  late Future<List<dynamic>> _faqsFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadFaqs();
-  }
-
-  void _loadFaqs() {
-    _faqsFuture = _faqService.fetchFaqs().then((faqs) => faqs as List<dynamic>);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Help Center',
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: const Color(0xFF0F172A),
-          ),
-        ),
-        centerTitle: true,
-      ),
-      body: FutureBuilder<List<dynamic>>(
-        future: _faqsFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: AppTheme.primaryColor),
-            );
-          }
-
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.error_outline,
-                    size: 48,
-                    color: Color(0xFF94A3B8),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Failed to load FAQs',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 16,
-                      color: const Color(0xFF64748B),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _loadFaqs();
-                      });
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      foregroundColor: Colors.white,
-                    ),
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          final faqs = snapshot.data ?? [];
-
-          if (faqs.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.help_outline,
-                    size: 64,
-                    color: Color(0xFF94A3B8),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No FAQs available',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 16,
-                      color: const Color(0xFF64748B),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: faqs.length,
-            itemBuilder: (context, index) {
-              final faq = faqs[index];
-              return _FaqExpansionTile(faq: faq);
-            },
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _FaqExpansionTile extends StatelessWidget {
-  final dynamic faq;
-
-  const _FaqExpansionTile({required this.faq});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: ExpansionTile(
-        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        iconColor: AppTheme.primaryColor,
-        collapsedIconColor: const Color(0xFF94A3B8),
-        title: Text(
-          faq.question,
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: const Color(0xFF1E293B),
-          ),
-        ),
-        children: [
-          Text(
-            faq.answer,
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 14,
-              color: const Color(0xFF64748B),
-              height: 1.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class RaiseDisputeScreen extends StatefulWidget {
   const RaiseDisputeScreen({super.key});
 
@@ -4269,132 +4044,6 @@ class _ContactSupportScreenState extends State<ContactSupportScreen> {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class FaqsScreen extends StatefulWidget {
-  const FaqsScreen({super.key});
-
-  @override
-  State<FaqsScreen> createState() => _FaqsScreenState();
-}
-
-class _FaqsScreenState extends State<FaqsScreen> {
-  final FaqService _faqService = FaqService();
-  late Future<List<dynamic>> _faqsFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadFaqs();
-  }
-
-  void _loadFaqs() {
-    _faqsFuture = _faqService.fetchFaqs().then((faqs) => faqs as List<dynamic>);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'FAQs',
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: const Color(0xFF0F172A),
-          ),
-        ),
-        centerTitle: true,
-      ),
-      body: FutureBuilder<List<dynamic>>(
-        future: _faqsFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: AppTheme.primaryColor),
-            );
-          }
-
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.error_outline,
-                    size: 48,
-                    color: Color(0xFF94A3B8),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Failed to load FAQs',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 16,
-                      color: const Color(0xFF64748B),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _loadFaqs();
-                      });
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      foregroundColor: Colors.white,
-                    ),
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          final faqs = snapshot.data ?? [];
-
-          if (faqs.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.quiz_outlined,
-                    size: 64,
-                    color: Color(0xFF94A3B8),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No FAQs available',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 16,
-                      color: const Color(0xFF64748B),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: faqs.length,
-            itemBuilder: (context, index) {
-              final faq = faqs[index];
-              return _FaqExpansionTile(faq: faq);
-            },
-          );
-        },
       ),
     );
   }

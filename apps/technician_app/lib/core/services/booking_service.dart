@@ -107,13 +107,20 @@ class BookingService {
   }
 
   /// NEW FLOW: Accept a booking (technician accepts)
-  Future<Map<String, dynamic>> acceptBooking(String bookingId) async {
+  Future<Map<String, dynamic>> acceptBooking(String bookingId, {String? idempotencyKey}) async {
     try {
       final HttpsCallable callable = _functions.httpsCallable('technicianRespondBooking');
-      final result = await callable.call({
+      final payload = {
         'bookingId': bookingId,
         'action': 'accept',
-      });
+      };
+      
+      // Add idempotency key if provided
+      if (idempotencyKey != null) {
+        payload['idempotencyKey'] = idempotencyKey;
+      }
+      
+      final result = await callable.call(payload);
       return Map<String, dynamic>.from(result.data);
     } catch (e) {
       debugPrint('Error accepting booking: $e');
@@ -122,14 +129,21 @@ class BookingService {
   }
 
   /// NEW FLOW: Reject a booking (technician declines)
-  Future<Map<String, dynamic>> rejectBooking(String bookingId, {String? reason}) async {
+  Future<Map<String, dynamic>> rejectBooking(String bookingId, {String? reason, String? idempotencyKey}) async {
     try {
       final HttpsCallable callable = _functions.httpsCallable('technicianRespondBooking');
-      final result = await callable.call({
+      final payload = {
         'bookingId': bookingId,
         'action': 'reject',
         'rejectionReason': reason,
-      });
+      };
+      
+      // Add idempotency key if provided
+      if (idempotencyKey != null) {
+        payload['idempotencyKey'] = idempotencyKey;
+      }
+      
+      final result = await callable.call(payload);
       return Map<String, dynamic>.from(result.data);
     } catch (e) {
       debugPrint('Error rejecting booking: $e');

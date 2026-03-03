@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import '../services/technician_service.dart';
 import '../services/onboarding_service.dart';
@@ -531,6 +532,15 @@ class TechnicianProvider extends ChangeNotifier {
   Future<void> signOut() async {
     _techSubscription?.cancel();
     await _auth.signOut();
+    
+    // CRITICAL: Clear local state to prevent onboarding flag persistence
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+      debugPrint('[Provider] Local state cleared on logout');
+    } catch (e) {
+      debugPrint('[Provider] Failed to clear local state: $e');
+    }
   }
 
   bool _isDisposed = false;

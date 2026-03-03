@@ -54,6 +54,10 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
   String? _uploadedImageUrl;
   bool _showCustomServiceInput = false;
   
+  // Pricing state
+  double? _originalPrice;
+  double? _offerPrice;
+  
   // Loading states
   bool _isUploading = false;
   bool _isSaving = false;
@@ -94,6 +98,18 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     _descriptionController.dispose();
     _customServiceController.dispose();
     super.dispose();
+  }
+
+  /// Calculate discount percentage
+  double _calculateDiscount() {
+    if (_originalPrice == null ||
+        _offerPrice == null ||
+        _originalPrice! <= 0 ||
+        _offerPrice! >= _originalPrice!) {
+      return 0;
+    }
+    final discount = ((_originalPrice! - _offerPrice!) / _originalPrice!) * 100;
+    return discount.clamp(0, 99);
   }
 
   /// Load categories from Firestore with FirebaseException handling
@@ -624,6 +640,9 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
         description: _descriptionController.text.trim().isEmpty 
             ? null 
             : _descriptionController.text.trim(),
+        originalPrice: _originalPrice,
+        offerPrice: _offerPrice,
+        discountPercent: _calculateDiscount(),
       );
 
       debugPrint('[WRITE VERIFY] service added');
@@ -736,19 +755,25 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                 _buildSubCategoryDropdown(),
                 const SizedBox(height: 16),
                 
-                // Price
+                // Modern Pricing Section
                 _buildSectionTitle('Pricing'),
                 const SizedBox(height: 12),
                 _buildTextField(
-                  controller: _priceController,
-                  label: 'Price (₹)',
-                  hint: 'e.g., 500',
+                  controller: TextEditingController(
+                    text: _originalPrice?.toStringAsFixed(0) ?? '',
+                  ),
+                  label: 'Original Price (₹)',
+                  hint: 'e.g., 700',
                   keyboardType: TextInputType.number,
+                  onChanged: (v) {
+                    setState(() {
+                      _originalPrice = double.tryParse(v);
+                    });
+                  },
                   validator: (value) {
-                    // Skip validation for custom category
                     if (_selectedCategoryId == 'custom') return null;
                     if (value == null || value.trim().isEmpty) {
-                      return 'Please enter price';
+                      return 'Please enter original price';
                     }
                     final price = double.tryParse(value.trim());
                     if (price == null || price <= 0) {
@@ -756,6 +781,39 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                     }
                     return null;
                   },
+                ),
+                const SizedBox(height: 12),
+                _buildTextField(
+                  controller: TextEditingController(
+                    text: _offerPrice?.toStringAsFixed(0) ?? '',
+                  ),
+                  label: 'Offer Price (₹)',
+                  hint: 'e.g., 400',
+                  keyboardType: TextInputType.number,
+                  onChanged: (v) {
+                    setState(() {
+                      _offerPrice = double.tryParse(v);
+                      // Also update old price controller for backward compatibility
+                      _priceController.text = v;
+                    });
+                  },
+                  validator: (value) {
+                    if (_selectedCategoryId == 'custom') return null;
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter offer price';
+                    }
+                    final price = double.tryParse(value.trim());
+                    if (price == null || price <= 0) {
+                      return 'Please enter a valid price';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                _PricePreviewCard(
+                  originalPrice: _originalPrice,
+                  offerPrice: _offerPrice,
+                  discountPercent: _calculateDiscount(),
                 ),
                 const SizedBox(height: 16),
                 
@@ -948,12 +1006,14 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     TextInputType? keyboardType,
     int maxLines = 1,
     String? Function(String?)? validator,
+    void Function(String)? onChanged,
   }) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
       maxLines: maxLines,
       validator: validator,
+      onChanged: onChanged,
       style: GoogleFonts.plusJakartaSans(
         fontSize: 15,
         color: const Color(0xFF0F172A),
@@ -1510,3 +1570,74 @@ class _ShimmerLoadingState extends State<ShimmerLoading>
   }
 }
 
+
+
+// ============ PRICE PREVIEW CARD ============
+
+class _PricePreviewCard extends StatelessWidget {
+  final double? originalPrice;
+  final double? offerPrice;
+  final double discountPercent;
+
+  const _PricePreviewCard({
+    required this.originalPrice,
+    required this.offerPrice,
+    required this.discountPercent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (offerPrice == null || offerPrice == 0) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE5E7FF)),
+      ),
+      child: Row(
+        children: [
+          if (originalPrice != null && originalPrice! > offerPrice!)
+            Text(
+              '\u20b9${originalPrice!.toStringAsFixed(0)}',
+              style: const TextStyle(
+                decoration: TextDecoration.lineThrough,
+                color: Colors.black45,
+                fontSize: 16,
+              ),
+            ),
+          if (originalPrice != null && originalPrice! > offerPrice!)
+            const SizedBox(width: 8),
+          Text(
+            '\u20b9${offerPrice!.toStringAsFixed(0)}',
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+              color: Color(0xFF6366F1),
+            ),
+          ),
+          const Spacer(),
+          if (discountPercent > 0)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Color(0xFF10B981).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${discountPercent.toStringAsFixed(0)}% OFF',
+                style: const TextStyle(
+                  color: Color(0xFF10B981),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}

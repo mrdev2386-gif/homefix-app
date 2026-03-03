@@ -3,10 +3,54 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 class FunctionsService {
-  late final FirebaseFunctions _functions;
+  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  static const String _region = 'us-central1';
+  static const String _projectId = 'homefix-prod';
 
   FunctionsService() {
-    _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
+    // Set region explicitly
+    _functions.useFunctionsEmulator('localhost', 5001);
+  }
+
+  Future<void> updateUserProfile(Map<String, dynamic> userData) async {
+    try {
+      // STEP 1: Verify authentication
+      final auth = FirebaseAuth.instance;
+      final currentUser = auth.currentUser;
+      if (currentUser == null) {
+        throw Exception('User not authenticated');
+      }
+      final uid = currentUser.uid;
+      debugPrint('[updateUserProfile] UID: $uid');
+      debugPrint('[updateUserProfile] Payload: $userData');
+
+      // STEP 2: Create callable with explicit region
+      final callable = _functions
+          .httpsCallableFromUrl(
+            'https://$_region-$_projectId.cloudfunctions.net/updateUserProfile',
+          )
+          .withOptions(
+            HttpsCallableOptions(
+              timeout: const Duration(seconds: 30),
+            ),
+          );
+
+      // STEP 3: Call function with await
+      debugPrint('[updateUserProfile] Calling function...');
+      final response = await callable.call(userData);
+      
+      debugPrint('[updateUserProfile] Response: ${response.data}');
+      debugPrint('[updateUserProfile] ✅ SUCCESS');
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[updateUserProfile] ❌ FirebaseFunctionsException');
+      debugPrint('[updateUserProfile] Code: ${e.code}');
+      debugPrint('[updateUserProfile] Message: ${e.message}');
+      debugPrint('[updateUserProfile] Details: ${e.details}');
+      rethrow;
+    } catch (e) {
+      debugPrint('[updateUserProfile] ❌ Error: $e');
+      rethrow;
+    }
   }
 
   // Check for non-serializable types in debug mode
@@ -16,7 +60,6 @@ class FunctionsService {
       _debugIsValidParameterType(params);
     } catch (e) {
       debugPrint('⚠️ Cloud Function Parameter Error: $e');
-      // We don't throw here to avoid crashing, but we log loud warning
     }
   }
 
@@ -36,11 +79,9 @@ class FunctionsService {
       }
       return;
     }
-    // Fail on custom objects (DateTime, Position, etc.) - STRICT FIX
     throw Exception('Invalid type for Cloud Function: ${value.runtimeType}. Convert to ISO String (DateTime) or Map (Objects) or use toJsonSafe().');
   }
 
-  /// Helper to make data safe for JSON/Cloud Functions
   static Map<String, dynamic> toJsonSafe(Map<String, dynamic> data) {
     return data.map((key, value) => MapEntry(key, _makeValueSafe(value)));
   }
@@ -48,9 +89,8 @@ class FunctionsService {
   static dynamic _makeValueSafe(dynamic value) {
     if (value == null) return null;
     if (value is String || value is num || value is bool) return value;
-    if (value is DateTime) return value.millisecondsSinceEpoch; // Standardize to millis
-    // Handle Timestamp if imported from cloud_firestore
-    if (value.runtimeType.toString() == 'Timestamp') return value.millisecondsSinceEpoch; 
+    if (value is DateTime) return value.millisecondsSinceEpoch;
+    if (value.runtimeType.toString() == 'Timestamp') return value.millisecondsSinceEpoch;
     
     if (value is List) {
       return value.map((item) => _makeValueSafe(item)).toList();
@@ -59,87 +99,14 @@ class FunctionsService {
       return value.map((k, v) => MapEntry(k.toString(), _makeValueSafe(v)));
     }
     
-    // Attempt .toJson() if available
     try {
       if (value.toJson != null) return _makeValueSafe(value.toJson());
     } catch (_) {}
 
-    // Fallback: toString() to prevent crash, but warn
     debugPrint('⚠️ Warning: Forced string conversion for ${value.runtimeType}');
     return value.toString();
   }
 
-  // Booking logic consolidated in BookingService and BookingProvider
-
-
-  Future<void> updateUserProfile(Map<String, dynamic> userData) async {
-    try {
-      final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser == null) {
-        throw Exception('User not authenticated');
-      }
-      debugPrint('[updateUserProfile] UID: ${currentUser.uid}');
-      debugPrint('[updateUserProfile] Payload: $userData');
-
-      final callable = _functions
-          .httpsCallable('updateUserProfile')
-          .withOptions(
-            HttpsCallableOptions(
-              timeout: const Duration(seconds: 30),
-            ),
-          );
-
-      debugPrint('[updateUserProfile] Calling function...');
-      final response = await callable.call(userData);
-      
-      debugPrint('[updateUserProfile] Response: ${response.data}');
-      debugPrint('[updateUserProfile] ✅ SUCCESS');
-    } on FirebaseFunctionsException catch (e) {
-      debugPrint('[updateUserProfile] ❌ FirebaseFunctionsException');
-      debugPrint('[updateUserProfile] Code: ${e.code}');
-      debugPrint('[updateUserProfile] Message: ${e.message}');
-      debugPrint('[updateUserProfile] Details: ${e.details}');
-      rethrow;
-    } catch (e) {
-      debugPrint('[updateUserProfile] ❌ Error: $e');
-      rethrow;
-    }
-  }
-
-  // Create custom service request
-  Future<Map<String, dynamic>> createServiceRequest(Map<String, dynamic> requestData) async {
-    _debugCheckParameters(requestData);
-    try {
-      HttpsCallable callable = _functions.httpsCallable('createCustomServiceRequest');
-      final result = await callable.call(requestData);
-      return Map<String, dynamic>.from(result.data);
-    } catch (e) {
-      rethrow;
-    }
-  }
-
-  // Payment System
-  Future<Map<String, dynamic>> initiateRazorpayPayment(String bookingId) async {
-    try {
-      HttpsCallable callable = _functions.httpsCallable('initiateRazorpayPayment');
-      final result = await callable.call({'bookingId': bookingId});
-      return Map<String, dynamic>.from(result.data);
-    } catch (e) {
-      rethrow;
-    }
-  }
-
-  Future<void> verifyRazorpayPayment(Map<String, dynamic> paymentData) async {
-    _debugCheckParameters(paymentData);
-    try {
-      HttpsCallable callable = _functions.httpsCallable('verifyRazorpayPayment');
-      await callable.call(paymentData);
-    } catch (e) {
-      rethrow;
-    }
-  }
-
-  // Referral System
   Future<Map<String, dynamic>> validateReferralCode(String code) async {
     try {
       HttpsCallable callable = _functions.httpsCallable('validateReferralCode');
@@ -150,7 +117,6 @@ class FunctionsService {
     }
   }
 
-  // Booking Cancellation override
   Future<void> cancelBookingExtended(String bookingId, String reason) async {
     try {
       HttpsCallable callable = _functions.httpsCallable('updateBookingStatusNew');
@@ -160,7 +126,6 @@ class FunctionsService {
     }
   }
 
-  // Service Rating
   Future<void> submitServiceRating(String bookingId, double rating, String comment) async {
     try {
       HttpsCallable callable = _functions.httpsCallable('submitServiceRating');
@@ -174,7 +139,6 @@ class FunctionsService {
     }
   }
 
-  // Support Request
   Future<void> submitSupportRequest(String category, String message) async {
     try {
       HttpsCallable callable = _functions.httpsCallable('submitSupportRequest');
@@ -187,9 +151,7 @@ class FunctionsService {
     }
   }
 
-  // Matching Logic for Cleaning Essentials
   Future<Map<String, dynamic>> findEligibleTechniciansCount(String categoryId, Map<String, double> userLocation) async {
-    // Explicitly safe payload for location
     final safePayload = {
       'categoryId': categoryId,
       'userLocation': {
@@ -208,21 +170,18 @@ class FunctionsService {
     }
   }
 
-  // Save FCM Token securely
   Future<void> saveFcmToken(String token, String userType) async {
     try {
       HttpsCallable callable = _functions.httpsCallable('saveFcmToken');
       await callable.call({
         'token': token,
-        'userType': userType, // 'customer' or 'technician'
+        'userType': userType,
       });
     } catch (e) {
       debugPrint('Failed to save FCM token: $e');
-      // Don't throw - token save failure shouldn't break the flow
     }
   }
 
-  // Submit Partner Application
   Future<Map<String, dynamic>> submitPartnerApplication(Map<String, dynamic> applicationData) async {
     _debugCheckParameters(applicationData);
     try {
@@ -234,7 +193,6 @@ class FunctionsService {
     }
   }
 
-  // Save Address securely
   Future<Map<String, dynamic>> saveAddress(Map<String, dynamic> addressData) async {
     _debugCheckParameters(addressData);
     try {
@@ -246,11 +204,6 @@ class FunctionsService {
     }
   }
 
-  // ==========================================
-  // CUSTOM REQUEST FUNCTIONS
-  // ==========================================
-
-  /// Create a new custom service request (Step 3)
   Future<Map<String, dynamic>> createCustomServiceRequest(Map<String, dynamic> requestData) async {
     _debugCheckParameters(requestData);
     try {
@@ -264,13 +217,12 @@ class FunctionsService {
     }
   }
 
-  /// Technician: Accept or Reject a custom request
   Future<Map<String, dynamic>> technicianRespondServiceRequest(String requestId, String action, {String? reason}) async {
     try {
       HttpsCallable callable = _functions.httpsCallable('technicianRespondServiceRequest');
       final result = await callable.call({
         'requestId': requestId,
-        'action': action, // 'accept' or 'reject'
+        'action': action,
         if (reason != null) 'rejectionReason': reason,
       });
       return Map<String, dynamic>.from(result.data);
@@ -279,13 +231,12 @@ class FunctionsService {
     }
   }
 
-  /// Customer: Confirm payment for custom request
   Future<Map<String, dynamic>> customerConfirmServicePayment(String requestId, String paymentMethod) async {
     try {
       HttpsCallable callable = _functions.httpsCallable('customerConfirmServicePayment');
       final result = await callable.call({
         'requestId': requestId,
-        'paymentMethod': paymentMethod, // 'now' or 'after_service'
+        'paymentMethod': paymentMethod,
       });
       return Map<String, dynamic>.from(result.data);
     } catch (e) {
@@ -293,7 +244,6 @@ class FunctionsService {
     }
   }
 
-  /// Accept a proposal for a service request securely
   Future<Map<String, dynamic>> acceptProposal(String proposalId, String requestId) async {
     try {
       HttpsCallable callable = _functions.httpsCallable('acceptProposal');

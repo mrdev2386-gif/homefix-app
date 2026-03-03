@@ -336,52 +336,46 @@ export const updateUserProfile = functions.https.onCall(async (data: any, contex
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
 
     const uid = context.auth.uid;
-
-    // 0. RATE LIMITING (Harden)
     await checkRateLimit(uid, 'update_profile', 10, 60);
 
+    // PROTECTED FIELDS - EXPLICITLY REJECT
+    const protectedFields = ['walletBalance', 'isSuspended', 'referralCode', 'referredBy', 'isApproved', 'avgRating', 'totalRatings'];
+    for (const field of protectedFields) {
+        if (field in data) {
+            console.warn(`[updateUserProfile] Rejected protected field: ${field} for uid: ${uid}`);
+            throw new functions.https.HttpsError('permission-denied', `Cannot modify protected field: ${field}`);
+        }
+    }
+
+    // ALLOWED FIELDS ONLY
     const allowedKeys = ['name', 'email', 'phone', 'photoUrl', 'isOnboarded', 'profileCompleted', 'district'];
     const updateData: any = {};
 
-    Object.keys(data).forEach(key => {
-        if (allowedKeys.includes(key)) {
-            if (key === 'district' && data[key]) {
+    for (const key of allowedKeys) {
+        if (key in data && data[key] !== undefined && data[key] !== null) {
+            if (key === 'district') {
                 const district = data[key].toString().trim();
-                updateData['district'] = district;
-                updateData['districtNormalized'] = district.toLowerCase();
+                updateData.district = district;
+                updateData.districtNormalized = district.toLowerCase();
             } else {
                 updateData[key] = data[key];
             }
-        } else if (key === 'displayName') {
-            updateData['name'] = data[key];
         }
-    });
+    }
+
+    if (Object.keys(updateData).length === 0) {
+        throw new functions.https.HttpsError('invalid-argument', 'No valid fields provided for update');
+    }
 
     const userRef = db.collection('customers').doc(uid);
-    const userDoc = await userRef.get();
+    updateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
 
-    if (!userDoc.exists) {
-        // New User Initialization
-        const name = data.name || 'Customer';
-        const referralCode = (name.substring(0, 3).toUpperCase() + Math.floor(1000 + Math.random() * 9000));
-
-        updateData.referralCode = referralCode;
-        updateData.walletBalance = 0;
-        updateData.createdAt = admin.firestore.FieldValue.serverTimestamp();
-
-        // Handle referral
-        if (data.referredBy) {
-            updateData.referredBy = data.referredBy;
-            // logic to reward referrer could be added here or in a separate trigger
-        }
-
-        await userRef.set(updateData);
-    } else {
-        if (Object.keys(updateData).length === 0) {
-            throw new functions.https.HttpsError('invalid-argument', 'No valid fields provided for update');
-        }
-        updateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
-        await userRef.update(updateData);
+    try {
+        await userRef.set(updateData, { merge: true });
+        console.log(`[updateUserProfile] Success for uid: ${uid}`);
+    } catch (error) {
+        console.error(`[updateUserProfile] Firestore error for uid: ${uid}:`, error);
+        throw new functions.https.HttpsError('internal', 'Failed to update profile');
     }
 
     return { success: true };

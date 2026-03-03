@@ -1,14 +1,68 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../core/models/booking.dart';
 import '../core/services/booking_service.dart';
 import '../core/widgets/safe_network_image.dart';
 
-class JobDetailsScreen extends StatelessWidget {
+class JobDetailsScreen extends StatefulWidget {
   final Booking booking;
 
   const JobDetailsScreen({super.key, required this.booking});
+
+  @override
+  State<JobDetailsScreen> createState() => _JobDetailsScreenState();
+}
+
+class _JobDetailsScreenState extends State<JobDetailsScreen> {
+  // STEP 3: Action spam hard guard
+  bool _isActionRunning = false;
+
+  // STEP 1: Helper to safely get technician earnings (technicianAmount > finalAmount > 0)
+  double _getTechnicianEarnings() {
+    // Try to get technicianAmount from quoteData first
+    final quoteData = widget.booking.quoteData;
+    if (quoteData != null) {
+      final techAmount = quoteData['technicianAmount'];
+      if (techAmount != null) {
+        if (techAmount is num) return techAmount.toDouble();
+        if (techAmount is String) return double.tryParse(techAmount) ?? 0.0;
+      }
+    }
+    // Fallback to finalAmount, then price, then 0
+    if (widget.booking.finalAmount > 0) return widget.booking.finalAmount;
+    if (widget.booking.price > 0) return widget.booking.price;
+    return 0.0;
+  }
+
+  // STEP 2: Timezone-safe time display
+  String _formatScheduledAt() {
+    try {
+      final scheduledAt = widget.booking.scheduledAt;
+      if (scheduledAt == null) return '—';
+      // Display in local device timezone with 12-hour format
+      return DateFormat('EEEE, dd MMM yyyy').format(scheduledAt.toLocal());
+    } catch (e) {
+      return '—';
+    }
+  }
+
+  // STEP 6: Status fallback - check if status is known
+  bool _isKnownStatus(String status) {
+    const knownStatuses = [
+      'technician_pending',
+      'pending',
+      'confirmed',
+      'accepted',
+      'in_progress',
+      'started',
+      'completed',
+      'cancelled',
+      'rejected',
+    ];
+    return knownStatuses.contains(status);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,14 +85,14 @@ class JobDetailsScreen extends StatelessWidget {
               Stack(
                 children: [
                   SafeNetworkImage(
-                    imageUrl: booking.serviceImage,
+                    imageUrl: widget.booking.serviceImage,
                     height: 240,
                     width: double.infinity,
                   ),
                   Positioned(
                     top: 16,
                     right: 16,
-                    child: _buildStatusPill(booking.status),
+                    child: _buildStatusPill(widget.booking.status),
                   ),
                 ],
               ),
@@ -60,7 +114,7 @@ class JobDetailsScreen extends StatelessWidget {
                         children: [
                           Expanded(
                             child: Text(
-                              booking.serviceTitle,
+                              widget.booking.serviceTitle,
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 26,
                                 fontWeight: FontWeight.bold,
@@ -70,7 +124,7 @@ class JobDetailsScreen extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            "₹${booking.finalAmount}",
+                            "₹${_getTechnicianEarnings().toStringAsFixed(0)}",
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
@@ -81,7 +135,7 @@ class JobDetailsScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        "Booking ID: #${booking.bookingId.substring(0, 8).toUpperCase()}",
+                        "Booking ID: #${widget.booking.bookingId.substring(0, 8).toUpperCase()}",
                         style: GoogleFonts.plusJakartaSans(
                           color: const Color(0xFF94A3B8),
                           fontSize: 13,
@@ -92,41 +146,53 @@ class JobDetailsScreen extends StatelessWidget {
                       
                       _buildSectionTitle("Customer Detail"),
                       const SizedBox(height: 16),
-                      _buildDetailCard([
-                        _buildInfoRow(Icons.person_outline_rounded, "Recipient Name", booking.customerName),
-                        const Divider(height: 32, color: Color(0xFFF1F5F9)),
-                        _buildInfoRow(Icons.location_on_outlined, "Service Address", booking.addressSnapshot['fullAddress'] ?? 'N/A'),
-                      ]),
+                      _buildCustomerCard(),
+                      
+                      if (widget.booking.addressSnapshot['latitude'] != null && widget.booking.addressSnapshot['longitude'] != null) ...[
+                        const SizedBox(height: 16),
+                        _buildLocationPreview(),
+                      ],
                       
                       const SizedBox(height: 32),
                       _buildSectionTitle("Schedule"),
                       const SizedBox(height: 16),
                       _buildDetailCard([
-                        _buildInfoRow(Icons.calendar_today_rounded, "Appointment Date", DateFormat('EEEE, dd MMM yyyy').format(booking.scheduledAt)),
+                        _buildInfoRow(Icons.calendar_today_rounded, "Appointment Date", _formatScheduledAt()),
                         const Divider(height: 32, color: Color(0xFFF1F5F9)),
-                        _buildInfoRow(Icons.access_time_rounded, "Preferred Slot", booking.scheduledTime),
+                        _buildInfoRow(Icons.access_time_rounded, "Preferred Slot", widget.booking.scheduledTime),
                       ]),
 
-                      if (booking.problemDescription != null) ...[
+                      if (widget.booking.problemDescription != null && widget.booking.problemDescription!.trim().isNotEmpty) ...[
                         const SizedBox(height: 32),
-                        _buildSectionTitle("Technician Notes"),
+                        _buildSectionTitle("Special Instructions"),
                         const SizedBox(height: 12),
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(20),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: const Color(0xFFF0F9FF),
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: const Color(0xFFF1F5F9)),
+                            border: Border.all(color: const Color(0xFFBAE6FD)),
                           ),
-                          child: Text(
-                            booking.problemDescription!,
-                            style: GoogleFonts.plusJakartaSans(
-                              color: const Color(0xFF475569),
-                              height: 1.6,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                            ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.info_outline, size: 20, color: Color(0xFF0284C7)),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  widget.booking.problemDescription!,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    color: const Color(0xFF0C4A6E),
+                                    height: 1.6,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 4,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -142,12 +208,12 @@ class JobDetailsScreen extends StatelessWidget {
                         ),
                         child: Column(
                           children: [
-                            _buildPriceRow("Base Fare", "₹${booking.price}"),
+                            _buildPriceRow("Service Price", "₹${(widget.booking.price as num?)?.toDouble() ?? 0}"),
                             const Padding(
                               padding: EdgeInsets.symmetric(vertical: 16),
                               child: Divider(color: Colors.white10),
                             ),
-                            _buildPriceRow("Technician Payout", "₹${booking.finalAmount}", isTotal: true),
+                            _buildPriceRow("Your Earnings", "₹${_getTechnicianEarnings().toStringAsFixed(0)}", isTotal: true),
                           ],
                         ),
                       ),
@@ -166,10 +232,15 @@ class JobDetailsScreen extends StatelessWidget {
 }
 
   Widget? _buildBottomSheet(BuildContext context) {
-    if (booking.status == 'technician_pending') {
-      return Container(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-        decoration: _bottomSheetDecoration(),
+    final status = widget.booking.status;
+    
+    // STEP 6: Status fallback - hide action bar for unknown status
+    if (!_isKnownStatus(status)) {
+      return null;
+    }
+    
+    if (status == 'technician_pending' || status == 'pending') {
+      return _ActionBar(
         child: Row(
           children: [
             Expanded(
@@ -177,22 +248,24 @@ class JobDetailsScreen extends StatelessWidget {
                 onPressed: () => _handleAction(context, 'reject'),
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size(double.infinity, 56),
-                  side: const BorderSide(color: Color(0xFFEF4444)),
+                  side: const BorderSide(color: Color(0xFFEF4444), width: 2),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
-                child: Text("Decline", style: GoogleFonts.plusJakartaSans(color: const Color(0xFFEF4444), fontWeight: FontWeight.bold)),
+                child: Text("Reject", style: GoogleFonts.plusJakartaSans(color: const Color(0xFFEF4444), fontWeight: FontWeight.bold, fontSize: 16)),
               ),
             ),
             const SizedBox(width: 16),
             Expanded(
+              flex: 2,
               child: ElevatedButton(
                 onPressed: () => _handleAction(context, 'accept'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF6366F1),
                   minimumSize: const Size(double.infinity, 56),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 2,
                 ),
-                child: Text("Accept Job", style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold)),
+                child: Text("Accept Job", style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
               ),
             ),
           ],
@@ -200,10 +273,8 @@ class JobDetailsScreen extends StatelessWidget {
       );
     }
 
-    if (booking.status == 'confirmed') {
-      return Container(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-        decoration: _bottomSheetDecoration(),
+    if (status == 'confirmed' || status == 'accepted') {
+      return _ActionBar(
         child: ElevatedButton.icon(
           onPressed: () => _handleAction(context, 'start'),
           icon: const Icon(Icons.play_arrow_rounded, color: Colors.white),
@@ -217,10 +288,8 @@ class JobDetailsScreen extends StatelessWidget {
       );
     }
 
-    if (booking.status == 'in_progress' || booking.status == 'started') {
-      return Container(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-        decoration: _bottomSheetDecoration(),
+    if (status == 'in_progress' || status == 'started') {
+      return _ActionBar(
         child: ElevatedButton.icon(
           onPressed: () => _handleAction(context, 'complete'),
           icon: const Icon(Icons.check_circle_outline_rounded, color: Colors.white),
@@ -234,63 +303,72 @@ class JobDetailsScreen extends StatelessWidget {
       );
     }
 
-    // Default: Call Customer
-    return Container(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-      decoration: _bottomSheetDecoration(),
-      child: ElevatedButton.icon(
-        onPressed: () {
-          // Implement call customer logic
-        },
-        icon: const Icon(Icons.call_rounded, size: 20),
-        label: const Text("Call Customer"),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF10B981),
-          foregroundColor: Colors.white,
-          minimumSize: const Size(double.infinity, 56),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        ),
-      ),
-    );
-  }
+    if (status == 'completed') {
+      return null;
+    }
 
-  BoxDecoration _bottomSheetDecoration() {
-    return BoxDecoration(
-      color: Colors.white,
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.04),
-          blurRadius: 20,
-          offset: const Offset(0, -8),
-        ),
-      ],
-    );
+    return null;
   }
 
   void _handleAction(BuildContext context, String action) async {
+    // STEP 3: Action spam hard guard - prevent race condition double taps
+    if (_isActionRunning) return;
+    if (!mounted) return;
+    
+    _isActionRunning = true;
+    
+    // Generate idempotency key for this action
+    final idempotencyKey = '${widget.booking.id}_${action}_${DateTime.now().millisecondsSinceEpoch}';
+    
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+    
     final service = BookingService();
     try {
       if (action == 'accept') {
-        await service.acceptBooking(booking.id);
+        await service.acceptBooking(widget.booking.id, idempotencyKey: idempotencyKey);
       } else if (action == 'reject') {
-        await service.rejectBooking(booking.id);
+        await service.rejectBooking(widget.booking.id, idempotencyKey: idempotencyKey);
       } else if (action == 'start') {
-        await service.updateBookingStatus(booking.id, 'in_progress');
+        await service.updateBookingStatus(widget.booking.id, 'in_progress');
       } else if (action == 'complete') {
-        await service.updateBookingStatus(booking.id, 'completed');
+        await service.updateBookingStatus(widget.booking.id, 'completed');
       }
       
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Job ${action}ed successfully")),
-        );
-        Navigator.pop(context);
-      }
+      if (!mounted) return;
+      Navigator.pop(context);
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Job ${action}ed successfully"),
+          backgroundColor: Colors.green,
+        ),
+      );
+      
+      if (!mounted) return;
+      Navigator.pop(context);
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Action failed: $e")),
-        );
+      if (!mounted) return;
+      Navigator.pop(context);
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Failed: ${e.toString()}"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      // STEP 3: Always reset the action lock
+      if (mounted) {
+        setState(() {
+          _isActionRunning = false;
+        });
       }
     }
   }
@@ -386,10 +464,18 @@ class JobDetailsScreen extends StatelessWidget {
   }
 
   Widget _buildStatusPill(String status) {
+    // STEP 6: Status fallback - neutral color for unknown status
     Color color = const Color(0xFF6366F1);
     if (status == 'completed') color = const Color(0xFF10B981);
-    if (status == 'started') color = const Color(0xFFF59E0B);
-    if (status == 'cancelled') color = const Color(0xFFEF4444);
+    if (status == 'started' || status == 'in_progress') color = const Color(0xFFF59E0B);
+    if (status == 'cancelled' || status == 'rejected') color = const Color(0xFFEF4444);
+    if (status == 'technician_pending' || status == 'pending') color = const Color(0xFF8B5CF6);
+    if (status == 'confirmed' || status == 'accepted') color = const Color(0xFF3B82F6);
+    
+    // Unknown status gets neutral gray color
+    if (!_isKnownStatus(status)) {
+      color = const Color(0xFF6B7280);
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -414,7 +500,7 @@ class JobDetailsScreen extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Text(
-            status.toUpperCase().replaceAll('_', ' '),
+            _isKnownStatus(status) ? status.toUpperCase().replaceAll('_', ' ') : 'UNKNOWN',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 11,
               color: const Color(0xFF0F172A),
@@ -422,6 +508,294 @@ class JobDetailsScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCustomerCard() {
+    final phone = widget.booking.addressSnapshot['phone'] as String? ?? '';
+    final address = widget.booking.addressSnapshot['fullAddress'] as String? ?? 'Address not available';
+    
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFF1F5F9)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: const Color(0xFFEEF2FF),
+                child: Text(
+                  widget.booking.customerName.isNotEmpty ? widget.booking.customerName[0].toUpperCase() : 'C',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF6366F1),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.booking.customerName,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF0F172A),
+                      ),
+                    ),
+                    if (phone.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      GestureDetector(
+                        onTap: () => _makePhoneCall(phone),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.phone, size: 14, color: Color(0xFF6366F1)),
+                            const SizedBox(width: 6),
+                            Text(
+                              phone,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 14,
+                                color: const Color(0xFF6366F1),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (phone.isNotEmpty)
+                IconButton(
+                  onPressed: () => _makePhoneCall(phone),
+                  icon: const Icon(Icons.call, color: Color(0xFF10B981)),
+                  style: IconButton.styleFrom(
+                    backgroundColor: const Color(0xFFF0FDF4),
+                  ),
+                ),
+            ],
+          ),
+          const Divider(height: 32, color: Color(0xFFF1F5F9)),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.location_on_outlined, size: 20, color: Color(0xFF6366F1)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Service Address",
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12,
+                        color: const Color(0xFF94A3B8),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      address,
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF334155),
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLocationPreview() {
+    final lat = (widget.booking.addressSnapshot['latitude'] as num?)?.toDouble();
+    final lng = (widget.booking.addressSnapshot['longitude'] as num?)?.toDouble();
+    
+    if (lat == null || lng == null) return const SizedBox.shrink();
+    
+    // STEP 5: Location Preview Premium Polish - Add "View on Map" CTA
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEFCE8),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFFDE68A)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.map_outlined, color: Color(0xFFCA8A04)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Location Available",
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF854D0E),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  "Tap to view on map",
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 11,
+                    color: const Color(0xFFA16207),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () => _openMap(lat, lng),
+            style: TextButton.styleFrom(
+              backgroundColor: const Color(0xFFFEF08A),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: Text(
+              "View Map",
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF854D0E),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // STEP 5: Open maps with coordinates
+  void _openMap(double lat, double lng) async {
+    final mapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+    try {
+      if (await canLaunchUrl(mapsUrl)) {
+        await launchUrl(mapsUrl, mode: LaunchMode.externalApplication);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Unable to open maps"),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error: ${e.toString()}"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // STEP 4: Phone call hardening with validation and error handling
+  void _makePhoneCall(String phone) async {
+    // Validate phone not empty
+    if (phone.trim().isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Phone number not available"),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    
+    // Validate minimum length (at least 6 digits for valid phone)
+    final cleanPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (cleanPhone.length < 6) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Invalid phone number"),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    
+    // Ensure phone has country code
+    final phoneToDial = cleanPhone.startsWith('+') ? cleanPhone : '+$cleanPhone';
+    
+    final uri = Uri.parse('tel:$phoneToDial');
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Dialer not available on this device"),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Failed to make call: ${e.toString()}"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+}
+
+class _ActionBar extends StatelessWidget {
+  final Widget child;
+  
+  const _ActionBar({required this.child});
+  
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 20,
+            offset: const Offset(0, -8),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: child,
       ),
     );
   }

@@ -233,10 +233,21 @@ class NotificationsService extends ChangeNotifier {
 
     if (bookingId != null) {
       final booking = await BookingService().getBooking(bookingId);
-      if (booking != null && rootNavigatorKey.currentState != null) {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      
+      // SECURITY: Verify booking ownership before navigation
+      if (booking != null && 
+          currentUser != null && 
+          booking.assignedTechnicianId == currentUser.uid &&
+          rootNavigatorKey.currentState != null) {
         rootNavigatorKey.currentState!.push(
           MaterialPageRoute(builder: (_) => JobDetailsScreen(booking: booking))
         );
+      } else {
+        debugPrint('[Security] Blocked unauthorized booking access: $bookingId');
+        if (booking != null && currentUser != null && booking.assignedTechnicianId != currentUser.uid) {
+          debugPrint('[Security] Booking belongs to: ${booking.assignedTechnicianId}, current user: ${currentUser.uid}');
+        }
       }
     }
   }

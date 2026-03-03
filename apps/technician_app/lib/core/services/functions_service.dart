@@ -114,6 +114,9 @@ class FunctionsService {
     required String category,
     String? subCategory,
     String? description,
+    double? originalPrice,
+    double? offerPrice,
+    double? discountPercent,
   }) async {
     try {
       HttpsCallable callable = _functions.httpsCallable('addTechnicianService');
@@ -124,6 +127,9 @@ class FunctionsService {
         'category': category,
         if (subCategory != null) 'subCategory': subCategory,
         if (description != null) 'description': description,
+        if (originalPrice != null) 'originalPrice': originalPrice,
+        if (offerPrice != null) 'offerPrice': offerPrice,
+        if (discountPercent != null) 'discountPercent': discountPercent,
       });
       return Map<String, dynamic>.from(result.data);
     } catch (e) {

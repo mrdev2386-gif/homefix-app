@@ -42,12 +42,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     setState(() => _isLoading = true);
     try {
+      debugPrint('[EditProfileScreen] Starting profile update');
       final functionsService = Provider.of<FunctionsService>(context, listen: false);
-      await functionsService.updateUserProfile({
+      
+      final profileData = {
         'name': _nameController.text.trim(),
         'email': _emailController.text.trim(),
         'phone': _phoneController.text.trim(),
-      });
+      };
+      debugPrint('[EditProfileScreen] Payload: $profileData');
+      
+      await functionsService.updateUserProfile(profileData);
+      
+      debugPrint('[EditProfileScreen] Profile update successful');
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -55,6 +62,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         );
       }
     } catch (e) {
+      debugPrint('[EditProfileScreen] Error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error updating profile: $e')),

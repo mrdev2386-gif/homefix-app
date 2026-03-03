@@ -380,13 +380,14 @@ class _OtpScreenState extends State<OtpScreen> {
               
               SizedBox(
                 width: double.infinity,
-                height: 58,
+                height: 56,
                 child: ElevatedButton(
                   onPressed: (_isLoading || !_isOtpComplete) ? null : _handleVerify,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0F172A),
+                    backgroundColor: const Color(0xFF6366F1),
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                    disabledBackgroundColor: const Color(0xFFE2E8F0),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     elevation: 0,
                   ),
                   child: _isLoading
