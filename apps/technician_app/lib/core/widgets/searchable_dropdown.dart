@@ -146,10 +146,10 @@ class _SearchableDropdownState<T extends DropdownItem> extends State<SearchableD
   OverlayEntry _createOverlayEntry(RenderBox renderBox) {
     final globalOffset = renderBox.localToGlobal(Offset.zero);
 
-    // Calculate max height
+    // Calculate max height - prioritize showing more items
     final screenHeight = MediaQuery.of(context).size.height;
-    final availableHeight = screenHeight - globalOffset.dy - renderBox.size.height - 50;
-    final maxDropDownHeight = widget.maxHeight ?? (availableHeight > 400 ? 400 : availableHeight);
+    final availableHeight = screenHeight - globalOffset.dy - renderBox.size.height - 20;
+    final maxDropDownHeight = widget.maxHeight ?? (availableHeight > 450 ? 450 : availableHeight);
 
     return OverlayEntry(
       builder: (context) => Stack(
@@ -193,9 +193,9 @@ class _SearchableDropdownState<T extends DropdownItem> extends State<SearchableD
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Search field
+        // Search field - compact padding
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
           decoration: BoxDecoration(
             color: Colors.grey.shade50,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
@@ -225,7 +225,7 @@ class _SearchableDropdownState<T extends DropdownItem> extends State<SearchableD
                   : null,
               filled: true,
               fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(color: Colors.grey.shade200),
@@ -242,7 +242,7 @@ class _SearchableDropdownState<T extends DropdownItem> extends State<SearchableD
             ),
           ),
         ),
-        // Items list
+        // Items list - appears immediately below search
         Flexible(
           child: widget.isLoading
               ? const Padding(
@@ -279,7 +279,7 @@ class _SearchableDropdownState<T extends DropdownItem> extends State<SearchableD
 
   Widget _buildItemsList() {
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.only(top: 4, bottom: 8),
       shrinkWrap: true,
       itemCount: _filteredItems.length,
       itemBuilder: (context, index) {

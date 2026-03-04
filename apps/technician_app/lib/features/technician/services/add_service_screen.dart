@@ -10,6 +10,7 @@ import '../../../core/app_theme.dart';
 import '../../../core/services/functions_service.dart';
 import '../../../core/services/category_data_service.dart';
 import '../../../core/utils/image_upload_service.dart';
+import '../../../core/utils/firestore_safe_parser.dart';
 import '../../../core/widgets/searchable_dropdown.dart';
 import '../../../core/providers/technician_provider.dart';
 
@@ -27,7 +28,16 @@ import '../../../core/providers/technician_provider.dart';
 /// - Bulletproof category → service reactive flow
 /// - Ultra-safe custom service logic
 class AddServiceScreen extends StatefulWidget {
-  const AddServiceScreen({super.key});
+  final Map<String, dynamic>? service;
+  final String? serviceId;
+  final bool isEdit;
+
+  const AddServiceScreen({
+    super.key,
+    this.service,
+    this.serviceId,
+    this.isEdit = false,
+  });
 
   @override
   State<AddServiceScreen> createState() => _AddServiceScreenState();
@@ -53,6 +63,15 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
   File? _selectedImage;
   String? _uploadedImageUrl;
   bool _showCustomServiceInput = false;
+  
+  // Urgent Booking state
+  bool _urgentBookingEnabled = false;
+  String? _urgentArrivalTime;
+  int? _urgentFee;
+  
+  // Night Service state
+  bool _nightServiceEnabled = false;
+  int? _nightCharge;
   
   // Pricing state
   double? _originalPrice;
@@ -82,6 +101,35 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
   void initState() {
     super.initState();
     _loadCategories();
+    
+    // Prefill data in edit mode
+    if (widget.isEdit && widget.service != null) {
+      _prefillServiceData();
+    }
+  }
+
+  void _prefillServiceData() {
+    final service = widget.service!;
+    _nameController.text = FirestoreSafeParser.toSafeString(service['name']);
+    _descriptionController.text = FirestoreSafeParser.toSafeString(service['description']);
+    
+    final price = FirestoreSafeParser.toSafeDouble(service['price']);
+    _priceController.text = price > 0 ? price.toStringAsFixed(0) : '';
+    
+    _originalPrice = FirestoreSafeParser.toSafeDouble(service['originalPrice']);
+    if (_originalPrice != null && _originalPrice! > 0) {
+      _originalPriceController.text = _originalPrice!.toStringAsFixed(0);
+    }
+    
+    _offerPrice = FirestoreSafeParser.toSafeDouble(service['offerPrice']);
+    if (_offerPrice != null && _offerPrice! > 0) {
+      _offerPriceController.text = _offerPrice!.toStringAsFixed(0);
+    }
+    
+    _selectedCategoryId = FirestoreSafeParser.toSafeString(service['category']);
+    _uploadedImageUrl = FirestoreSafeParser.toSafeString(service['imageUrl']);
+    
+    setState(() {});
   }
 
   @override
@@ -102,11 +150,12 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     if (_originalPrice == null ||
         _offerPrice == null ||
         _originalPrice! <= 0 ||
+        _offerPrice! <= 0 ||
         _offerPrice! >= _originalPrice!) {
       return 0;
     }
     final discount = ((_originalPrice! - _offerPrice!) / _originalPrice!) * 100;
-    return discount.clamp(0, 99);
+    return discount.clamp(0.0, 99.0);
   }
 
   /// Load categories from Firestore with strict requirement
@@ -123,14 +172,21 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
       final categories = await _categoryDataService.getCategories();
       
       if (mounted) {
+        // Handle empty collection
+        if (categories.isEmpty) {
+          setState(() {
+            _categoryError = 'No service categories available. Please try again later.';
+            _isLoadingCategories = false;
+          });
+          return;
+        }
+
         setState(() {
           _categories = categories;
           _isLoadingCategories = false;
         });
-        debugPrint('[AddServiceScreen] Loaded ${categories.length} categories from Firestore');
       }
     } catch (e) {
-      debugPrint('[AddServiceScreen] CATEGORY FETCH FAILED: $e');
       if (mounted) {
         setState(() {
           _categoryError = 'Failed to load categories. Please check your connection.';
@@ -465,7 +521,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     print("[ADD SERVICE] Submit pressed");
     print("categoryId=$_selectedCategoryId");
     print("serviceId=$_selectedServiceId");
-    print("subServiceId=null");
+    print("isEdit=${widget.isEdit}");
     
     // PART 2: Prevent rapid taps
     final now = DateTime.now();
@@ -529,7 +585,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
               backgroundColor: Colors.green,
             ),
           );
-          Navigator.pop(context);
+          Navigator.pop(context, true);
         }
       } catch (e) {
         if (mounted) {
@@ -545,11 +601,44 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
       return;
     }
     
-    // Validate image (not required for custom services)
-    if (_selectedCategoryId != 'custom' && _selectedImage == null && _uploadedImageUrl == null) {
+    // Validate image (not required for edit mode)
+    if (!widget.isEdit && _selectedCategoryId != 'custom' && _selectedImage == null && _uploadedImageUrl == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please select an image'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Strict price validation
+    if (_offerPrice != null && _originalPrice != null) {
+      if (_offerPrice! >= _originalPrice!) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Offer price must be less than original price'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+    }
+
+    if (_originalPrice != null && _originalPrice! <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Original price must be greater than 0'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    if (_offerPrice != null && _offerPrice! <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Offer price must be greater than 0'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -586,23 +675,22 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
         throw Exception('User not authenticated');
       }
 
-      // Save service via Functions Service
-      final payload = {
-        "categoryId": _selectedCategoryId,
-        "serviceId": _selectedServiceId,
-        "subServiceId": null,
-        "title": _nameController.text.trim(),
-        "description": _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
-        "price": _offerPrice ?? double.parse(_priceController.text.trim()),
-        "imageUrl": imageUrl,
-        "originalPrice": _originalPrice,
-        "offerPrice": _offerPrice,
-        "discountPercent": _calculateDiscount(),
-      };
-      
-      print("[ADD SERVICE] Payload: $payload");
-      
-      try {
+      if (widget.isEdit && widget.serviceId != null) {
+        // UPDATE existing service
+        await _functionsService.updateService(
+          serviceId: widget.serviceId!,
+          name: _nameController.text.trim(),
+          price: _offerPrice ?? double.parse(_priceController.text.trim()),
+          imageUrl: imageUrl.isNotEmpty ? imageUrl : null,
+          category: _selectedCategoryId,
+          description: _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
+          originalPrice: _originalPrice,
+          offerPrice: _offerPrice,
+          discountPercent: _calculateDiscount(),
+        );
+        print("[UPDATE SERVICE] SUCCESS");
+      } else {
+        // CREATE new service
         await _functionsService.addService(
           name: _nameController.text.trim(),
           price: _offerPrice ?? double.parse(_priceController.text.trim()),
@@ -616,22 +704,21 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
           discountPercent: _calculateDiscount(),
         );
         print("[ADD SERVICE] SUCCESS");
-      } catch (e) {
-        print("[ADD SERVICE] ERROR: $e");
-        rethrow;
       }
 
-      debugPrint('[WRITE VERIFY] service added');
+      debugPrint('[WRITE VERIFY] service ${widget.isEdit ? "updated" : "added"}');
 
       if (mounted) {
         // Refresh the technician's services
         await context.read<TechnicianProvider>().refreshTechnicianData();
         debugPrint('[Provider] refreshed');
+      }
         
-        Navigator.pop(context);
+      if (mounted) {
+        Navigator.pop(context, true);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Service added successfully'),
+          SnackBar(
+            content: Text('Service ${widget.isEdit ? "updated" : "added"} successfully'),
             backgroundColor: Colors.green,
           ),
         );
@@ -642,7 +729,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to add service: $e'),
+            content: Text('Failed to ${widget.isEdit ? "update" : "add"} service: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -663,7 +750,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'Add New Service',
+          widget.isEdit ? 'Edit Service' : 'Add New Service',
           style: GoogleFonts.plusJakartaSans(
             fontSize: 20,
             fontWeight: FontWeight.bold,
@@ -693,6 +780,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                   controller: _nameController,
                   label: 'Service Name',
                   hint: 'e.g., AC Repair, Plumbing Service',
+                  readOnly: widget.isEdit,
                   validator: (value) {
                     // Skip validation for custom category
                     if (_selectedCategoryId == 'custom') return null;
@@ -705,6 +793,18 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                     return null;
                   },
                 ),
+                if (widget.isEdit)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Service name cannot be changed',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 16),
                 
                 // Category Dropdown (Firestore-driven, Searchable)
@@ -738,6 +838,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                   keyboardType: TextInputType.number,
                   onChanged: (v) {
                     _originalPrice = double.tryParse(v);
+                    setState(() {});
                   },
                   validator: (value) {
                     if (_selectedCategoryId == 'custom') return null;
@@ -760,6 +861,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                   onChanged: (v) {
                     _offerPrice = double.tryParse(v);
                     _priceController.text = v;
+                    setState(() {});
                   },
                   validator: (value) {
                     if (_selectedCategoryId == 'custom') return null;
@@ -969,6 +1071,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     required String hint,
     TextInputType? keyboardType,
     int maxLines = 1,
+    bool readOnly = false,
     String? Function(String?)? validator,
     void Function(String)? onChanged,
   }) {
@@ -988,11 +1091,12 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
         controller: controller,
         keyboardType: keyboardType,
         maxLines: maxLines,
+        readOnly: readOnly,
         validator: validator,
         onChanged: onChanged,
         style: GoogleFonts.plusJakartaSans(
           fontSize: 15,
-          color: const Color(0xFF0F172A),
+          color: readOnly ? Colors.grey.shade600 : const Color(0xFF0F172A),
         ),
         decoration: InputDecoration(
           labelText: label,
@@ -1137,7 +1241,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
       _selectedCategoryId = item.id;
       _selectedCategoryName = item.label;
       
-      // PART 1: Reset services
+      // ISSUE 2 FIX: Safe reset - clear services list
       _services = [];
       _selectedServiceId = null;
       _selectedServiceName = null;
@@ -1147,7 +1251,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
         _showCustomServiceInput = true;
       } else {
         _showCustomServiceInput = false;
-        // PART 1: Load services for selected category
+        // Load services for selected category
         _loadServices(item.id);
       }
     });
@@ -1160,23 +1264,33 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
       return const SizedBox.shrink();
     }
 
-    // Convert ServiceData to DropdownItem
-    final dropdownItems = _services.map((service) => DropdownItem(
-      id: service.id,
-      label: service.name,
-      subtitle: service.description,
-    )).toList();
+    // ISSUE 2 FIX: Safe iteration - check list bounds
+    final dropdownItems = <DropdownItem>[];
+    for (int i = 0; i < _services.length; i++) {
+      if (i < _services.length) {
+        final service = _services[i];
+        dropdownItems.add(DropdownItem(
+          id: service.id,
+          label: service.name,
+          subtitle: service.description,
+        ));
+      }
+    }
 
-    // Find selected item
+    // Find selected item safely
     DropdownItem? selectedItem;
-    if (_selectedServiceId != null) {
-      final index = _services.indexWhere((s) => s.id == _selectedServiceId);
-      if (index >= 0) {
-        selectedItem = DropdownItem(
-          id: _services[index].id,
-          label: _services[index].name,
-          subtitle: _services[index].description,
-        );
+    if (_selectedServiceId != null && _services.isNotEmpty) {
+      try {
+        final index = _services.indexWhere((s) => s.id == _selectedServiceId);
+        if (index >= 0 && index < _services.length) {
+          selectedItem = DropdownItem(
+            id: _services[index].id,
+            label: _services[index].name,
+            subtitle: _services[index].description,
+          );
+        }
+      } catch (e) {
+        debugPrint('[SAFE INDEX] Error finding selected service: $e');
       }
     }
 
@@ -1201,10 +1315,17 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                 }
               });
               
-              // Auto-fill price if available
-              final serviceIndex = _services.indexWhere((s) => s.id == item.id);
-              if (serviceIndex >= 0 && _services[serviceIndex].basePrice != null) {
-                _priceController.text = _services[serviceIndex].basePrice!.toStringAsFixed(0);
+              // ISSUE 2 FIX: Safe auto-fill price with bounds check
+              try {
+                final serviceIndex = _services.indexWhere((s) => s.id == item.id);
+                if (serviceIndex >= 0 && serviceIndex < _services.length) {
+                  final service = _services[serviceIndex];
+                  if (service.basePrice != null) {
+                    _priceController.text = service.basePrice!.toStringAsFixed(0);
+                  }
+                }
+              } catch (e) {
+                debugPrint('[SAFE INDEX] Error auto-filling price: $e');
               }
             }
           },
@@ -1342,7 +1463,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                   ),
                 )
               : Text(
-                  'Add Service',
+                  widget.isEdit ? 'Update Service' : 'Add Service',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,

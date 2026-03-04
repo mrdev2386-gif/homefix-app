@@ -13,6 +13,7 @@ import '../core/services/wallet_service.dart';
 import '../core/models/wallet.dart';
 import '../core/models/wallet_transaction.dart';
 import '../core/models/bank_account.dart';
+import '../core/models/bank_account.dart' show BankAccountStatus;
 import '../core/providers/technician_provider.dart';
 import 'add_bank_account_screen.dart';
 
@@ -53,18 +54,41 @@ class _WalletScreenState extends State<WalletScreen> {
       final technicianId = FirebaseAuth.instance.currentUser?.uid;
       if (technicianId == null) return;
 
-      final snapshot = await _firestore
-          .collection('technician_bank_accounts')
-          .where('technicianId', isEqualTo: technicianId)
-          .where('status', isEqualTo: 'verified')
+      // Fetch from technicians/{uid} document where bank details are stored
+      final doc = await _firestore
+          .collection('technicians')
+          .doc(technicianId)
           .get();
 
       if (mounted) {
         setState(() {
-          _bankAccounts = snapshot.docs
-              .map((doc) => TechnicianBankAccount.fromFirestore(doc))
-              .toList();
+          _bankAccounts = [];
+          
+          if (doc.exists) {
+            final data = doc.data() as Map<String, dynamic>;
+            final bankStatus = data['bankStatus'] ?? 'not_submitted';
+            
+            // Only add if bank details exist and status is not deleted
+            if (bankStatus != 'not_submitted' && bankStatus != 'deleted') {
+              final bankAccount = TechnicianBankAccount(
+                id: technicianId,
+                technicianId: technicianId,
+                bankName: data['bankName'] ?? '',
+                accountNumber: data['accountNumber'] ?? '',
+                ifscCode: data['ifscCode'] ?? '',
+                accountHolderName: data['accountHolderName'] ?? '',
+                status: _parseBankStatus(bankStatus),
+                createdAt: DateTime.now(),
+              );
+              _bankAccounts.add(bankAccount);
+            }
+          }
+          
           _isLoadingBanks = false;
+          print('[WALLET] bankAccounts length: ${_bankAccounts.length}');
+          if (_bankAccounts.isNotEmpty) {
+            print('[WALLET] bank status: ${_bankAccounts.first.status}');
+          }
         });
       }
     } catch (e) {
@@ -72,6 +96,19 @@ class _WalletScreenState extends State<WalletScreen> {
       if (mounted) {
         setState(() => _isLoadingBanks = false);
       }
+    }
+  }
+
+  BankAccountStatus _parseBankStatus(String status) {
+    switch (status) {
+      case 'pending':
+        return BankAccountStatus.pending;
+      case 'verified':
+        return BankAccountStatus.verified;
+      case 'rejected':
+        return BankAccountStatus.rejected;
+      default:
+        return BankAccountStatus.pending;
     }
   }
 
@@ -130,9 +167,6 @@ class _WalletScreenState extends State<WalletScreen> {
                         const SizedBox(height: 12),
                         // Step 5: QR Code Card
                         _buildQRCard(),
-                        const SizedBox(height: 20),
-                        // Bank Accounts Section
-                        _buildBankAccountsSection(),
                         const SizedBox(height: 20),
                         // Transaction History
                         _buildTransactionHistory(transactions),
@@ -381,7 +415,27 @@ class _WalletScreenState extends State<WalletScreen> {
   /// Step 3: Modern Action Buttons Row
   Widget _buildActionButtonsRow(TechnicianWallet wallet) {
     final hasBalance = wallet.availableBalance > 0;
-    final canWithdraw = hasBalance && wallet.canWithdraw && !_isWithdrawing && _bankAccounts.isNotEmpty;
+    final hasBankAccount = _bankAccounts.isNotEmpty;
+    final bankAccount = hasBankAccount ? _bankAccounts.first : null;
+    final isVerified = bankAccount?.status == BankAccountStatus.verified;
+    final canWithdraw = hasBalance && wallet.canWithdraw && !_isWithdrawing && isVerified;
+    
+    // Determine bank button state
+    String bankButtonLabel = 'Add Bank';
+    VoidCallback? bankButtonAction = _showAddBankDialog;
+    List<Color>? bankButtonGradient = const [Color(0xFF6366F1), Color(0xFF8B5CF6)];
+    
+    if (hasBankAccount) {
+      if (bankAccount!.status == BankAccountStatus.verified) {
+        bankButtonLabel = 'Manage Bank';
+      } else if (bankAccount.status == BankAccountStatus.pending) {
+        bankButtonLabel = 'Verification in Progress';
+        bankButtonAction = null;
+        bankButtonGradient = null;
+      } else if (bankAccount.status == BankAccountStatus.rejected) {
+        bankButtonLabel = 'Re-verify Bank';
+      }
+    }
     
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -390,9 +444,9 @@ class _WalletScreenState extends State<WalletScreen> {
           Expanded(
             child: _ModernActionButton(
               icon: Icons.add_circle_outline_rounded,
-              label: 'Add Bank',
-              onTap: _showAddBankDialog,
-              gradientColors: const [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+              label: bankButtonLabel,
+              onTap: bankButtonAction,
+              gradientColors: bankButtonGradient,
             ),
           ),
           const SizedBox(width: 12),
@@ -608,250 +662,7 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-  /// Bank accounts section - Modern Premium Design
-  Widget _buildBankAccountsSection() {
-    if (_isLoadingBanks) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 16),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-    
-    if (_bankAccounts.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Container(
-          padding: const EdgeInsets.all(32),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 20,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      AppTheme.primaryColor.withValues(alpha: 0.1),
-                      AppTheme.primaryColor.withValues(alpha: 0.05),
-                    ],
-                  ),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.account_balance_outlined,
-                  size: 40,
-                  color: AppTheme.primaryColor,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'No bank account linked',
-                style: GoogleFonts.plusJakartaSans(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 19,
-                  color: const Color(0xFF1E293B),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Add a bank account to withdraw your earnings directly to your bank',
-                style: TextStyle(
-                  color: Colors.grey[500],
-                  fontSize: 14,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 28),
-              // Modern gradient button
-              Container(
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF6366F1).withValues(alpha: 0.35),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: _showAddBankDialog,
-                    borderRadius: BorderRadius.circular(16),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.add_circle_outline_rounded, color: Colors.white, size: 22),
-                          const SizedBox(width: 10),
-                          Text(
-                            'Add Bank Account',
-                            style: GoogleFonts.plusJakartaSans(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 15,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Linked Bank Accounts',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF1E293B),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '${_bankAccounts.length} ${_bankAccounts.length == 1 ? 'Account' : 'Accounts'}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.primaryColor,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          ..._bankAccounts.map((account) => Container(
-            margin: const EdgeInsets.only(bottom: 14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () {},
-                  child: Padding(
-                    padding: const EdgeInsets.all(18),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                AppTheme.primaryColor.withValues(alpha: 0.1),
-                                AppTheme.primaryColor.withValues(alpha: 0.05),
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Icon(
-                            Icons.account_balance_rounded,
-                            color: AppTheme.primaryColor,
-                            size: 26,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                account.bankName,
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 16,
-                                  color: const Color(0xFF1E293B),
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${account.accountHolderName} • ${account.maskedAccountNumber}',
-                                style: TextStyle(
-                                  color: Colors.grey[500],
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (account.isVerified)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: AppTheme.successColor.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.check_circle_rounded, size: 16, color: AppTheme.successColor),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Verified',
-                                  style: TextStyle(
-                                    color: AppTheme.successColor,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          )),
-        ],
-      ),
-    );
-  }
 
   /// Transaction history with grouping by date - Modern Design
   Widget _buildTransactionHistory(List<WalletTransaction> transactions) {
@@ -1070,40 +881,42 @@ class _WalletScreenState extends State<WalletScreen> {
                 ],
               ),
             ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  '${isCredit || txn.type == TransactionType.release ? '+' : '-'}₹${_formatAmount(txn.amount)}',
-                  style: GoogleFonts.plusJakartaSans(
-                    color: (isCredit || txn.type == TransactionType.release) 
-                        ? AppTheme.successColor 
-                        : AppTheme.errorColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: txn.status == TransactionStatus.completed
-                        ? AppTheme.successColor.withValues(alpha: 0.1)
-                        : AppTheme.warningColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    txn.displayStatus,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: txn.status == TransactionStatus.completed
-                          ? AppTheme.successColor
-                          : AppTheme.warningColor,
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '${isCredit || txn.type == TransactionType.release ? '+' : '-'}₹${_formatAmount(txn.amount)}',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: (isCredit || txn.type == TransactionType.release) 
+                          ? AppTheme.successColor 
+                          : AppTheme.errorColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: txn.status == TransactionStatus.completed
+                          ? AppTheme.successColor.withValues(alpha: 0.1)
+                          : AppTheme.warningColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      txn.displayStatus,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: txn.status == TransactionStatus.completed
+                            ? AppTheme.successColor
+                            : AppTheme.warningColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -1216,6 +1029,17 @@ class _WalletScreenState extends State<WalletScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please add a bank account first'),
+          backgroundColor: AppTheme.warningColor,
+        ),
+      );
+      return;
+    }
+
+    final bankAccount = _bankAccounts.first;
+    if (bankAccount.status != BankAccountStatus.verified) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Bank account must be verified to withdraw'),
           backgroundColor: AppTheme.warningColor,
         ),
       );
@@ -1950,16 +1774,19 @@ class _ModernActionButton extends StatelessWidget {
                   color: isDisabled ? Colors.grey[400] : const Color(0xFF64748B),
                 ),
               const SizedBox(width: 10),
-              Text(
-                label,
-                style: GoogleFonts.plusJakartaSans(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 15,
-                  color: isDisabled
-                      ? Colors.grey[400]
-                      : isPrimary || hasGradient
-                          ? Colors.white
-                          : const Color(0xFF1E293B),
+              Flexible(
+                child: Text(
+                  label,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                    color: isDisabled
+                        ? Colors.grey[400]
+                        : isPrimary || hasGradient
+                            ? Colors.white
+                            : const Color(0xFF1E293B),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -2188,42 +2015,44 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
               ],
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '${isCredit ? '+' : '-'}₹${txn.amount.toStringAsFixed(2)}',
-                style: GoogleFonts.plusJakartaSans(
-                  color: isCredit ? AppTheme.successColor : AppTheme.errorColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: txn.status == TransactionStatus.completed
-                      ? AppTheme.successColor.withValues(alpha: 0.1)
-                      : txn.status == TransactionStatus.failed
-                          ? AppTheme.errorColor.withValues(alpha: 0.1)
-                          : AppTheme.warningColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  txn.displayStatus,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: txn.status == TransactionStatus.completed
-                        ? AppTheme.successColor
-                        : txn.status == TransactionStatus.failed
-                            ? AppTheme.errorColor
-                            : AppTheme.warningColor,
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '${isCredit ? '+' : '-'}₹${txn.amount.toStringAsFixed(2)}',
+                  style: GoogleFonts.plusJakartaSans(
+                    color: isCredit ? AppTheme.successColor : AppTheme.errorColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: txn.status == TransactionStatus.completed
+                        ? AppTheme.successColor.withValues(alpha: 0.1)
+                        : txn.status == TransactionStatus.failed
+                            ? AppTheme.errorColor.withValues(alpha: 0.1)
+                            : AppTheme.warningColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    txn.displayStatus,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: txn.status == TransactionStatus.completed
+                          ? AppTheme.successColor
+                          : txn.status == TransactionStatus.failed
+                              ? AppTheme.errorColor
+                              : AppTheme.warningColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

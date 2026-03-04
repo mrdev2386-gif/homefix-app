@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/firestore_safe_parser.dart';
 
 /// Transaction Type Enum
 enum TransactionType {
@@ -66,19 +67,17 @@ class WalletTransaction {
   });
 
   factory WalletTransaction.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    final data = FirestoreSafeParser.toSafeMap(doc.data());
     return WalletTransaction(
       txnId: doc.id,
       type: _parseTransactionType(data['type']),
       source: _parseTransactionSource(data['source']),
       status: _parseTransactionStatus(data['status']),
-      amount: (data['amount'] ?? 0.0).toDouble(),
-      fee: data['fee']?.toDouble(),
+      amount: FirestoreSafeParser.toSafeDouble(data['amount']),
+      fee: data['fee'] != null ? FirestoreSafeParser.toSafeDouble(data['fee']) : null,
       referenceId: data['referenceId'],
       description: data['description'],
-      createdAt: data['createdAt'] != null 
-          ? (data['createdAt'] as Timestamp).toDate() 
-          : DateTime.now(),
+      createdAt: FirestoreSafeParser.toSafeDateTime(data['createdAt']),
       createdBy: data['createdBy'],
       ipAddress: data['ipAddress'],
       idempotencyKey: data['idempotencyKey'],

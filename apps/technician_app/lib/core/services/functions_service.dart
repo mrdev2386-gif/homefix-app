@@ -144,6 +144,10 @@ class FunctionsService {
     String? imageUrl,
     String? category,
     String? description,
+    double? originalPrice,
+    double? offerPrice,
+    double? discountPercent,
+    bool? isActive,
   }) async {
     try {
       HttpsCallable callable = _functions.httpsCallable('updateTechnicianServiceNew');
@@ -154,6 +158,10 @@ class FunctionsService {
       if (imageUrl != null) data['imageUrl'] = imageUrl;
       if (category != null) data['category'] = category;
       if (description != null) data['description'] = description;
+      if (originalPrice != null) data['originalPrice'] = originalPrice;
+      if (offerPrice != null) data['offerPrice'] = offerPrice;
+      if (discountPercent != null) data['discountPercent'] = discountPercent;
+      if (isActive != null) data['isActive'] = isActive;
 
       final result = await callable.call(data);
       return Map<String, dynamic>.from(result.data);

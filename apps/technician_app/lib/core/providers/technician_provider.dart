@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import '../services/technician_service.dart';
 import '../services/onboarding_service.dart';
 import '../utils/image_size_guard.dart';
 import '../models/technician.dart';
+import '../utils/app_logger.dart';
 
 class TechnicianProvider extends ChangeNotifier {
   final TechnicianService _techService = TechnicianService();
@@ -70,25 +72,54 @@ class TechnicianProvider extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     
-    _techSubscription = _techService.getTechnicianStream(uid).listen((tech) {
+    _techSubscription = _techService.getTechnicianStream(uid).listen((tech) async {
       if (_isDisposed) return;
       
-      debugPrint('[TECH PROVIDER] snapshot received=${tech != null}');
+      AppLogger.provider('Technician snapshot received', data: tech != null);
       if (tech != null) {
-        debugPrint('[TECH PROVIDER] data={isKycComplete: ${tech.isKycComplete}, isApproved: ${tech.isApproved}, step: ${tech.currentOnboardingStep}}');
+        AppLogger.provider('Technician data loaded', data: {
+          'uid': tech.uid,
+          'isKycComplete': tech.isKycComplete,
+          'isApproved': tech.isApproved,
+          'step': tech.currentOnboardingStep,
+        });
+        
+        // ISSUE 1 FIX: Auto-sync email from FirebaseAuth if empty in Firestore
+        if (tech.email.isEmpty) {
+          final authEmail = _auth.currentUser?.email;
+          if (authEmail != null && authEmail.isNotEmpty) {
+            AppLogger.firestore('Syncing email from Auth', data: authEmail);
+            try {
+              await FirebaseFirestore.instance
+                  .collection('technicians')
+                  .doc(uid)
+                  .update({'email': authEmail, 'updatedAt': FieldValue.serverTimestamp()});
+            } catch (e) {
+              AppLogger.error('FIRESTORE', 'Email sync failed', data: e);
+            }
+          }
+        }
       }
       
-      // PHASE 4 FIX: Add shallow equality guard to prevent duplicate emissions
+      // ISSUE 3 FIX: Enhanced shallow equality guard to prevent rebuild loops
       // Only notify if data actually changed
       final previousTech = _technician;
       if (previousTech != null && tech != null) {
-        // Check if key onboarding/approval fields changed
+        // Check if key fields changed
         final hasChanged = 
           previousTech.isKycComplete != tech.isKycComplete ||
           previousTech.isApproved != tech.isApproved ||
           previousTech.adminApproved != tech.adminApproved ||
           previousTech.currentOnboardingStep != tech.currentOnboardingStep ||
-          previousTech.status != tech.status;
+          previousTech.status != tech.status ||
+          previousTech.name != tech.name ||
+          previousTech.email != tech.email ||
+          previousTech.phone != tech.phone ||
+          previousTech.profilePhotoUrl != tech.profilePhotoUrl ||
+          previousTech.bankName != tech.bankName ||
+          previousTech.accountNumber != tech.accountNumber ||
+          previousTech.ifscCode != tech.ifscCode ||
+          previousTech.bankStatus != tech.bankStatus;
         
         if (!hasChanged) {
           // Data unchanged, skip notification to prevent rebuild storm
@@ -102,10 +133,11 @@ class TechnicianProvider extends ChangeNotifier {
       
       // Update onboarding state from technician data
       if (tech != null) {
-        // Debug log for approval detection
-        debugPrint('[ADMIN PIPELINE] Approval detected: ${tech.isApproved}');
-        debugPrint('[ADMIN PIPELINE] Admin approved: ${tech.adminApproved}');
-        debugPrint('[ADMIN PIPELINE] Status: ${tech.status}');
+        AppLogger.provider('Approval status updated', data: {
+          'isApproved': tech.isApproved,
+          'adminApproved': tech.adminApproved,
+          'status': tech.status,
+        });
         
         // FIX 2: Onboarding step sanity guard
         OnboardingStep step = tech.currentOnboardingStep;
@@ -125,56 +157,30 @@ class TechnicianProvider extends ChangeNotifier {
       notifyListeners();
     }, onError: (e) {
       // PART 6 & 7: Handle different error types with specific FirebaseException codes
-      debugPrint('[Stream Error] Firestore listener error: $e');
+      AppLogger.error('FIRESTORE', 'Listener error', data: e);
       if (_isDisposed) return;
       
       // Handle FirebaseException specifically
       if (e is FirebaseException) {
+        String message = e.code;
         switch (e.code) {
           case 'permission-denied':
-            debugPrint('[FirebaseException] permission-denied - user may not have access to this data');
+            message = 'Permission denied - check Firestore rules';
             break;
           case 'unavailable':
-            debugPrint('[FirebaseException] unavailable - network is down or service unavailable');
+            message = 'Network unavailable';
             break;
           case 'deadline-exceeded':
-            debugPrint('[FirebaseException] deadline-exceeded - operation took too long');
+            message = 'Request timeout';
             break;
           case 'not-found':
-            debugPrint('[FirebaseException] not-found - document or resource does not exist');
-            break;
-          case 'cancelled':
-            debugPrint('[FirebaseException] cancelled - operation was cancelled');
-            break;
-          case 'aborted':
-            debugPrint('[FirebaseException] aborted - operation was aborted');
-            break;
-          case 'quota-exceeded':
-            debugPrint('[FirebaseException] quota-exceeded - quota limit exceeded');
+            message = 'Document not found';
             break;
           case 'network-error':
-            debugPrint('[FirebaseException] network-error - network connection failed');
+            message = 'Network connection failed';
             break;
-          default:
-            debugPrint('[FirebaseException] ${e.code}: ${e.message}');
         }
-      } else {
-        // Fallback to string matching for other error types
-        final errorStr = e.toString().toLowerCase();
-        
-        if (errorStr.contains('permission-denied') || errorStr.contains('unauthorized')) {
-          debugPrint('[Stream Error] Permission denied - user may not have access');
-        } else if (errorStr.contains('unavailable') || 
-                   errorStr.contains('network') || 
-                   errorStr.contains('host') ||
-                   errorStr.contains('timeout') ||
-                   errorStr.contains('deadline')) {
-          debugPrint('[Stream Error] Network error - no internet connection detected');
-        } else if (errorStr.contains('cancelled') || errorStr.contains('abort')) {
-          debugPrint('[Stream Error] Stream was cancelled');
-        } else {
-          debugPrint('[Stream Error] Unknown error: $e');
-        }
+        AppLogger.warning('FIRESTORE', message, data: e.code);
       }
       
       // Keep showing existing data if available, don't clear it
@@ -349,6 +355,15 @@ class TechnicianProvider extends ChangeNotifier {
       _isOnboardingComplete = true;
       
       await refreshTechnicianData();
+      
+      // Evaluate KYC completion on backend after submission
+      // Cloud Function checks all required fields and sets isKycComplete
+      AppLogger.info('ONBOARDING', 'Evaluating KYC on backend');
+      await evaluateTechnicianKyc();
+      
+      // Refresh again to get the updated isKycComplete status from backend
+      await refreshTechnicianData();
+      
     } catch (e) {
       debugPrint("Error submitting application: $e");
       rethrow;
@@ -440,7 +455,7 @@ class TechnicianProvider extends ChangeNotifier {
   /// Used for routing decisions to prevent state drift
   Future<Technician?> fetchFreshTechnicianData() async {
     final uid = _auth.currentUser?.uid;
-    debugPrint('[FINAL VERIFY] Fetching fresh data for UID: $uid');
+    AppLogger.firestore('Fetching fresh technician data', data: uid);
     if (uid == null) return null;
 
     try {
@@ -454,36 +469,108 @@ class TechnicianProvider extends ChangeNotifier {
           );
       
       if (!doc.exists) {
-        debugPrint('[FINAL VERIFY ❌] Document does not exist');
+        AppLogger.warning('FIRESTORE', 'Technician document does not exist', data: uid);
+        // Auth trigger creates document automatically on signup
         return null;
       }
       
-      debugPrint('[FINAL VERIFY] Firestore raw: ${doc.data()}');
+      AppLogger.firestore('Technician data fetched', data: doc.data());
       
       final tech = Technician.fromFirestore(doc);
       
-      debugPrint('[FINAL VERIFY] isKycComplete resolved = ${tech.isKycComplete}');
+      AppLogger.info('FIRESTORE', 'KYC complete resolved', data: tech.isKycComplete);
       
       return tech;
     } on SocketException catch (e) {
-      debugPrint('[Network Error] No internet connection: $e');
+      AppLogger.error('NETWORK', 'No internet connection', data: e);
       return null;
     } on TimeoutException catch (e) {
-      debugPrint('[Network Error] Connection timeout: $e');
+      AppLogger.error('NETWORK', 'Connection timeout', data: e);
       return null;
     } on FirebaseException catch (e) {
       if (e.code == 'unavailable') {
-        debugPrint('[Network Error] Firestore unavailable: ${e.message}');
+        AppLogger.warning('FIRESTORE', 'Firestore unavailable', data: e.message);
       } else {
-        debugPrint('[FINAL VERIFY ❌] Firebase error: $e');
+        AppLogger.error('FIREBASE', 'Firebase error', data: e);
       }
       return null;
     } catch (e, st) {
-      debugPrint('[FINAL VERIFY ❌] Failure reason: $e');
-      debugPrintStack(stackTrace: st);
+      AppLogger.error('FIRESTORE', 'Failure fetching technician', data: e, stackTrace: st);
       return null;
     }
   }
+
+  /// Evaluate KYC completion status via Cloud Function
+  /// Called after technician completes onboarding
+  /// Returns checklist object with field completion status
+  Future<Map<String, dynamic>?> evaluateTechnicianKyc() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) {
+      AppLogger.error('AUTH', 'No user ID for KYC evaluation');
+      return null;
+    }
+
+    try {
+      final functions = FirebaseFunctions.instance;
+      final callable = functions.httpsCallable('evaluateTechnicianKyc');
+      
+      final result = await callable.call().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw TimeoutException('KYC evaluation timeout'),
+      );
+      
+      final data = result.data as Map<String, dynamic>;
+      AppLogger.firestore('KYC evaluation completed', data: data);
+      
+      return data;
+    } on FirebaseFunctionsException catch (e) {
+      AppLogger.error('FUNCTIONS', 'KYC evaluation failed', data: '${e.code}: ${e.message}');
+      return null;
+    } on TimeoutException catch (e) {
+      AppLogger.error('NETWORK', 'KYC evaluation timeout', data: e);
+      return null;
+    } catch (e, st) {
+      AppLogger.error('FUNCTIONS', 'Unexpected KYC error', data: e, stackTrace: st);
+      return null;
+    }
+  }
+
+  /// Check current KYC status via Cloud Function
+  /// Returns current isKycComplete status without re-evaluating
+  Future<bool?> checkKycStatus() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) {
+      AppLogger.error('AUTH', 'No user ID for KYC status check');
+      return null;
+    }
+
+    try {
+      final functions = FirebaseFunctions.instance;
+      final callable = functions.httpsCallable('checkKycStatus');
+      
+      final result = await callable.call().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw TimeoutException('KYC status check timeout'),
+      );
+      
+      final data = result.data as Map<String, dynamic>;
+      final isKycComplete = data['isKycComplete'] as bool? ?? false;
+      
+      AppLogger.firestore('KYC status checked', data: isKycComplete);
+      
+      return isKycComplete;
+    } on FirebaseFunctionsException catch (e) {
+      AppLogger.error('FUNCTIONS', 'KYC status check failed', data: '${e.code}: ${e.message}');
+      return null;
+    } on TimeoutException catch (e) {
+      AppLogger.error('NETWORK', 'KYC status check timeout', data: e);
+      return null;
+    } catch (e, st) {
+      AppLogger.error('FUNCTIONS', 'Unexpected KYC status error', data: e, stackTrace: st);
+      return null;
+    }
+  }
+
   Future<void> refreshTechnicianData() async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return;

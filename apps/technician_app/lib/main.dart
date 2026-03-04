@@ -19,6 +19,7 @@ import 'features/technician/screens/profile_under_review_screen.dart';
 import 'features/technician/services/add_service_screen.dart';
 import 'core/services/technician_catalog_service.dart';
 import 'core/firebase/firebase_init.dart';
+import 'core/utils/app_logger.dart';
 
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_performance/firebase_performance.dart';
@@ -40,13 +41,7 @@ void main() async {
   
   // CRITICAL: Initialize Firebase with App Check FIRST
   await FirebaseInit.init();
-  debugPrint('[MAIN] Firebase initialization complete');
-  
-  // Debug diagnostic (debug only)
-  if (!kReleaseMode) {
-    debugPrint('[MAIN_DIAG] App running in DEBUG mode');
-    debugPrint('[MAIN_DIAG] Check logs above for 🔥 APP_CHECK_TOKEN_* entries');
-  }
+  AppLogger.info('MAIN', 'Firebase initialization complete');
   
   // Initialize Crashlytics & Performance AFTER App Check
   FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
@@ -54,11 +49,11 @@ void main() async {
 
   // Initialize Messaging AFTER App Check
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-  debugPrint('[MAIN] Background message handler set');
+  AppLogger.info('MAIN', 'Background message handler set');
   
   // Initialize Push Notifications AFTER App Check
   await NotificationsService().initialize();
-  debugPrint('[MAIN] Notifications service initialized');
+  AppLogger.info('MAIN', 'Notifications service initialized');
 
   runApp(
     MultiProvider(
@@ -305,9 +300,7 @@ class _AuthGateState extends State<AuthGate> {
 
         // PRIORITY 2: If user is logged in, ALWAYS go to authenticated flow
         if (snapshot.hasData && snapshot.data != null) {
-          if (kDebugMode) {
-            debugPrint('[AuthGate] ✅ User logged in: ${snapshot.data!.uid}');
-          }
+          AppLogger.auth('User logged in', data: snapshot.data!.uid);
           return _AuthenticatedGate(
             user: snapshot.data!,
             debugMode: _kDebugMode,
@@ -315,9 +308,7 @@ class _AuthGateState extends State<AuthGate> {
         }
 
         // PRIORITY 3: User not logged in - check onboarding
-        if (kDebugMode) {
-          debugPrint('[AuthGate] ❌ User not logged in - checking onboarding');
-        }
+        AppLogger.auth('User not logged in - checking onboarding');
         return _UnauthenticatedGate(debugMode: _kDebugMode);
       },
     );
@@ -346,9 +337,7 @@ class _UnauthenticatedGateState extends State<_UnauthenticatedGate> {
   Future<void> _checkOnboardingStatus() async {
     final prefs = await SharedPreferences.getInstance();
     final seen = prefs.getBool('technician_onboarding_done') ?? false;
-    if (kDebugMode) {
-      debugPrint('[UnauthGate] Onboarding done: $seen');
-    }
+    AppLogger.info('AUTH', 'Onboarding done', data: seen);
     if (mounted) {
       setState(() => _hasSeenOnboarding = seen);
     }
@@ -361,15 +350,11 @@ class _UnauthenticatedGateState extends State<_UnauthenticatedGate> {
     }
 
     if (_hasSeenOnboarding == false) {
-      if (kDebugMode) {
-        debugPrint('[UnauthGate] → AppOnboardingScreen');
-      }
+      AppLogger.info('AUTH', 'Showing AppOnboardingScreen');
       return const AppOnboardingScreen();
     }
 
-    if (kDebugMode) {
-      debugPrint('[UnauthGate] → LoginScreen');
-    }
+    AppLogger.info('AUTH', 'Showing LoginScreen');
     return const LoginScreen();
   }
 }
@@ -599,39 +584,109 @@ class _AuthenticatedGate extends StatefulWidget {
 }
 
 class _AuthenticatedGateState extends State<_AuthenticatedGate> {
+  bool _initialLoadDone = false;
+  int _checkRetries = 0;
+  static const int _maxRetries = 10; // Wait up to ~5 seconds for Auth trigger
+  static const Duration _retryDelay = Duration(milliseconds: 500);
+
+  @override
+  void initState() {
+    super.initState();
+    _checkDocumentExistence();
+  }
+
+  /// Wait for technician document to be created by Auth trigger
+  /// Retries with backoff to handle async trigger execution
+  Future<void> _checkDocumentExistence() async {
+    final provider = context.read<TechnicianProvider>();
+    
+    while (_checkRetries < _maxRetries) {
+      try {
+        // Fetch fresh data from server (not cache)
+        final tech = await provider.fetchFreshTechnicianData();
+        
+        if (tech != null) {
+          // Document exists - we can proceed
+          AppLogger.info('AUTH', 'Technician document found', data: tech.uid);
+          if (mounted) {
+            setState(() {
+              _initialLoadDone = true;
+            });
+          }
+          return;
+        }
+        
+        // Document not found yet - wait and retry
+        await Future.delayed(_retryDelay);
+        _checkRetries++;
+        
+      } catch (e) {
+        AppLogger.error('AUTH', 'Error checking document', data: e);
+        await Future.delayed(_retryDelay);
+        _checkRetries++;
+      }
+    }
+    
+    // Max retries reached - show error but allow navigation to onboarding
+    AppLogger.error('AUTH', 'Technician document not found after retries');
+    if (mounted) {
+      setState(() {
+        _initialLoadDone = true;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    debugPrint('[FINAL VERIFY] Fresh install flow running');
     return Consumer<TechnicianProvider>(
       builder: (context, provider, _) {
-        if (provider.isLoading) {
+        // While waiting for Auth trigger to create document
+        if (!_initialLoadDone || provider.isLoading) {
           return const _LoadingScreen(
-            message: 'Verifying account...',
+            message: 'Initializing...',
           );
         }
 
         final tech = provider.technician;
-        final isKycComplete = tech?.isKycComplete ?? false;
         
-        debugPrint('[FINAL VERIFY] AuthGate: tech=${tech?.uid}, isKycComplete=$isKycComplete');
+        // compute a combined flag so that KYC-complete techs don't get stuck
+        final bool onboardDone = (tech?.onboardingCompleted ?? false) || (tech?.isKycComplete ?? false);
+        AppLogger.provider('Auth gate routing decision', data: {
+          'uid': tech?.uid,
+          'exists': tech != null,
+          'onboardingCompleted': tech?.onboardingCompleted,
+          'isKycComplete': tech?.isKycComplete,
+          'combinedOnboard': onboardDone,
+          'isApproved': tech?.isApproved,
+        });
         
-        if (tech == null || !isKycComplete) {
+        // Document doesn't exist - go to onboarding (Auth trigger will create it soon)
+        if (tech == null) {
+          AppLogger.info('AUTH', 'No technician doc - routing to onboarding');
           return const TechnicianOnboardingFlowScreen();
         }
         
-        // Check if KYC complete but not approved -> show review screen
-        if (isKycComplete && !tech.isApproved) {
-          debugPrint('[FINAL VERIFY] KYC complete but not approved -> ProfileUnderReviewScreen');
+        // Onboarding not complete - show onboarding flow
+        if (!onboardDone) {
+          AppLogger.info('AUTH', 'Onboarding not complete');
+          return const TechnicianOnboardingFlowScreen();
+        }
+        
+        // Onboarding done but KYC not complete - show onboarding
+        if (!tech.isKycComplete) {
+          AppLogger.info('AUTH', 'Onboarding done but KYC not complete');
+          return const TechnicianOnboardingFlowScreen();
+        }
+        
+        // KYC complete but not approved - show review screen
+        if (!tech.isApproved) {
+          AppLogger.info('AUTH', 'KYC complete but not approved - showing review');
           return const ProfileUnderReviewScreen();
         }
         
-        // If KYC complete and approved -> show dashboard
-        if (isKycComplete) {
-          debugPrint('[FINAL VERIFY] Dashboard gate decision: stay=true');
-          return const DashboardScreen();
-        }
-        
-        return const TechnicianOnboardingFlowScreen();
+        // Fully approved - show dashboard
+        AppLogger.info('AUTH', 'Full authorization - showing dashboard');
+        return const DashboardScreen();
       },
     );
   }

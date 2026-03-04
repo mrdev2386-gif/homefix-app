@@ -22,6 +22,17 @@ interface ServiceInput {
   imageUrl: string;
   category: string;
   description?: string;
+  // Urgent Booking Feature
+  urgentBooking?: {
+    enabled: boolean;
+    arrivalTime?: string;
+    urgentFee?: number;
+  };
+  // Night Service Feature
+  nightService?: {
+    enabled: boolean;
+    nightCharge?: number;
+  };
 }
 
 interface UpdateServiceInput {
@@ -31,6 +42,17 @@ interface UpdateServiceInput {
   imageUrl?: string;
   category?: string;
   description?: string;
+  // Urgent Booking Feature
+  urgentBooking?: {
+    enabled?: boolean;
+    arrivalTime?: string;
+    urgentFee?: number;
+  };
+  // Night Service Feature
+  nightService?: {
+    enabled?: boolean;
+    nightCharge?: number;
+  };
 }
 
 /**
@@ -46,7 +68,7 @@ export const addTechnicianService = onCall(
     }
 
     const technicianId = request.auth.uid;
-    const { name, price, imageUrl, category, description } = request.data;
+    const { name, price, imageUrl, category, description, urgentBooking, nightService } = request.data;
 
     // Validation
     if (!name?.trim() || name.trim().length < 3) {
@@ -81,7 +103,7 @@ export const addTechnicianService = onCall(
     const serviceId = db.collection(`technicians/${technicianId}/services`).doc().id;
     const now = admin.firestore.Timestamp.now();
 
-    const serviceData = {
+    const serviceData: any = {
       id: serviceId,
       name: name.trim(),
       price,
@@ -97,6 +119,36 @@ export const addTechnicianService = onCall(
       createdAt: now,
       updatedAt: now,
     };
+
+    // Add urgent booking configuration if provided
+    if (urgentBooking) {
+      serviceData.urgentBooking = {
+        enabled: urgentBooking.enabled || false,
+        arrivalTime: urgentBooking.arrivalTime || null,
+        urgentFee: urgentBooking.urgentFee || 0,
+      };
+    } else {
+      // Default structure for new services
+      serviceData.urgentBooking = {
+        enabled: false,
+        arrivalTime: null,
+        urgentFee: 0,
+      };
+    }
+
+    // Add night service configuration if provided
+    if (nightService) {
+      serviceData.nightService = {
+        enabled: nightService.enabled || false,
+        nightCharge: nightService.nightCharge || 0,
+      };
+    } else {
+      // Default structure for new services
+      serviceData.nightService = {
+        enabled: false,
+        nightCharge: 0,
+      };
+    }
 
     await db.doc(`technicians/${technicianId}/services/${serviceId}`).set(serviceData);
 
@@ -169,6 +221,23 @@ export const updateTechnicianService = onCall(
 
     if (updates.description !== undefined) {
       updateData.description = updates.description.trim();
+    }
+
+    // Urgent Booking Feature updates
+    if (updates.urgentBooking !== undefined) {
+      updateData.urgentBooking = {
+        enabled: updates.urgentBooking.enabled ?? false,
+        arrivalTime: updates.urgentBooking.arrivalTime ?? null,
+        urgentFee: updates.urgentBooking.urgentFee ?? 0,
+      };
+    }
+
+    // Night Service Feature updates
+    if (updates.nightService !== undefined) {
+      updateData.nightService = {
+        enabled: updates.nightService.enabled ?? false,
+        nightCharge: updates.nightService.nightCharge ?? 0,
+      };
     }
 
     // PROTECTED: Do NOT allow updates to:

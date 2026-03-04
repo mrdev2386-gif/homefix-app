@@ -76,6 +76,7 @@ interface CreateBookingRequestData {
     durationMinutes?: number;
     couponCode?: string;
     idempotencyKey?: string; // For production safety
+    paymentType?: 'before_work' | 'after_work'; // Payment timing preference
 }
 
 interface CreateBookingRequestResponse {
@@ -95,7 +96,7 @@ export const createBookingRequest = functions.https.onCall(
         }
 
         const customerId = context.auth.uid;
-        const { serviceId, technicianId, categoryId, categoryName, scheduledDate, scheduledTime, address, price, idempotencyKey } = data;
+        const { serviceId, technicianId, categoryId, categoryName, scheduledDate, scheduledTime, address, price, idempotencyKey, paymentType } = data;
 
         // 2. Idempotency Check
         if (idempotencyKey) {
@@ -237,6 +238,7 @@ export const createBookingRequest = functions.https.onCall(
                     // Status - NEW FLOW
                     status: 'pending_admin',
                     paymentStatus: 'pending' as PaymentStatus,
+                    paymentType: paymentType || 'after_work', // Default to pay after work
 
                     // Timestamps
                     createdAt: now,
@@ -251,15 +253,36 @@ export const createBookingRequest = functions.https.onCall(
 
             console.log(`[createBookingRequest] Created booking ${bookingId} with status: pending_admin`);
 
-            // 9. Send notification to admin (Keep using raw send if no special admin helper)
-            await notify.sendUserNotification({
-                userId: 'admin',
-                userType: 'admin',
-                title: 'New Booking Request',
-                body: `New booking from ${context.auth!.token?.name || 'Customer'} for ${serviceData.name || 'Service'}`,
-                type: 'new_request_nearby', // Closest type
-                data: { bookingId }
-            });
+            // 9. Send notification to ALL admins
+            try {
+                const adminsSnapshot = await db.collection('admins').get();
+                if (!adminsSnapshot.empty) {
+                    const adminNotifications = adminsSnapshot.docs.map(adminDoc =>
+                        notify.sendUserNotification({
+                            userId: adminDoc.id,
+                            userType: 'admin',
+                            title: 'New Booking Request',
+                            body: `New booking from ${context.auth!.token?.name || 'Customer'} for ${serviceData.name || 'Service'}`,
+                            type: 'new_request_nearby',
+                            data: { bookingId }
+                        })
+                    );
+                    await Promise.allSettled(adminNotifications);
+                } else {
+                    // Fallback to single admin if collection is empty
+                    await notify.sendUserNotification({
+                        userId: 'admin',
+                        userType: 'admin',
+                        title: 'New Booking Request',
+                        body: `New booking from ${context.auth!.token?.name || 'Customer'} for ${serviceData.name || 'Service'}`,
+                        type: 'new_request_nearby',
+                        data: { bookingId }
+                    });
+                }
+            } catch (notifyError) {
+                console.error('[createBookingRequest] Admin notification failed:', notifyError);
+                // Don't fail booking creation if notification fails
+            }
 
             return {
                 success: true,
@@ -626,6 +649,48 @@ export const customerConfirmPayment = functions.https.onCall(
             console.error('[customerConfirmPayment] Error:', error);
             throw new functions.https.HttpsError('internal', error.message || 'Failed to process payment');
         }
+    }
+);
+
+// ==========================================
+// 4.5. MARK WORK COMPLETED (Dedicated)
+// ==========================================
+
+export const markWorkCompleted = functions.https.onCall(
+    async (data: { bookingId: string }, context: functions.https.CallableContext) => {
+        if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+
+        const technicianId = context.auth.uid;
+        const { bookingId } = data;
+
+        const bookingDoc = await db.collection('bookings').doc(bookingId).get();
+        if (!bookingDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
+
+        const booking = bookingDoc.data()!;
+        if (booking.technicianId !== technicianId) {
+            throw new functions.https.HttpsError('permission-denied', 'Not your booking');
+        }
+        if (booking.status !== 'in_progress') {
+            throw new functions.https.HttpsError('failed-precondition', 'Work not started');
+        }
+
+        await bookingDoc.ref.update({
+            status: 'work_completed',
+            workCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        await notify.sendUserNotification({
+            userId: booking.customerId,
+            userType: 'customer',
+            title: 'Work Completed! 🎉',
+            body: 'Please proceed with payment',
+            type: 'job_completed',
+            data: { bookingId, screen: 'payment' },
+            priority: 'high'
+        });
+
+        return { success: true, status: 'work_completed' };
     }
 );
 

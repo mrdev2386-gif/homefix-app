@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/firestore_safe_parser.dart';
 
 class Booking {
   final String bookingId;
@@ -60,10 +61,10 @@ class Booking {
           ? (data['scheduledAt'] as Timestamp).toDate() 
           : (data['scheduledDate'] != null ? (data['scheduledDate'] as Timestamp).toDate() : DateTime.now()),
       scheduledTime: data['scheduledTime'] ?? '',
-      status: data['status'] ?? 'pending',
-      price: (data['price'] ?? 0.0).toDouble(),
-      finalAmount: (data['finalAmount'] ?? 0.0).toDouble(),
-      addressSnapshot: Map<String, dynamic>.from(data['addressSnapshot'] ?? data['address'] ?? {}),
+      status: FirestoreSafeParser.toSafeString(data['status'], fallback: 'pending'),
+      price: FirestoreSafeParser.toSafeDouble(data['price']),
+      finalAmount: FirestoreSafeParser.toSafeDouble(data['finalAmount']),
+      addressSnapshot: FirestoreSafeParser.toSafeMap(data['addressSnapshot'] ?? data['address']),
       createdAt: data['createdAt'] != null ? (data['createdAt'] as Timestamp).toDate() : DateTime.now(),
       quoteData: data['quoteData'] != null ? Map<String, dynamic>.from(data['quoteData']) : null,
     );

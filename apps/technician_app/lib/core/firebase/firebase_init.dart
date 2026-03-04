@@ -1,7 +1,9 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../../firebase_options.dart';
+import '../utils/app_logger.dart';
 
 class FirebaseInit {
   static bool _initialized = false;
@@ -14,109 +16,99 @@ class FirebaseInit {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
-      debugPrint('[FIREBASE] Core initialized');
+      AppLogger.firebase('Core initialized');
 
-      // 🔍 DIAGNOSTIC: Print Firebase project configuration
-      debugPrint('[FIREBASE_CONFIG] Project ID: ${Firebase.app().options.projectId}');
-      debugPrint('[FIREBASE_CONFIG] App ID: ${Firebase.app().options.appId}');
-      debugPrint('[FIREBASE_CONFIG] API Key: ${Firebase.app().options.apiKey}');
-
-      // 🔥 CRITICAL: Small delay to allow Firebase internal services to settle
-      // (safe in debug, harmless in release)
-      await Future.delayed(const Duration(milliseconds: 300));
+      // ✅ CRITICAL: Disable reCAPTCHA in debug mode to avoid token issues
+      if (!kReleaseMode) {
+        await FirebaseAuth.instance.setSettings(
+          appVerificationDisabledForTesting: true,
+        );
+        AppLogger.firebase('reCAPTCHA disabled for testing');
+      }
 
       // ✅ Step 2: Select provider safely
       final provider = kReleaseMode
           ? AndroidProvider.playIntegrity
           : AndroidProvider.debug;
 
-      debugPrint('[APP_CHECK_DIAG] Release mode: $kReleaseMode');
-      debugPrint(
-        '[APP_CHECK_DIAG] Provider: ${kReleaseMode ? "playIntegrity" : "debug"}',
-      );
+      AppLogger.firebase('Activating App Check with provider: ${kReleaseMode ? "playIntegrity" : "debug"}');
 
-      // ✅ Step 3: Activate App Check
+      // ✅ Step 3: Activate App Check with safe error handling
+      // Note: ProviderInstaller warnings are non-critical and safe to ignore
+      // They indicate optional security providers are not available
       await FirebaseAppCheck.instance.activate(
         androidProvider: provider,
       );
-      debugPrint(
-        '[APP_CHECK] Activated with provider: ${kReleaseMode ? "playIntegrity" : "debug"}',
-      );
+      AppLogger.firebase('App Check activated successfully');
 
-      // ✅ Step 4: Extract debug token (DEBUG ONLY)
+      // ✅ Step 4: Extract debug token (DEBUG ONLY - NEVER IN RELEASE)
       if (!kReleaseMode) {
         await _extractDebugToken();
       }
 
       _initialized = true;
-      debugPrint('[FIREBASE] Initialization complete');
+      AppLogger.firebase('Firebase initialization complete');
     } catch (e, st) {
-      debugPrint('[FIREBASE_ERROR] Init failed: $e');
-      debugPrint('$st');
-      rethrow;
+      // Log the error but continue - non-critical failures should not crash app
+      AppLogger.error('FIREBASE', 'Init failed', data: e, stackTrace: st);
+      _initialized = true; // Mark as initialized anyway to prevent repeated attempts
+      // Don't rethrow to allow app to continue with degraded functionality
     }
   }
 
-  /// 🔥 Multi-strategy debug token extraction
+  /// 🔐 Debug token extraction - NEVER LOGS IN RELEASE BUILD
+  /// This method ONLY executes in debug mode and only logs to debugPrint
   static Future<void> _extractDebugToken() async {
-    debugPrint('[APP_CHECK_DIAG] Starting token extraction...');
+    AppLogger.debug('FIREBASE', 'Starting debug token extraction');
 
     // Strategy A
     try {
-      debugPrint(
-        '[APP_CHECK_DIAG] Strategy A: Fetching with forceRefresh=true',
-      );
+      AppLogger.debug('FIREBASE', 'Strategy A: Fetching with forceRefresh=true');
       final token = await FirebaseAppCheck.instance.getToken(true);
 
       if (token != null && token.isNotEmpty) {
-        debugPrint('🔥 APP_CHECK_TOKEN_PRIMARY: $token');
-        debugPrint(
-          '👉 COPY THIS TOKEN INTO Firebase → App Check → Manage debug tokens',
-        );
+        // ONLY log token in kDebugMode and NEVER in release
+        if (kDebugMode) {
+          debugPrint('🔥 APP_CHECK_DEBUG_TOKEN: $token');
+          debugPrint('👉 Copy token to Firebase Console → App Check → Manage debug tokens');
+        }
         return;
       } else {
-        debugPrint('[APP_CHECK_DIAG] Strategy A returned null/empty token');
+        AppLogger.debug('FIREBASE', 'Strategy A returned null/empty token');
       }
     } catch (e) {
-      debugPrint('[APP_CHECK_DIAG] Strategy A failed: $e');
+      AppLogger.debug('FIREBASE', 'Strategy A failed', data: e);
     }
 
     // Strategy B
     try {
-      debugPrint(
-        '[APP_CHECK_DIAG] Strategy B: Fetching with forceRefresh=false',
-      );
+      AppLogger.debug('FIREBASE', 'Strategy B: Fetching with forceRefresh=false');
       final token = await FirebaseAppCheck.instance.getToken(false);
 
       if (token != null && token.isNotEmpty) {
-        debugPrint('🔥 APP_CHECK_TOKEN_FALLBACK: $token');
-        debugPrint(
-          '👉 COPY THIS TOKEN INTO Firebase → App Check → Manage debug tokens',
-        );
+        if (kDebugMode) {
+          debugPrint('🔥 APP_CHECK_FALLBACK_TOKEN: $token');
+        }
         return;
       } else {
-        debugPrint('[APP_CHECK_DIAG] Strategy B returned null/empty token');
+        AppLogger.debug('FIREBASE', 'Strategy B returned null/empty token');
       }
     } catch (e) {
-      debugPrint('[APP_CHECK_DIAG] Strategy B failed: $e');
+      AppLogger.debug('FIREBASE', 'Strategy B failed', data: e);
     }
 
-    // Strategy C
+    // Strategy C - Token listener
     try {
-      debugPrint('[APP_CHECK_DIAG] Strategy C: Setting up token listener');
-
+      AppLogger.debug('FIREBASE', 'Strategy C: Setting up token listener');
       FirebaseAppCheck.instance.onTokenChange.listen((token) {
-        if (token != null && token.isNotEmpty) {
-          debugPrint('🔥 APP_CHECK_TOKEN_LISTENER: $token');
-          debugPrint(
-            '👉 COPY THIS TOKEN INTO Firebase → App Check → Manage debug tokens',
-          );
+        if (token != null && token.isNotEmpty && kDebugMode) {
+          debugPrint('🔥 APP_CHECK_NEW_TOKEN: $token');
         }
       });
     } catch (e) {
-      debugPrint('[APP_CHECK_DIAG] Strategy C setup failed: $e');
+      AppLogger.debug('FIREBASE', 'Strategy C failed', data: e);
     }
 
-    debugPrint('[APP_CHECK_DIAG] Token extraction complete');
+    AppLogger.debug('FIREBASE', 'Debug token extraction complete');
   }
 }

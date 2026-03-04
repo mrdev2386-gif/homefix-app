@@ -106,15 +106,50 @@ service cloud.firestore {
       // Public read for finding technicians
       allow read: if true;
       
-      // Write: ONLY via Cloud Functions for critical fields
-      // Allow technician to update non-critical fields only
-      allow update: if isOwner(technicianId) && (
-        // Only allow updating these safe fields
-        !request.resource.data.diff(resource.data).affectedKeys()
-          .hasAny(['walletBalance', 'isApproved', 'adminApproved', 'rating', 'jobsCompleted'])
-      );
+      // WRITE SECURITY: Production-safe restrictions
+      // Client CANNOT create documents - only Auth trigger (backend) can
+      // Client CANNOT delete documents - only admin can
+      // Client CAN update ONLY non-sensitive profile fields
       
-      allow create, delete: if false;
+      allow create: if false; // Only Auth trigger creates - backend only
+      allow delete: if false; // Only admin can delete
+      
+      // Update: VERY restrictive - block all sensitive fields
+      allow update: if isOwner(technicianId) && (
+        // BLOCK: Backend-controlled security fields
+        !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny([
+            // KYC & Approval (only Cloud Functions update)
+            'isKycComplete',
+            'onboardingCompleted',
+            'isApproved',
+            'adminApproved',
+            
+            // Security fields (backend only)
+            'role',
+            'createdAt',
+            'updatedAt',
+            
+            // Financial (only Cloud Functions)
+            'walletBalance',
+            'totalEarnings',
+            'pendingEarnings',
+            
+            // Metrics (read-only)
+            'rating',
+            'avgRating',
+            'totalRatings',
+            'jobsDone',
+            'jobsCompleted',
+            
+            // Audit trails
+            '_kycChecklist',
+            '_kycEvaluatedAt',
+            
+            // Status fields managed by admin
+            'status'
+          ])
+      );
       
       // Services subcollection
       match /services/{serviceId} {

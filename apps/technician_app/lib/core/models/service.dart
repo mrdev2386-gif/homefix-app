@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/firestore_safe_parser.dart';
 
 class HomeService {
   final String id;
@@ -18,14 +19,14 @@ class HomeService {
   });
 
   factory HomeService.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    final data = FirestoreSafeParser.toSafeMap(doc.data());
     return HomeService(
       id: doc.id,
-      key: data['serviceId'] ?? data['key'] ?? '',
-      title: data['name'] ?? data['title'] ?? '',
-      imageAssetPath: data['image'] ?? data['imageUrl'] ?? data['imageAssetPath'] ?? '',
-      basePrice: (data['price'] ?? data['basePrice'] ?? 0.0).toDouble(),
-      isActive: data['isActive'] ?? true,
+      key: FirestoreSafeParser.toSafeString(data['serviceId'] ?? data['key']),
+      title: FirestoreSafeParser.toSafeString(data['name'] ?? data['title']),
+      imageAssetPath: FirestoreSafeParser.toSafeString(data['image'] ?? data['imageUrl'] ?? data['imageAssetPath']),
+      basePrice: FirestoreSafeParser.toSafeDouble(data['price'] ?? data['basePrice']),
+      isActive: FirestoreSafeParser.toSafeBool(data['isActive'], fallback: true),
     );
   }
 

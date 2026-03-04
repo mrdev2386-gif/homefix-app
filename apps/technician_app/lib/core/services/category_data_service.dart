@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/app_logger.dart';
 
 /// Category data model
 class CategoryData {
@@ -153,13 +154,12 @@ class CategoryDataService {
     
     // Return cached if valid and not empty
     if (_cachedCategories != null && _cachedCategories!.isNotEmpty) {
-      debugPrint('[CategoryDataService] Returning cached categories: ${_cachedCategories!.length}');
+      AppLogger.firestore('Returning cached categories', data: _cachedCategories!.length);
       return _cachedCategories!;
     }
 
     try {
-      debugPrint('[DEBUG] Category fetch path: categories collection');
-      debugPrint('[CATEGORY] Fetching from "categories" collection...');
+      AppLogger.firestore('Fetching from categories collection');
       
       QuerySnapshot snapshot = await _firestore
           .collection('categories')
@@ -167,7 +167,7 @@ class CategoryDataService {
           .orderBy('order')
           .get();
 
-      debugPrint('[CATEGORY] SUCCESS: docs=${snapshot.docs.length}');
+      AppLogger.firestore('Category fetch success', data: snapshot.docs.length);
       
       _cachedCategories = snapshot.docs
           .map((doc) => CategoryData.fromFirestore(doc))
@@ -176,7 +176,7 @@ class CategoryDataService {
       
       return _cachedCategories!;
     } catch (e) {
-      debugPrint('[CATEGORY] CRITICAL ERROR fetching categories: $e');
+      AppLogger.error('FIRESTORE', 'Failed to fetch categories', data: e);
       rethrow;
     }
   }
@@ -187,7 +187,7 @@ class CategoryDataService {
     if (forceRefresh) clearCache();
 
     try {
-      debugPrint('[SUBCATEGORY] Fetching from "services" for category: $categoryId');
+      AppLogger.firestore('Fetching services for category', data: categoryId);
       
       Query query = _firestore
           .collection('services')
@@ -199,7 +199,7 @@ class CategoryDataService {
 
       QuerySnapshot snapshot = await query.orderBy('order').get();
 
-      debugPrint('[SUBCATEGORY] SUCCESS: docs=${snapshot.docs.length}');
+      AppLogger.firestore('Services fetch success', data: snapshot.docs.length);
       
       final subCategories = snapshot.docs
           .map((doc) => SubCategoryData.fromFirestore(doc))
@@ -207,7 +207,7 @@ class CategoryDataService {
           
       return subCategories;
     } catch (e) {
-      debugPrint('[SUBCATEGORY] CRITICAL ERROR fetching subcategories: $e');
+      AppLogger.error('FIRESTORE', 'Failed to fetch services', data: e);
       rethrow;
     }
   }
@@ -241,7 +241,7 @@ class CategoryDataService {
     _categoriesCacheTime = null;
     _cachedSubCategories = null;
     _subCategoriesCacheTime = null;
-    debugPrint('[CategoryDataService] Cache cleared');
+    AppLogger.firestore('Cache cleared');
   }
 
   /// Get services from Firestore by category

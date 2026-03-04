@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/firestore_safe_parser.dart';
 
 /// Enhanced Technician Wallet Model - Production Safe
 /// 
@@ -46,20 +47,18 @@ class TechnicianWallet {
     if (!doc.exists) {
       return TechnicianWallet.empty(doc.id);
     }
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    final data = FirestoreSafeParser.toSafeMap(doc.data());
     return TechnicianWallet(
       technicianId: doc.id,
-      availableBalance: (data['availableBalance'] ?? 0.0).toDouble(),
-      pendingBalance: (data['pendingBalance'] ?? 0.0).toDouble(),
-      onHoldBalance: (data['onHoldBalance'] ?? 0.0).toDouble(),
-      lifetimeEarnings: (data['lifetimeEarnings'] ?? 0.0).toDouble(),
+      availableBalance: FirestoreSafeParser.toSafeDouble(data['availableBalance']),
+      pendingBalance: FirestoreSafeParser.toSafeDouble(data['pendingBalance']),
+      onHoldBalance: FirestoreSafeParser.toSafeDouble(data['onHoldBalance']),
+      lifetimeEarnings: FirestoreSafeParser.toSafeDouble(data['lifetimeEarnings']),
       lastPayoutAt: data['lastPayoutAt'] != null 
-          ? (data['lastPayoutAt'] as Timestamp).toDate() 
+          ? FirestoreSafeParser.toSafeDateTime(data['lastPayoutAt']) 
           : null,
-      updatedAt: data['updatedAt'] != null 
-          ? (data['updatedAt'] as Timestamp).toDate() 
-          : DateTime.now(),
-      kycStatus: data['kycStatus'] ?? 'pending',
+      updatedAt: FirestoreSafeParser.toSafeDateTime(data['updatedAt']),
+      kycStatus: FirestoreSafeParser.toSafeString(data['kycStatus'], fallback: 'pending'),
       bankAccountId: data['bankAccountId'],
     );
   }

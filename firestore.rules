@@ -1,0 +1,255 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ============================================
+    // HELPER FUNCTIONS
+    // ============================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    
+    // ============================================
+    // BOOKINGS - CRITICAL SECURITY
+    // ============================================
+    
+    match /bookings/{bookingId} {
+      // Customer can always read their own bookings
+      allow read: if isAuthenticated() && 
+                     request.auth.uid == resource.data.customerId;
+      
+      // Technician can read ONLY after admin approval
+      // Before approval (pending_admin), technician CANNOT see customer details
+      allow read: if isAuthenticated() && 
+                     request.auth.uid == resource.data.technicianId &&
+                     (resource.data.status == 'technician_pending' ||
+                      resource.data.status == 'technician_accepted' ||
+                      resource.data.status == 'awaiting_payment' ||
+                      resource.data.status == 'confirmed' ||
+                      resource.data.status == 'in_progress' ||
+                      resource.data.status == 'work_completed' ||
+                      resource.data.status == 'payment_pending_confirmation' ||
+                      resource.data.status == 'completed');
+      
+      // Admin can read all bookings
+      allow read: if isAdmin();
+      
+      // NO client writes - ONLY Cloud Functions can write
+      allow write: if false;
+    }
+    
+    // ============================================
+    // ADMIN COLLECTION
+    // ============================================
+    
+    match /admins/{adminId} {
+      allow read: if isOwner(adminId);
+      allow write: if false; // Only Cloud Functions
+    }
+    
+    // ============================================
+    // CUSTOMERS COLLECTION
+    // ============================================
+    
+    match /customers/{customerId} {
+      // Customer can read their own profile
+      allow read: if isOwner(customerId);
+      
+      // NO client writes - only Cloud Functions
+      allow write: if false;
+      
+      // FCM Tokens - customer can manage their own
+      match /fcmTokens/{tokenId} {
+        allow read, write: if isOwner(customerId);
+      }
+      
+      // Addresses - customer can manage their own
+      match /addresses/{addressId} {
+        allow read, write: if isOwner(customerId);
+      }
+      
+      // Payment methods - customer can manage their own
+      match /payment_methods/{methodId} {
+        allow read, write: if isOwner(customerId);
+      }
+      
+      // Wallet transactions - read-only
+      match /wallet_transactions/{txnId} {
+        allow read: if isOwner(customerId);
+        allow write: if false; // Only Cloud Functions
+      }
+    }
+    
+    // ============================================
+    // TECHNICIANS COLLECTION
+    // ============================================
+    
+    match /technicians/{techId} {
+      // Technician can read their own profile
+      // Approved technicians are visible to others (marketplace)
+      allow read: if isOwner(techId) || 
+                     (isAuthenticated() && resource.data.isApproved == true);
+      
+      // NO client writes - only Cloud Functions
+      allow write: if false;
+      
+      // FCM Tokens - technician can manage their own
+      match /fcmTokens/{tokenId} {
+        allow read, write: if isOwner(techId);
+      }
+      
+      // Wallet transactions - read-only
+      match /wallet_transactions/{txnId} {
+        allow read: if isOwner(techId);
+        allow write: if false; // Only Cloud Functions
+      }
+      
+      // Technician services - read if approved, write via Cloud Functions
+      match /technician_services/{serviceId} {
+        allow read: if resource.data.isPublished == true && 
+                       resource.data.status == 'active';
+        allow write: if false; // Only Cloud Functions
+      }
+    }
+    
+    // ============================================
+    // SERVICES CATALOG - READ-ONLY
+    // ============================================
+    
+    match /services/{serviceId} {
+      allow read: if true;
+      allow write: if false; // Only Cloud Functions
+    }
+    
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if false; // Only Cloud Functions
+      
+      match /services/{serviceId} {
+        allow read: if true;
+        allow write: if false;
+      }
+      
+      match /subcategories/{subcategoryId} {
+        allow read: if true;
+        allow write: if false;
+      }
+    }
+    
+    // ============================================
+    // COUPONS - READ-ONLY
+    // ============================================
+    
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow write: if false; // Only Cloud Functions
+    }
+    
+    // ============================================
+    // NOTIFICATIONS
+    // ============================================
+    
+    match /notifications/{notificationId} {
+      // User can read their own notifications
+      allow read: if isAuthenticated() && 
+                     request.auth.uid == resource.data.userId;
+      
+      // User can update read status
+      allow update: if isAuthenticated() && 
+                       request.auth.uid == resource.data.userId &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead', 'readAt']);
+      
+      // NO create/delete - only Cloud Functions
+      allow create, delete: if false;
+    }
+    
+    // ============================================
+    // REVIEWS - READ-ONLY FOR CLIENTS
+    // ============================================
+    
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow write: if false; // Only Cloud Functions
+    }
+    
+    // ============================================
+    // SUPPORT TICKETS
+    // ============================================
+    
+    match /support_tickets/{ticketId} {
+      // User can read their own tickets
+      allow read: if isAuthenticated() && 
+                     (request.auth.uid == resource.data.customerId ||
+                      request.auth.uid == resource.data.technicianId);
+      
+      // User can create tickets
+      allow create: if isAuthenticated() && 
+                       (request.auth.uid == request.resource.data.customerId ||
+                        request.auth.uid == request.resource.data.technicianId);
+      
+      // User can update status only
+      allow update: if isAuthenticated() && 
+                       (request.auth.uid == resource.data.customerId ||
+                        request.auth.uid == resource.data.technicianId) &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']);
+      
+      // NO delete
+      allow delete: if false;
+    }
+    
+    // ============================================
+    // REFERRALS - READ-ONLY
+    // ============================================
+    
+    match /referrals/{referralId} {
+      allow read: if isAuthenticated() && 
+                     (request.auth.uid == resource.data.referrerId ||
+                      request.auth.uid == resource.data.referredId);
+      allow write: if false; // Only Cloud Functions
+    }
+    
+    // ============================================
+    // RISK PROFILES - ADMIN ONLY
+    // ============================================
+    
+    match /risk_profiles/{userId} {
+      allow read: if isAdmin();
+      allow write: if false; // Only Cloud Functions
+    }
+    
+    // ============================================
+    // ACTIVITY LOGS - ADMIN ONLY
+    // ============================================
+    
+    match /activity_logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false; // Only Cloud Functions
+    }
+    
+    // ============================================
+    // BOOKING IDEMPOTENCY - SYSTEM ONLY
+    // ============================================
+    
+    match /booking_idempotency/{key} {
+      allow read, write: if false; // Only Cloud Functions
+    }
+    
+    // ============================================
+    // DENY ALL OTHER COLLECTIONS
+    // ============================================
+    
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

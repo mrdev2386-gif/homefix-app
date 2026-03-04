@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/services/functions_service.dart';
+import '../../../core/utils/firestore_safe_parser.dart';
 import 'add_service_screen.dart';
 import 'widgets/quick_add_service_dialog.dart';
 
@@ -158,11 +159,11 @@ class _ServicesListStream extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
           itemCount: services.length,
           itemBuilder: (context, index) {
-            final service = services[index].data() as Map<String, dynamic>;
+            final serviceData = FirestoreSafeParser.toSafeMap(services[index].data());
             final serviceId = services[index].id;
             return _ServiceCard(
               serviceId: serviceId,
-              service: service,
+              service: serviceData,
             );
           },
         );
@@ -190,10 +191,10 @@ class _ServiceCardState extends State<_ServiceCard> {
 
   @override
   Widget build(BuildContext context) {
-    final isActive = widget.service['isActive'] ?? true;
-    final district = widget.service['district'] ?? 'N/A';
-    final rating = widget.service['averageRating'] ?? 0.0;
-    final reviews = widget.service['totalReviews'] ?? 0;
+    final isActive = FirestoreSafeParser.toSafeBool(widget.service['isActive'], fallback: true);
+    final district = FirestoreSafeParser.toSafeString(widget.service['district'], fallback: 'N/A');
+    final rating = FirestoreSafeParser.toSafeDouble(widget.service['averageRating']);
+    final reviews = FirestoreSafeParser.toSafeInt(widget.service['totalReviews']);
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -221,7 +222,8 @@ class _ServiceCardState extends State<_ServiceCard> {
   }
 
   Widget _buildServiceImage(String imageUrl) {
-    if (imageUrl.isEmpty) {
+    final safeImageUrl = FirestoreSafeParser.toSafeString(widget.service['imageUrl']);
+    if (safeImageUrl.isEmpty) {
       return Container(
         width: 72,
         height: 72,
@@ -235,7 +237,7 @@ class _ServiceCardState extends State<_ServiceCard> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Image.network(
-        imageUrl,
+        safeImageUrl,
         width: 72,
         height: 72,
         fit: BoxFit.cover,
@@ -266,16 +268,16 @@ class _ServiceCardState extends State<_ServiceCard> {
   }
 
   Widget _buildServiceInfo(bool isActive, String district, double rating, int reviews) {
-    final price = (widget.service['price'] as num?)?.toDouble() ?? 0.0;
-    final ratingValue = (widget.service['averageRating'] as num?)?.toDouble() ?? 0.0;
-    final reviewCount = (widget.service['totalReviews'] as num?)?.toInt() ?? 0;
+    final price = FirestoreSafeParser.toSafeDouble(widget.service['price']);
+    final ratingValue = FirestoreSafeParser.toSafeDouble(widget.service['averageRating']);
+    final reviewCount = FirestoreSafeParser.toSafeInt(widget.service['totalReviews']);
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          widget.service['name'] ?? 'Unnamed Service',
+          FirestoreSafeParser.toSafeString(widget.service['name'], fallback: 'Unnamed Service'),
           style: GoogleFonts.plusJakartaSans(
             fontSize: 15,
             fontWeight: FontWeight.bold,
@@ -345,6 +347,18 @@ class _ServiceCardState extends State<_ServiceCard> {
         Material(
           color: Colors.transparent,
           child: InkWell(
+            onTap: _isLoading ? null : _editService,
+            borderRadius: BorderRadius.circular(8),
+            child: const Padding(
+              padding: EdgeInsets.all(8),
+              child: Icon(Icons.edit_outlined, color: Color(0xFF6366F1), size: 22),
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
             onTap: _isLoading ? null : _toggleStatus,
             borderRadius: BorderRadius.circular(8),
             child: Padding(
@@ -398,6 +412,21 @@ class _ServiceCardState extends State<_ServiceCard> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  Future<void> _editService() async {
+    if (_isLoading) return;
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddServiceScreen(
+          service: widget.service,
+          serviceId: widget.serviceId,
+          isEdit: true,
+        ),
+      ),
+    );
+    // Refresh handled by stream
   }
 
   Future<void> _deleteService() async {

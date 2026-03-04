@@ -76,6 +76,10 @@ class Technician {
   final bool isKycComplete;
   final bool isApproved;
   final bool adminApproved; // Additional approval flag for service management
+  /// Indicates if the technician has completed onboarding (legacy/hardening flag)
+  /// This mirrors the Firestore field `onboardingCompleted` and is used in
+  /// routing logic (see `main.dart`).
+  final bool onboardingCompleted;
   final String? aadhaarNumber;
   final String? aadhaarFrontUrl;
   final String? aadhaarBackUrl;
@@ -144,6 +148,7 @@ class Technician {
     this.isKycComplete = false,
     this.isApproved = false,
     this.adminApproved = false, // Default to false - must be approved to manage services
+    this.onboardingCompleted = false,
     this.aadhaarNumber,
     this.aadhaarFrontUrl,
     this.aadhaarBackUrl,
@@ -271,7 +276,7 @@ class Technician {
       skills: skillsList,
       isOnline: data['isOnline'] ?? false,
       isVerified: data['isVerified'] ?? false,
-      avgRating: (data['avgRating'] ?? data['rating'] ?? 4.5).toDouble(),
+      avgRating: ((data['avgRating'] ?? data['rating'] ?? 4.5) as num).toDouble(),
       totalRatings: data['totalRatings'] ?? data['reviewCount'] ?? 0,
       ratingBreakdown: breakdown,
       jobsDone: data['jobsDone'] ?? 0,
@@ -287,6 +292,7 @@ class Technician {
       isKycComplete: isKycComplete,
       isApproved: isApproved,
       adminApproved: adminApproved,
+      onboardingCompleted: data['onboardingCompleted'] == true,
       aadhaarNumber: data['aadhaarNumber'],
       aadhaarFrontUrl: data['aadhaarFrontUrl'],
       aadhaarBackUrl: data['aadhaarBackUrl'],
@@ -367,6 +373,7 @@ class Technician {
       'isKycComplete': isKycComplete,
       'isApproved': isApproved,
       'adminApproved': adminApproved,
+      'onboardingCompleted': onboardingCompleted,
       'aadhaarNumber': aadhaarNumber,
       'aadhaarFrontUrl': aadhaarFrontUrl,
       'aadhaarBackUrl': aadhaarBackUrl,

@@ -78,9 +78,14 @@ class _LoginScreenState extends State<LoginScreen> {
         verificationFailed: (FirebaseAuthException e) {
           if (mounted) {
             setState(() => _isLoading = false);
+            String errorMsg = _getPhoneErrorMessage(e);
+            // Handle reCAPTCHA errors
+            if (e.code == 'missing-client-identifier' || e.message?.contains('reCAPTCHA') == true) {
+              errorMsg = 'Security verification failed. Please try again or restart the app.';
+            }
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(_getPhoneErrorMessage(e)),
+                content: Text(errorMsg),
                 backgroundColor: Colors.red,
               ),
             );
@@ -133,7 +138,12 @@ class _LoginScreenState extends State<LoginScreen> {
         return 'This phone number has been disabled. Please contact support.';
       case 'session-expired':
         return 'Session expired. Please request a new OTP.';
+      case 'missing-client-identifier':
+        return 'Security verification failed. Please restart the app and try again.';
       default:
+        if (e.message?.contains('reCAPTCHA') == true) {
+          return 'Security verification failed. Please restart the app.';
+        }
         return e.message ?? 'Verification failed. Please try again.';
     }
   }

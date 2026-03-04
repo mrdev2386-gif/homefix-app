@@ -48,10 +48,13 @@ import * as chat from './chat/chat';
 
 // Technician Onboarding & Management
 import * as techApp from './technician/application';
+import * as techAuth from './technician/auth';
+import * as techKyc from './technician/kyc';
 import * as techOnboarding from './technician/onboarding'; // NEW: Secure onboarding functions
 import * as techProfile from './technician/profile_management'; // NEW: Profile management functions
 import * as techTrack from './technician/tracking';
 import * as adminTechMgmt from './admin/technician_management';
+import * as techBankVerification from './technician/bank_verification'; // Razorpay bank verification
 
 // EXPORTS FOR TECHNICIAN ONBOARDING (SECURE CLOUD FUNCTIONS)
 export const createTechnicianProfile = techOnboarding.createTechnicianProfile;
@@ -69,6 +72,10 @@ export const updateTechnicianBankDetails = techProfile.updateTechnicianBankDetai
 export const reuploadVerificationDocument = techProfile.reuploadVerificationDocument;
 export const adminUpdateBankStatus = techProfile.adminUpdateBankStatus;
 export const adminUpdateDocumentStatus = techProfile.adminUpdateDocumentStatus;
+
+// EXPORTS FOR BANK VERIFICATION (RAZORPAY PENNY DROP)
+export const verifyTechnicianBankAccount = techBankVerification.verifyTechnicianBankAccount;
+export const razorpayBankWebhook = techBankVerification.razorpayBankWebhook;
 
 import * as matchEngine from './matching/engine';
 import * as techTriggers from './technician/triggers';
@@ -117,8 +124,18 @@ export {
     technicianRespondBooking,
     customerConfirmPayment,
     updateBookingStatusGeneric as updateBookingStatusNew,
-    updateBookingStatusGeneric as updateBookingStatus
+    updateBookingStatusGeneric as updateBookingStatus,
+    markWorkCompleted
 } from './booking/new_booking_flow';
+
+// QR Wallet Payment
+import * as paymentQR from './booking/payment_qr';
+export const generateTechnicianQR = paymentQR.generateTechnicianQR;
+export const confirmQRPayment = paymentQR.confirmQRPayment;
+
+// Stale Booking Cleanup
+import * as bookingCleanup from './booking/cleanup';
+export const cleanupStaleBookings = bookingCleanup.cleanupStaleBookings;
 
 // Production Hardening
 export {
@@ -602,11 +619,8 @@ export const rejectJobQuote = bookingActions.rejectJobQuote;
 // 3. TRIGGERS
 // ==========================================
 
-export const onUserCreated = functions.auth.user().onCreate(async (user: admin.auth.UserRecord) => {
-    // Determine if it's a customer or technician based on some criteria? 
-    // Usually handled by the app calling 'saveUserProfile', but this is a backup.
-    console.log(`New user created: ${user.uid}`);
-});
+// Auth trigger: Create minimal technician document when user is created
+export const onUserCreated = techAuth.createTechnicianOnAuthCreate;
 
 // ==========================================
 // 3. TRIGGERS & NOTIFICATIONS (V2)
@@ -642,6 +656,10 @@ export const submitKYC = techApp.submitKYC;
 // export const submitApplication = techApp.submitApplication;
 // export const submitFullApplication = techApp.submitTechnicianApplication;
 export const syncTechnicianApprovalToServices = techTriggers.syncTechnicianApprovalToServices;
+
+// KYC Evaluation (Backend-controlled)
+export const evaluateTechnicianKyc = techKyc.evaluateTechnicianKyc;
+export const checkKycStatus = techKyc.checkKycStatus;
 
 // Admin Management
 export const approveKYC = adminTechMgmt.approveKYC;

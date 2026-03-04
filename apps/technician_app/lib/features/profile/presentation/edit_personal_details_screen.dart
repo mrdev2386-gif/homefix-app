@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/providers/technician_provider.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/services/functions_service.dart';
@@ -29,6 +31,7 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
   String? _phoneNumber;
   String? _originalEmail;
   bool _emailVerified = false;
+  Timer? _autoCheckTimer;
   
   final List<String> _genderOptions = ['Male', 'Female', 'Other'];
 
@@ -38,15 +41,15 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
     _loadCurrentData();
   }
 
-  void _loadCurrentData() {
+  void _loadCurrentData() async {
     final provider = context.read<TechnicianProvider>();
     final technician = provider.technician;
     final user = FirebaseAuth.instance.currentUser;
     
     if (technician != null) {
       _nameController.text = technician.name;
-      _emailController.text = technician.email ?? '';
-      _originalEmail = technician.email;
+      _emailController.text = technician.email ?? user?.email ?? '';
+      _originalEmail = technician.email ?? user?.email;
       _cityController.text = technician.district ?? '';
       _experienceController.text = technician.experienceYears?.toString() ?? '';
       _bioController.text = technician.bio ?? '';
@@ -63,6 +66,7 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
     _cityController.dispose();
     _experienceController.dispose();
     _bioController.dispose();
+    _autoCheckTimer?.cancel();
     super.dispose();
   }
 
@@ -90,9 +94,20 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not authenticated');
 
-      await user.verifyBeforeUpdateEmail(email);
+      // Simple direct email verification
+      if (_hasEmailChanged()) {
+        // If email changed, use verifyBeforeUpdateEmail
+        await user.verifyBeforeUpdateEmail(email);
+      } else {
+        // If same email, just send verification
+        await user.sendEmailVerification();
+      }
 
       if (!mounted) return;
+      
+      // Start auto-check timer every 5 seconds
+      _startAutoCheckTimer();
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Verification link sent to $email. Please check your inbox.'),
@@ -100,44 +115,94 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
           duration: const Duration(seconds: 5),
         ),
       );
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+      _showErrorSnackbar(_getErrorMessage(e.code));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to send verification: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showErrorSnackbar('Failed to send verification: ${e.toString()}');
     } finally {
       if (mounted) setState(() => _isVerifyingEmail = false);
     }
   }
 
-  Future<void> _checkVerificationStatus() async {
-    if (_isCheckingVerification) return;
+  // ISSUE 4 FIX: Auto-check verification status every 5 seconds
+  void _startAutoCheckTimer() {
+    if (_autoCheckTimer != null && _autoCheckTimer!.isActive) return;
+    _autoCheckTimer?.cancel();
+    _autoCheckTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+      if (!mounted || _emailVerified) {
+        timer.cancel();
+        return;
+      }
+      await _checkVerificationStatus(silent: true);
+    });
+  }
 
-    setState(() => _isCheckingVerification = true);
+  String _getErrorMessage(String code) {
+    switch (code) {
+      case 'invalid-verification-code':
+        return 'Invalid OTP. Please try again.';
+      case 'too-many-requests':
+        return 'Too many attempts. Please try again later.';
+      case 'network-request-failed':
+        return 'Network error. Please check your connection.';
+      case 'session-expired':
+        return 'Session expired. Please request a new OTP.';
+      case 'requires-recent-login':
+        return 'Please re-authenticate to continue.';
+      default:
+        return 'An error occurred. Please try again.';
+    }
+  }
+
+  void _showErrorSnackbar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  Future<void> _checkVerificationStatus({bool silent = false}) async {
+    if (_isCheckingVerification && !silent) return;
+
+    if (!silent && mounted) setState(() => _isCheckingVerification = true);
 
     try {
+      await FirebaseAuth.instance.currentUser?.reload();
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not authenticated');
 
-      await user.reload();
-      final updatedUser = FirebaseAuth.instance.currentUser;
+      final isVerified = user.emailVerified;
 
-      setState(() {
-        _emailVerified = updatedUser?.emailVerified ?? false;
-      });
+      if (mounted) {
+        setState(() {
+          _emailVerified = isVerified;
+        });
+      }
+
+      // Update Firestore when email becomes verified
+      if (isVerified) {
+        await FirebaseFirestore.instance
+            .collection('technicians')
+            .doc(user.uid)
+            .update({'emailVerified': true});
+      }
 
       if (!mounted) return;
+      
       if (_emailVerified) {
+        _autoCheckTimer?.cancel();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('✓ Email verified successfully!'),
             backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
           ),
         );
-      } else {
+      } else if (!silent) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Email not verified yet. Please check your inbox.'),
@@ -146,15 +211,15 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
         );
       }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || silent) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error checking verification: ${e.toString()}'),
+          content: Text('Error: ${_getErrorMessage(e.toString())}'),
           backgroundColor: Colors.red,
         ),
       );
     } finally {
-      if (mounted) setState(() => _isCheckingVerification = false);
+      if (mounted && !silent) setState(() => _isCheckingVerification = false);
     }
   }
 
@@ -293,45 +358,37 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
               ),
               if (_hasEmailChanged())
                 const SizedBox(height: 8),
-              if (_hasEmailChanged())
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _isVerifyingEmail ? null : _sendVerificationEmail,
-                        icon: _isVerifyingEmail
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.send),
-                        label: Text(_isVerifyingEmail ? 'Sending...' : 'Verify Email'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppTheme.primaryColor,
-                          side: const BorderSide(color: AppTheme.primaryColor),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _isCheckingVerification ? null : _checkVerificationStatus,
-                        icon: _isCheckingVerification
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.refresh),
-                        label: Text(_isCheckingVerification ? 'Checking...' : 'Check Status'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.green,
-                          side: const BorderSide(color: Colors.green),
-                        ),
-                      ),
-                    ),
-                  ],
+              if (_hasEmailChanged() && !_emailVerified)
+                OutlinedButton.icon(
+                  onPressed: _isVerifyingEmail ? null : _sendVerificationEmail,
+                  icon: _isVerifyingEmail
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.send),
+                  label: Text(
+                    _isVerifyingEmail
+                        ? 'Sending...'
+                        : 'Verify Email',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.primaryColor,
+                    side: const BorderSide(color: AppTheme.primaryColor),
+                  ),
+                ),
+              if (_hasEmailChanged() && !_emailVerified)
+                const SizedBox(height: 8),
+              if (_hasEmailChanged() && !_emailVerified)
+                ElevatedButton.icon(
+                  onPressed: () => _checkVerificationStatus(silent: false),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Check Verification'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                  ),
                 ),
               if (_hasEmailChanged())
                 const SizedBox(height: 8),
@@ -339,28 +396,29 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _emailVerified ? Colors.green.shade50 : Colors.red.shade50,
+                    color: _emailVerified ? Colors.green.shade50 : Colors.orange.shade50,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: _emailVerified ? Colors.green : Colors.red,
+                      color: _emailVerified ? Colors.green : Colors.orange,
                     ),
                   ),
                   child: Row(
                     children: [
                       Icon(
-                        _emailVerified ? Icons.check_circle : Icons.error,
-                        color: _emailVerified ? Colors.green : Colors.red,
+                        _emailVerified ? Icons.check_circle : Icons.schedule,
+                        color: _emailVerified ? Colors.green : Colors.orange,
                         size: 20,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           _emailVerified
-                              ? '✓ Email verified'
-                              : '⚠ Email not verified. Check your inbox and click the verification link.',
+                              ? '✓ Email Verified'
+                              : 'Verification email sent. Checking automatically...',
                           style: TextStyle(
                             fontSize: 12,
-                            color: _emailVerified ? Colors.green.shade900 : Colors.red.shade900,
+                            fontWeight: _emailVerified ? FontWeight.bold : FontWeight.normal,
+                            color: _emailVerified ? Colors.green.shade900 : Colors.orange.shade900,
                           ),
                         ),
                       ),

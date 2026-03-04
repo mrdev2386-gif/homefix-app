@@ -12,9 +12,8 @@ import '../../../core/providers/technician_provider.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/models/technician.dart';
 import '../../../core/services/functions_service.dart';
-import '../../../core/services/faq_service.dart';
+import '../../support/faqs_screen.dart';
 import '../../../core/widgets/safe_network_image.dart';
-import '../../earnings/presentation/earnings_screen.dart';
 import '../../../../main.dart';
 import 'edit_personal_details_screen.dart';
 import 'edit_bank_details_screen.dart';
@@ -66,7 +65,6 @@ class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with 
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('>>> RENDERING: TechnicianProfileScreen vREFAC');
     return Scaffold(
       backgroundColor: AppTheme.bgLight,
       floatingActionButton: _buildEditProfileFAB(context),
@@ -133,7 +131,6 @@ class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with 
                     // PART 9: Support & Help
                     SliverToBoxAdapter(
                       child: _SupportSection(
-                        onHelpCenterTap: () => _navigateToFaqs(context),
                         onRaiseDisputeTap: () => _navigateToRaiseDispute(context),
                         onContactSupportTap: () => _navigateToContactSupport(context),
                         onFaqsTap: () => _navigateToFaqs(context),
@@ -1605,13 +1602,11 @@ class _AvailabilityCard extends StatelessWidget {
 // PART 9: Support & Help
 // ============================================
 class _SupportSection extends StatelessWidget {
-  final VoidCallback onHelpCenterTap;
   final VoidCallback onRaiseDisputeTap;
   final VoidCallback onContactSupportTap;
   final VoidCallback onFaqsTap;
 
   const _SupportSection({
-    required this.onHelpCenterTap,
     required this.onRaiseDisputeTap,
     required this.onContactSupportTap,
     required this.onFaqsTap,
@@ -1623,11 +1618,6 @@ class _SupportSection extends StatelessWidget {
       title: 'Support & Help',
       child: Column(
         children: [
-          _SupportItem(
-            icon: Icons.help_outline,
-            label: 'Help Center',
-            onTap: onHelpCenterTap,
-          ),
           _SupportItem(
             icon: Icons.gavel_outlined,
             label: 'Raise Dispute',
@@ -3695,132 +3685,3 @@ class _ContactSupportScreenState extends State<ContactSupportScreen> {
   }
 }
 
-class FaqsScreen extends StatefulWidget {
-  const FaqsScreen({super.key});
-
-  @override
-  State<FaqsScreen> createState() => _FaqsScreenState();
-}
-
-class _FaqsScreenState extends State<FaqsScreen> {
-  final FaqService _faqService = FaqService();
-  late Future<List<dynamic>> _faqsFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadFaqs();
-  }
-
-  void _loadFaqs() {
-    _faqsFuture = _faqService.fetchFaqs().then((faqs) => faqs as List<dynamic>);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'FAQs',
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: const Color(0xFF0F172A),
-          ),
-        ),
-        centerTitle: true,
-      ),
-      body: FutureBuilder<List<dynamic>>(
-        future: _faqsFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: AppTheme.primaryColor),
-            );
-          }
-
-          if (snapshot.hasError) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.error_outline,
-                    size: 48,
-                    color: Color(0xFF94A3B8),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Failed to load FAQs',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 16,
-                      color: const Color(0xFF64748B),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _loadFaqs();
-                      });
-                    },
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return Center(
-              child: Text(
-                'No FAQs available',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 16,
-                  color: const Color(0xFF64748B),
-                ),
-              ),
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: snapshot.data!.length,
-            itemBuilder: (context, index) {
-              final faq = snapshot.data![index];
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: ExpansionTile(
-                  title: Text(
-                    faq['question'] ?? 'Question',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(
-                        faq['answer'] ?? 'Answer',
-                        style: GoogleFonts.plusJakartaSans(
-                          color: const Color(0xFF64748B),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-}
