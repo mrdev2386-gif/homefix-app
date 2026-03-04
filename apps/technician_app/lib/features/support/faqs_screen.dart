@@ -217,6 +217,51 @@ class _FaqsScreenState extends State<FaqsScreen> {
             'question': 'Why is payment delayed?',
             'answer': 'Payments may be delayed due to bank holidays, incorrect bank details, or pending verification. Check your bank details in Profile > Bank Details and contact support if needed.',
           },
+          {
+            'question': 'What if customer doesn\'t pay?',
+            'answer': 'Report immediately via support. The platform handles payment recovery and you\'ll receive your payment once resolved.',
+          },
+          {
+            'question': 'Can I see my earnings history?',
+            'answer': 'Yes, go to Wallet > Transaction History to view all your earnings, withdrawals, and payment details.',
+          },
+          {
+            'question': 'What about GST and tax implications?',
+            'answer': 'You\'re responsible for tax compliance as an independent service provider. We provide earning statements for your tax filing.',
+          },
+        ],
+      },
+      {
+        'category': '🏦 Bank & Payout',
+        'faqs': [
+          {
+            'question': 'How do I add my bank details?',
+            'answer': 'Go to Profile > Bank & Payout > Add/Edit Details. Enter account holder name, bank name, account number, and IFSC code. Submit for verification.',
+          },
+          {
+            'question': 'Why is my bank verification pending?',
+            'answer': 'Bank verification takes 24-48 hours for security purposes. Our team manually verifies all bank details to prevent fraud and ensure safe transactions.',
+          },
+          {
+            'question': 'What if my bank details are rejected?',
+            'answer': 'Check the rejection reason displayed in the app. Common reasons include incorrect account number, invalid IFSC code, or name mismatch. Correct the details and re-submit.',
+          },
+          {
+            'question': 'Can I change my bank account after approval?',
+            'answer': 'For security reasons, approved bank accounts are locked. Contact support with valid documents if you need to change your bank account.',
+          },
+          {
+            'question': 'When will I receive my first payout?',
+            'answer': 'You\'ll receive your first payout after completing your first job and once your bank details are verified and approved.',
+          },
+          {
+            'question': 'What bank details do I need?',
+            'answer': 'You need: Account holder name (as per bank), Bank name, Account number (9-18 digits), and IFSC code (11 characters). Ensure all details match your bank records.',
+          },
+          {
+            'question': 'Why is my account number masked?',
+            'answer': 'For security, we display only the last 4 digits of your account number (****1234). Full details are securely stored and used only for payments.',
+          },
         ],
       },
       {

@@ -31,6 +31,12 @@ service cloud.firestore {
       // - adminNotes (set by admin only)
       // - rejectionReason (set by admin only)
       // - aadhaarHash (set by Cloud Functions for duplicate checking)
+      // - accountNumber (SENSITIVE: readable but never writable by client)
+      // - bankStatus (set by Cloud Functions only)
+      // 
+      // SECURITY NOTE: accountNumber is readable by technician for their own profile
+      // but should NEVER be displayed in raw form in UI. Always mask it (****1234).
+      // Cloud Functions return maskedAccountNumber for display purposes.
       
       // Subcollections
       match /wallet_transactions/{txnId} {

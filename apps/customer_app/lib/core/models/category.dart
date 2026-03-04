@@ -42,7 +42,7 @@ class Category {
     }
     
     int order = 0;
-    final dynamic orderData = data['sortOrder'] ?? data['order'] ?? 0;
+    final dynamic orderData = data['order'] ?? 0;
     if (orderData is num) {
       order = (orderData.isFinite ? orderData : 0).toInt();
     } else if (orderData is String) {

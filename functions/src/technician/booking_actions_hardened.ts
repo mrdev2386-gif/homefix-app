@@ -465,8 +465,87 @@ export const technicianRespondBookingRateLimited = functions.https.onCall(async 
   // FIX 9: Check rate limit
   await checkRateLimit(context.auth.uid, 'respond_booking');
 
-  // Call original function
-  return technicianRespondBooking(data, context);
+  // Call original function logic
+  const { bookingId, action, idempotencyKey, rejectionReason } = data;
+  const technicianId = context.auth.uid;
+
+  if (!bookingId || !action) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing required fields');
+  }
+
+  if (!['accept', 'reject'].includes(action)) {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid action');
+  }
+
+  if (!idempotencyKey) {
+    throw new functions.https.HttpsError('invalid-argument', 'idempotencyKey required');
+  }
+
+  const cachedResult = await checkIdempotency(idempotencyKey);
+  if (cachedResult) {
+    console.log(`[Idempotency] Returning cached result for key: ${idempotencyKey}`);
+    return cachedResult;
+  }
+
+  const result = await db.runTransaction(async (transaction) => {
+    const bookingRef = db.collection('bookings').doc(bookingId);
+    const bookingDoc = await transaction.get(bookingRef);
+
+    if (!bookingDoc.exists) {
+      throw new functions.https.HttpsError('not-found', 'Booking not found');
+    }
+
+    const booking = bookingDoc.data()!;
+
+    if (booking.technicianId !== technicianId) {
+      throw new functions.https.HttpsError('permission-denied', 'Not your booking');
+    }
+
+    if (booking.status !== 'technician_pending') {
+      throw new functions.https.HttpsError('failed-precondition', 
+        `Booking already ${booking.status}`);
+    }
+
+    if (booking.acceptedAt) {
+      throw new functions.https.HttpsError('already-exists', 
+        'ALREADY_ACCEPTED', { code: 'ALREADY_ACCEPTED' });
+    }
+
+    if (action === 'accept') {
+      const techDoc = await transaction.get(db.collection('technicians').doc(technicianId));
+      const tech = techDoc.data();
+      
+      if (!tech) {
+        throw new functions.https.HttpsError('not-found', 'Technician not found');
+      }
+
+      const isAvailable = validateAvailability(tech, booking);
+      if (!isAvailable) {
+        throw new functions.https.HttpsError('failed-precondition', 
+          'Outside working hours');
+      }
+
+      transaction.update(bookingRef, {
+        status: 'awaiting_payment',
+        acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return { success: true, action: 'accepted', newStatus: 'awaiting_payment' };
+    } else {
+      transaction.update(bookingRef, {
+        status: 'rejected',
+        rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
+        rejectionReason: rejectionReason || 'Technician declined',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return { success: true, action: 'rejected', newStatus: 'rejected' };
+    }
+  });
+
+  await storeIdempotency(idempotencyKey, result);
+  return result;
 });
 
 // ============================================

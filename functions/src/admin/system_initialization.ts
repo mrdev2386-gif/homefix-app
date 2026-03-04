@@ -12,7 +12,7 @@ const db = admin.firestore();
 // 1. DATA DEFINITIONS
 // ============================================================================
 
-const TECHNICIAN_CATEGORIES = [
+const CATEGORIES = [
     { id: 'cleaning', name: 'Cleaning Services', order: 1, subs: ['Deep Cleaning', 'Bathroom Cleaning', 'Kitchen Cleaning', 'Sofa Cleaning', 'Carpet Cleaning', 'Window Cleaning'] },
     { id: 'ac_repair', name: 'AC Services', order: 2, subs: ['AC Repair', 'AC Service', 'AC Installation', 'AC Uninstallation', 'Gas Refill', 'PCB Repair'] },
     { id: 'appliance', name: 'Appliances', order: 3, subs: ['Washing Machine', 'Refrigerator', 'Microwave', 'TV Repair', 'Water Purifier', 'Geyser Service'] },
@@ -87,11 +87,11 @@ export const admin_initializeHomeContent = functions.https.onCall(async (data, c
     let seededBanners = false;
 
     // 1. Technician Categories & Subcategories
-    const catSnap = await db.collection('technician_categories').limit(1).get();
+    const catSnap = await db.collection('categories').limit(1).get();
     if (catSnap.empty) {
         seededCategories = true;
-        for (const cat of TECHNICIAN_CATEGORIES) {
-            const catRef = db.collection('technician_categories').doc(cat.id);
+        for (const cat of CATEGORIES) {
+            const catRef = db.collection('categories').doc(cat.id);
             batch.set(catRef, {
                 id: cat.id,
                 name: cat.name,
@@ -103,7 +103,7 @@ export const admin_initializeHomeContent = functions.https.onCall(async (data, c
             let subOrder = 1;
             for (const subName of cat.subs) {
                 const subId = `${cat.id}_${subName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
-                const subRef = db.collection('technician_subcategories').doc(subId);
+                const subRef = db.collection('services').doc(subId);
                 batch.set(subRef, {
                     id: subId,
                     categoryId: cat.id,

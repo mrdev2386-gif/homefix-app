@@ -356,7 +356,7 @@ export const saveTechnicianServices = functions.https.onCall(async (data, contex
     }
 
     // Verify category exists
-    const categoryDoc = await db.collection('technician_categories').doc(categoryId).get();
+    const categoryDoc = await db.collection('categories').doc(categoryId).get();
     if (!categoryDoc.exists) {
         throw new functions.https.HttpsError(
             'not-found',

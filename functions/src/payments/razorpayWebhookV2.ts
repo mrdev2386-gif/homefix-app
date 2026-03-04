@@ -15,7 +15,7 @@
  * - Wallet auto-create inside transaction
  */
 
-import * as functions from 'firebase-functions';
+import { onRequest } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import * as crypto from "crypto";
 
@@ -34,13 +34,12 @@ const LOG_PREFIX = "[RAZORPAY_WEBHOOK]";
 /**
  * Razorpay Webhook Handler (V2) - Production Secure
  */
-export const razorpayWebhookV2 = functions
-    .runWith({
-        memory: "256MB",
+export const razorpayWebhookV2 = onRequest(
+    {
+        memory: "256MiB",
         timeoutSeconds: 60,
-        maxInstances: 5,
-    })
-    .https.onRequest(async (req, res) => {
+    },
+    async (req, res) => {
         if (req.method !== "POST") {
             res.status(405).send("Method Not Allowed");
             return;
@@ -171,7 +170,8 @@ export const razorpayWebhookV2 = functions
             console.error(`${LOG_PREFIX} Webhook processing error:`, error);
             res.status(500).send("Internal Server Error");
         }
-    });
+    }
+);
 
 /**
  * Handle successful payment (V2)

@@ -48,7 +48,7 @@ function normalizeTags(tags: string[]): string[] {
 
 /**
  * Generate search keywords from service data for fast customer search
- * Combines and tokenizes from: title, tags, category name, subcategory name
+ * Combines and tokenizes from: title, tags, category name
  * 
  * Process:
  * - lowercase
@@ -62,8 +62,7 @@ function normalizeTags(tags: string[]): string[] {
 function generateSearchKeywords(
     title: string,
     tags: string[],
-    categoryName?: string,
-    subcategoryName?: string
+    categoryName?: string
 ): string[] {
     console.log(`[TECH_SERVICE_KEYWORDS_GENERATED] Generating keywords for: ${title}`);
 
@@ -95,14 +94,6 @@ function generateSearchKeywords(
         categoryWords.forEach(word => keywords.add(word));
     }
 
-    // Add subcategory name words
-    if (subcategoryName) {
-        const subcategoryWords = subcategoryName.toLowerCase()
-            .split(/\s+/)
-            .filter(word => word.length >= 2);
-        subcategoryWords.forEach(word => keywords.add(word));
-    }
-
     // Convert to array and limit to max 30
     const result = [...keywords].slice(0, 30);
 
@@ -119,6 +110,8 @@ function generateSearchKeywords(
  * - tags count <= 10
  * - no duplicate title by same technician (checked separately)
  * - no keyword stuffing (same tag repeated > 2 times)
+ * - serviceId must exist if provided
+ * - subServiceId must exist if provided
  * 
  * Debug log: [TECH_SERVICE_QUALITY_REJECT]
  */
@@ -128,8 +121,62 @@ async function validateServiceInput(data: any): Promise<{ valid: boolean; error?
         return { valid: false, error: 'Category is required' };
     }
 
-    if (!data.subcategoryId || typeof data.subcategoryId !== 'string') {
-        return { valid: false, error: 'Subcategory is required' };
+    // Validate serviceId if provided
+    if (data.serviceId) {
+        if (typeof data.serviceId !== 'string') {
+            return { valid: false, error: 'Invalid serviceId format' };
+        }
+        
+        try {
+            const serviceDoc = await db.collection('services').doc(data.serviceId).get();
+            if (!serviceDoc.exists) {
+                return { valid: false, error: 'Service not found' };
+            }
+            
+            const serviceData = serviceDoc.data();
+            if (serviceData && serviceData.categoryId !== data.categoryId) {
+                return { valid: false, error: 'Service does not belong to selected category' };
+            }
+            
+            if (serviceData && serviceData.isActive === false) {
+                return { valid: false, error: 'Service is not active' };
+            }
+        } catch (error) {
+            console.error('[TECH_SERVICE] Error validating serviceId:', error);
+            return { valid: false, error: 'Failed to validate service' };
+        }
+    }
+
+    // Validate subServiceId if provided
+    if (data.subServiceId) {
+        if (typeof data.subServiceId !== 'string') {
+            return { valid: false, error: 'Invalid subServiceId format' };
+        }
+        
+        if (!data.serviceId) {
+            return { valid: false, error: 'serviceId is required when subServiceId is provided' };
+        }
+        
+        try {
+            const subServiceDoc = await db
+                .collection('services')
+                .doc(data.serviceId)
+                .collection('subServices')
+                .doc(data.subServiceId)
+                .get();
+            
+            if (!subServiceDoc.exists) {
+                return { valid: false, error: 'SubService not found' };
+            }
+            
+            const subServiceData = subServiceDoc.data();
+            if (subServiceData && subServiceData.isActive === false) {
+                return { valid: false, error: 'SubService is not active' };
+            }
+        } catch (error) {
+            console.error('[TECH_SERVICE] Error validating subServiceId:', error);
+            return { valid: false, error: 'Failed to validate subservice' };
+        }
     }
 
     // Content Quality Guard: title length >= 5
@@ -268,9 +315,9 @@ async function checkDuplicateTitle(
 }
 
 /**
- * Verify category and subcategory exist
+ * Verify category exists
  */
-async function verifyCategorySubcategory(categoryId: string, subcategoryId: string): Promise<{ valid: boolean; error?: string }> {
+async function verifyCategory(categoryId: string): Promise<{ valid: boolean; error?: string }> {
     try {
         // Check category exists and is active
         const categoryDoc = await db.collection('categories').doc(categoryId).get();
@@ -281,37 +328,6 @@ async function verifyCategorySubcategory(categoryId: string, subcategoryId: stri
         const categoryData = categoryDoc.data();
         if (categoryData && categoryData.isActive === false) {
             return { valid: false, error: 'Category is not active' };
-        }
-
-        // Check subcategory exists - could be in subcollection or as field
-        let subcategoryValid = false;
-
-        // Try subcollection first
-        const subcategoryDoc = await db.collection('categories')
-            .doc(categoryId)
-            .collection('subcategories')
-            .doc(subcategoryId)
-            .get();
-
-        if (subcategoryDoc.exists) {
-            const subData = subcategoryDoc.data();
-            if (subData && subData.isActive !== false) {
-                subcategoryValid = true;
-            }
-        }
-
-        // Also check if it's stored as a field in the category document
-        if (!subcategoryValid && categoryData) {
-            const subcategories = categoryData['subcategories'] as any[];
-            if (Array.isArray(subcategories)) {
-                subcategoryValid = subcategories.some((sub: any) =>
-                    sub.id === subcategoryId || sub.subcategoryId === subcategoryId
-                );
-            }
-        }
-
-        if (!subcategoryValid) {
-            return { valid: false, error: 'Invalid subcategory' };
         }
 
         return { valid: true };
@@ -439,7 +455,8 @@ async function verifySquareImage(imageUrl: string): Promise<{ valid: boolean; er
 
 export interface TechnicianServiceData {
     categoryId: string;
-    subcategoryId: string;
+    serviceId?: string;
+    subServiceId?: string;
     title: string;
     description: string;
     tags?: string[];
@@ -498,7 +515,6 @@ export const createTechnicianService = onCall(
         console.log(`[TECH_SERVICE] Creating service for technician: ${technicianId}`);
         console.log(`[TECH_SERVICE] Input data: ${JSON.stringify({
             categoryId: data.categoryId,
-            subcategoryId: data.subcategoryId,
             title: data.title?.substring(0, 50),
             price: data.price,
             durationMinutes: data.durationMinutes,
@@ -527,60 +543,46 @@ export const createTechnicianService = onCall(
             throw new https.HttpsError("invalid-argument", titleCheck.error!);
         }
 
-        // 5. Verify category and subcategory exist
-        const categoryCheck = await verifyCategorySubcategory(data.categoryId, data.subcategoryId);
+        // 5. Verify category exists
+        const categoryCheck = await verifyCategory(data.categoryId);
         if (!categoryCheck.valid) {
             console.log(`[TECH_SERVICE] Category verification failed: ${categoryCheck.error}`);
             throw new https.HttpsError("invalid-argument", categoryCheck.error!);
         }
 
-        // 5. Verify image exists in storage
+        // 6. Verify image exists in storage
         const imageCheck = await verifyImageExists(data.imageUrl);
         if (!imageCheck.valid) {
             console.log(`[TECH_SERVICE] Image verification failed: ${imageCheck.error}`);
             throw new https.HttpsError("invalid-argument", imageCheck.error!);
         }
 
-        // 6. Fetch category and subcategory names for search keywords
+        // 7. Fetch category name for search keywords
         let categoryName = '';
-        let subcategoryName = '';
 
         try {
             const categoryDoc = await db.collection('categories').doc(data.categoryId).get();
             if (categoryDoc.exists) {
                 const categoryData = categoryDoc.data();
                 categoryName = categoryData?.name || '';
-
-                // Try to get subcategory name
-                const subcategoryDoc = await db.collection('categories')
-                    .doc(data.categoryId)
-                    .collection('subcategories')
-                    .doc(data.subcategoryId)
-                    .get();
-
-                if (subcategoryDoc.exists) {
-                    const subData = subcategoryDoc.data();
-                    subcategoryName = subData?.name || '';
-                }
             }
-            console.log(`[TECH_SERVICE] Fetched category: "${categoryName}", subcategory: "${subcategoryName}"`);
+            console.log(`[TECH_SERVICE] Fetched category: "${categoryName}"`);
         } catch (error) {
-            console.error('[TECH_SERVICE] Error fetching category names:', error);
-            // Continue without category names - not a critical error
+            console.error('[TECH_SERVICE] Error fetching category name:', error);
+            // Continue without category name - not a critical error
         }
 
-        // 7. Normalize tags for search optimization
+        // 8. Normalize tags for search optimization
         const normalizedTags = normalizeTags(data.tags || []);
 
-        // 8. Generate search keywords for fast customer search
+        // 9. Generate search keywords for fast customer search
         const searchKeywords = generateSearchKeywords(
             data.title,
             normalizedTags,
-            categoryName,
-            subcategoryName
+            categoryName
         );
 
-        // 9. Discovery Score initialization for ranking engine
+        // 10. Discovery Score initialization for ranking engine
         // Future-ready fields for complex ranking formula
         const discoveryScoreData = {
             discoveryScore: 100, // Initial score
@@ -590,23 +592,23 @@ export const createTechnicianService = onCall(
         };
         console.log(`[TECH_SERVICE_DISCOVERY_INIT] Discovery score initialized: ${discoveryScoreData.discoveryScore}`);
 
-        // 10. Create the service document
+        // 11. Create the service document
         const serviceId = db.collection('technician_services').doc().id;
         const now = admin.firestore.Timestamp.now();
 
         const serviceData = {
             // IDs
             id: serviceId,
-            serviceId: serviceId,
             technicianId: technicianId,
             technicianName: techData.name || 'Pro',
             technicianDistrict: techData.district || '',
             technicianDistrictNormalized: techData.districtNormalized || (techData.district ? techData.district.toString().trim().toLowerCase() : ''),
             technicianRating: techData.rating || 5.0,
 
-            // Category
+            // Category & Service Hierarchy
             categoryId: data.categoryId,
-            subcategoryId: data.subcategoryId,
+            serviceId: data.serviceId || null,
+            subServiceId: data.subServiceId || null,
 
             // Details
             title: data.title.trim(),
@@ -690,6 +692,8 @@ export const updateTechnicianService = onCall(
         price?: number;
         durationMinutes?: number;
         imageUrl?: string;
+        masterServiceId?: string;
+        subServiceId?: string;
     }>) => {
         // 1. Authentication check
         if (!request.auth) {
@@ -789,6 +793,8 @@ export const updateTechnicianService = onCall(
         if (updates.price !== undefined) updateData.price = updates.price;
         if (updates.durationMinutes !== undefined) updateData.durationMinutes = updates.durationMinutes;
         if (updates.imageUrl !== undefined) updateData.imageUrl = updates.imageUrl;
+        if (updates.masterServiceId !== undefined) updateData.serviceId = updates.masterServiceId;
+        if (updates.subServiceId !== undefined) updateData.subServiceId = updates.subServiceId;
 
         if (updates.tags !== undefined) {
             // Normalize tags for search
@@ -805,37 +811,23 @@ export const updateTechnicianService = onCall(
             const currentTags = updates.tags !== undefined ? normalizeTags(updates.tags) : serviceData.tags;
             // Get category info from existing service data
             const categoryId = serviceData.categoryId;
-            const subcategoryId = serviceData.subcategoryId;
 
             let categoryName = '';
-            let subcategoryName = '';
 
             try {
                 const categoryDoc = await db.collection('categories').doc(categoryId).get();
                 if (categoryDoc.exists) {
                     const categoryData = categoryDoc.data();
                     categoryName = categoryData?.name || '';
-
-                    const subcategoryDoc = await db.collection('categories')
-                        .doc(categoryId)
-                        .collection('subcategories')
-                        .doc(subcategoryId)
-                        .get();
-
-                    if (subcategoryDoc.exists) {
-                        const subData = subcategoryDoc.data();
-                        subcategoryName = subData?.name || '';
-                    }
                 }
             } catch (error) {
-                console.error('[TECH_SERVICE] Error fetching category names for update:', error);
+                console.error('[TECH_SERVICE] Error fetching category name for update:', error);
             }
 
             updateData.searchKeywords = generateSearchKeywords(
                 currentTitle,
                 currentTags,
-                categoryName,
-                subcategoryName
+                categoryName
             );
             console.log(`[TECH_SERVICE_KEYWORDS_GENERATED] Keywords regenerated on update: ${updateData.searchKeywords.length} keywords`);
         }

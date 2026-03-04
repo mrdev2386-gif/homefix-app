@@ -112,6 +112,9 @@ class Technician {
   final String? accountNumber;
   final String? ifscCode;
   final String? accountHolderName;
+  final String? bankStatus; // not_submitted, pending, approved, rejected
+  final String? bankRejectionReason;
+  final DateTime? bankSubmittedAt;
 
   // Custom services added by technician
   final List<String>? customServices;
@@ -173,6 +176,9 @@ class Technician {
     this.accountNumber,
     this.ifscCode,
     this.accountHolderName,
+    this.bankStatus,
+    this.bankRejectionReason,
+    this.bankSubmittedAt,
     this.customServices,
   });
 
@@ -323,11 +329,16 @@ class Technician {
       maxDailyJobs: data['maxDailyJobs'],
       dynamicPricingAllowed: data['dynamicPricingAllowed'],
       stepsCompleted: stepsMap,
-      // Bank details from nested object
-      bankName: data['bankDetails']?['bankName'],
-      accountNumber: data['bankDetails']?['accountNumber'],
-      ifscCode: data['bankDetails']?['ifscCode'],
-      accountHolderName: data['bankDetails']?['accountHolder'],
+      // Bank details - root level only (no legacy fallback)
+      bankName: data['bankName'],
+      accountNumber: data['accountNumber'],
+      ifscCode: data['ifscCode'],
+      accountHolderName: data['accountHolderName'],
+      bankStatus: data['bankStatus'],
+      bankRejectionReason: data['bankRejectionReason'],
+      bankSubmittedAt: data['bankSubmittedAt'] != null
+          ? (data['bankSubmittedAt'] as Timestamp).toDate()
+          : null,
       customServices: (data['customServices'] as List?)?.map((e) => e.toString()).toList(),
     );
   }
@@ -388,6 +399,13 @@ class Technician {
       if (maxDailyJobs != null) 'maxDailyJobs': maxDailyJobs,
       if (dynamicPricingAllowed != null) 'dynamicPricingAllowed': dynamicPricingAllowed,
       if (stepsCompleted != null) 'stepsCompleted': stepsCompleted,
+      if (bankName != null) 'bankName': bankName,
+      if (accountNumber != null) 'accountNumber': accountNumber,
+      if (ifscCode != null) 'ifscCode': ifscCode,
+      if (accountHolderName != null) 'accountHolderName': accountHolderName,
+      if (bankStatus != null) 'bankStatus': bankStatus,
+      if (bankRejectionReason != null) 'bankRejectionReason': bankRejectionReason,
+      if (bankSubmittedAt != null) 'bankSubmittedAt': Timestamp.fromDate(bankSubmittedAt!),
     };
   }
   
@@ -421,62 +439,26 @@ class Technician {
   }
 
   /// Calculate profile completion percentage
-  /// Based on: stepsCompleted map from Firestore if available, otherwise fall back to field checks
-  /// Uses: stepsCompleted map with 5 total steps
   int calculateProfileCompletion() {
-    // PRIMARY: Use stepsCompleted map from Firestore (5-step onboarding)
     if (stepsCompleted != null && stepsCompleted!.isNotEmpty) {
       final totalSteps = 5;
       int completedSteps = 0;
-      
-      // Count true values in stepsCompleted map
       for (final entry in stepsCompleted!.entries) {
-        if (entry.value == true) {
-          completedSteps++;
-        }
+        if (entry.value == true) completedSteps++;
       }
-      
-      // Clamp between 0-100
-      final rawResult = ((completedSteps / totalSteps) * 100).round();
-      return rawResult.clamp(0, 100);
+      return ((completedSteps / totalSteps) * 100).round().clamp(0, 100);
     }
     
-    // FALLBACK: Use field-based calculation
     int completed = 0;
     int total = 8;
-
-    // 1. Name (non-empty)
     if (name.isNotEmpty) completed++;
-
-    // 2. Phone (non-empty)
     if (phone.isNotEmpty) completed++;
-
-    // 3. Profile Photo
     if (profilePhotoUrl != null && profilePhotoUrl!.isNotEmpty) completed++;
-
-    // 4. Skills
     if (skills.isNotEmpty) completed++;
-
-    // 5. Experience
     if (experienceYears != null && experienceYears! > 0) completed++;
-
-    // 6. Bank Details
-    final hasBankDetails = bankName != null && bankName!.isNotEmpty &&
-        accountNumber != null && accountNumber!.isNotEmpty &&
-        ifscCode != null && ifscCode!.isNotEmpty;
-    if (hasBankDetails) completed++;
-
-    // 7. Documents (Aadhaar or PAN)
-    if ((aadhaarFrontUrl != null && aadhaarFrontUrl!.isNotEmpty) ||
-        (panNumber != null && panNumber!.isNotEmpty)) completed++;
-
-    // 8. Custom Services or Regular Services
-    final hasServices = (customServices != null && customServices!.isNotEmpty) ||
-        (skills.isNotEmpty);
-    if (hasServices) completed++;
-
-    // Clamp result between 0 and 100
-    final rawResult = ((completed / total) * 100).round();
-    return rawResult.clamp(0, 100);
+    if (bankStatus == 'approved') completed++;
+    if ((aadhaarFrontUrl != null && aadhaarFrontUrl!.isNotEmpty) || (panNumber != null && panNumber!.isNotEmpty)) completed++;
+    if ((customServices != null && customServices!.isNotEmpty) || skills.isNotEmpty) completed++;
+    return ((completed / total) * 100).round().clamp(0, 100);
   }
 }

@@ -25,11 +25,12 @@ class CategoryService {
   Stream<ServiceResult<List<Category>>> getActiveCategoriesResult() {
     return _errorToData(
       _firestore
-          .collection('service_categories')
+          .collection('categories')
           .where('isActive', isEqualTo: true)
-          .orderBy('sortOrder')
+          .orderBy('order')
           .snapshots()
           .map((snapshot) {
+        debugPrint('[CategoryService] STREAM: Fetched ${snapshot.docs.length} categories from Firestore');
         final categories =
             snapshot.docs.map((doc) => Category.fromFirestore(doc)).toList();
         return ServiceResult.success(categories);
@@ -48,29 +49,26 @@ class CategoryService {
 
   Future<List<Category>> getCategoriesOnce() async {
     try {
-      debugPrint('🔍 [CategoryService] Fetching categories...');
+      debugPrint('🔍 [CategoryService] Fetching categories once (Strict)...');
       final snapshot = await _firestore
-          .collection('service_categories')
+          .collection('categories')
           .where('isActive', isEqualTo: true)
-          .orderBy('sortOrder')
+          .orderBy('order')
           .get();
       
-      final categories = snapshot.docs.map((doc) => Category.fromFirestore(doc)).toList();
-      debugPrint('📂 Categories fetched: ${categories.length}');
+      debugPrint('📂 Categories fetched: ${snapshot.docs.length}');
       
-      if (categories.isEmpty) {
-        debugPrint('⚠️ [CategoryService] WARNING: No categories found in Firestore!');
-      } else {
-        for (var i = 0; i < categories.length && i < 5; i++) {
-          debugPrint('   ${i + 1}. ${categories[i].name} (ID: ${categories[i].id})');
-        }
+      final categories = snapshot.docs.map((doc) => Category.fromFirestore(doc)).toList();
+      
+      for (var i = 0; i < categories.length && i < 5; i++) {
+        debugPrint('   ${i + 1}. ${categories[i].name} (ID: ${categories[i].id})');
       }
       
       return categories;
     } catch (e, stackTrace) {
       debugPrint('❌ [CategoryService] CRITICAL: Error fetching categories: $e');
       debugPrint('   Stack trace: $stackTrace');
-      return [];
+      rethrow; // Rethrow to surface error as per instructions
     }
   }
 

@@ -1,5 +1,13 @@
 {
+  "name": "homefix-migration-scripts",
+  "version": "1.0.0",
+  "description": "Firestore category system migration scripts",
+  "scripts": {
+    "migrate": "node migrate_category_system.js",
+    "rollback": "node rollback_migration.js",
+    "archive": "node archive_legacy_collections.js"
+  },
   "dependencies": {
-    "firebase-admin": "^13.6.1"
+    "firebase-admin": "^12.0.0"
   }
 }

@@ -35,10 +35,12 @@ class AddServiceScreen extends StatefulWidget {
 
 class _AddServiceScreenState extends State<AddServiceScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _priceController = TextEditingController();
-  final _descriptionController = TextEditingController();
-  final _customServiceController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _priceController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
+  final TextEditingController _customServiceController = TextEditingController();
+  final TextEditingController _originalPriceController = TextEditingController();
+  final TextEditingController _offerPriceController = TextEditingController();
   final _imageUploadService = ImageUploadService();
   final _functionsService = FunctionsService();
   final _categoryDataService = CategoryDataService();
@@ -48,8 +50,6 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
   String? _selectedCategoryName;
   String? _selectedServiceId;
   String? _selectedServiceName;
-  String? _selectedSubCategoryId;
-  String? _selectedSubCategoryName;
   File? _selectedImage;
   String? _uploadedImageUrl;
   bool _showCustomServiceInput = false;
@@ -66,17 +66,13 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
   // Data
   List<CategoryData> _categories = [];
   List<ServiceData> _services = [];
-  List<SubCategoryData> _subCategories = [];
   bool _isLoadingCategories = true;
   bool _isLoadingServices = false;
-  bool _isLoadingSubCategories = false;
   String? _categoryError;
   String? _serviceError;
-  String? _subCategoryError;
 
   // PART 1: Async call cancellation
   CancelableOperation<List<ServiceData>>? _servicesOperation;
-  CancelableOperation<List<SubCategoryData>>? _subCategoriesOperation;
 
   // PART 2: Rapid tap prevention
   DateTime? _lastSaveTap;
@@ -92,11 +88,12 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
   void dispose() {
     // Cancel pending operations
     _servicesOperation?.cancel();
-    _subCategoriesOperation?.cancel();
     _nameController.dispose();
     _priceController.dispose();
     _descriptionController.dispose();
     _customServiceController.dispose();
+    _originalPriceController.dispose();
+    _offerPriceController.dispose();
     super.dispose();
   }
 
@@ -112,7 +109,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     return discount.clamp(0, 99);
   }
 
-  /// Load categories from Firestore with FirebaseException handling
+  /// Load categories from Firestore with strict requirement
   Future<void> _loadCategories() async {
     setState(() {
       _isLoadingCategories = true;
@@ -120,19 +117,23 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     });
     
     try {
+      // STRICT: Clear cache at start of screen to ensure fresh data
+      _categoryDataService.clearCache();
+      
       final categories = await _categoryDataService.getCategories();
+      
       if (mounted) {
         setState(() {
           _categories = categories;
           _isLoadingCategories = false;
         });
+        debugPrint('[AddServiceScreen] Loaded ${categories.length} categories from Firestore');
       }
-    } on FirebaseException catch (e) {
-      _handleFirestoreError(e, 'category');
     } catch (e) {
+      debugPrint('[AddServiceScreen] CATEGORY FETCH FAILED: $e');
       if (mounted) {
         setState(() {
-          _categoryError = 'Failed to load categories: $e';
+          _categoryError = 'Failed to load categories. Please check your connection.';
           _isLoadingCategories = false;
         });
       }
@@ -162,57 +163,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     });
   }
 
-  /// Load subcategories from Firestore (filtered by category)
-  /// Uses collection: technician_subcategories
-  /// PART 1: Cancel previous async call if running
-  Future<void> _loadSubCategories(String? categoryId) async {
-    // Cancel previous operation if running
-    
-    
-    // Handle null categoryId
-    if (categoryId == null || categoryId == 'custom') {
-      setState(() {
-        _subCategories = [];
-        _isLoadingSubCategories = false;
-        _selectedSubCategoryId = null;
-        _selectedSubCategoryName = null;
-      });
-      return;
-    }
-    
-    setState(() {
-      _isLoadingSubCategories = true;
-      _subCategoryError = null;
-      // Clear selected subcategory when category changes
-      _selectedSubCategoryId = null;
-      _selectedSubCategoryName = null;
-    });
-    
-    try {
-      final subCategories = await _categoryDataService.getSubCategories(categoryId: categoryId);
-      
-      if (mounted) {
-        setState(() {
-          _subCategories = subCategories;
-          _isLoadingSubCategories = false;
-        });
-      }
-    } on FirebaseException catch (e) {
-      if (mounted) {
-        setState(() {
-          _subCategoryError = _getFriendlyErrorMessage(e);
-          _isLoadingSubCategories = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _subCategoryError = 'Failed to load subcategories';
-          _isLoadingSubCategories = false;
-        });
-      }
-    }
-  }
+
 
   /// Load services from Firestore (filtered by category)
   /// Uses collection: services
@@ -511,6 +462,11 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
   /// Save service with proper error handling
   /// PART 2: Prevent rapid taps
   Future<void> _saveService() async {
+    print("[ADD SERVICE] Submit pressed");
+    print("categoryId=$_selectedCategoryId");
+    print("serviceId=$_selectedServiceId");
+    print("subServiceId=null");
+    
     // PART 2: Prevent rapid taps
     final now = DateTime.now();
     if (_lastSaveTap != null && 
@@ -631,19 +587,39 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
       }
 
       // Save service via Functions Service
-      await _functionsService.addService(
-        name: _nameController.text.trim(),
-        price: double.parse(_priceController.text.trim()),
-        imageUrl: imageUrl,
-        category: _selectedCategoryId!,
-        subCategory: _selectedSubCategoryId,
-        description: _descriptionController.text.trim().isEmpty 
-            ? null 
-            : _descriptionController.text.trim(),
-        originalPrice: _originalPrice,
-        offerPrice: _offerPrice,
-        discountPercent: _calculateDiscount(),
-      );
+      final payload = {
+        "categoryId": _selectedCategoryId,
+        "serviceId": _selectedServiceId,
+        "subServiceId": null,
+        "title": _nameController.text.trim(),
+        "description": _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
+        "price": _offerPrice ?? double.parse(_priceController.text.trim()),
+        "imageUrl": imageUrl,
+        "originalPrice": _originalPrice,
+        "offerPrice": _offerPrice,
+        "discountPercent": _calculateDiscount(),
+      };
+      
+      print("[ADD SERVICE] Payload: $payload");
+      
+      try {
+        await _functionsService.addService(
+          name: _nameController.text.trim(),
+          price: _offerPrice ?? double.parse(_priceController.text.trim()),
+          imageUrl: imageUrl,
+          category: _selectedCategoryId!,
+          description: _descriptionController.text.trim().isEmpty 
+              ? null 
+              : _descriptionController.text.trim(),
+          originalPrice: _originalPrice,
+          offerPrice: _offerPrice,
+          discountPercent: _calculateDiscount(),
+        );
+        print("[ADD SERVICE] SUCCESS");
+      } catch (e) {
+        print("[ADD SERVICE] ERROR: $e");
+        rethrow;
+      }
 
       debugPrint('[WRITE VERIFY] service added');
 
@@ -678,6 +654,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.bgLight,
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -698,8 +675,9 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
       body: SafeArea(
         child: Form(
           key: _formKey,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -749,26 +727,17 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                   const SizedBox(height: 16),
                 ],
                 
-                // Subcategory Dropdown (350+ items, Searchable)
-                _buildSectionTitle('Subcategory (Optional)'),
-                const SizedBox(height: 12),
-                _buildSubCategoryDropdown(),
-                const SizedBox(height: 16),
                 
                 // Modern Pricing Section
                 _buildSectionTitle('Pricing'),
                 const SizedBox(height: 12),
                 _buildTextField(
-                  controller: TextEditingController(
-                    text: _originalPrice?.toStringAsFixed(0) ?? '',
-                  ),
+                  controller: _originalPriceController,
                   label: 'Original Price (₹)',
                   hint: 'e.g., 700',
                   keyboardType: TextInputType.number,
                   onChanged: (v) {
-                    setState(() {
-                      _originalPrice = double.tryParse(v);
-                    });
+                    _originalPrice = double.tryParse(v);
                   },
                   validator: (value) {
                     if (_selectedCategoryId == 'custom') return null;
@@ -784,18 +753,13 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                 ),
                 const SizedBox(height: 12),
                 _buildTextField(
-                  controller: TextEditingController(
-                    text: _offerPrice?.toStringAsFixed(0) ?? '',
-                  ),
+                  controller: _offerPriceController,
                   label: 'Offer Price (₹)',
                   hint: 'e.g., 400',
                   keyboardType: TextInputType.number,
                   onChanged: (v) {
-                    setState(() {
-                      _offerPrice = double.tryParse(v);
-                      // Also update old price controller for backward compatibility
-                      _priceController.text = v;
-                    });
+                    _offerPrice = double.tryParse(v);
+                    _priceController.text = v;
                   },
                   validator: (value) {
                     if (_selectedCategoryId == 'custom') return null;
@@ -1008,43 +972,61 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     String? Function(String?)? validator,
     void Function(String)? onChanged,
   }) {
-    return TextFormField(
-      controller: controller,
-      keyboardType: keyboardType,
-      maxLines: maxLines,
-      validator: validator,
-      onChanged: onChanged,
-      style: GoogleFonts.plusJakartaSans(
-        fontSize: 15,
-        color: const Color(0xFF0F172A),
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: GoogleFonts.plusJakartaSans(
-          color: const Color(0xFF94A3B8),
+      child: TextFormField(
+        controller: controller,
+        keyboardType: keyboardType,
+        maxLines: maxLines,
+        validator: validator,
+        onChanged: onChanged,
+        style: GoogleFonts.plusJakartaSans(
+          fontSize: 15,
+          color: const Color(0xFF0F172A),
         ),
-        filled: true,
-        fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.red),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.red, width: 2),
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          labelStyle: GoogleFonts.plusJakartaSans(
+            color: const Color(0xFF64748B),
+            fontSize: 14,
+          ),
+          hintStyle: GoogleFonts.plusJakartaSans(
+            color: const Color(0xFF94A3B8),
+          ),
+          filled: true,
+          fillColor: Colors.grey.shade50,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
+          ),
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Colors.red),
+          ),
+          focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Colors.red, width: 2),
+          ),
         ),
       ),
     );
@@ -1155,13 +1137,10 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
       _selectedCategoryId = item.id;
       _selectedCategoryName = item.label;
       
-      // PART 1: Reset services and subcategories
+      // PART 1: Reset services
       _services = [];
-      _subCategories = [];
       _selectedServiceId = null;
       _selectedServiceName = null;
-      _selectedSubCategoryId = null;
-      _selectedSubCategoryName = null;
       
       // Handle custom category
       if (item.id == 'custom') {
@@ -1170,132 +1149,8 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
         _showCustomServiceInput = false;
         // PART 1: Load services for selected category
         _loadServices(item.id);
-        // Load subcategories for selected category
-        _loadSubCategories(item.id);
       }
     });
-  }
-
-  /// Build Subcategory dropdown (350+ items, searchable, virtualized)
-  Widget _buildSubCategoryDropdown() {
-    // Don't show subcategory if no category selected or custom category
-    if (_selectedCategoryId == null || _selectedCategoryId == 'custom') {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.info_outline, color: Colors.grey.shade500, size: 20),
-            const SizedBox(width: 12),
-            Text(
-              'Select a category first',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 14,
-                color: Colors.grey.shade600,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // PART 1: Show shimmer while loading
-    if (_isLoadingSubCategories) {
-      return Container(
-        height: 56,
-        decoration: BoxDecoration(
-          color: Colors.grey.shade200,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Center(
-          child: SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        ),
-      );
-    }
-
-    // Convert SubCategoryData to DropdownItem
-    final dropdownItems = _subCategories.map((sub) => DropdownItem(
-      id: sub.id,
-      label: sub.name,
-    )).toList();
-
-    // Find selected item
-    DropdownItem? selectedItem;
-    if (_selectedSubCategoryId != null) {
-      final index = _subCategories.indexWhere((s) => s.id == _selectedSubCategoryId);
-      if (index >= 0) {
-        selectedItem = DropdownItem(
-          id: _subCategories[index].id,
-          label: _subCategories[index].name,
-        );
-      }
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SearchableDropdown<DropdownItem>(
-          items: dropdownItems,
-          selectedItem: selectedItem,
-          hint: 'Select subcategory (optional)',
-          searchHint: 'Search subcategories...',
-          isLoading: _isLoadingSubCategories,
-          enabled: !_isLoadingSubCategories && _subCategories.isNotEmpty,
-          onChanged: (item) {
-            if (item != null) {
-              setState(() {
-                _selectedSubCategoryId = item.id;
-                _selectedSubCategoryName = item.label;
-              });
-            }
-          },
-          selectedColor: AppTheme.primaryColor,
-        ),
-        if (_subCategoryError != null) ...[
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Flexible(
-                fit: FlexFit.loose,
-                child: Text(
-                  _subCategoryError!,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 12,
-                    color: Colors.red,
-                  ),
-                ),
-              ),
-              TextButton.icon(
-                onPressed: () => _loadSubCategories(_selectedCategoryId),
-                icon: const Icon(Icons.refresh, size: 16),
-                label: const Text('Retry'),
-                style: TextButton.styleFrom(
-                  foregroundColor: AppTheme.primaryColor,
-                ),
-              ),
-            ],
-          ),
-        ],
-        if (!_isLoadingSubCategories && _subCategories.isEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              'No subcategories available',
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 12,
-                color: Colors.grey.shade600,
-              ),
-            ),
-          ),
-      ],
-    );
   }
 
   /// Build Services dropdown (shows services from 'services' collection when category selected)
@@ -1452,36 +1307,48 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
   }
 
   Widget _buildSubmitButton() {
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: ElevatedButton(
-        onPressed: _isSaving ? null : _saveService,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppTheme.primaryColor,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryColor.withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
-          elevation: 0,
-          disabledBackgroundColor: AppTheme.primaryColor.withOpacity(0.6),
+        ],
+      ),
+      child: SizedBox(
+        width: double.infinity,
+        height: 50,
+        child: ElevatedButton(
+          onPressed: _isSaving ? null : _saveService,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.primaryColor,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            elevation: 0,
+            disabledBackgroundColor: AppTheme.primaryColor.withOpacity(0.6),
+          ),
+          child: _isSaving
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              : Text(
+                  'Add Service',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
         ),
-        child: _isSaving
-            ? const SizedBox(
-                height: 24,
-                width: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              )
-            : Text(
-                'Add Service',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
       ),
     );
   }

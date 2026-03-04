@@ -59,6 +59,7 @@ export default function ServicesPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [toasts, setToasts] = useState<Toast[]>([]);
     const [confirmDialog, setConfirmDialog] = useState<{ serviceId: string; action: string } | null>(null);
+    const [categories, setCategories] = useState<{ value: string; label: string }[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Form state with validation
@@ -104,9 +105,30 @@ export default function ServicesPage() {
             );
             return () => unsub();
         } catch (error) {
-            console.error('Error setting up listener:', error);
+            console.error('Error setting up services listener:', error);
             showToast('Error loading services', 'error');
             setIsLoading(false);
+        }
+    }, [searchTerm]);
+
+    // Fetch categories dynamically
+    useEffect(() => {
+        try {
+            const q = query(collection(db, 'categories'), orderBy('order'));
+            const unsub = onSnapshot(q, (snap) => {
+                const cats = snap.docs.map(d => ({
+                    value: d.id,
+                    label: d.data().name || d.id
+                }));
+                setCategories(cats);
+                console.log(`[Admin] Loaded ${cats.length} categories dynamically.`);
+            }, (err) => {
+                console.error('Failed to load categories:', err);
+                showToast('Failed to load categories from Firestore', 'error');
+            });
+            return () => unsub();
+        } catch (err) {
+            console.error('Error in categories effect:', err);
         }
     }, []);
 
@@ -296,16 +318,6 @@ export default function ServicesPage() {
         setImagePreview(null);
         setFormErrors({});
     };
-
-    // Category options
-    const categories = [
-        { value: 'cleaning', label: 'Cleaning' },
-        { value: 'plumbing', label: 'Plumbing' },
-        { value: 'electrician', label: 'Electrician' },
-        { value: 'ac_repair', label: 'AC Repair' },
-        { value: 'carpenter', label: 'Carpenter' },
-        { value: 'painting', label: 'Painting' }
-    ];
 
     const getCategoryLabel = (categoryId: string) => {
         return categories.find(c => c.value === categoryId)?.label || categoryId;

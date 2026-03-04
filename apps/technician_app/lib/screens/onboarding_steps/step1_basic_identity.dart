@@ -4,7 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
 import 'package:technician_app/core/providers/technician_provider.dart';
-import 'package:technician_app/core/constants/service_categories.dart';
+import '../../core/services/category_data_service.dart';
 
 class Step1BasicIdentity extends StatefulWidget {
   final Map<String, dynamic> formData;
@@ -24,12 +24,16 @@ class _Step1BasicIdentityState extends State<Step1BasicIdentity> {
   late TextEditingController _nameController;
   late TextEditingController _cityController;
   late TextEditingController _searchController;
+  final CategoryDataService _categoryService = CategoryDataService();
+  
   File? _profilePhoto;
   String? _selectedGender;
   DateTime? _selectedDOB;
+  List<CategoryData> _allCategories = [];
   List<String> _selectedCategories = [];
   String _categorySearchQuery = '';
   bool _isUploadingPhoto = false;
+  bool _isLoadingCategories = true;
   String? _categoryError;
 
   final List<String> _genderOptions = ['Male', 'Female', 'Other'];
@@ -51,6 +55,27 @@ class _Step1BasicIdentityState extends State<Step1BasicIdentity> {
     final primaryCat = widget.formData['primaryCategoryId'];
     if (primaryCat != null) {
       _selectedCategories = primaryCat is List ? List<String>.from(primaryCat) : [primaryCat];
+    }
+
+    _loadCategories();
+  }
+
+  Future<void> _loadCategories() async {
+    try {
+      final cats = await _categoryService.getCategories();
+      if (mounted) {
+        setState(() {
+          _allCategories = cats;
+          _isLoadingCategories = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingCategories = false;
+          _categoryError = 'Failed to load categories';
+        });
+      }
     }
   }
 
@@ -379,12 +404,12 @@ class _Step1BasicIdentityState extends State<Step1BasicIdentity> {
     );
   }
 
-  List<Map<String, String>> _getFilteredCategories() {
+  List<CategoryData> _getFilteredCategories() {
     if (_categorySearchQuery.isEmpty) {
-      return ServiceCategories.categories;
+      return _allCategories;
     }
-    return ServiceCategories.categories
-        .where((cat) => cat['name']!.toLowerCase().contains(_categorySearchQuery.toLowerCase()))
+    return _allCategories
+        .where((cat) => cat.name.toLowerCase().contains(_categorySearchQuery.toLowerCase()))
         .toList();
   }
 
@@ -465,28 +490,43 @@ class _Step1BasicIdentityState extends State<Step1BasicIdentity> {
             ),
           ),
           padding: const EdgeInsets.all(12),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: filteredCategories.map((category) {
-              final isSelected = _selectedCategories.contains(category['id']);
-              return FilterChip(
-                label: Text(category['name']!),
-                selected: isSelected,
-                onSelected: (_) => _toggleCategory(category['id']!),
-                backgroundColor: Colors.white,
-                selectedColor: const Color(0xFF6366F1),
-                labelStyle: TextStyle(
-                  color: isSelected ? Colors.white : const Color(0xFF0F172A),
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
-                side: BorderSide(
-                  color: isSelected ? const Color(0xFF6366F1) : const Color(0xFFE2E8F0),
-                ),
-              );
-            }).toList(),
-          ),
+          child: _isLoadingCategories
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                )
+              : filteredCategories.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Center(
+                        child: Text(
+                          _categorySearchQuery.isEmpty ? 'No categories available' : 'No matches found',
+                          style: GoogleFonts.plusJakartaSans(fontSize: 13, color: Colors.grey),
+                        ),
+                      ),
+                    )
+                  : Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: filteredCategories.map((category) {
+                        final isSelected = _selectedCategories.contains(category.id);
+                        return FilterChip(
+                          label: Text(category.name),
+                          selected: isSelected,
+                          onSelected: (_) => _toggleCategory(category.id),
+                          backgroundColor: Colors.white,
+                          selectedColor: const Color(0xFF6366F1),
+                          labelStyle: TextStyle(
+                            color: isSelected ? Colors.white : const Color(0xFF0F172A),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                          side: BorderSide(
+                            color: isSelected ? const Color(0xFF6366F1) : const Color(0xFFE2E8F0),
+                          ),
+                        );
+                      }).toList(),
+                    ),
         ),
         if (_categoryError != null) ...[const SizedBox(height: 8),
           Text(

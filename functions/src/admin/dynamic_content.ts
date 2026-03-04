@@ -131,7 +131,7 @@ export const findEligibleTechniciansCount = functions.https.onCall(async (data, 
         // const subCategories = tech.subCategories || []; // Unused for now, but could be specific
 
         // Check if the requested categoryKey (passed as categoryId data) is in the tech's categories
-        // We assume categoryId passed from client corresponds to an ID in 'technician_categories' 
+        // We assume categoryId passed from client corresponds to an ID in 'categories' 
         // OR a key that is stored in the technician's categories list.
 
         // If tech has the category
@@ -220,8 +220,8 @@ export const admin_initializeHomeContent = functions.https.onCall(async (data, c
         'service_bottom_banners',
         'home_banners',
         'services',
-        'technician_categories',
-        'technician_subcategories'
+        'categories',
+        'services'
     ];
 
     const results: any = {};
@@ -378,7 +378,7 @@ function getSeedData(collName: string): any[] {
                     category: 'Cleaning',
                 },
             ];
-        case 'technician_categories':
+        case 'categories':
             return [
                 { id: 'cleaning', name: 'Cleaning', icon: 'cleaning_services', order: 1, isActive: true },
                 { id: 'plumbing', name: 'Plumbing', icon: 'plumbing', order: 2, isActive: true },
@@ -389,7 +389,7 @@ function getSeedData(collName: string): any[] {
                 { id: 'carpentry', name: 'Carpentry', icon: 'carpenter', order: 7, isActive: true },
                 { id: 'pest_control', name: 'Pest Control', icon: 'pest_control', order: 8, isActive: true },
             ];
-        case 'technician_subcategories':
+        case 'services':
             // We need parent IDs which we don't have easily here without fetching.
             // For seeding, we might skip subcategories or assume some relationship if we could control IDs.
             // Since we use auto-ID, seeding subcategories with relations is hard.
@@ -401,12 +401,12 @@ function getSeedData(collName: string): any[] {
 }
 // ... (existing content)
 
-export const admin_manageTechnicianCategories = functions.https.onCall(async (data, context) => {
+export const admin_manageCategories = functions.https.onCall(async (data, context) => {
     await assertAdmin(context);
     const { action, categoryId, categoryData } = data;
 
     if (action === 'add') {
-        const docRef = db.collection('technician_categories').doc();
+        const docRef = db.collection('categories').doc();
         await docRef.set({
             ...categoryData,
             isActive: true,
@@ -418,7 +418,7 @@ export const admin_manageTechnicianCategories = functions.https.onCall(async (da
 
     if (action === 'update') {
         if (!categoryId) throw new functions.https.HttpsError('invalid-argument', 'Missing categoryId');
-        await db.collection('technician_categories').doc(categoryId).update({
+        await db.collection('categories').doc(categoryId).update({
             ...categoryData,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
@@ -427,7 +427,7 @@ export const admin_manageTechnicianCategories = functions.https.onCall(async (da
 
     if (action === 'delete') {
         if (!categoryId) throw new functions.https.HttpsError('invalid-argument', 'Missing categoryId');
-        await db.collection('technician_categories').doc(categoryId).delete();
+        await db.collection('categories').doc(categoryId).delete();
         return { success: true };
     }
 
@@ -436,7 +436,7 @@ export const admin_manageTechnicianCategories = functions.https.onCall(async (da
         if (!Array.isArray(orders)) throw new functions.https.HttpsError('invalid-argument', 'Orders must be an array');
         const batch = db.batch();
         orders.forEach((item: any) => {
-            batch.update(db.collection('technician_categories').doc(item.id), {
+            batch.update(db.collection('categories').doc(item.id), {
                 order: item.order,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
@@ -448,12 +448,12 @@ export const admin_manageTechnicianCategories = functions.https.onCall(async (da
     throw new functions.https.HttpsError('invalid-argument', 'Invalid action');
 });
 
-export const admin_manageTechnicianSubcategories = functions.https.onCall(async (data, context) => {
+export const admin_manageServices = functions.https.onCall(async (data, context) => {
     await assertAdmin(context);
     const { action, subCategoryId, subCategoryData } = data;
 
     if (action === 'add') {
-        const docRef = db.collection('technician_subcategories').doc();
+        const docRef = db.collection('services').doc();
         await docRef.set({
             ...subCategoryData,
             isActive: true,
@@ -465,7 +465,7 @@ export const admin_manageTechnicianSubcategories = functions.https.onCall(async 
 
     if (action === 'update') {
         if (!subCategoryId) throw new functions.https.HttpsError('invalid-argument', 'Missing subCategoryId');
-        await db.collection('technician_subcategories').doc(subCategoryId).update({
+        await db.collection('services').doc(subCategoryId).update({
             ...subCategoryData,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
@@ -474,7 +474,7 @@ export const admin_manageTechnicianSubcategories = functions.https.onCall(async 
 
     if (action === 'delete') {
         if (!subCategoryId) throw new functions.https.HttpsError('invalid-argument', 'Missing subCategoryId');
-        await db.collection('technician_subcategories').doc(subCategoryId).delete();
+        await db.collection('services').doc(subCategoryId).delete();
         return { success: true };
     }
 
@@ -483,7 +483,7 @@ export const admin_manageTechnicianSubcategories = functions.https.onCall(async 
         if (!Array.isArray(orders)) throw new functions.https.HttpsError('invalid-argument', 'Orders must be an array');
         const batch = db.batch();
         orders.forEach((item: any) => {
-            batch.update(db.collection('technician_subcategories').doc(item.id), {
+            batch.update(db.collection('services').doc(item.id), {
                 order: item.order,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });

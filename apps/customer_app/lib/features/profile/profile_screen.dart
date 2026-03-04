@@ -438,7 +438,7 @@ class _ProfileContentState extends State<_ProfileContent> {
                 const SizedBox(height: 32),
                 _sectionTitle(l10n.translate('support')),
                 _settingsGroup([
-                  _settingsTile(Icons.help_outline_rounded, l10n.translate('helpCenter'), l10n.translate('faqsCustomerSupport'), 
+                  _settingsTile(Icons.support_agent_rounded, l10n.translate('supportHelp'), l10n.translate('faqsCustomerSupport'), 
                     () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SupportScreen()))),
                   _settingsTile(Icons.policy_outlined, l10n.translate('privacyPolicy'), l10n.translate('howWeProtectData'), 
                     () => Navigator.push(context, MaterialPageRoute(builder: (_) => PolicyScreen(title: l10n.translate('privacyPolicy'))))),

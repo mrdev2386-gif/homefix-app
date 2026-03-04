@@ -1,3 +1,10 @@
+import { initializeApp } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+
+// Initialize at the very top
+initializeApp();
+console.log("BOOT OK - Functions loading...");
+
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import * as testing from './testing';
@@ -42,6 +49,7 @@ import * as chat from './chat/chat';
 // Technician Onboarding & Management
 import * as techApp from './technician/application';
 import * as techOnboarding from './technician/onboarding'; // NEW: Secure onboarding functions
+import * as techProfile from './technician/profile_management'; // NEW: Profile management functions
 import * as techTrack from './technician/tracking';
 import * as adminTechMgmt from './admin/technician_management';
 
@@ -55,6 +63,13 @@ export const submitTechnicianKyc = techOnboarding.submitTechnicianKyc; // TODO: 
 export const updateTechnicianStatus = techOnboarding.updateTechnicianStatus; // TODO: verify usage before deletion
 export const saveTechnicianStepData = techOnboarding.saveTechnicianStepData;
 
+// EXPORTS FOR TECHNICIAN PROFILE MANAGEMENT (SECURE CLOUD FUNCTIONS)
+export const updateTechnicianPersonalDetails = techProfile.updateTechnicianPersonalDetails;
+export const updateTechnicianBankDetails = techProfile.updateTechnicianBankDetails;
+export const reuploadVerificationDocument = techProfile.reuploadVerificationDocument;
+export const adminUpdateBankStatus = techProfile.adminUpdateBankStatus;
+export const adminUpdateDocumentStatus = techProfile.adminUpdateDocumentStatus;
+
 import * as matchEngine from './matching/engine';
 import * as techTriggers from './technician/triggers';
 import * as techSec from './technician/security';
@@ -66,10 +81,7 @@ import * as fraudProtection from './fraud_protection';
 import { onBookingCreatedMatch } from './matching/matching_v2';
 
 
-if (!admin.apps.length) {
-    admin.initializeApp();
-}
-const db = admin.firestore();
+const db = getFirestore();
 
 const getDb = () => admin.firestore();
 
@@ -322,8 +334,8 @@ import {
     admin_manageProfessionalVideos,
     admin_manageCleaningEssentials,
     admin_manageServiceBanners,
-    admin_manageTechnicianCategories,
-    admin_manageTechnicianSubcategories,
+    admin_manageCategories,
+    admin_manageServices,
     admin_manageHomeSections,
     admin_manageCategory,
     admin_manageNestedService,

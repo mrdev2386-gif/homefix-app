@@ -112,20 +112,19 @@ class FunctionsService {
     required double price,
     required String imageUrl,
     required String category,
-    String? subCategory,
     String? description,
     double? originalPrice,
     double? offerPrice,
     double? discountPercent,
   }) async {
     try {
+      debugPrint('[DEBUG] FunctionsService.addService called with categoryId: $category');
       HttpsCallable callable = _functions.httpsCallable('addTechnicianService');
       final result = await callable.call({
         'name': name,
         'price': price,
         'imageUrl': imageUrl,
         'category': category,
-        if (subCategory != null) 'subCategory': subCategory,
         if (description != null) 'description': description,
         if (originalPrice != null) 'originalPrice': originalPrice,
         if (offerPrice != null) 'offerPrice': offerPrice,
@@ -181,6 +180,90 @@ class FunctionsService {
       final result = await callable.call({'serviceId': serviceId});
       return Map<String, dynamic>.from(result.data);
     } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Update technician personal details via Cloud Function
+  /// Only allows updating: fullName, email, city, experience, gender, bio
+  Future<Map<String, dynamic>> updateTechnicianPersonalDetails({
+    required String fullName,
+    String? email,
+    String? city,
+    int? experience,
+    String? gender,
+    String? bio,
+  }) async {
+    try {
+      debugPrint('[FunctionsService] Calling updateTechnicianPersonalDetails');
+      HttpsCallable callable = _functions.httpsCallable('updateTechnicianPersonalDetails');
+      final result = await callable.call({
+        'fullName': fullName,
+        if (email != null) 'email': email,
+        if (city != null) 'city': city,
+        if (experience != null) 'experience': experience,
+        if (gender != null) 'gender': gender,
+        if (bio != null) 'bio': bio,
+      });
+      debugPrint('[FunctionsService] updateTechnicianPersonalDetails success');
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[FunctionsService] updateTechnicianPersonalDetails error: ${e.code} - ${e.message}');
+      rethrow;
+    } catch (e) {
+      debugPrint('[FunctionsService] updateTechnicianPersonalDetails unexpected error: $e');
+      rethrow;
+    }
+  }
+
+  /// Update technician bank details via Cloud Function
+  /// Only allows updating bank-related fields
+  Future<Map<String, dynamic>> updateTechnicianBankDetails({
+    required String accountHolderName,
+    required String bankName,
+    required String accountNumber,
+    required String ifscCode,
+  }) async {
+    try {
+      debugPrint('[FunctionsService] Calling updateTechnicianBankDetails');
+      HttpsCallable callable = _functions.httpsCallable('updateTechnicianBankDetails');
+      final result = await callable.call({
+        'accountHolderName': accountHolderName,
+        'bankName': bankName,
+        'accountNumber': accountNumber,
+        'ifscCode': ifscCode.toUpperCase(),
+      });
+      debugPrint('[FunctionsService] updateTechnicianBankDetails success');
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[FunctionsService] updateTechnicianBankDetails error: ${e.code} - ${e.message}');
+      rethrow;
+    } catch (e) {
+      debugPrint('[FunctionsService] updateTechnicianBankDetails unexpected error: $e');
+      rethrow;
+    }
+  }
+
+  /// Re-upload verification document via Cloud Function
+  /// Allows re-upload if status is "missing" or "rejected"
+  Future<Map<String, dynamic>> reuploadVerificationDocument({
+    required String documentType,
+    required String documentUrl,
+  }) async {
+    try {
+      debugPrint('[FunctionsService] Calling reuploadVerificationDocument');
+      HttpsCallable callable = _functions.httpsCallable('reuploadVerificationDocument');
+      final result = await callable.call({
+        'documentType': documentType,
+        'documentUrl': documentUrl,
+      });
+      debugPrint('[FunctionsService] reuploadVerificationDocument success');
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[FunctionsService] reuploadVerificationDocument error: ${e.code} - ${e.message}');
+      rethrow;
+    } catch (e) {
+      debugPrint('[FunctionsService] reuploadVerificationDocument unexpected error: $e');
       rethrow;
     }
   }

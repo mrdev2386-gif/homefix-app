@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../widgets/support_option_card.dart';
-import '../widgets/help_request_form.dart';
+import 'faqs_screen.dart';
 
 class SupportScreen extends StatelessWidget {
   const SupportScreen({super.key});
@@ -103,11 +103,23 @@ class SupportScreen extends StatelessWidget {
               color: const Color(0xFF6366F1),
               onTap: () => _sendEmail(context),
             ),
+            const SizedBox(height: 12),
+
+            SupportOptionCard(
+              icon: Icons.help_outline,
+              title: 'FAQs',
+              subtitle: 'Find answers to common questions',
+              color: const Color(0xFFEF4444),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const FaqsScreen()),
+              ),
+            ),
             const SizedBox(height: 24),
 
-            // Submit Help Request
+            // Quick Tips
             Text(
-              'Submit a Request',
+              'Quick Tips',
               style: GoogleFonts.outfit(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -115,38 +127,22 @@ class SupportScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
-            const HelpRequestForm(),
-            const SizedBox(height: 24),
-
-            // FAQ Section
-            Text(
-              'Frequently Asked Questions',
-              style: GoogleFonts.outfit(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+            _buildTipCard(
+              Icons.lightbulb_outline,
+              'Check FAQs First',
+              'Most questions are answered in our comprehensive FAQ section.',
             ),
-            const SizedBox(height: 16),
-
-            _buildFAQItem(
-              'How do I book a service?',
-              'Browse services, select one, choose a time slot, and confirm booking. Our technician will arrive at your doorstep.',
+            const SizedBox(height: 12),
+            _buildTipCard(
+              Icons.schedule,
+              'Response Time',
+              'We typically respond to emails within 24 hours on business days.',
             ),
-            _buildFAQItem(
-              'What payment methods do you accept?',
-              'We accept UPI, Credit/Debit Cards, Net Banking, and Wallet payments.',
-            ),
-            _buildFAQItem(
-              'Can I cancel my booking?',
-              'Yes, you can cancel your booking before the technician arrives. Cancellation charges may apply based on timing.',
-            ),
-            _buildFAQItem(
-              'How do I track my technician?',
-              'Once assigned, you can track your technician in real-time from the booking details screen.',
-            ),
-            _buildFAQItem(
-              'What if I\'m not satisfied with the service?',
-              'We offer a satisfaction guarantee. Contact support within 24 hours for a resolution.',
+            const SizedBox(height: 12),
+            _buildTipCard(
+              Icons.phone_in_talk,
+              'Urgent Issues',
+              'For urgent matters, please call us directly for immediate assistance.',
             ),
           ],
         ),
@@ -154,9 +150,9 @@ class SupportScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildFAQItem(String question, String answer) {
+  Widget _buildTipCard(IconData icon, String title, String description) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -168,34 +164,40 @@ class SupportScreen extends StatelessWidget {
           ),
         ],
       ),
-      child: Theme(
-        data: ThemeData(
-          dividerColor: Colors.transparent,
-          splashColor: Colors.transparent,
-          highlightColor: Colors.transparent,
-        ),
-        child: ExpansionTile(
-          title: Text(
-            question,
-            style: GoogleFonts.outfit(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF6366F1).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: const Color(0xFF6366F1), size: 24),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.outfit(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: GoogleFonts.outfit(
+                    fontSize: 13,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
             ),
           ),
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Text(
-                answer,
-                style: GoogleFonts.outfit(
-                  fontSize: 13,
-                  color: Colors.grey[700],
-                  height: 1.5,
-                ),
-              ),
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }

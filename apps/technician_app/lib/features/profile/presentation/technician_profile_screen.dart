@@ -12,166 +12,12 @@ import '../../../core/providers/technician_provider.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/models/technician.dart';
 import '../../../core/services/functions_service.dart';
-import '../../support/faqs_screen.dart';
+import '../../../core/services/faq_service.dart';
 import '../../../core/widgets/safe_network_image.dart';
-import '../../services/presentation/technician_services_screen.dart';
+import '../../earnings/presentation/earnings_screen.dart';
 import '../../../../main.dart';
-
-// ============================================================================
-// REUSABLE WIDGET: Profile Completion Circle (Enhanced)
-// ============================================================================
-/// A premium circular progress indicator with gradient stroke and centered percentage.
-/// 
-/// Specifications:
-/// - Size: 72x72 (customizable)
-/// - Stroke width: 6 (customizable)
-/// - Background track: light grey (#F1F5F9)
-/// - Foreground: gradient purple → pink
-/// - Percentage text perfectly centered
-/// - Smooth rounded caps
-/// - No clipping or overflow
-/// - Smooth and crisp on all screen sizes
-class ProfileCompletionCircle extends StatelessWidget {
-  /// Value from 0.0 to 1.0
-  final double value;
-  
-  /// Size of the circle (default 72)
-  final double size;
-  
-  /// Stroke width (default 6)
-  final double strokeWidth;
-  
-  /// Background track color
-  final Color backgroundColor;
-  
-  /// Primary gradient start color
-  final Color primaryColor;
-  
-  /// Secondary gradient end color  
-  final Color secondaryColor;
-  
-  const ProfileCompletionCircle({
-    super.key,
-    required this.value,
-    this.size = 72,
-    this.strokeWidth = 6,
-    this.backgroundColor = const Color(0xFFF1F5F9),
-    this.primaryColor = const Color(0xFF6366F1),
-    this.secondaryColor = const Color(0xFF8B5CF6),
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // Clamp value between 0 and 1
-    final clampedValue = value.clamp(0.0, 1.0);
-    final percentage = (clampedValue * 100).round();
-    
-    return SizedBox(
-      width: size,
-      height: size,
-      child: TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0.0, end: clampedValue),
-        duration: const Duration(milliseconds: 1500),
-        curve: Curves.easeOutCubic,
-        builder: (context, animatedValue, child) {
-          return Stack(
-            alignment: Alignment.center,
-            children: [
-              // Background track
-              CustomPaint(
-                size: Size(size, size),
-                painter: _GradientCirclePainter(
-                  progress: animatedValue,
-                  strokeWidth: strokeWidth,
-                  backgroundColor: backgroundColor,
-                  primaryColor: primaryColor,
-                  secondaryColor: secondaryColor,
-                ),
-              ),
-              // Center percentage text - perfectly centered
-              Center(
-                child: Text(
-                  '$percentage%',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: size * 0.22,
-                    color: const Color(0xFF1E293B),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-/// Custom painter for gradient circle progress
-class _GradientCirclePainter extends CustomPainter {
-  final double progress;
-  final double strokeWidth;
-  final Color backgroundColor;
-  final Color primaryColor;
-  final Color secondaryColor;
-  
-  _GradientCirclePainter({
-    required this.progress,
-    required this.strokeWidth,
-    required this.backgroundColor,
-    required this.primaryColor,
-    required this.secondaryColor,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = (size.width - strokeWidth) / 2;
-    
-    // Draw background track
-    final backgroundPaint = Paint()
-      ..color = backgroundColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
-    
-    canvas.drawCircle(center, radius, backgroundPaint);
-    
-    // Draw gradient progress arc
-    if (progress > 0) {
-      final rect = Rect.fromCircle(center: center, radius: radius);
-      final gradient = SweepGradient(
-        startAngle: -90 * (3.14159 / 180),
-        colors: [primaryColor, secondaryColor, primaryColor],
-        stops: const [0.0, 0.5, 1.0],
-      );
-      
-      final progressPaint = Paint()
-        ..shader = gradient.createShader(rect)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = strokeWidth
-        ..strokeCap = StrokeCap.round;
-      
-      final sweepAngle = 2 * 3.14159 * progress;
-      canvas.drawArc(
-        rect,
-        -90 * (3.14159 / 180),
-        sweepAngle,
-        false,
-        progressPaint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _GradientCirclePainter oldDelegate) {
-    return oldDelegate.progress != progress ||
-        oldDelegate.strokeWidth != strokeWidth ||
-        oldDelegate.backgroundColor != backgroundColor ||
-        oldDelegate.primaryColor != primaryColor ||
-        oldDelegate.secondaryColor != secondaryColor;
-  }
-}
+import 'edit_personal_details_screen.dart';
+import 'edit_bank_details_screen.dart';
 
 /// Technician Profile Screen - Premium UI
 /// 
@@ -220,6 +66,7 @@ class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with 
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('>>> RENDERING: TechnicianProfileScreen vREFAC');
     return Scaffold(
       backgroundColor: AppTheme.bgLight,
       floatingActionButton: _buildEditProfileFAB(context),
@@ -261,14 +108,6 @@ class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with 
                       ),
                     ),
                     
-                    // PART 4: Services Offered
-                    SliverToBoxAdapter(
-                      child: _ServicesCard(
-                        technician: technician,
-                        onEditTap: () => _navigateToEditServices(context),
-                      ),
-                    ),
-                    
                     // PART 7: Bank & Payout Details
                     SliverToBoxAdapter(
                       child: _BankDetailsCard(
@@ -276,11 +115,7 @@ class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with 
                         onUpdateTap: () => _navigateToUpdateBank(context),
                       ),
                     ),
-                    
-                    // PART 6: Documents Section
-                    SliverToBoxAdapter(
-                      child: _DocumentsCard(technician: technician),
-                    ),
+
                     
                     // PART 8: Performance Summary
                     SliverToBoxAdapter(
@@ -298,6 +133,7 @@ class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with 
                     // PART 9: Support & Help
                     SliverToBoxAdapter(
                       child: _SupportSection(
+                        onHelpCenterTap: () => _navigateToFaqs(context),
                         onRaiseDisputeTap: () => _navigateToRaiseDispute(context),
                         onContactSupportTap: () => _navigateToContactSupport(context),
                         onFaqsTap: () => _navigateToFaqs(context),
@@ -336,16 +172,12 @@ class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with 
         HapticFeedback.lightImpact();
         _navigateToEditProfile(context);
       },
-      backgroundColor: AppTheme.primaryColor,
+      backgroundColor: const Color(0xFF6A5AE0),
       foregroundColor: Colors.white,
       elevation: 4,
       label: const Row(
         mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.edit, size: 18),
-          SizedBox(width: 8),
-          Text('Edit Profile', style: TextStyle(fontWeight: FontWeight.w600)),
-        ],
+        children: [Icon(Icons.edit, size: 18), SizedBox(width: 8), Text('Edit Profile', style: TextStyle(fontWeight: FontWeight.w600))],
       ),
     );
   }
@@ -353,16 +185,10 @@ class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with 
   void _navigateToEditProfile(BuildContext context) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+      MaterialPageRoute(builder: (_) => const EditPersonalDetailsScreen()),
     );
   }
 
-  void _navigateToEditServices(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const TechnicianServicesScreen()),
-    );
-  }
 
   void _navigateToEditSkills(BuildContext context) {
     Navigator.push(
@@ -469,7 +295,6 @@ class _PremiumProfileHeader extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // Gradient background with blur effect
           Container(
             height: 200,
             decoration: BoxDecoration(
@@ -477,19 +302,9 @@ class _PremiumProfileHeader extends StatelessWidget {
               gradient: const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF6366F1),
-                  Color(0xFF8B5CF6),
-                  Color(0xFFEC4899),
-                ],
+                colors: [Color(0xFF6A5AE0), Color(0xFF9F44D3), Color(0xFFEC4899)],
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.primaryColor.withOpacity(0.3),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
+              boxShadow: [BoxShadow(color: const Color(0xFF6A5AE0).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10))],
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(24),
@@ -498,51 +313,47 @@ class _PremiumProfileHeader extends StatelessWidget {
                 child: Container(
                   color: Colors.transparent,
                   padding: const EdgeInsets.fromLTRB(24, 50, 24, 24),
-                  child: Column(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Name and rating
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Flexible(
-                            fit: FlexFit.loose,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
+                      Flexible(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              technician.name.isNotEmpty ? technician.name : 'Technician',
+                              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
                               children: [
-                                Text(
-                                  technician.name.isNotEmpty ? technician.name : 'Technician',
-                                  style: const TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.phone, size: 14, color: Colors.white70),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      technician.phone,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.white70,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                                const Icon(Icons.phone, size: 14, color: Colors.white70),
+                                const SizedBox(width: 4),
+                                Text(technician.phone, style: const TextStyle(fontSize: 14, color: Colors.white70)),
                               ],
                             ),
-                          ),
-                          // Stylish rating pill
-                          _RatingPill(
-                            rating: technician.avgRating.toStringAsFixed(1),
-                            reviews: technician.totalRatings,
-                          ),
-                        ],
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.white.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.star, size: 16, color: Color(0xFFFCD34D)),
+                            const SizedBox(width: 4),
+                            Text(technician.avgRating.toStringAsFixed(1), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                            const SizedBox(width: 4),
+                            Text('(${technician.totalRatings})', style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.8))),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -550,15 +361,11 @@ class _PremiumProfileHeader extends StatelessWidget {
               ),
             ),
           ),
-          // Floating avatar
           Positioned(
             left: 24,
             bottom: -50,
             child: GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                onAvatarTap();
-              },
+              onTap: onAvatarTap,
               child: ScaleTransition(
                 scale: avatarScaleAnimation,
                 child: Hero(
@@ -567,69 +374,17 @@ class _PremiumProfileHeader extends StatelessWidget {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white, width: 4),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.primaryColor.withOpacity(0.3),
-                          blurRadius: 15,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
+                      boxShadow: [BoxShadow(color: const Color(0xFF6A5AE0).withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 5))],
                     ),
                     child: CircleAvatar(
                       radius: 50,
-                      backgroundColor: AppTheme.primaryLight,
-                      backgroundImage: technician.profilePhotoUrl != null
-                          ? NetworkImage(technician.profilePhotoUrl!)
-                          : null,
-                      child: technician.profilePhotoUrl == null
-                          ? const Icon(Icons.person, size: 50, color: AppTheme.primaryColor)
-                          : null,
+                      backgroundColor: const Color(0xFFF3F0FF),
+                      backgroundImage: technician.profilePhotoUrl != null ? NetworkImage(technician.profilePhotoUrl!) : null,
+                      child: technician.profilePhotoUrl == null ? const Icon(Icons.person, size: 50, color: Color(0xFF6A5AE0)) : null,
                     ),
                   ),
                 ),
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RatingPill extends StatelessWidget {
-  final String rating;
-  final int reviews;
-
-  const _RatingPill({required this.rating, required this.reviews});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.star, size: 16, color: Color(0xFFFCD34D)),
-          const SizedBox(width: 4),
-          Text(
-            rating,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            '($reviews)',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.white.withOpacity(0.8),
             ),
           ),
         ],
@@ -653,16 +408,13 @@ class _VerificationAndCompletionCard extends StatefulWidget {
 class _VerificationAndCompletionCardState extends State<_VerificationAndCompletionCard>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation<double> _animation;
+  late Animation<double> _scaleAnimation;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    );
-    _animation = CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
+    _controller = AnimationController(duration: const Duration(milliseconds: 600), vsync: this);
+    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
     _controller.forward();
   }
 
@@ -679,66 +431,46 @@ class _VerificationAndCompletionCardState extends State<_VerificationAndCompleti
   @override
   Widget build(BuildContext context) {
     final completion = _getProfileCompletion(widget.technician);
-    final profilePercent = completion / 100.0;
-    
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // Profile completion circle with animation
-          AnimatedBuilder(
-            animation: _animation,
-            builder: (context, child) {
-              return ProfileCompletionCircle(
-                value: _animation.value * profilePercent,
-              );
-            },
-          ),
+    final isComplete = completion == 100;
 
-          const SizedBox(width: 16),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Profile Complete',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.black54,
-                    fontWeight: FontWeight.w500,
+    return ScaleTransition(
+      scale: _scaleAnimation,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: isComplete ? [const Color(0xFF00C853), const Color(0xFF00E676)] : [Colors.grey[300]!, Colors.grey[200]!],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [BoxShadow(color: (isComplete ? const Color(0xFF00C853) : Colors.grey).withOpacity(0.2), blurRadius: 12, offset: const Offset(0, 4))],
+        ),
+        child: Row(
+          children: [
+            if (isComplete)
+              Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white.withOpacity(0.3), shape: BoxShape.circle), child: const Icon(Icons.check_circle, size: 32, color: Colors.white))
+            else
+              Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white.withOpacity(0.3), shape: BoxShape.circle), child: const Icon(Icons.pending, size: 32, color: Colors.white)),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    isComplete ? '🎉 Profile Completed!' : 'Complete Your Profile',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  completion == 100 
-                      ? 'Your profile is complete!' 
-                      : 'Complete your profile to get more jobs',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Colors.black45,
+                  const SizedBox(height: 4),
+                  Text(
+                    isComplete ? "You're fully verified & ready to accept jobs." : 'Complete your profile to get more job requests.',
+                    style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.9)),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -904,10 +636,57 @@ class _PersonalDetailsCard extends StatelessWidget {
   final Technician technician;
   final VoidCallback onEditTap;
 
-  const _PersonalDetailsCard({
-    required this.technician,
-    required this.onEditTap,
-  });
+  const _PersonalDetailsCard({required this.technician, required this.onEditTap});
+
+  Widget _docTile(String title, String? url, BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: url != null ? () => _viewDocument(context, url) : null,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              height: 84,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: url == null ? Colors.red.shade50 : Colors.grey.shade100,
+                border: Border.all(
+                  color: url == null ? Colors.red.shade200 : Colors.grey.shade300,
+                ),
+              ),
+              child: url != null
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.network(url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.error_outline, color: Colors.red)),
+                    )
+                  : const Center(child: Icon(Icons.image_not_supported, color: Colors.red)),
+            ),
+            const SizedBox(height: 6),
+            Text(title, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)), maxLines: 1, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 4),
+            if (url != null)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.check_circle, size: 12, color: AppTheme.success),
+                  const SizedBox(width: 4),
+                  Text('Verified', style: TextStyle(fontSize: 10, color: AppTheme.success, fontWeight: FontWeight.w600)),
+                ],
+              )
+            else
+              Text('Missing', style: TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _viewDocument(BuildContext context, String url) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => FullImageViewScreen(imageUrl: url)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -917,18 +696,90 @@ class _PersonalDetailsCard extends StatelessWidget {
         onPressed: onEditTap,
         icon: const Icon(Icons.edit, size: 16),
         label: const Text('Edit'),
-        style: TextButton.styleFrom(
-          foregroundColor: AppTheme.primaryColor,
-        ),
+        style: TextButton.styleFrom(foregroundColor: const Color(0xFF6A5AE0)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _DetailRow(icon: Icons.person_outline, label: 'Full Name', value: technician.name.isNotEmpty ? technician.name : '-'),
-          _DetailRow(icon: Icons.phone_outlined, label: 'Phone', value: technician.phone),
-          _DetailRow(icon: Icons.email_outlined, label: 'Email', value: technician.email.isNotEmpty ? technician.email : 'Not set'),
-          _DetailRow(icon: Icons.location_on_outlined, label: 'City/Area', value: technician.district ?? 'Not set'),
-          _DetailRow(icon: Icons.work_outline, label: 'Experience', value: technician.experienceYears != null ? '${technician.experienceYears} years' : 'Not set'),
+          _DetailRow(icon: Icons.person_outline, label: 'Full Name', value: technician.name.isNotEmpty ? technician.name : '-', isMissing: technician.name.isEmpty),
+          _DetailRow(icon: Icons.phone_outlined, label: 'Phone', value: technician.phone, isMissing: technician.phone.isEmpty),
+          _DetailRow(icon: Icons.email_outlined, label: 'Email', value: technician.email.isNotEmpty ? technician.email : 'Not set', isMissing: technician.email.isEmpty),
+          _DetailRow(icon: Icons.location_on_outlined, label: 'City/Area', value: technician.district ?? 'Not set', isMissing: technician.district == null),
+          _DetailRow(icon: Icons.work_outline, label: 'Experience', value: technician.experienceYears != null ? '${technician.experienceYears} years' : 'Not set', isMissing: technician.experienceYears == null),
+          const SizedBox(height: 20),
+          const Divider(height: 1),
+          const SizedBox(height: 16),
+          const Text('Verification Documents', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _docTile('Aadhaar Front', technician.aadhaarFrontUrl, context),
+              const SizedBox(width: 12),
+              _docTile('Aadhaar Back', technician.aadhaarBackUrl, context),
+              const SizedBox(width: 12),
+              _docTile('Profile Photo', technician.profilePhotoUrl, context),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DocumentPreview extends StatelessWidget {
+  final String label;
+  final String? imageUrl;
+
+  const _DocumentPreview({required this.label, required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    final isVerified = imageUrl != null && imageUrl!.isNotEmpty;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isVerified ? AppTheme.success.withOpacity(0.2) : Colors.red.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          if (isVerified)
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(imageUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported)),
+              ),
+            )
+          else
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+              child: const Icon(Icons.image_not_supported, color: Colors.red),
+            ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
+                const SizedBox(height: 4),
+                Text(isVerified ? 'Verified' : 'Not uploaded', style: TextStyle(fontSize: 12, color: isVerified ? AppTheme.success : Colors.red, fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ),
+          if (isVerified)
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(color: AppTheme.success.withOpacity(0.1), shape: BoxShape.circle),
+              child: const Icon(Icons.check, size: 16, color: AppTheme.success),
+            ),
         ],
       ),
     );
@@ -939,58 +790,41 @@ class _DetailRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
+  final bool isMissing;
 
   const _DetailRow({
     required this.icon,
     required this.label,
     required this.value,
+    this.isMissing = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final Color color = isMissing ? Colors.red : Colors.grey.shade800;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryLight,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, size: 18, color: AppTheme.primaryColor),
-          ),
-          const SizedBox(width: 14),
-          Flexible(
-            fit: FlexFit.loose,
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 10),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
               children: [
-                Flexible(
-                  fit: FlexFit.loose,
-                  child: Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF94A3B8),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                Text(
+                  label,
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
-                Flexible(
-                  fit: FlexFit.loose,
-                  child: Text(
-                    value,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF1E293B),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: color,
                   ),
                 ),
               ],
@@ -1002,101 +836,98 @@ class _DetailRow extends StatelessWidget {
   }
 }
 
+
 // ============================================
-// PART 4: Services Offered
+// PART 5: Earnings Section
 // ============================================
-class _ServicesCard extends StatelessWidget {
-  final Technician technician;
-  final VoidCallback onEditTap;
+class _EarningsCard extends StatelessWidget {
+  final VoidCallback onTap;
 
-  const _ServicesCard({
-    required this.technician,
-    required this.onEditTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final services = technician.skills;
-    
-    return _PremiumCard(
-      title: 'Services Offered',
-      titleAction: TextButton.icon(
-        onPressed: onEditTap,
-        icon: const Icon(Icons.edit, size: 16),
-        label: const Text('Edit'),
-        style: TextButton.styleFrom(
-          foregroundColor: AppTheme.primaryColor,
-        ),
-      ),
-      child: services.isEmpty
-          ? const _EmptyState(
-              icon: Icons.build_circle_outlined,
-              message: 'No services added yet',
-              subMessage: 'Add your services to start receiving job requests',
-            )
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: services.map((service) => _ServiceChip(service: service)).toList(),
-                ),
-                if (technician.basePrice != null) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryLight,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.currency_rupee, size: 20, color: AppTheme.primaryColor),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Starting from ₹${technician.basePrice}',
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.primaryColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-    );
-  }
-}
-
-class _ServiceChip extends StatelessWidget {
-  final String service;
-
-  const _ServiceChip({required this.service});
+  const _EarningsCard({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppTheme.primaryColor.withOpacity(0.1),
-            AppTheme.primaryColor.withOpacity(0.05),
-          ],
-        ),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
-      child: Text(
-        service,
-        style: const TextStyle(
-          fontSize: 13,
-          color: AppTheme.primaryColor,
-          fontWeight: FontWeight.w500,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        const Color(0xFF6366F1),
+                        const Color(0xFF8B5CF6),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.account_balance_wallet,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Flexible(
+                  fit: FlexFit.loose,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'My Earnings',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'View your earnings and transactions',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 13,
+                          color: const Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.chevron_right,
+                    color: Color(0xFF64748B),
+                    size: 20,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -1283,39 +1114,20 @@ class _BankDetailsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasBankDetails = technician.payoutPreference != null && technician.payoutPreference!.isNotEmpty;
+    final techData = technician.toMap();
+    final hasBankDetails = (techData['bankName'] != null && techData['bankName'].toString().isNotEmpty) ||
+                          (techData['accountNumber'] != null && techData['accountNumber'].toString().isNotEmpty);
 
     return _PremiumCard(
       title: 'Bank & Payout',
       titleAction: TextButton.icon(
         onPressed: onUpdateTap,
         icon: const Icon(Icons.edit, size: 16),
-        label: const Text('Update'),
-        style: TextButton.styleFrom(
-          foregroundColor: AppTheme.primaryColor,
-        ),
+        label: Text(hasBankDetails ? 'Edit' : 'Add'),
+        style: TextButton.styleFrom(foregroundColor: AppTheme.primaryColor),
       ),
       child: hasBankDetails
-          ? Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _BankInfoRow(
-                  icon: Icons.account_balance,
-                  label: 'Bank Account',
-                  value: _maskAccountNumber(technician.payoutPreference!),
-                  status: 'verified',
-                ),
-                if (technician.panNumber != null && technician.panNumber!.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  _BankInfoRow(
-                    icon: Icons.article,
-                    label: 'PAN',
-                    value: _maskPanNumber(technician.panNumber!),
-                    status: 'verified',
-                  ),
-                ],
-              ],
-            )
+          ? _buildBankDetailsView(techData)
           : const _EmptyState(
               icon: Icons.account_balance_outlined,
               message: 'No payout method added',
@@ -1324,98 +1136,146 @@ class _BankDetailsCard extends StatelessWidget {
     );
   }
 
-  String _maskAccountNumber(String account) {
-    if (account.length <= 4) return account;
-    return '****${account.substring(account.length - 4)}';
-  }
-
-  String _maskPanNumber(String pan) {
-    if (pan.length < 5) return pan;
-    return '${pan.substring(0, 2)}***${pan.substring(pan.length - 3)}';
-  }
-}
-
-class _BankInfoRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final String status;
-
-  const _BankInfoRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.status,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isVerified = status == 'verified';
+  Widget _buildBankDetailsView(Map<String, dynamic> techData) {
+    final bankName = techData['bankName'] as String?;
+    final accountNumber = techData['accountNumber'] as String?;
+    final ifscCode = techData['ifscCode'] as String?;
+    final bankStatus = techData['bankStatus'] as String? ?? 'not_submitted';
     
+    final maskedAccount = accountNumber != null && accountNumber.length > 4
+        ? '****${accountNumber.substring(accountNumber.length - 4)}'
+        : accountNumber ?? '****';
+
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.success.withOpacity(0.2)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AppTheme.success.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, size: 20, color: AppTheme.success),
+        gradient: LinearGradient(
+          colors: [const Color(0xFF6366F1), const Color(0xFF8B5CF6)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF6366F1).withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
-          const SizedBox(width: 14),
-          Flexible(
-            fit: FlexFit.loose,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  fit: FlexFit.loose,
-                  child: Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF94A3B8),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                Flexible(
-                  fit: FlexFit.loose,
-                  child: Text(
-                    value,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF1E293B),
-                      letterSpacing: 1.5,
+                child: const Icon(Icons.account_balance, color: Colors.white, size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      bankName ?? 'Bank Account',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    const SizedBox(height: 4),
+                    Text(
+                      'Account: $maskedAccount',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.white.withOpacity(0.9),
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _buildStatusBadge(bankStatus),
+            ],
+          ),
+          if (ifscCode != null) ...[
+            const SizedBox(height: 16),
+            const Divider(color: Colors.white24, height: 1),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Icon(Icons.code, color: Colors.white70, size: 16),
+                const SizedBox(width: 8),
+                Text(
+                  'IFSC: $ifscCode',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.white.withOpacity(0.8),
                   ),
                 ),
               ],
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: AppTheme.success.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              isVerified ? Icons.check : Icons.pending,
-              size: 14,
-              color: AppTheme.success,
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(String status) {
+    Color bgColor;
+    Color textColor;
+    IconData icon;
+    String label;
+
+    switch (status) {
+      case 'approved':
+        bgColor = Colors.green;
+        textColor = Colors.white;
+        icon = Icons.verified;
+        label = 'Verified';
+        break;
+      case 'pending':
+        bgColor = Colors.orange;
+        textColor = Colors.white;
+        icon = Icons.pending;
+        label = 'Pending';
+        break;
+      case 'rejected':
+        bgColor = Colors.red;
+        textColor = Colors.white;
+        icon = Icons.error;
+        label = 'Rejected';
+        break;
+      default:
+        bgColor = Colors.white.withOpacity(0.2);
+        textColor = Colors.white;
+        icon = Icons.info;
+        label = 'Not Verified';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: textColor),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: textColor,
             ),
           ),
         ],
@@ -1745,11 +1605,13 @@ class _AvailabilityCard extends StatelessWidget {
 // PART 9: Support & Help
 // ============================================
 class _SupportSection extends StatelessWidget {
+  final VoidCallback onHelpCenterTap;
   final VoidCallback onRaiseDisputeTap;
   final VoidCallback onContactSupportTap;
   final VoidCallback onFaqsTap;
 
   const _SupportSection({
+    required this.onHelpCenterTap,
     required this.onRaiseDisputeTap,
     required this.onContactSupportTap,
     required this.onFaqsTap,
@@ -1761,6 +1623,11 @@ class _SupportSection extends StatelessWidget {
       title: 'Support & Help',
       child: Column(
         children: [
+          _SupportItem(
+            icon: Icons.help_outline,
+            label: 'Help Center',
+            onTap: onHelpCenterTap,
+          ),
           _SupportItem(
             icon: Icons.gavel_outlined,
             label: 'Raise Dispute',
@@ -1805,8 +1672,8 @@ class _SupportItem extends StatelessWidget {
           child: InkWell(
             onTap: onTap,
             borderRadius: BorderRadius.circular(12),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14),
               child: Row(
                 children: [
                   Container(
@@ -1817,7 +1684,7 @@ class _SupportItem extends StatelessWidget {
                     ),
                     child: Icon(icon, size: 20, color: const Color(0xFF64748B)),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Text(
                       label,
@@ -1952,11 +1819,7 @@ class _PremiumCard extends StatelessWidget {
   final Widget? titleAction;
   final Widget child;
 
-  const _PremiumCard({
-    required this.title,
-    this.titleAction,
-    required this.child,
-  });
+  const _PremiumCard({required this.title, this.titleAction, required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -1966,13 +1829,7 @@ class _PremiumCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15, offset: const Offset(0, 5))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1981,14 +1838,7 @@ class _PremiumCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E293B),
-                ),
-              ),
+              Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
               if (titleAction != null) titleAction!,
             ],
           ),
@@ -2328,6 +2178,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
+    print("[EDIT PROFILE] Loading initial data");
     _loadCurrentData();
   }
 
@@ -2434,10 +2285,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _saveProfile() async {
-    // PHASE 1: Prevent double submit
-    if (_isSaving) return;
+    print("[EDIT PROFILE] Save pressed");
     
-    // PHASE 1: Validate form
+    if (_isSaving) return;
     if (!_formKey.currentState!.validate()) return;
     
     setState(() => _isSaving = true);
@@ -2445,37 +2295,40 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     try {
       final provider = context.read<TechnicianProvider>();
       
-      // PHASE 1: Update profile via provider
-      await provider.saveStepData(
-        step: 1,
-        data: {
-          'fullName': _capitalizeWords(_nameController.text.trim()),
-          'district': _capitalizeWords(_cityController.text.trim()),
-          'experienceYears': int.tryParse(_experienceController.text) ?? 0,
-          'bio': _bioController.text.trim(),
-          'gender': _selectedGender,
-          'dob': _selectedDOB?.toIso8601String(),
-          'profilePhotoUrl': _profilePhotoUrl,
-        },
-      );
+      final payload = {
+        'fullName': _capitalizeWords(_nameController.text.trim()),
+        'email': _technician?.email ?? '',
+        'phone': _technician?.phone ?? '',
+        'district': _capitalizeWords(_cityController.text.trim()),
+        'experienceYears': int.tryParse(_experienceController.text) ?? 0,
+        'bio': _bioController.text.trim(),
+        'gender': _selectedGender,
+        'dateOfBirth': _selectedDOB?.toIso8601String(),
+        'profilePhotoUrl': _profilePhotoUrl,
+      };
       
-      // PHASE 2: Refresh provider after update
+      debugPrint('[PROFILE_SAVE] payload=$payload');
+      
+      await provider.saveStepData(step: 1, data: payload);
+      
+      debugPrint('[PROVIDER_REFRESH] started');
       await provider.refreshTechnicianData();
+      debugPrint('[PROVIDER_REFRESH] done, tech=${provider.technician?.toMap()}');
+      
+      print("[EDIT PROFILE] SUCCESS");
       
       if (mounted) {
-        // PHASE 1: Show success snackbar
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Profile updated successfully!'),
             backgroundColor: Colors.green,
           ),
         );
-        
-        // PHASE 1: Pop screen safely
         Navigator.pop(context);
       }
     } catch (e) {
-      // PHASE 1: Wrap Firestore write in try/catch
+      print("[EDIT PROFILE] ERROR: $e");
+      debugPrint('[PROFILE_SAVE] error=$e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -3228,214 +3081,7 @@ class _EditSkillsScreenState extends State<EditSkillsScreen> {
   }
 }
 
-class EditBankDetailsScreen extends StatefulWidget {
-  const EditBankDetailsScreen({super.key});
 
-  @override
-  State<EditBankDetailsScreen> createState() => _EditBankDetailsScreenState();
-}
-
-class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _accountHolderController = TextEditingController();
-  final _accountNumberController = TextEditingController();
-  final _ifscCodeController = TextEditingController();
-  final _bankNameController = TextEditingController();
-  
-  bool _isSaving = false;
-  bool _showAccountNumber = false;
-  Technician? _technician;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadCurrentData();
-  }
-
-  void _loadCurrentData() {
-    final provider = context.read<TechnicianProvider>();
-    _technician = provider.technician;
-    // Pre-fill if bank details exist - would need bankDetails in technician model
-    // For now, leave empty for new entry
-  }
-
-  @override
-  void dispose() {
-    _accountHolderController.dispose();
-    _accountNumberController.dispose();
-    _ifscCodeController.dispose();
-    _bankNameController.dispose();
-    super.dispose();
-  }
-
-  String? _validateIfscCode(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'IFSC Code is required';
-    }
-    // IFSC code format: 11 characters, first 4 letters (bank code), 5th character 0, last 6 digits
-    final ifscRegex = RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}$');
-    if (!ifscRegex.hasMatch(value.toUpperCase())) {
-      return 'Invalid IFSC Code format';
-    }
-    return null;
-  }
-
-  String? _validateAccountNumber(String? value) {
-    if (value == null || value.trim().isEmpty) {
-      return 'Account number required';
-    }
-
-    final cleaned = value.trim();
-
-    if (!RegExp(r'^[0-9]{9,18}$').hasMatch(cleaned)) {
-      return 'Invalid Account Number';
-    }
-
-    return null;
-  }
-
-  Future<void> _saveBankDetails() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_isSaving) return;
-
-    setState(() => _isSaving = true);
-
-    try {
-      final uid = FirebaseAuth.instance.currentUser!.uid;
-
-      final docRef = FirebaseFirestore.instance
-          .collection('technicians')
-          .doc(uid);
-      
-      await docRef.update({
-        'accountHolder': _accountHolderController.text.trim(),
-        'accountNumber': _accountNumberController.text.trim(),
-        'ifscCode': _ifscCodeController.text.trim().toUpperCase(),
-        'bankName': _bankNameController.text.trim(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      // WRITE VERIFY: Ensure write actually reached server
-      await docRef.get();
-      debugPrint('[WRITE VERIFY] bank details updated');
-
-      if (!mounted) return;
-
-      await context.read<TechnicianProvider>().refreshTechnicianData();
-      debugPrint('[Provider] refreshed');
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bank details saved')),
-      );
-
-      Navigator.pop(context);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSaving = false);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text('Bank Details', style: GoogleFonts.plusJakartaSans(fontSize: 20, fontWeight: FontWeight.bold, color: const Color(0xFF0F172A))),
-        centerTitle: true,
-      ),
-      body: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: const Color(0xFF10B981).withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-                child: Row(
-                  children: [
-                    const Icon(Icons.security, color: Color(0xFF10B981)),
-                    const SizedBox(width: 12),
-                    Flexible(
-                      fit: FlexFit.loose,
-                      child: Text('Your bank details are securely encrypted and stored.', style: GoogleFonts.plusJakartaSans(fontSize: 14, color: const Color(0xFF10B981))),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text('Account Holder Name', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _accountHolderController,
-                decoration: InputDecoration(hintText: 'Enter account holder name', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                validator: (value) => value == null || value.trim().isEmpty ? 'Account holder name is required' : value.trim().length < 3 ? 'Name must be at least 3 characters' : null,
-              ),
-              const SizedBox(height: 20),
-              Text('Bank Name', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _bankNameController,
-                decoration: InputDecoration(hintText: 'Enter bank name', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                validator: (value) => value == null || value.trim().isEmpty ? 'Bank name is required' : null,
-              ),
-              const SizedBox(height: 20),
-              Text('Account Number', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _accountNumberController,
-                keyboardType: TextInputType.number,
-                obscureText: !_showAccountNumber,
-                decoration: InputDecoration(
-                  hintText: 'Enter account number',
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  suffixIcon: IconButton(icon: Icon(_showAccountNumber ? Icons.visibility_off : Icons.visibility), onPressed: () => setState(() => _showAccountNumber = !_showAccountNumber)),
-                ),
-                validator: _validateAccountNumber,
-              ),
-              const SizedBox(height: 20),
-              Text('IFSC Code', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _ifscCodeController,
-                textCapitalization: TextCapitalization.characters,
-                decoration: InputDecoration(hintText: 'e.g., SBIN0001234', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                validator: _validateIfscCode,
-              ),
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _isSaving ? null : _saveBankDetails,
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6366F1), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                  child: _isSaving ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white))) : Text('Save Bank Details', style: GoogleFonts.plusJakartaSans(fontSize: 16, fontWeight: FontWeight.w600)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class RaiseDisputeScreen extends StatefulWidget {
   const RaiseDisputeScreen({super.key});
@@ -4049,3 +3695,132 @@ class _ContactSupportScreenState extends State<ContactSupportScreen> {
   }
 }
 
+class FaqsScreen extends StatefulWidget {
+  const FaqsScreen({super.key});
+
+  @override
+  State<FaqsScreen> createState() => _FaqsScreenState();
+}
+
+class _FaqsScreenState extends State<FaqsScreen> {
+  final FaqService _faqService = FaqService();
+  late Future<List<dynamic>> _faqsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFaqs();
+  }
+
+  void _loadFaqs() {
+    _faqsFuture = _faqService.fetchFaqs().then((faqs) => faqs as List<dynamic>);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F6FA),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'FAQs',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: const Color(0xFF0F172A),
+          ),
+        ),
+        centerTitle: true,
+      ),
+      body: FutureBuilder<List<dynamic>>(
+        future: _faqsFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: AppTheme.primaryColor),
+            );
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    size: 48,
+                    color: Color(0xFF94A3B8),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Failed to load FAQs',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 16,
+                      color: const Color(0xFF64748B),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      setState(() {
+                        _loadFaqs();
+                      });
+                    },
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return Center(
+              child: Text(
+                'No FAQs available',
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 16,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+            );
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: snapshot.data!.length,
+            itemBuilder: (context, index) {
+              final faq = snapshot.data![index];
+              return Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                child: ExpansionTile(
+                  title: Text(
+                    faq['question'] ?? 'Question',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        faq['answer'] ?? 'Answer',
+                        style: GoogleFonts.plusJakartaSans(
+                          color: const Color(0xFF64748B),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}

@@ -545,7 +545,7 @@ class FirestoreService {
 
   // --- Technician Categories ---
   Stream<List<TechnicianCategory>> streamTechnicianCategories() {
-    return _db.collection('technician_categories')
+    return _db.collection('categories')
         .where('isActive', isEqualTo: true)
         .snapshots()
         .map((snapshot) {
@@ -559,7 +559,7 @@ class FirestoreService {
   }
 
   Stream<List<TechnicianSubcategory>> streamTechnicianSubcategories({String? categoryId}) {
-    Query query = _db.collection('technician_subcategories')
+    Query query = _db.collection('services')
         .where('isActive', isEqualTo: true);
     
     if (categoryId != null) {
@@ -578,7 +578,7 @@ class FirestoreService {
   }
 
   Future<List<TechnicianCategory>> getTechnicianCategories() async {
-    final snapshot = await _db.collection('technician_categories')
+    final snapshot = await _db.collection('categories')
         .where('isActive', isEqualTo: true)
         .get();
     
@@ -590,7 +590,7 @@ class FirestoreService {
   }
 
   Future<List<TechnicianSubcategory>> getTechnicianSubcategories() async {
-    final snapshot = await _db.collection('technician_subcategories')
+    final snapshot = await _db.collection('services')
         .where('isActive', isEqualTo: true)
         .get();
     
