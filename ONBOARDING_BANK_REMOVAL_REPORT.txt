@@ -1,0 +1,89 @@
+TECHNICIAN APP ONBOARDING FLOW - BANK DETAILS REMOVAL
+
+=== FILES MODIFIED ===
+
+1. technician_onboarding_flow_screen.dart
+   - Removed import: step4_bank_details.dart
+   - Updated completed steps tracking (removed 'bank' flag)
+   - Updated step clamp from 0-4 to 0-3
+   - Removed bank details from form data prefill
+   - Removed bank details case (3) from _getStepData()
+   - Updated submit condition from step 5 to step 4
+   - Updated bottom bar condition from < 5 to < 4
+   - Updated step counter from 6 to 5 total steps
+   - Updated progress bar calculation from /6 to /5
+   - Updated step titles (removed 'Bank Details', renamed 'Service Setup' to 'Availability')
+   - Updated submit button condition from step 5 to step 4
+   - Removed Step4BankDetails from PageView children
+
+=== ONBOARDING STEPS AFTER REMOVAL ===
+
+New flow (5 steps total):
+1. Personal Details (Step 1)
+2. Professional Details (Step 2)
+3. KYC Verification (Step 3)
+4. Availability (Step 4 - formerly Service Setup)
+5. Success (Step 5)
+
+Bank details NO LONGER in onboarding.
+
+=== BANK DETAILS FLOW ===
+
+Bank details now added ONLY from:
+Profile Screen → Bank & Payout Section
+
+Existing implementation already handles:
+- Bank account addition
+- Razorpay verification
+- Status tracking in Firestore
+
+=== WALLET STATUS LOGIC ===
+
+Wallet reads bank verification status from Firestore:
+
+If no bank account:
+  → Show "Add Bank Account"
+
+If bank added but verification pending:
+  → Show "Verification in progress"
+
+If bank verified:
+  → Allow Withdraw
+  → Show "KYC Complete"
+
+Wallet automatically updates when bank status changes.
+
+=== DATA FLOW ===
+
+1. Technician completes onboarding (5 steps)
+2. Admin approves technician
+3. Technician opens Profile
+4. Adds bank in Bank & Payout section
+5. Existing verification system runs
+6. Wallet updates automatically
+
+=== VERIFICATION ===
+
+✓ Bank details removed from onboarding
+✓ Onboarding now 5 steps (was 6)
+✓ No duplicate files created
+✓ Existing bank verification logic unchanged
+✓ Wallet logic uses existing Firestore status
+✓ No new files created
+✓ Only modified existing onboarding flow
+
+=== BACKWARD COMPATIBILITY ===
+
+✓ Existing technicians unaffected
+✓ Bank details still accessible in Profile
+✓ Wallet functionality unchanged
+✓ Verification system unchanged
+✓ Firestore structure unchanged
+
+=== STATUS ===
+
+Implementation: ✅ COMPLETE
+Files Modified: 1
+Files Created: 0
+Duplicate Logic: 0
+Ready for Deployment: ✅ YES

@@ -116,11 +116,13 @@ class FunctionsService {
     double? originalPrice,
     double? offerPrice,
     double? discountPercent,
+    Map<String, dynamic>? urgentBooking,
+    Map<String, dynamic>? nightService,
   }) async {
     try {
       debugPrint('[DEBUG] FunctionsService.addService called with categoryId: $category');
       HttpsCallable callable = _functions.httpsCallable('addTechnicianService');
-      final result = await callable.call({
+      final Map<String, dynamic> data = {
         'name': name,
         'price': price,
         'imageUrl': imageUrl,
@@ -129,7 +131,10 @@ class FunctionsService {
         if (originalPrice != null) 'originalPrice': originalPrice,
         if (offerPrice != null) 'offerPrice': offerPrice,
         if (discountPercent != null) 'discountPercent': discountPercent,
-      });
+        if (urgentBooking != null) 'urgentBooking': urgentBooking,
+        if (nightService != null) 'nightService': nightService,
+      };
+      final result = await callable.call(data);
       return Map<String, dynamic>.from(result.data);
     } catch (e) {
       rethrow;
@@ -148,6 +153,8 @@ class FunctionsService {
     double? offerPrice,
     double? discountPercent,
     bool? isActive,
+    Map<String, dynamic>? urgentBooking,
+    Map<String, dynamic>? nightService,
   }) async {
     try {
       HttpsCallable callable = _functions.httpsCallable('updateTechnicianServiceNew');
@@ -162,6 +169,8 @@ class FunctionsService {
       if (offerPrice != null) data['offerPrice'] = offerPrice;
       if (discountPercent != null) data['discountPercent'] = discountPercent;
       if (isActive != null) data['isActive'] = isActive;
+      if (urgentBooking != null) data['urgentBooking'] = urgentBooking;
+      if (nightService != null) data['nightService'] = nightService;
 
       final result = await callable.call(data);
       return Map<String, dynamic>.from(result.data);

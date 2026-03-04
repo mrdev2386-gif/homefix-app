@@ -1,0 +1,55 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    match /technicians/{technicianId}/services/{serviceId} {
+      allow read, write: if request.auth.uid == technicianId;
+      
+      function isValidUrgentBooking(data) {
+        return data.urgentBooking == null || (
+          data.urgentBooking.enabled == false ||
+          (
+            data.urgentBooking.enabled == true &&
+            data.urgentBooking.arrivalTime in ['30-60min', '1-2hours', '2-3hours'] &&
+            data.urgentBooking.urgentFee in [50, 100, 150, 200, 250, 300]
+          )
+        );
+      }
+      
+      function isValidNightService(data) {
+        return data.nightService == null || (
+          data.nightService.enabled == false ||
+          (
+            data.nightService.enabled == true &&
+            data.nightService.nightCharge in [0, 50, 100, 150, 200]
+          )
+        );
+      }
+      
+      allow create, update: if 
+        isValidUrgentBooking(request.resource.data) &&
+        isValidNightService(request.resource.data);
+    }
+    
+    match /bookings/{bookingId} {
+      allow read: if request.auth.uid == resource.data.customerId || 
+                     request.auth.uid == resource.data.technicianId;
+      
+      function isValidBookingFeatures(data) {
+        let service = get(/databases/$(database)/documents/technicians/$(data.technicianId)/services/$(data.serviceId));
+        
+        let urgentValid = !data.isUrgentBooking || 
+          (service.data.urgentBooking.enabled == true && 
+           data.urgentFee in [50, 100, 150, 200, 250, 300]);
+        
+        let nightValid = !data.isNightBooking || 
+          (service.data.nightService.enabled == true && 
+           (data.nightCharge == null || data.nightCharge in [0, 50, 100, 150, 200]));
+        
+        return urgentValid && nightValid;
+      }
+      
+      allow create, update: if isValidBookingFeatures(request.resource.data);
+    }
+  }
+}

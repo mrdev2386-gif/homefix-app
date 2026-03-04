@@ -1,0 +1,83 @@
+// Firestore Security Rules - Service Features Validation
+// Validates urgent booking and night service configurations
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ============================================
+    // TECHNICIAN SERVICES COLLECTION
+    // ============================================
+    match /technicians/{technicianId}/services/{serviceId} {
+      // Allow technician to read/write own services
+      allow read, write: if request.auth.uid == technicianId;
+      
+      // Validate urgent booking structure
+      function isValidUrgentBooking(data) {
+        return data.urgentBooking == null || (
+          data.urgentBooking.enabled == false ||
+          (
+            data.urgentBooking.enabled == true &&
+            data.urgentBooking.arrivalTime in ['30-60min', '1-2hours', '2-3hours'] &&
+            data.urgentBooking.urgentFee in [50, 100, 150, 200, 250, 300]
+          )
+        );
+      }
+      
+      // Validate night service structure
+      function isValidNightService(data) {
+        return data.nightService == null || (
+          data.nightService.enabled == false ||
+          (
+            data.nightService.enabled == true &&
+            data.nightService.nightCharge in [0, 50, 100, 150, 200]
+          )
+        );
+      }
+      
+      // Validate on create
+      allow create: if request.auth.uid == technicianId &&
+        isValidUrgentBooking(request.resource.data) &&
+        isValidNightService(request.resource.data);
+      
+      // Validate on update
+      allow update: if request.auth.uid == technicianId &&
+        isValidUrgentBooking(request.resource.data) &&
+        isValidNightService(request.resource.data);
+    }
+    
+    // ============================================
+    // BOOKINGS COLLECTION
+    // ============================================
+    match /bookings/{bookingId} {
+      // Customer can read own bookings
+      allow read: if request.auth.uid == resource.data.customerId;
+      
+      // Technician can read assigned bookings
+      allow read: if request.auth.uid == resource.data.technicianId;
+      
+      // Validate booking features
+      function isValidBookingFeatures(data) {
+        let service = get(/databases/$(database)/documents/technicians/$(data.technicianId)/services/$(data.serviceId));
+        
+        // If urgent booking selected, service must have urgent booking enabled
+        let urgentValid = !data.isUrgentBooking || 
+          (service.data.urgentBooking.enabled == true && 
+           data.urgentFee in [50, 100, 150, 200, 250, 300]);
+        
+        // If night booking, service must have night service enabled
+        let nightValid = !data.isNightBooking || 
+          (service.data.nightService.enabled == true && 
+           data.nightCharge in [0, 50, 100, 150, 200]);
+        
+        return urgentValid && nightValid;
+      }
+      
+      // Validate on create
+      allow create: if isValidBookingFeatures(request.resource.data);
+      
+      // Validate on update
+      allow update: if isValidBookingFeatures(request.resource.data);
+    }
+  }
+}

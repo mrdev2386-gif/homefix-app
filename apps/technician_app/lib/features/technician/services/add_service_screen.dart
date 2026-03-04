@@ -13,6 +13,7 @@ import '../../../core/utils/image_upload_service.dart';
 import '../../../core/utils/firestore_safe_parser.dart';
 import '../../../core/widgets/searchable_dropdown.dart';
 import '../../../core/providers/technician_provider.dart';
+import 'service_config_widgets.dart';
 
 /// Add Service Screen - Production-Grade Form
 /// 
@@ -547,6 +548,30 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
       return;
     }
     
+    // Validate Urgent Booking: if enabled, must have arrivalTime and urgentFee
+    if (_urgentBookingEnabled) {
+      if (_urgentArrivalTime == null || _urgentFee == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please select urgent arrival time and urgent fee'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+    }
+    
+    // Validate Night Service: if enabled, must have nightCharge
+    if (_nightServiceEnabled && _nightCharge == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select night service charge'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    
     // Handle custom service separately
     if (_selectedCategoryId == 'custom') {
       // Validate custom service name with all PART 2 validations
@@ -687,6 +712,15 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
           originalPrice: _originalPrice,
           offerPrice: _offerPrice,
           discountPercent: _calculateDiscount(),
+          urgentBooking: _urgentBookingEnabled ? {
+            'enabled': true,
+            'arrivalTime': _urgentArrivalTime,
+            'urgentFee': _urgentFee,
+          } : null,
+          nightService: _nightServiceEnabled ? {
+            'enabled': true,
+            'nightCharge': _nightCharge,
+          } : null,
         );
         print("[UPDATE SERVICE] SUCCESS");
       } else {
@@ -702,6 +736,15 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
           originalPrice: _originalPrice,
           offerPrice: _offerPrice,
           discountPercent: _calculateDiscount(),
+          urgentBooking: _urgentBookingEnabled ? {
+            'enabled': true,
+            'arrivalTime': _urgentArrivalTime,
+            'urgentFee': _urgentFee,
+          } : null,
+          nightService: _nightServiceEnabled ? {
+            'enabled': true,
+            'nightCharge': _nightCharge,
+          } : null,
         );
         print("[ADD SERVICE] SUCCESS");
       }
@@ -891,6 +934,26 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                   label: 'Description',
                   hint: 'Describe your service...',
                   maxLines: 4,
+                ),
+                const SizedBox(height: 32),
+                
+                // Urgent Booking Section
+                UrgentBookingConfigWidget(
+                  enabled: _urgentBookingEnabled,
+                  arrivalTime: _urgentArrivalTime,
+                  urgentFee: _urgentFee,
+                  onEnabledChanged: (value) => setState(() => _urgentBookingEnabled = value),
+                  onArrivalTimeChanged: (value) => setState(() => _urgentArrivalTime = value),
+                  onUrgentFeeChanged: (value) => setState(() => _urgentFee = value),
+                ),
+                const SizedBox(height: 16),
+                
+                // Night Service Section
+                NightServiceConfigWidget(
+                  enabled: _nightServiceEnabled,
+                  nightCharge: _nightCharge,
+                  onEnabledChanged: (value) => setState(() => _nightServiceEnabled = value),
+                  onNightChargeChanged: (value) => setState(() => _nightCharge = value),
                 ),
                 const SizedBox(height: 32),
                 

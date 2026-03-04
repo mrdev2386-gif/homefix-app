@@ -20,6 +20,8 @@ class TechnicianService {
   final bool technicianApproved;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final Map<String, dynamic>? urgentBooking;
+  final Map<String, dynamic>? nightService;
 
   TechnicianService({
     required this.id,
@@ -37,6 +39,8 @@ class TechnicianService {
     this.technicianApproved = false,
     required this.createdAt,
     required this.updatedAt,
+    this.urgentBooking,
+    this.nightService,
   });
 
   /// Create from Firestore document
@@ -89,6 +93,8 @@ class TechnicianService {
       technicianApproved: data['technicianApproved'] ?? false,
       createdAt: createdAt,
       updatedAt: updatedAt,
+      urgentBooking: data['urgentBooking'] as Map<String, dynamic>?,
+      nightService: data['nightService'] as Map<String, dynamic>?,
     );
   }
 
@@ -110,6 +116,8 @@ class TechnicianService {
       'technicianApproved': technicianApproved,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
+      if (urgentBooking != null) 'urgentBooking': urgentBooking,
+      if (nightService != null) 'nightService': nightService,
     };
   }
 
@@ -128,6 +136,8 @@ class TechnicianService {
     bool? isActive,
     DateTime? createdAt,
     DateTime? updatedAt,
+    Map<String, dynamic>? urgentBooking,
+    Map<String, dynamic>? nightService,
   }) {
     return TechnicianService(
       id: id ?? this.id,
@@ -145,6 +155,8 @@ class TechnicianService {
       technicianApproved: technicianApproved ?? this.technicianApproved,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      urgentBooking: urgentBooking ?? this.urgentBooking,
+      nightService: nightService ?? this.nightService,
     );
   }
 
@@ -182,6 +194,8 @@ class CreateTechnicianServiceInput {
   final double price;
   final int durationMinutes;
   final String imageUrl;
+  final Map<String, dynamic>? urgentBooking;
+  final Map<String, dynamic>? nightService;
 
   CreateTechnicianServiceInput({
     required this.categoryId,
@@ -192,6 +206,8 @@ class CreateTechnicianServiceInput {
     required this.price,
     required this.durationMinutes,
     required this.imageUrl,
+    this.urgentBooking,
+    this.nightService,
   });
 
   /// Convert to map for Cloud Function
@@ -205,6 +221,8 @@ class CreateTechnicianServiceInput {
       'price': price,
       'durationMinutes': durationMinutes,
       'imageUrl': imageUrl,
+      if (urgentBooking != null) 'urgentBooking': urgentBooking,
+      if (nightService != null) 'nightService': nightService,
     };
   }
 
@@ -244,6 +262,8 @@ class UpdateTechnicianServiceInput {
   final double? price;
   final int? durationMinutes;
   final String? imageUrl;
+  final Map<String, dynamic>? urgentBooking;
+  final Map<String, dynamic>? nightService;
 
   UpdateTechnicianServiceInput({
     required this.serviceId,
@@ -253,6 +273,8 @@ class UpdateTechnicianServiceInput {
     this.price,
     this.durationMinutes,
     this.imageUrl,
+    this.urgentBooking,
+    this.nightService,
   });
 
   /// Convert to map for Cloud Function (only includes non-null fields)
@@ -265,6 +287,8 @@ class UpdateTechnicianServiceInput {
     if (price != null) map['price'] = price;
     if (durationMinutes != null) map['durationMinutes'] = durationMinutes;
     if (imageUrl != null) map['imageUrl'] = imageUrl;
+    if (urgentBooking != null) map['urgentBooking'] = urgentBooking;
+    if (nightService != null) map['nightService'] = nightService;
     
     return map;
   }

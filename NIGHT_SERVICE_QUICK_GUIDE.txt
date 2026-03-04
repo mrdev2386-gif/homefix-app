@@ -1,0 +1,168 @@
+NIGHT SERVICE BOOKING - QUICK INTEGRATION GUIDE
+
+=== WHAT CHANGED ===
+
+Night service is now AUTO-DETECTED based on booking time.
+No need to pass isNightBooking flag - Cloud Function detects it.
+
+Night Time: 10 PM (22:00) - 6 AM (06:00)
+
+=== CLOUD FUNCTION CALL ===
+
+OLD (Don't use):
+calculateBookingPrice({
+  serviceId: 'service_123',
+  technicianId: 'tech_456',
+  isUrgentBooking: true,
+  isNightBooking: false,  // ❌ Removed
+})
+
+NEW (Use this):
+calculateBookingPrice({
+  serviceId: 'service_123',
+  technicianId: 'tech_456',
+  bookingTime: DateTime.now().toIso8601String(),  // ✅ Pass booking time
+  isUrgentBooking: true,
+})
+
+=== FLUTTER CODE ===
+
+// Calculate price
+final result = await FirebaseFunctions.instanceFor(region: 'us-central1')
+  .httpsCallable('calculateBookingPrice')
+  .call({
+    'serviceId': serviceId,
+    'technicianId': technicianId,
+    'bookingTime': selectedBookingTime.toIso8601String(),
+    'isUrgentBooking': isUrgentBooking,
+  });
+
+final finalPrice = result.data['finalPrice'];
+final isNightTime = result.data['isNightTime'];  // ✅ Get night flag from response
+final breakdown = result.data['breakdown'];
+
+// Create booking
+final booking = {
+  'basePrice': service['price'],
+  'isUrgentBooking': isUrgentBooking,
+  'urgentFee': isUrgentBooking ? service['urgentBooking']['urgentFee'] : null,
+  'isNightBooking': isNightTime,  // ✅ Use response value
+  'nightCharge': isNightTime ? service['nightService']['nightCharge'] : null,
+  'finalPrice': finalPrice,
+  'priceBreakdown': breakdown,
+};
+
+=== VALIDATION ===
+
+Before calling Cloud Function:
+
+String? validateBooking({
+  required Map<String, dynamic> service,
+  required DateTime bookingTime,
+  required bool isUrgentBooking,
+}) {
+  // Check urgent booking
+  if (isUrgentBooking && service['urgentBooking']?['enabled'] != true) {
+    return 'Urgent booking not available';
+  }
+
+  // Check night service (if booking is at night)
+  final hour = bookingTime.hour;
+  final isNightTime = hour >= 22 || hour < 6;
+  
+  if (isNightTime && service['nightService']?['enabled'] != true) {
+    return 'Night service not available';
+  }
+
+  return null;
+}
+
+=== UI DISPLAY ===
+
+// Show night service message only if booking is at night
+final hour = selectedBookingTime.hour;
+final isNightTime = hour >= 22 || hour < 6;
+
+if (isNightTime && service['nightService']?['enabled'] == true) {
+  showNightServiceMessage(
+    charge: service['nightService']['nightCharge'],
+  );
+}
+
+=== FIRESTORE RULES ===
+
+Night service validation:
+- nightCharge must be in [0, 50, 100, 150, 200]
+- nightCharge can be null (if night booking not applicable)
+- nightService.enabled must be true for night bookings
+
+=== TESTING ===
+
+Test Cases:
+1. Book at 2 PM (day time)
+   - isNightTime = false
+   - No night charge applied
+   - finalPrice = basePrice + urgentFee (if urgent)
+
+2. Book at 11 PM (night time)
+   - isNightTime = true
+   - Night charge applied
+   - finalPrice = basePrice + urgentFee (if urgent) + nightCharge
+
+3. Book at 5 AM (night time)
+   - isNightTime = true
+   - Night charge applied
+   - finalPrice = basePrice + urgentFee (if urgent) + nightCharge
+
+4. Book at 6 AM (day time)
+   - isNightTime = false
+   - No night charge applied
+   - finalPrice = basePrice + urgentFee (if urgent)
+
+5. Night service disabled, book at 11 PM
+   - Error: "Night service is not available"
+
+=== BACKWARD COMPATIBILITY ===
+
+✓ Existing services work unchanged
+✓ Old bookings unaffected
+✓ No breaking changes
+✓ Gradual rollout possible
+
+=== DEPLOYMENT ===
+
+1. Deploy Cloud Function:
+   firebase deploy --only functions:calculateBookingPrice
+
+2. Deploy Firestore Rules:
+   firebase deploy --only firestore:rules
+
+3. Update Customer App:
+   - Use CUSTOMER_BOOKING_UPDATED.dart
+   - Pass bookingTime to calculateFinalPrice()
+   - Use isNightTime from response
+
+4. Test thoroughly before production
+
+=== COMMON MISTAKES ===
+
+❌ Passing isNightBooking parameter
+✅ Pass bookingTime instead
+
+❌ Calculating night charge on client
+✅ Let Cloud Function calculate it
+
+❌ Not checking service.nightService.enabled
+✅ Always validate before booking
+
+❌ Using hardcoded night hours
+✅ Use hour >= 22 || hour < 6
+
+=== SUPPORT ===
+
+Files:
+- CLOUD_FUNCTION_UPDATED.ts - Backend logic
+- BOOKING_MODEL_UPDATED.dart - Data model
+- CUSTOMER_BOOKING_UPDATED.dart - UI template
+- firestore_rules_updated.rules - Validation rules
+- NIGHT_SERVICE_IMPLEMENTATION_REPORT.txt - Full details

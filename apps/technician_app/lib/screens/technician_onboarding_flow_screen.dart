@@ -6,7 +6,7 @@ import 'package:technician_app/core/models/technician.dart';
 import 'package:technician_app/screens/onboarding_steps/step1_basic_identity.dart';
 import 'package:technician_app/screens/onboarding_steps/step2_professional_details.dart';
 import 'package:technician_app/screens/onboarding_steps/step3_kyc_verification.dart';
-import 'package:technician_app/screens/onboarding_steps/step4_bank_details.dart';
+
 import 'package:technician_app/screens/onboarding_steps/step5_service_setup.dart';
 import 'package:technician_app/screens/onboarding_steps/step6_success.dart';
 
@@ -56,8 +56,7 @@ class _TechnicianOnboardingFlowScreenState
         if (stepsCompleted['basic'] == true) 0,
         if (stepsCompleted['professional'] == true) 1,
         if (stepsCompleted['kyc'] == true) 2,
-        if (stepsCompleted['bank'] == true) 3,
-        if (stepsCompleted['services'] == true) 4,
+        if (stepsCompleted['services'] == true) 3,
       ];
       
       if (completedSteps.isNotEmpty) {
@@ -67,7 +66,7 @@ class _TechnicianOnboardingFlowScreenState
         }
       }
       
-      safeStep = safeStep.clamp(0, 4);
+      safeStep = safeStep.clamp(0, 3);
       
       if (_currentStep != safeStep) {
         setState(() {
@@ -94,10 +93,7 @@ class _TechnicianOnboardingFlowScreenState
       _formData['panNumber'] = tech.panNumber;
       _formData['accountType'] = tech.accountType;
       _formData['payoutPreference'] = tech.payoutPreference;
-      _formData['bankName'] = tech.bankName;
-      _formData['accountNumber'] = tech.accountNumber;
-      _formData['ifscCode'] = tech.ifscCode;
-      _formData['accountHolder'] = tech.accountHolderName;
+
       _formData['maxDailyJobs'] = tech.maxDailyJobs;
       _formData['dynamicPricingAllowed'] = tech.dynamicPricingAllowed;
     }
@@ -125,7 +121,7 @@ class _TechnicianOnboardingFlowScreenState
       }
     }
 
-    if (_currentStep == 5) {
+    if (_currentStep == 4) {
       await _submitApplication();
     } else {
       await _saveCurrentStep();
@@ -237,18 +233,6 @@ class _TechnicianOnboardingFlowScreenState
           'panNumber': _formData['panNumber'],
         };
       case 3:
-        return {
-          'accountType': _formData['accountType'],
-          'payoutPreference': _formData['payoutPreference'],
-          'bankDetails': {
-            'bankName': _formData['bankName'],
-            'accountNumber': _formData['accountNumber'],
-            'ifscCode': _formData['ifscCode'],
-            'accountHolder': _formData['accountHolder'],
-            'upiId': _formData['upiId'],
-          },
-        };
-      case 4:
         return {
           'skills': _formData['skills'] ?? [],
           'basePrice': _formData['basePrice'],
@@ -381,12 +365,6 @@ class _TechnicianOnboardingFlowScreenState
                       _formData[key] = value;
                     },
                   ),
-                  Step4BankDetails(
-                    formData: _formData,
-                    onDataChanged: (key, value) {
-                      _formData[key] = value;
-                    },
-                  ),
                   Step5ServiceSetup(
                     formData: _formData,
                     onDataChanged: (key, value) {
@@ -397,7 +375,7 @@ class _TechnicianOnboardingFlowScreenState
                 ],
               ),
             ),
-            if (_currentStep < 5) _buildBottomBar(),
+            if (_currentStep < 4) _buildBottomBar(),
           ],
         ),
       ),
@@ -414,7 +392,7 @@ class _TechnicianOnboardingFlowScreenState
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Step ${_currentStep + 1} of 6',
+                'Step ${_currentStep + 1} of 5',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
@@ -435,7 +413,7 @@ class _TechnicianOnboardingFlowScreenState
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
-              value: (_currentStep + 1) / 6,
+              value: (_currentStep + 1) / 5,
               minHeight: 4,
               backgroundColor: const Color(0xFFE2E8F0),
               valueColor: const AlwaysStoppedAnimation<Color>(
@@ -505,7 +483,7 @@ class _TechnicianOnboardingFlowScreenState
                           ),
                         )
                       : Text(
-                          _currentStep == 5 ? 'Submit' : 'Continue',
+                          _currentStep == 4 ? 'Submit' : 'Continue',
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
@@ -522,11 +500,10 @@ class _TechnicianOnboardingFlowScreenState
 
   String _getStepTitle(int step) {
     const titles = [
-      'Basic Identity',
+      'Personal Details',
       'Professional Details',
       'KYC Verification',
-      'Bank Details',
-      'Service Setup',
+      'Availability',
       'Success',
     ];
     return titles[step];
