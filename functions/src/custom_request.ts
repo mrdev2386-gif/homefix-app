@@ -71,7 +71,8 @@ interface CreateCustomRequestData {
   idempotencyKey: string;
 }
 
-export const createCustomServiceRequest = functions.https.onCall(async (data: CreateCustomRequestData, context) => {
+export const createCustomServiceRequest = functions.https.onCall(
+  async (data: CreateCustomRequestData, context: functions.https.CallableContext) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
 
   const customerId = context.auth.uid;
@@ -155,7 +156,8 @@ interface AdminApproveData {
   rejectionReason?: string;
 }
 
-export const adminApproveServiceRequest = functions.https.onCall(async (data: AdminApproveData, context) => {
+export const adminApproveServiceRequest = functions.https.onCall(
+  async (data: AdminApproveData, context: functions.https.CallableContext) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Unauthenticated');
   if (!(await isAdmin(context.auth.uid))) throw new functions.https.HttpsError('permission-denied', 'Admin access required');
 
@@ -223,7 +225,8 @@ interface TechnicianRespondData {
   rejectionReason?: string;
 }
 
-export const technicianRespondServiceRequest = functions.https.onCall(async (data: TechnicianRespondData, context) => {
+export const technicianRespondServiceRequest = functions.https.onCall(
+  async (data: TechnicianRespondData, context: functions.https.CallableContext) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Unauthenticated');
   const technicianId = context.auth.uid;
   const { requestId, action, rejectionReason } = data;
@@ -264,7 +267,8 @@ interface CustomerPaymentData {
   paymentMethod: 'now' | 'after_service';
 }
 
-export const customerConfirmServicePayment = functions.https.onCall(async (data: CustomerPaymentData, context) => {
+export const customerConfirmServicePayment = functions.https.onCall(
+  async (data: CustomerPaymentData, context: functions.https.CallableContext) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Unauthenticated');
   const customerId = context.auth.uid;
   const { requestId, paymentMethod } = data;
@@ -303,7 +307,8 @@ export const customerConfirmServicePayment = functions.https.onCall(async (data:
 /**
  * Technician: Get inbox of assigned custom requests
  */
-export const getTechnicianInbox = functions.https.onCall(async (data: { limit?: number; startAfter?: string }, context) => {
+export const getTechnicianInbox = functions.https.onCall(
+  async (data: { limit?: number; startAfter?: string }, context: functions.https.CallableContext) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Unauthenticated');
   const technicianId = context.auth.uid;
   const limit = data.limit || 20;
@@ -333,7 +338,8 @@ export const getTechnicianInbox = functions.https.onCall(async (data: { limit?: 
 /**
  * Get details of a single custom request
  */
-export const getCustomRequestDetail = functions.https.onCall(async (data: { requestId: string }, context) => {
+export const getCustomRequestDetail = functions.https.onCall(
+  async (data: { requestId: string }, context: functions.https.CallableContext) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Unauthenticated');
   const uid = context.auth.uid;
   const { requestId } = data;

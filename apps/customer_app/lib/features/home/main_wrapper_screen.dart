@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../dashboard/dashboard_screen.dart';
+import '../home/home_screen.dart';
 import '../bookings/presentation/booking_history_screen.dart';
 import '../services/presentation/request_screen.dart';
 import '../profile/profile_screen.dart';
@@ -26,7 +26,7 @@ class _MainWrapperScreenState extends State<MainWrapperScreen> {
   void initState() {
     super.initState();
     _screens = [
-      const DashboardScreen(),
+      const HomeScreen(),
       BookingHistoryScreen(onNavigateToHome: _navigateToHomeTab),
       const RequestScreen(),
       const ProfileScreen(),

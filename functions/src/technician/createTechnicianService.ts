@@ -637,9 +637,9 @@ export const createTechnicianService = onCall(
 
             // Status
             isActive: true,
-            isPublished: true, // Default to true per "Technician adds service -> appears on home"
-            technicianApproved: techData.isApproved || false,
-            status: 'active',
+            isPublished: false,  // ✅ Not visible until admin approves
+            technicianApproved: false,  // ✅ Pending admin approval
+            status: 'pending_admin_approval',  // ✅ Awaiting admin review
 
             // Timestamps
             createdAt: now,

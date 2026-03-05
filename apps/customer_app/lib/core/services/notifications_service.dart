@@ -194,16 +194,20 @@ class NotificationsService extends ChangeNotifier {
   }
 
   Future<void> _saveToken(String token) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      debugPrint('⚠️ Skip token save — user not logged in');
+      return;
+    }
+
     try {
       final callable = FirebaseFunctions.instance.httpsCallable('saveFcmToken');
       await callable.call({
         'token': token,
-        'platform': defaultTargetPlatform.toString().split('.').last,
-        'userType': 'customer',
       });
-      debugPrint('[NotificationsService] Token saved');
+      debugPrint('✅ FCM token saved');
     } catch (e) {
-      debugPrint('[NotificationsService] Token save failed: $e');
+      debugPrint('❌ Token save failed: $e');
     }
   }
 

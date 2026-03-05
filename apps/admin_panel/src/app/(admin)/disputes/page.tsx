@@ -48,6 +48,7 @@ export default function DisputesPage() {
 
     useEffect(() => {
         fetchDisputes();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [statusTab]);
 
     const handleAction = async () => {
@@ -134,7 +135,7 @@ export default function DisputesPage() {
                                         <h3 className="text-lg font-bold text-white mb-2">{dispute.issueType || 'General Issue'}</h3>
                                         <div className="p-4 bg-slate-950/30 rounded-xl border border-slate-800">
                                             <MessageSquare size={14} className="text-indigo-500 mb-2" />
-                                            <p className="text-slate-400 text-sm italic line-clamp-2">"{dispute.description || 'No description'}"</p>
+                                            <p className="text-slate-400 text-sm italic line-clamp-2">&ldquo;{dispute.description || 'No description'}&rdquo;</p>
                                         </div>
                                     </div>
 

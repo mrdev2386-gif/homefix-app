@@ -1,21 +1,26 @@
 import 'package:flutter/foundation.dart';
 
-/// Valid booking statuses
+/// Valid booking statuses (NEW FLOW)
 const List<String> validBookingStatuses = [
-  'pending',
-  'accepted',
-  'on_the_way',
+  'pending_admin',
+  'technician_pending',
+  'awaiting_payment',
+  'confirmed',
   'in_progress',
   'completed',
   'cancelled',
+  // Legacy statuses for backward compatibility
+  'pending',
+  'accepted',
+  'on_the_way',
 ];
 
 /// Sanitize booking status to ensure it's always a valid value
-/// Returns 'pending' for null or unknown statuses
+/// Returns 'processing' for null or unknown statuses (safe fallback)
 String sanitizeBookingStatus(String? status) {
   if (status == null || status.isEmpty) {
-    debugPrint('[BOOKING_STATUS_SANITIZED] Null/empty status → defaulting to pending');
-    return 'pending';
+    debugPrint('[BOOKING_STATUS_SANITIZED] Null/empty status → defaulting to processing');
+    return 'processing';
   }
   
   // Check if status is in the valid list (case-insensitive comparison)
@@ -24,9 +29,9 @@ String sanitizeBookingStatus(String? status) {
     return normalizedStatus;
   }
   
-  // Invalid status - log warning and return pending
-  debugPrint('[BOOKING_STATUS_SANITIZED] Unknown status "$status" → defaulting to pending');
-  return 'pending';
+  // Invalid status - log warning and return safe fallback
+  debugPrint('[BOOKING_STATUS_SANITIZED] Unknown status "$status" → defaulting to processing');
+  return 'processing';
 }
 
 /// Check if a status is valid
@@ -39,19 +44,29 @@ bool isValidBookingStatus(String? status) {
 String getBookingStatusDisplayName(String status) {
   final sanitized = sanitizeBookingStatus(status);
   switch (sanitized) {
-    case 'pending':
-      return 'Pending';
-    case 'accepted':
-      return 'Accepted';
-    case 'on_the_way':
-      return 'On the Way';
+    case 'pending_admin':
+      return 'Pending Admin';
+    case 'technician_pending':
+      return 'Awaiting Technician';
+    case 'awaiting_payment':
+      return 'Awaiting Payment';
+    case 'confirmed':
+      return 'Confirmed';
     case 'in_progress':
       return 'In Progress';
     case 'completed':
       return 'Completed';
     case 'cancelled':
       return 'Cancelled';
-    default:
+    // Legacy statuses
+    case 'pending':
       return 'Pending';
+    case 'accepted':
+      return 'Accepted';
+    case 'on_the_way':
+      return 'On the Way';
+    // Safe fallback
+    default:
+      return 'Processing';
   }
 }

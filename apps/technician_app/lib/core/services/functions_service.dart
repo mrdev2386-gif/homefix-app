@@ -202,7 +202,7 @@ class FunctionsService {
   }
 
   /// Update technician personal details via Cloud Function
-  /// Only allows updating: fullName, email, city, experience, gender, bio
+  /// Only allows updating: fullName, email, city, experience, gender, bio, alternatePhone
   Future<Map<String, dynamic>> updateTechnicianPersonalDetails({
     required String fullName,
     String? email,
@@ -210,6 +210,7 @@ class FunctionsService {
     int? experience,
     String? gender,
     String? bio,
+    String? alternatePhone,
   }) async {
     try {
       debugPrint('[FunctionsService] Calling updateTechnicianPersonalDetails');
@@ -221,6 +222,7 @@ class FunctionsService {
         if (experience != null) 'experience': experience,
         if (gender != null) 'gender': gender,
         if (bio != null) 'bio': bio,
+        if (alternatePhone != null) 'alternatePhone': alternatePhone,
       });
       debugPrint('[FunctionsService] updateTechnicianPersonalDetails success');
       return Map<String, dynamic>.from(result.data);

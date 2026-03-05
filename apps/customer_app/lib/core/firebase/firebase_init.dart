@@ -1,31 +1,13 @@
-import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 
-Future<void> initFirebaseSecurity() async {
-  try {
-    final provider = kReleaseMode
-        ? AndroidProvider.playIntegrity
-        : AndroidProvider.debug;
+Future<void> initializeFirebase() async {
+  await Firebase.initializeApp();
 
+  if (kReleaseMode) {
     await FirebaseAppCheck.instance.activate(
-      androidProvider: provider,
+      androidProvider: AndroidProvider.playIntegrity,
     );
-
-    debugPrint('✅ App Check activated: ${kReleaseMode ? "PlayIntegrity" : "Debug"}');
-
-    // Extract debug token in non-release builds
-    if (!kReleaseMode) {
-      try {
-        final token = await FirebaseAppCheck.instance.getToken(true);
-        if (token != null && token.isNotEmpty) {
-          debugPrint('🔥 APP_CHECK_DEBUG_TOKEN: $token');
-          debugPrint('👉 Add this token to Firebase Console → App Check → Debug tokens');
-        }
-      } catch (e) {
-        debugPrint('⚠️ Debug token fetch failed: $e');
-      }
-    }
-  } catch (e) {
-    debugPrint('❌ App Check init failed: $e');
   }
 }

@@ -4,8 +4,34 @@ class DatabaseSeeder {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   static Future<void> seedInitialData() async {
+    await _seedCategories();
     await _seedServices();
     await _seedBanners();
+  }
+
+  static Future<void> _seedCategories() async {
+    try {
+      final snapshot = await _db.collection('categories').limit(1).get();
+      if (snapshot.docs.isNotEmpty) return; // Already seeded
+
+      final categories = [
+        {'name': 'Cleaning', 'createdAt': FieldValue.serverTimestamp()},
+        {'name': 'Electrician', 'createdAt': FieldValue.serverTimestamp()},
+        {'name': 'Plumbing', 'createdAt': FieldValue.serverTimestamp()},
+        {'name': 'AC Repair', 'createdAt': FieldValue.serverTimestamp()},
+        {'name': 'Carpenter', 'createdAt': FieldValue.serverTimestamp()},
+        {'name': 'Painting', 'createdAt': FieldValue.serverTimestamp()},
+        {'name': 'Appliance Repair', 'createdAt': FieldValue.serverTimestamp()},
+        {'name': 'Salon', 'createdAt': FieldValue.serverTimestamp()},
+      ];
+
+      for (var category in categories) {
+        await _db.collection('categories').add(category);
+      }
+      print('✅ Seeded categories');
+    } catch (e) {
+      print('❌ Error seeding categories: $e');
+    }
   }
 
   static Future<void> _seedServices() async {

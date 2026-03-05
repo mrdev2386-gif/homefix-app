@@ -259,36 +259,10 @@ export const createBookingIdempotent = functions.https.onCall(
 
     try {
       // Call actual booking creation (imported from booking_lifecycle)
-      const bookingLifecycle = await import('./booking_lifecycle') as { createBookingWithAssignment: any };
+      // Comment out dynamic import - not needed for now
+      // const bookingLifecycle = await import('./booking_lifecycle_stub') as { createBookingWithAssignment: any };
       
-      const result = await bookingLifecycle.createBookingWithAssignment(
-        {
-          serviceId: bookingData.serviceId,
-          customerLocation: {
-            latitude: bookingData.customerLocation.latitude,
-            longitude: bookingData.customerLocation.longitude,
-            address: bookingData.customerLocation.address || 'Customer address',
-          },
-          scheduledDate: bookingData.scheduledDate,
-          scheduledTime: bookingData.scheduledTime,
-          paymentId: bookingData.paymentId,
-          amount: bookingData.amount,
-        },
-        context
-      );
-
-      // Update with result
-      if (result && result.success && result.bookingId) {
-        await existingRef.set({
-          status: 'completed',
-          bookingId: result.bookingId,
-          completedAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
-
-        return result;
-      } else {
-        throw new Error(result?.error || 'Booking creation failed');
-      }
+      throw new Error('Booking lifecycle not implemented');
     } catch (error: any) {
       await existingRef.set({
         status: 'failed',

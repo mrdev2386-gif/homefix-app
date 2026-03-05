@@ -9,6 +9,7 @@ import 'package:customer_app/core/services/storage_service.dart';
 
 import 'package:customer_app/core/services/auth_service.dart';
 import 'package:customer_app/core/services/firestore_service.dart';
+import 'package:customer_app/core/services/location_service.dart';
 import 'package:customer_app/core/models/user_model.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
 import 'package:customer_app/core/utils/app_localizations.dart';
@@ -17,6 +18,7 @@ import '../bookings/presentation/booking_history_screen.dart';
 import '../support/presentation/support_screen.dart';
 import '../settings/settings_screen.dart';
 import 'presentation/edit_profile_screen.dart';
+import 'presentation/edit_location_screen.dart';
 import 'presentation/favorite_services_screen.dart';
 import 'presentation/about_screen.dart';
 import 'presentation/policy_screen.dart';
@@ -76,6 +78,7 @@ class _ProfileContent extends StatefulWidget {
 
 class _ProfileContentState extends State<_ProfileContent> {
   bool _isUploading = false;
+  final LocationService _locationService = LocationService();
 
   Future<void> _changeProfileImage() async {
     if (_isUploading) return; // Prevent multiple taps during upload
@@ -360,7 +363,7 @@ class _ProfileContentState extends State<_ProfileContent> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Info Card: Address & Wallet
+                // Info Card: Location, Address & Wallet
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
@@ -370,6 +373,38 @@ class _ProfileContentState extends State<_ProfileContent> {
                   ),
                   child: Column(
                     children: [
+                      FutureBuilder<Map<String, String?>>(
+                        future: _locationService.getLocation(),
+                        builder: (context, snapshot) {
+                          final state = snapshot.data?['state'] ?? 'Select';
+                          final district = snapshot.data?['district'] ?? 'Location';
+                          return _buildInfoRow(
+                            icon: Icons.location_on_rounded,
+                            color: Colors.blue,
+                            title: 'Service Location',
+                            value: '📍 $state • $district',
+                            trailing: Icon(Icons.edit_rounded, color: Colors.grey[400], size: 20),
+                            onTap: () async {
+                              final result = await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => EditLocationScreen(
+                                    currentState: state,
+                                    currentDistrict: district,
+                                  ),
+                                ),
+                              );
+                              if (result == true && mounted) {
+                                setState(() {});
+                              }
+                            },
+                          );
+                        },
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Divider(height: 1),
+                      ),
                       _buildInfoRow(
                         icon: Icons.location_on_rounded,
                         color: Colors.redAccent,
@@ -524,11 +559,11 @@ class _ProfileContentState extends State<_ProfileContent> {
             ],
           ),
         ),
-        if (trailing != null) trailing,
+        if (trailing != null) trailing else const SizedBox(width: 8),
       ],
     );
     if (onTap != null) {
-      return InkWell(onTap: onTap, borderRadius: BorderRadius.circular(12), child: content);
+      return InkWell(onTap: onTap, borderRadius: BorderRadius.circular(12), child: Padding(padding: const EdgeInsets.all(8), child: content));
     }
     return content;
   }

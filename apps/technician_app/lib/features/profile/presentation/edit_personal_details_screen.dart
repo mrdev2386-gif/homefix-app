@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/providers/technician_provider.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/services/functions_service.dart';
+import '../../../core/widgets/location_selector.dart';
 
 class EditPersonalDetailsScreen extends StatefulWidget {
   const EditPersonalDetailsScreen({super.key});
@@ -22,6 +23,7 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
   final _cityController = TextEditingController();
   final _experienceController = TextEditingController();
   final _bioController = TextEditingController();
+  final _alternatePhoneController = TextEditingController();
   final _functionsService = FunctionsService();
   
   bool _isSaving = false;
@@ -29,9 +31,12 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
   bool _isCheckingVerification = false;
   String? _selectedGender;
   String? _phoneNumber;
+  String? _alternatePhone;
   String? _originalEmail;
   bool _emailVerified = false;
   Timer? _autoCheckTimer;
+  String? _selectedState;
+  String? _selectedDistrict;
   
   final List<String> _genderOptions = ['Male', 'Female', 'Other'];
 
@@ -50,11 +55,12 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
       _nameController.text = technician.name;
       _emailController.text = technician.email ?? user?.email ?? '';
       _originalEmail = technician.email ?? user?.email;
-      _cityController.text = technician.district ?? '';
+      _selectedDistrict = technician.district;
       _experienceController.text = technician.experienceYears?.toString() ?? '';
       _bioController.text = technician.bio ?? '';
       _selectedGender = technician.gender;
       _phoneNumber = technician.phone;
+      _alternatePhone = technician.alternatePhone;
       _emailVerified = user?.emailVerified ?? false;
     }
   }
@@ -66,6 +72,7 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
     _cityController.dispose();
     _experienceController.dispose();
     _bioController.dispose();
+    _alternatePhoneController.dispose();
     _autoCheckTimer?.cancel();
     super.dispose();
   }
@@ -94,12 +101,13 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not authenticated');
 
-      // Simple direct email verification
-      if (_hasEmailChanged()) {
-        // If email changed, use verifyBeforeUpdateEmail
-        await user.verifyBeforeUpdateEmail(email);
-      } else {
-        // If same email, just send verification
+      // Step 1: Attach email to Firebase user (for phone-auth users)
+      if (user.email != email) {
+        await user.updateEmail(email);
+      }
+
+      // Step 2: Send verification email
+      if (!user.emailVerified) {
         await user.sendEmailVerification();
       }
 
@@ -231,12 +239,12 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
     if (!_formKey.currentState!.validate()) return;
     if (_isSaving) return;
 
-    if (_hasEmailChanged() && !_emailVerified) {
+    // Validate name is required
+    if (_nameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('⚠ Please verify your email before saving profile'),
+          content: Text('Name is required'),
           backgroundColor: Colors.red,
-          duration: Duration(seconds: 3),
         ),
       );
       return;
@@ -245,13 +253,15 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
     setState(() => _isSaving = true);
 
     try {
+      final email = _emailController.text.trim();
       await _functionsService.updateTechnicianPersonalDetails(
         fullName: _nameController.text.trim(),
-        email: _emailController.text.trim(),
+        email: email.isEmpty ? null : email,
         city: _cityController.text.trim(),
         experience: int.tryParse(_experienceController.text),
         gender: _selectedGender,
         bio: _bioController.text.trim(),
+        alternatePhone: _alternatePhone?.trim(),
       );
 
       if (!mounted) return;
@@ -426,20 +436,14 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
                   ),
                 ),
               const SizedBox(height: 16),
-              
-              TextFormField(
-                controller: _cityController,
-                decoration: const InputDecoration(
-                  labelText: 'City/District',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.location_city),
-                ),
-                textCapitalization: TextCapitalization.words,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'City is required';
-                  }
-                  return null;
+              LocationSelector(
+                initialState: _selectedState,
+                initialDistrict: _selectedDistrict,
+                onLocationChanged: (state, district) {
+                  setState(() {
+                    _selectedState = state;
+                    _selectedDistrict = district;
+                  });
                 },
               ),
               const SizedBox(height: 16),
@@ -469,6 +473,29 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
                 )).toList(),
                 onChanged: (value) {
                   setState(() => _selectedGender = value);
+                },
+              ),
+              const SizedBox(height: 16),
+              
+              TextFormField(
+                initialValue: _alternatePhone,
+                decoration: const InputDecoration(
+                  labelText: 'Alternative Phone Number (Optional)',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.phone_forwarded),
+                  hintText: '+91 XXXXXXXXXX',
+                ),
+                keyboardType: TextInputType.phone,
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9+\-\s]'))],
+                onChanged: (value) => _alternatePhone = value,
+                validator: (value) {
+                  if (value != null && value.trim().isNotEmpty) {
+                    final cleaned = value.replaceAll(RegExp(r'[\s\-]'), '');
+                    if (!RegExp(r'^[+]?[0-9]{10,15}$').hasMatch(cleaned)) {
+                      return 'Enter a valid phone number';
+                    }
+                  }
+                  return null;
                 },
               ),
               const SizedBox(height: 16),

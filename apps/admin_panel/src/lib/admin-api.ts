@@ -257,15 +257,31 @@ export const adminApi = {
      * Reject a technician application (new)
      */
     rejectTechnicianApp: async (uid: string, reason: string) => {
-        const fn = httpsCallable(functions, 'approveTechnician');
-        return await fn({ techId: uid, approve: false, reason });
+        const fn = httpsCallable(functions, 'rejectTechnician');
+        return await fn({ uid, reason });
+    },
+
+    /**
+     * Manage Reviews (hide, flag, delete)
+     */
+    manageReview: async (reviewId: string, action: string, reason?: string) => {
+        const fn = httpsCallable(functions, 'admin_manageReview');
+        return await fn({ reviewId, action, reason });
+    },
+
+    /**
+     * Manage Disputes (resolve, reject, refund)
+     */
+    manageDispute: async (disputeId: string, action: string, payload: any = {}) => {
+        const fn = httpsCallable(functions, 'admin_manageDispute');
+        return await fn({ disputeId, action, ...payload });
     },
 
     /**
      * Get Finance Data
      */
     getFinanceData: async (params: { limit?: number; startDate?: string; endDate?: string }) => {
-        const fn = httpsCallable(functions, 'getFinanceData');
+        const fn = httpsCallable(functions, 'admin_getFinanceData');
         const result = await fn(params);
         return result.data;
     },
@@ -274,7 +290,7 @@ export const adminApi = {
      * Process Refund
      */
     processRefund: async (bookingId: string, amount?: number, reason?: string) => {
-        const fn = httpsCallable(functions, 'admin_refundBooking');
+        const fn = httpsCallable(functions, 'admin_processRefund');
         return await fn({ bookingId, amount, reason });
     },
 

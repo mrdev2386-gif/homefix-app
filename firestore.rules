@@ -68,6 +68,11 @@ service cloud.firestore {
       // NO client writes - only Cloud Functions
       allow write: if false;
       
+      // Settings subcollection - customer can read/write their own
+      match /settings/{docId} {
+        allow read, write: if isOwner(customerId);
+      }
+      
       // FCM Tokens - customer can manage their own
       match /fcmTokens/{tokenId} {
         allow read, write: if isOwner(customerId);
@@ -114,7 +119,7 @@ service cloud.firestore {
         allow write: if false; // Only Cloud Functions
       }
       
-      // Technician services - read if approved, write via Cloud Functions
+    // Technician services - read if published and active, write via Cloud Functions
       match /technician_services/{serviceId} {
         allow read: if resource.data.isPublished == true && 
                        resource.data.status == 'active';

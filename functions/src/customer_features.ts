@@ -8,7 +8,7 @@ import { checkRateLimit } from './shared/utils';
 // REFERRAL SYSTEM
 // ==========================================
 
-export const validateReferralCode = functions.https.onCall(async (data, context) => {
+export const validateReferralCode = functions.https.onCall(async (data: any, context: any) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     const { code } = data;
 
@@ -95,7 +95,7 @@ export const onBookingCompletedAwardReferral = functions.firestore.document('boo
 // BOOKING CANCELLATION
 // ==========================================
 
-export const cancelBooking = functions.https.onCall(async (data, context) => {
+export const cancelBooking = functions.https.onCall(async (data: any, context: any) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     const { bookingId, reason } = data;
 
@@ -163,7 +163,7 @@ import { sendPushNotification } from './shared/notifications';
 
 // ... (skipping referral and cancellation for now, targeting submitServiceRating)
 
-export const submitServiceRating = functions.https.onCall(async (data, context) => {
+export const submitServiceRating = functions.https.onCall(async (data: any, context: any) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     const { bookingId, rating, comment, tags } = data; // tags is string[]
     const customerId = context.auth.uid;
@@ -304,7 +304,7 @@ export const submitServiceRating = functions.https.onCall(async (data, context) 
 // SUPPORT / ASSISTANCE
 // ==========================================
 
-export const submitSupportRequest = functions.https.onCall(async (data, context) => {
+export const submitSupportRequest = functions.https.onCall(async (data: any, context: any) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     const { category, message } = data;
 
@@ -348,7 +348,20 @@ export const updateUserProfile = functions.https.onCall(async (data: any, contex
     }
 
     // ALLOWED FIELDS ONLY
-    const allowedKeys = ['name', 'email', 'phone', 'photoUrl', 'isOnboarded', 'profileCompleted', 'district'];
+    const allowedKeys = [
+        'name', 
+        'displayName',
+        'email', 
+        'phone', 
+        'photoUrl', 
+        'isOnboarded', 
+        'profileCompleted', 
+        'district',
+        'state',
+        'defaultAddress',
+        'latitude',
+        'longitude'
+    ];
     const updateData: any = {};
 
     for (const key of allowedKeys) {
@@ -357,6 +370,10 @@ export const updateUserProfile = functions.https.onCall(async (data: any, contex
                 const district = data[key].toString().trim();
                 updateData.district = district;
                 updateData.districtNormalized = district.toLowerCase();
+            } else if (key === 'state') {
+                const state = data[key].toString().trim();
+                updateData.state = state;
+                updateData.stateNormalized = state.toLowerCase();
             } else {
                 updateData[key] = data[key];
             }
@@ -415,7 +432,7 @@ export const updateTechnicianProfile = functions.https.onCall(async (data: any, 
     return { success: true };
 });
 
-export const deleteAccount = functions.https.onCall(async (data, context) => {
+export const deleteAccount = functions.https.onCall(async (data: any, context: any) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
     const uid = context.auth.uid;
 
@@ -427,7 +444,7 @@ export const deleteAccount = functions.https.onCall(async (data, context) => {
     return { success: true };
 });
 
-export const manageAddress = functions.https.onCall(async (data, context) => {
+export const manageAddress = functions.https.onCall(async (data: any, context: any) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
     const uid = context.auth.uid;
     const { action, addressId, addressData } = data; // action: 'add', 'edit', 'delete', 'setDefault'
@@ -459,7 +476,7 @@ export const manageAddress = functions.https.onCall(async (data, context) => {
 });
 
 
-export const managePaymentMethod = functions.https.onCall(async (data, context) => {
+export const managePaymentMethod = functions.https.onCall(async (data: any, context: any) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
     const uid = context.auth.uid;
     const { action, methodId, methodData } = data;
@@ -481,7 +498,7 @@ export const managePaymentMethod = functions.https.onCall(async (data, context) 
     return { success: true };
 });
 
-export const updatePrivacySettings = functions.https.onCall(async (data, context) => {
+export const updatePrivacySettings = functions.https.onCall(async (data: any, context: any) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
     const uid = context.auth.uid;
     await db.collection('customers').doc(uid).set({ privacy: data }, { merge: true });

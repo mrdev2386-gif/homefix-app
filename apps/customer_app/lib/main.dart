@@ -14,6 +14,7 @@ import 'core/services/firestore_service.dart';
 import 'package:customer_app/core/services/functions_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/notifications_service.dart';
+import 'core/services/database_seeder.dart';
 import 'core/providers/cart_provider.dart';
 import 'core/providers/favorites_provider.dart';
 import 'core/providers/auth_provider.dart';
@@ -44,12 +45,8 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    
     // Initialize App Check (Critical Security)
-    await initFirebaseSecurity();
+    await initializeFirebase();
 
     // 2. Initialize Crashlytics & Performance
     if (!kIsWeb) {
@@ -65,6 +62,13 @@ void main() async {
       await NotificationsService().initialize();
     } catch (e) {
       debugPrint("Notifications initialization failed: $e");
+    }
+
+    // 5. Seed initial data
+    try {
+      await DatabaseSeeder.seedInitialData();
+    } catch (e) {
+      debugPrint("Database seeding failed: $e");
     }
 
   } catch (e) {

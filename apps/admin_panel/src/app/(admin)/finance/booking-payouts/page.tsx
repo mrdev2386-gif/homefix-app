@@ -277,7 +277,7 @@ export default function BookingPayoutsPage() {
                     >
                       {columns.map((col) => (
                         <td key={col.key} className="px-6 py-4">
-                          {col.render ? col.render(payout) : payout[col.key as keyof BookingPayout]}
+                          {col.render ? col.render(payout) : String(payout[col.key as keyof BookingPayout] || '')}
                         </td>
                       ))}
                     </tr>

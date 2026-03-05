@@ -50,6 +50,7 @@ export default function ReviewsPage() {
 
     useEffect(() => {
         fetchReviews();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [ratingFilter, statusFilter]);
 
     const handleAction = async (reviewId: string, action: string) => {
@@ -161,7 +162,7 @@ export default function ReviewsPage() {
                                         </div>
                                     </div>
 
-                                    <p className="text-slate-300 italic">"{review.reviewText || 'No text provided'}"</p>
+                                    <p className="text-slate-300 italic">&ldquo;{review.reviewText || 'No text provided'}&rdquo;</p>
 
                                     <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-800">
                                         <div className="flex items-center gap-3">
@@ -269,7 +270,7 @@ export default function ReviewsPage() {
                                     <Star key={s} size={24} className={s <= selectedReview.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-700'} />
                                 ))}
                             </div>
-                            <p className="text-slate-300 text-lg italic">"{selectedReview.reviewText}"</p>
+                            <p className="text-slate-300 text-lg italic">&ldquo;{selectedReview.reviewText}&rdquo;</p>
                             <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-800">
                                 <div>
                                     <p className="text-xs text-slate-500 mb-1">Customer</p>

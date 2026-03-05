@@ -487,12 +487,10 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> with SingleTi
                 color: AppTheme.accentColor,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Image.network(
-                cat.imageUrl,
-                width: 48,
-                height: 48,
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const Icon(Icons.category, size: 40, color: Colors.grey),
+              child: Icon(
+                cat.icon,
+                size: 40,
+                color: Colors.grey,
               ),
             ),
             const SizedBox(height: 12),

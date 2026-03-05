@@ -422,7 +422,7 @@ export const onTechnicianProfileUpdateRiskCheck = fraudProtection.onTechnicianPr
 
 
 // SMART MATCHING V2
-export const assignTechnicianToBooking = functions.https.onCall(async (data, context) => {
+export const assignTechnicianToBooking = functions.https.onCall(async (data: any, context: any) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
     // Check Admin or System role
     if (!(await isAdmin(context.auth.uid))) {
@@ -441,7 +441,7 @@ export const respondToAssignment = handleAssignmentResponse;
  * Saves FCM token for a user (customer or technician)
  * Supports multiple devices by storing tokens in a subcollection
  */
-export const saveFcmToken = functions.https.onCall(async (data, context) => {
+export const saveFcmToken = functions.https.onCall(async (data: any, context: any) => {
     const uid = context.auth?.uid;
     if (!uid) {
         throw new functions.https.HttpsError("unauthenticated", "User not logged in");
@@ -487,7 +487,7 @@ export const saveFcmToken = functions.https.onCall(async (data, context) => {
  * Removes FCM token for a user
  * Called on logout or token refresh
  */
-export const removeFcmToken = functions.https.onCall(async (data, context) => {
+export const removeFcmToken = functions.https.onCall(async (data: any, context: any) => {
     const uid = context.auth?.uid;
     if (!uid) {
         throw new functions.https.HttpsError("unauthenticated", "User not logged in");
@@ -527,7 +527,7 @@ export const removeFcmToken = functions.https.onCall(async (data, context) => {
  * Called on complete logout
  */
 /*
-export const removeAllFcmTokens = functions.https.onCall(async (data, context) => {
+export const removeAllFcmTokens = functions.https.onCall(async (data: any, context: any) => {
     const uid = context.auth?.uid;
     if (!uid) {
         throw new functions.https.HttpsError("unauthenticated", "User not logged in");
@@ -566,7 +566,7 @@ export const removeAllFcmTokens = functions.https.onCall(async (data, context) =
  * Gets all FCM tokens for a user (admin use only)
  */
 /*
-export const getFcmTokens = functions.https.onCall(async (data, context) => {
+export const getFcmTokens = functions.https.onCall(async (data: any, context: any) => {
     const uid = context.auth?.uid;
     if (!uid) {
         throw new functions.https.HttpsError("unauthenticated", "User not logged in");
@@ -603,17 +603,8 @@ export const markAllNotificationsRead = notificationsMgmt.markAllNotificationsRe
 export const deleteNotificationCallable = notificationsMgmt.deleteNotificationCallable;
 export const deleteAllNotificationsCallable = notificationsMgmt.deleteAllNotificationsCallable;
 
-// Technician Actions
-export const scheduleInspection = bookingActions.scheduleInspection;
-export const startInspection = bookingActions.startInspection;
-export const submitInspectionReport = bookingActions.submitInspectionReport;
-export const startJob = bookingActions.startJob;
-export const completeJob = bookingActions.completeJob;
-
-// Customer Actions
-export const approveJobQuote = bookingActions.approveJobQuote;
-export const rejectJobQuote = bookingActions.rejectJobQuote;
-// cancelBookingByCustomer is exported from booking_lifecycle.ts
+// Booking Actions - Removed stub functions (unimplemented)
+// If needed in future, implement in booking_actions.ts first
 
 // ==========================================
 // 3. TRIGGERS

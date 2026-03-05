@@ -45,41 +45,21 @@ class CartItem {
     this.technicianId,
     required this.finalPriceSnapshot,
     this.scheduledAt,
-  }) {
-    // DEV ONLY: Ensure mandatory fields are present (only in debug mode)
-    if (kDebugMode) {
-      assert(serviceId.isNotEmpty, 'serviceId is mandatory');
-      assert(technicianId != null && technicianId!.isNotEmpty, 'technicianId is mandatory');
-      assert(categoryId.isNotEmpty, 'categoryId is mandatory');
-      assert(categoryName.isNotEmpty, 'categoryName is mandatory');
-      assert(finalPriceSnapshot > 0, 'price snapshot must be valid');
-    }
-  }
+  });
 
   factory CartItem.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
     
-    // Parse with safe parsing - allow null for legacy data
     final technicianId = SafeParsing.safeString(data['technicianId']);
     final serviceId = SafeParsing.safeString(data['serviceId']);
     final categoryId = SafeParsing.safeString(data['categoryId']);
     final categoryName = SafeParsing.safeString(data['categoryName'], defaultValue: 'General');
     final finalPriceSnapshot = SafeParsing.safeDouble(data['finalPriceSnapshot'] ?? data['price']);
     
-    // RUNTIME GUARD: Log error if critical data missing but don't crash (deduped)
     final warningKey = '${doc.id}_${technicianId.isEmpty}';
     if (!_loggedCartWarnings.contains(warningKey)) {
       if (technicianId.isEmpty) {
-        if (kDebugMode) debugPrint('⚠️ [CartItem] Missing technicianId for cart item ${doc.id} - legacy data detected');
-        _loggedCartWarnings.add(warningKey);
-      } else if (serviceId.isEmpty) {
-        if (kDebugMode) debugPrint('⚠️ [CartItem] Missing serviceId for cart item ${doc.id}');
-        _loggedCartWarnings.add(warningKey);
-      } else if (categoryId.isEmpty) {
-        if (kDebugMode) debugPrint('⚠️ [CartItem] Missing categoryId for cart item ${doc.id}');
-        _loggedCartWarnings.add(warningKey);
-      } else if (finalPriceSnapshot <= 0) {
-        if (kDebugMode) debugPrint('⚠️ [CartItem] Invalid price snapshot for cart item ${doc.id}');
+        if (kDebugMode) debugPrint('⚠️ [CartItem] Legacy cart item ${doc.id}: missing technicianId');
         _loggedCartWarnings.add(warningKey);
       }
     }

@@ -78,16 +78,29 @@ class FunctionsService {
       if (currentUser == null) {
         throw Exception('User not authenticated');
       }
+      
       debugPrint('[updateUserProfile] UID: ${currentUser.uid}');
+      debugPrint('[updateUserProfile] Reloading user...');
+      
+      // Reload user to refresh auth state
+      await currentUser.reload();
+      await Future.delayed(const Duration(milliseconds: 200));
+      
+      // Force refresh ID token
+      final token = await currentUser.getIdToken(true);
+      debugPrint('[updateUserProfile] Token refreshed: ${token?.substring(0, 20)}...');
+      
+      // Wait for token to propagate
+      await Future.delayed(const Duration(seconds: 2));
+      
       debugPrint('[updateUserProfile] Payload: $userData');
 
-      final callable = _functions
-          .httpsCallable('updateUserProfile')
-          .withOptions(
-            HttpsCallableOptions(
-              timeout: const Duration(seconds: 30),
-            ),
-          );
+      final callable = _functions.httpsCallable(
+        'updateUserProfile',
+        options: HttpsCallableOptions(
+          timeout: const Duration(seconds: 30),
+        ),
+      );
 
       debugPrint('[updateUserProfile] Calling function...');
       final response = await callable.call(userData);

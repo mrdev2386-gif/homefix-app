@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:customer_app/core/services/auth_service.dart';
-import '../../../core/services/firestore_service.dart';
 import 'package:customer_app/core/services/functions_service.dart';
 import '../../../core/providers/location_provider.dart';
+import '../../../core/widgets/location_selector.dart';
 import '../../home/main_wrapper_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -19,6 +19,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final TextEditingController _nameController = TextEditingController();
   int _currentStep = 0;
   bool _isLoading = false;
+  String? _selectedState;
+  String? _selectedDistrict;
 
   @override
   void dispose() {
@@ -28,20 +30,38 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Future<void> _completeOnboarding() async {
+    // Validate location selection
+    if (_selectedState == null || _selectedDistrict == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select your location'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
       final authService = Provider.of<AuthService>(context, listen: false);
       final functionsService = Provider.of<FunctionsService>(context, listen: false);
       final locationProvider = Provider.of<LocationProvider>(context, listen: false);
       final user = authService.currentUser;
+      
       if (user != null) {
+        // Save district to LocationProvider
+        await locationProvider.setSelectedDistrict(_selectedDistrict!);
+        
+        // Update user profile
         await functionsService.updateUserProfile({
           'name': _nameController.text.trim(),
           'displayName': _nameController.text.trim(),
           'isOnboarded': true,
           'profileCompleted': true,
-          'district': locationProvider.selectedDistrict ?? 'Unknown',
-          'defaultAddress': locationProvider.selectedDistrict ?? 'Unknown',
+          'state': _selectedState,
+          'district': _selectedDistrict,
+          'districtNormalized': _selectedDistrict!.trim().toLowerCase(),
+          'defaultAddress': _selectedDistrict,
           'latitude': 0.0,
           'longitude': 0.0,
         });
@@ -55,7 +75,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.toString()}')),
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -194,21 +217,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'You\'re all set to find the best pros in your area.',
+                  'Select your state and district to find services near you.',
                   style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 14),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 48),
-                Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(32),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF6366F1).withOpacity(0.05),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.location_on_rounded, size: 64, color: Color(0xFF6366F1)),
-                  ),
+                const SizedBox(height: 32),
+                LocationSelector(
+                  onLocationChanged: (state, district) {
+                    setState(() {
+                      _selectedState = state;
+                      _selectedDistrict = district;
+                    });
+                  },
                 ),
                 const SizedBox(height: 24),
               ],
@@ -222,7 +243,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             width: double.infinity,
             height: 52,
             child: ElevatedButton(
-              onPressed: _isLoading ? null : () => _completeOnboarding(),
+              onPressed: (_isLoading || _selectedState == null || _selectedDistrict == null) 
+                  ? null 
+                  : () => _completeOnboarding(),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF6366F1),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
