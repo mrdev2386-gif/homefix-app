@@ -22,6 +22,8 @@ class _AddEditAddressScreenState extends State<AddEditAddressScreen> {
   late TextEditingController _addressController;
   late TextEditingController _landmarkController;
   late TextEditingController _cityController;
+  late TextEditingController _districtController;
+  late TextEditingController _stateController;
   late TextEditingController _pincodeController;
   String _label = 'Home';
   bool _isDefault = false;
@@ -35,6 +37,8 @@ class _AddEditAddressScreenState extends State<AddEditAddressScreen> {
     _addressController = TextEditingController(text: widget.address?.fullAddress);
     _landmarkController = TextEditingController(text: widget.address?.landmark);
     _cityController = TextEditingController(text: widget.address?.city);
+    _districtController = TextEditingController(text: widget.address?.district);
+    _stateController = TextEditingController(text: widget.address?.state);
     _pincodeController = TextEditingController(text: widget.address?.pincode);
     if (widget.address != null) {
       _label = widget.address!.label;
@@ -49,6 +53,8 @@ class _AddEditAddressScreenState extends State<AddEditAddressScreen> {
     _addressController.dispose();
     _landmarkController.dispose();
     _cityController.dispose();
+    _districtController.dispose();
+    _stateController.dispose();
     _pincodeController.dispose();
     super.dispose();
   }
@@ -69,6 +75,8 @@ class _AddEditAddressScreenState extends State<AddEditAddressScreen> {
         fullAddress: _addressController.text,
         landmark: _landmarkController.text,
         city: _cityController.text,
+        district: _districtController.text,
+        state: _stateController.text,
         pincode: _pincodeController.text,
         latitude: widget.address?.latitude ?? 0.0,
         longitude: widget.address?.longitude ?? 0.0,
@@ -120,6 +128,14 @@ class _AddEditAddressScreenState extends State<AddEditAddressScreen> {
               Row(
                 children: [
                   Expanded(child: _buildInputField('City', _cityController, Icons.location_city_outlined)),
+                  const SizedBox(width: 16),
+                  Expanded(child: _buildInputField('District', _districtController, Icons.map_outlined)),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(child: _buildInputField('State', _stateController, Icons.public_outlined)),
                   const SizedBox(width: 16),
                   Expanded(child: _buildInputField('Pincode', _pincodeController, Icons.pin_drop_outlined, keyboardType: TextInputType.number)),
                 ],

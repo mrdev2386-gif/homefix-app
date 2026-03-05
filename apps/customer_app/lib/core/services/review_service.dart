@@ -1,43 +1,62 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../models/review.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class ReviewService {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  static final _firestore = FirebaseFirestore.instance;
+  static final _auth = FirebaseAuth.instance;
 
-  Future<void> submitReview(Review review) async {
-    final batch = _db.batch();
-    final reviewRef = _db.collection('reviews').doc();
-    final techRef = _db.collection('technicians').doc(review.technicianId);
-
-    // Add review
-    batch.set(reviewRef, review.toMap());
-
-    // Update technician stats
-    // Note: In real production, this should be done via Cloud Functions to prevent race conditions
-    final techDoc = await techRef.get();
-    if (techDoc.exists) {
-      final double currentRating = (techDoc.data()?['ratingAvg'] ?? 4.5).toDouble();
-      final int currentCount = techDoc.data()?['ratingCount'] ?? 10;
-      final int jobsDone = techDoc.data()?['jobsDone'] ?? 10;
-
-      final double newRating = ((currentRating * currentCount) + review.rating) / (currentCount + 1);
-
-      batch.update(techRef, {
-        'ratingAvg': newRating,
-        'ratingCount': FieldValue.increment(1),
-        'jobsDone': jobsDone + 1, // Optional: if jobsDone is also updated here
-      });
+  static Future<bool> hasReview(String bookingId) async {
+    try {
+      final snapshot = await _firestore
+          .collection('reviews')
+          .where('bookingId', isEqualTo: bookingId)
+          .limit(1)
+          .get();
+      return snapshot.docs.isNotEmpty;
+    } catch (e) {
+      print('Error checking review: $e');
+      return false;
     }
-
-    await batch.commit();
   }
 
-  Stream<List<Review>> getTechnicianReviews(String technicianId) {
-    return _db
+  static Future<Map<String, dynamic>?> getReview(String bookingId) async {
+    try {
+      final snapshot = await _firestore
+          .collection('reviews')
+          .where('bookingId', isEqualTo: bookingId)
+          .limit(1)
+          .get();
+      
+      if (snapshot.docs.isEmpty) return null;
+      return snapshot.docs.first.data();
+    } catch (e) {
+      print('Error fetching review: $e');
+      return null;
+    }
+  }
+
+  static Stream<List<Map<String, dynamic>>> getTechnicianReviews(String technicianId) {
+    return _firestore
         .collection('reviews')
         .where('technicianId', isEqualTo: technicianId)
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) => Review.fromFirestore(doc)).toList());
+        .map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
+  }
+
+  static Future<Map<String, dynamic>?> getTechnicianRating(String technicianId) async {
+    try {
+      final doc = await _firestore.collection('technicians').doc(technicianId).get();
+      if (!doc.exists) return null;
+      
+      final data = doc.data() as Map<String, dynamic>;
+      return {
+        'averageRating': data['averageRating'] ?? 0.0,
+        'totalReviews': data['totalReviews'] ?? 0,
+      };
+    } catch (e) {
+      print('Error fetching technician rating: $e');
+      return null;
+    }
   }
 }

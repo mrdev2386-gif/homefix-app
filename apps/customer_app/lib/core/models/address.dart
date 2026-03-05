@@ -8,6 +8,8 @@ class Address {
   final String fullAddress;
   final String landmark;
   final String city;
+  final String district;
+  final String state;
   final String pincode;
   final double latitude;
   final double longitude;
@@ -22,6 +24,8 @@ class Address {
     required this.fullAddress,
     required this.landmark,
     required this.city,
+    required this.district,
+    required this.state,
     required this.pincode,
     required this.latitude,
     required this.longitude,
@@ -36,13 +40,15 @@ class Address {
       label: data['label'] ?? data['title'] ?? '',
       name: data['name'] ?? '',
       phone: data['phone'] ?? '',
-      fullAddress: data['fullAddress'] ?? '',
+      fullAddress: data['fullAddress'] ?? data['addressLine'] ?? '',
       landmark: data['landmark'] ?? '',
       city: data['city'] ?? '',
+      district: data['district'] ?? '',
+      state: data['state'] ?? '',
       pincode: data['pincode'] ?? '',
       latitude: (data['latitude'] ?? data['lat'] ?? 0.0).toDouble(),
       longitude: (data['longitude'] ?? data['lng'] ?? 0.0).toDouble(),
-      isDefault: data['isDefault'] ?? false,
+      isDefault: data['isDefault'] ?? data['isPrimary'] ?? false,
       createdAt: (data['createdAt'] is Timestamp)
           ? (data['createdAt'] as Timestamp).toDate()
           : DateTime.now(),
@@ -52,19 +58,23 @@ class Address {
   Map<String, dynamic> toMap() {
     return {
       'label': label,
-      'title': label, // Keep title for compatibility
+      'title': label,
       'name': name,
       'phone': phone,
       'fullAddress': fullAddress,
+      'addressLine': fullAddress,
       'landmark': landmark,
       'city': city,
+      'district': district,
+      'state': state,
       'pincode': pincode,
       'latitude': latitude,
       'longitude': longitude,
-      'lat': latitude, // Keep lat for compatibility
-      'lng': longitude, // Keep lng for compatibility
+      'lat': latitude,
+      'lng': longitude,
       'isDefault': isDefault,
-      'createdAt': createdAt.toIso8601String(),
+      'isPrimary': isDefault,
+      'createdAt': FieldValue.serverTimestamp(),
     };
   }
 
@@ -76,6 +86,8 @@ class Address {
     String? fullAddress,
     String? landmark,
     String? city,
+    String? district,
+    String? state,
     String? pincode,
     double? latitude,
     double? longitude,
@@ -90,6 +102,8 @@ class Address {
       fullAddress: fullAddress ?? this.fullAddress,
       landmark: landmark ?? this.landmark,
       city: city ?? this.city,
+      district: district ?? this.district,
+      state: state ?? this.state,
       pincode: pincode ?? this.pincode,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,

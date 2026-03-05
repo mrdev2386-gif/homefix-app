@@ -137,6 +137,18 @@ export const confirmQRPayment = paymentQR.confirmQRPayment;
 import * as bookingCleanup from './booking/cleanup';
 export const cleanupStaleBookings = bookingCleanup.cleanupStaleBookings;
 
+// ================================================
+// BOOKING & CUSTOM REQUEST NOTIFICATIONS TRIGGERS
+// ================================================
+
+// Booking Status Change Notifications
+import * as bookingNotifications from './booking/booking_notifications';
+export const onBookingStatusChange = bookingNotifications.onBookingStatusChange;
+
+// Custom Request Status Change Notifications
+import * as customRequestNotifications from './custom_requests/custom_request_notifications';
+export const onCustomRequestStatusChange = customRequestNotifications.onCustomRequestStatusChange;
+
 // Production Hardening
 export {
     handlePaymentWebhook,

@@ -14,7 +14,7 @@ import 'core/services/firestore_service.dart';
 import 'package:customer_app/core/services/functions_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/notifications_service.dart';
-import 'core/services/database_seeder.dart';
+import 'core/services/push_notification_service.dart';
 import 'core/providers/cart_provider.dart';
 import 'core/providers/favorites_provider.dart';
 import 'core/providers/auth_provider.dart';
@@ -28,7 +28,7 @@ import 'features/auth/screens/splash_screen.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/onboarding_screen.dart';
 import 'features/home/main_wrapper_screen.dart';
-import 'features/custom_request/presentation/custom_request_screen.dart';
+import 'features/custom_request/presentation/custom_request_form_screen.dart';
 import 'features/profile/presentation/saved_addresses_screen.dart';
 import 'core/models/user_model.dart';
 import 'firebase_options.dart';
@@ -57,7 +57,14 @@ void main() async {
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
     }
     
-    // 4. Initialize Push Notifications (Singleton)
+    // 4. Initialize Push Notifications (FCM Token Management)
+    try {
+      await PushNotificationService().initialize();
+    } catch (e) {
+      debugPrint("Push notification service initialization failed: $e");
+    }
+
+    // 4.5 Initialize Notifications UI Service (Notification management)
     try {
       await NotificationsService().initialize();
     } catch (e) {
@@ -66,7 +73,7 @@ void main() async {
 
     // 5. Seed initial data
     try {
-      await DatabaseSeeder.seedInitialData();
+      // DatabaseSeeder.seedInitialData(); // Commented out - not needed for basic functionality
     } catch (e) {
       debugPrint("Database seeding failed: $e");
     }
@@ -130,7 +137,7 @@ class HomeFixApp extends StatelessWidget {
               GlobalCupertinoLocalizations.delegate,
             ],
             routes: {
-              '/customRequest': (context) => const CustomRequestScreen(),
+              '/customRequest': (context) => const CustomRequestFormScreen(),
               '/addresses': (context) => const SavedAddressesScreen(),
             },
             home: const AuthWrapper(),

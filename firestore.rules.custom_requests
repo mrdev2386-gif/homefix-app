@@ -1,0 +1,17 @@
+// Custom Requests Collection Rules
+match /custom_requests/{requestId} {
+  // Customer can read their own requests
+  allow read: if request.auth.uid == resource.data.customerId;
+  
+  // Only Cloud Functions can write (via createCustomRequest)
+  allow create: if false;
+  allow update: if false;
+  allow delete: if false;
+  
+  // Admin can read all requests (implement admin check in your app)
+  // This should be restricted to admin users only
+  allow read: if request.auth.token.admin == true;
+  
+  // Technician can read assigned requests
+  allow read: if request.auth.uid == resource.data.technicianId;
+}

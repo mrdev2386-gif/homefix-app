@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:provider/provider.dart';
@@ -9,12 +8,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/providers/technician_provider.dart';
 import 'core/app_theme.dart';
 import 'core/services/notifications_service.dart';
+import 'core/services/push_notification_service.dart';
 import 'screens/app_onboarding_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/technician_onboarding_flow_screen.dart';
 import 'screens/dashboard_screen.dart';
-import 'screens/block_screen.dart';
-import 'screens/application_status_screen.dart';
 import 'features/technician/screens/profile_under_review_screen.dart';
 import 'features/technician/services/add_service_screen.dart';
 import 'core/services/technician_catalog_service.dart';
@@ -23,7 +21,6 @@ import 'core/utils/app_logger.dart';
 
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_performance/firebase_performance.dart';
-import 'package:flutter/foundation.dart';
 
 // Top-level root navigator key - MUST be outside any class
 // This is the single source of truth for navigation in the app
@@ -51,7 +48,11 @@ void main() async {
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   AppLogger.info('MAIN', 'Background message handler set');
   
-  // Initialize Push Notifications AFTER App Check
+  // Initialize Push Notifications (FCM Token Management) AFTER App Check
+  await PushNotificationService().initialize();
+  AppLogger.info('MAIN', 'Push notification service initialized');
+
+  // Initialize Notifications UI Service (Notification management) AFTER App Check
   await NotificationsService().initialize();
   AppLogger.info('MAIN', 'Notifications service initialized');
 

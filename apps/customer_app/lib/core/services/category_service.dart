@@ -20,7 +20,6 @@ class CategoryService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   Stream<List<Category>> streamCategories() {
-    debugPrint('🔄 [CategoryService] streamCategories() called');
     return _firestore
         .collection('categories')
         .snapshots()
@@ -30,21 +29,16 @@ class CategoryService {
                 try {
                   return Category.fromFirestore(doc);
                 } catch (e) {
-                  debugPrint('❌ [CategoryService] Error parsing category ${doc.id}: $e');
+                  if (kDebugMode) debugPrint('❌ [CategoryService] Error parsing category ${doc.id}: $e');
                   return null;
                 }
               })
               .whereType<Category>()
               .toList();
-          debugPrint('📊 [CategoryService] Snapshot received: ${categories.length} categories');
-          for (var cat in categories) {
-            debugPrint('   - ${cat.id}: ${cat.name}');
-          }
           return categories;
         })
         .handleError((error, stackTrace) {
-          debugPrint('❌ [CategoryService] Stream error: $error');
-          debugPrint('   Stack: $stackTrace');
+          if (kDebugMode) debugPrint('❌ [CategoryService] Stream error: $error');
           return <Category>[];
         });
   }
@@ -62,10 +56,9 @@ class CategoryService {
       final snapshot = await _firestore
           .collection('categories')
           .get();
-      debugPrint('📊 [CategoryService] getCategoriesOnce: ${snapshot.docs.length} categories');
       return snapshot.docs.map((doc) => Category.fromFirestore(doc)).toList();
     } catch (e) {
-      debugPrint('❌ [CategoryService] Error fetching categories: $e');
+      if (kDebugMode) debugPrint('❌ [CategoryService] Error fetching categories: $e');
       return [];
     }
   }
@@ -147,8 +140,6 @@ class CategoryService {
       return Stream.value(ServiceResult.empty());
     }
 
-    if (kDebugMode) debugPrint('🕵️ [SubServiceQuery] START - using technician_services');
-
     Query query = _firestore
         .collectionGroup('technician_services')
         .where('isPublished', isEqualTo: true)
@@ -164,7 +155,6 @@ class CategoryService {
       (query as Query<Map<String, dynamic>>)
           .snapshots()
           .map((snapshot) {
-        if (kDebugMode) debugPrint('✅ [SubServiceQuery] SUCCESS count=${snapshot.docs.length}');
         final services = snapshot.docs
             .map((doc) => HomeService.fromFirestore(doc))
             .whereType<HomeService>()
@@ -520,7 +510,6 @@ class CategoryService {
 
   Future<List<HomeService>> getAllServicesOnce() async {
     try {
-      debugPrint('🔍 [CategoryService] Fetching all services via collectionGroup (technician_services)...');
       final snapshot = await _firestore
           .collectionGroup('technician_services')
           .where('isPublished', isEqualTo: true)
@@ -535,36 +524,25 @@ class CategoryService {
             try {
               return HomeService.fromFirestore(doc);
             } catch (e) {
-              debugPrint('⚠️ [CategoryService] Failed to parse service ${doc.id}: $e');
+              if (kDebugMode) debugPrint('⚠️ [CategoryService] Failed to parse service ${doc.id}: $e');
               return null;
             }
           })
           .whereType<HomeService>()
           .toList();
       
-      debugPrint('🛠 Services fetched: ${services.length}');
-      
-      if (services.isEmpty) {
-        debugPrint('⚠️ [CategoryService] WARNING: No published technician services found!');
-        debugPrint('   Check: 1) Technicians have published services, 2) isPublished=true, 3) technicianApproved=true');
-      } else {
-        debugPrint('🧪 Sample service IDs: ${services.take(3).map((e) => e.id).toList()}');
-        debugPrint('   Sample names: ${services.take(3).map((e) => e.name).toList()}');
-      }
-      
       return services;
     } catch (e, stackTrace) {
-      debugPrint('❌ [CategoryService] CRITICAL: Error in getAllServicesOnce: $e');
-      debugPrint('   Stack trace: $stackTrace');
-      
-      if (e.toString().contains('FAILED_PRECONDITION')) {
-        debugPrint('   ⚠️ FIRESTORE INDEX MISSING: Create composite index for this query');
-      } else if (e.toString().contains('UNAVAILABLE')) {
-        debugPrint('   ⚠️ NETWORK ERROR: Check internet connection');
-      } else if (e.toString().contains('PERMISSION_DENIED')) {
-        debugPrint('   ⚠️ PERMISSION ERROR: Check Firestore security rules');
+      if (kDebugMode) {
+        debugPrint('❌ [CategoryService] CRITICAL: Error in getAllServicesOnce: $e');
+        if (e.toString().contains('FAILED_PRECONDITION')) {
+          debugPrint('   ⚠️ FIRESTORE INDEX MISSING: Create composite index for this query');
+        } else if (e.toString().contains('UNAVAILABLE')) {
+          debugPrint('   ⚠️ NETWORK ERROR: Check internet connection');
+        } else if (e.toString().contains('PERMISSION_DENIED')) {
+          debugPrint('   ⚠️ PERMISSION ERROR: Check Firestore security rules');
+        }
       }
-      
       return [];
     }
   }

@@ -11,8 +11,13 @@ import 'add_edit_address_screen.dart';
 
 class SavedAddressesScreen extends StatelessWidget {
   final bool isSelectionMode;
+  final bool isPrimarySelectionMode;
 
-  const SavedAddressesScreen({super.key, this.isSelectionMode = false});
+  const SavedAddressesScreen({
+    super.key, 
+    this.isSelectionMode = false,
+    this.isPrimarySelectionMode = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -47,7 +52,7 @@ class SavedAddressesScreen extends StatelessWidget {
             physics: const BouncingScrollPhysics(),
             itemBuilder: (context, index) {
               final address = addresses[index];
-              return _buildAddressCard(context, address, firestoreService, userId, isSelectionMode);
+              return _buildAddressCard(context, address, firestoreService, userId, isSelectionMode || isPrimarySelectionMode);
             },
           );
         },
@@ -68,7 +73,7 @@ class SavedAddressesScreen extends StatelessWidget {
         children: [
           Container(
             padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(color: AppTheme.accentColor, shape: BoxShape.circle),
+            decoration: const BoxDecoration(color: AppTheme.accentColor, shape: BoxShape.circle),
             child: const Icon(Icons.location_off_rounded, size: 64, color: AppTheme.primaryColor),
           ),
           const SizedBox(height: 24),
@@ -98,9 +103,11 @@ class SavedAddressesScreen extends StatelessWidget {
       ),
       child: InkWell(
         onTap: () async {
-          // Set in LocationProvider
-          final locationProvider = Provider.of<LocationProvider>(context, listen: false);
-          await locationProvider.setSelectedAddress(address);
+          // Only set in LocationProvider if not primary selection mode
+          if (!isPrimarySelectionMode) {
+            final locationProvider = Provider.of<LocationProvider>(context, listen: false);
+            await locationProvider.setSelectedAddress(address);
+          }
           
           // Also set in CheckoutProvider if in selection mode (for checkout flow)
           if (isSelectionMode) {
@@ -110,12 +117,14 @@ class SavedAddressesScreen extends StatelessWidget {
           
           if (context.mounted) {
             Navigator.pop(context, address);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Delivering to ${address.label}'),
-                duration: const Duration(seconds: 2),
-              ),
-            );
+            if (!isPrimarySelectionMode) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Delivering to ${address.label}'),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            }
           }
         },
         borderRadius: BorderRadius.circular(24),

@@ -29,6 +29,8 @@ dependencies:
   # Device Features
   image_picker: ^1.0.7
   flutter_local_notifications: ^17.1.2
+  geolocator: ^10.1.0
+  geocoding: ^2.1.1
 
 
   # Payments

@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:customer_app/core/widgets/safe_network_image.dart';
 import 'dart:io';
 import 'package:customer_app/core/services/storage_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:customer_app/core/services/auth_service.dart';
 import 'package:customer_app/core/services/firestore_service.dart';
 import 'package:customer_app/core/services/location_service.dart';
 import 'package:customer_app/core/models/user_model.dart';
+import 'package:customer_app/core/models/address.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
 import 'package:customer_app/core/utils/app_localizations.dart';
-import '../../shared/widgets/app_widgets.dart';
 import '../bookings/presentation/booking_history_screen.dart';
 import '../support/presentation/support_screen.dart';
 import '../settings/settings_screen.dart';
@@ -22,6 +22,7 @@ import 'presentation/edit_location_screen.dart';
 import 'presentation/favorite_services_screen.dart';
 import 'presentation/about_screen.dart';
 import 'presentation/policy_screen.dart';
+import 'presentation/saved_addresses_screen.dart';
 import 'widgets/profile_shimmer.dart';
 import '../wallet/presentation/wallet_screen.dart';
 
@@ -197,6 +198,72 @@ class _ProfileContentState extends State<_ProfileContent> {
       }
     } finally {
       if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
+  Future<void> _selectPrimaryAddress(BuildContext context) async {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final userId = authService.currentUser?.uid;
+    if (userId == null) return;
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SavedAddressesScreen(isPrimarySelectionMode: true)),
+    );
+
+    if (result is Address && mounted) {
+      // Update primary address in Firestore
+      await _updatePrimaryAddress(userId, result);
+    }
+  }
+
+  Future<void> _updatePrimaryAddress(String userId, Address address) async {
+    try {
+      final firestore = Provider.of<FirestoreService>(context, listen: false);
+      
+      // Batch update: set all addresses isPrimary = false, then selected isPrimary = true
+      final batch = FirebaseFirestore.instance.batch();
+      
+      // Get all user addresses
+      final addressesRef = FirebaseFirestore.instance.collection('customers').doc(userId).collection('addresses');
+      final addressesSnapshot = await addressesRef.get();
+      
+      // Set all addresses isPrimary = false
+      for (final doc in addressesSnapshot.docs) {
+        batch.update(doc.reference, {'isPrimary': false});
+      }
+      
+      // Set selected address isPrimary = true
+      batch.update(addressesRef.doc(address.id), {'isPrimary': true});
+      
+      // Update user document with service location fields
+      final userRef = FirebaseFirestore.instance.collection('customers').doc(userId);
+      batch.update(userRef, {
+        'serviceState': address.state,
+        'serviceDistrict': address.district,
+        'primaryAddressId': address.id,
+      });
+      
+      await batch.commit();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Primary address updated to ${address.label}'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error updating primary address: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update primary address: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -410,6 +477,8 @@ class _ProfileContentState extends State<_ProfileContent> {
                         color: Colors.redAccent,
                         title: l10n.translate('primaryAddress'),
                         value: (widget.user.defaultAddress?.isNotEmpty ?? false) ? widget.user.defaultAddress! : l10n.translate('noAddressSet'),
+                        trailing: Icon(Icons.chevron_right, color: Colors.grey[400]),
+                        onTap: () => _selectPrimaryAddress(context),
                       ),
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 16),

@@ -1,0 +1,323 @@
+/**
+ * ================================================
+ * BOOKING NOTIFICATION TRIGGERS
+ * ================================================
+ * 
+ * Sends push notifications when booking status changes:
+ * 
+ * adminApproved
+ *   → Customer: "Your booking has been approved"
+ *   → Technician: "New job assigned to you"
+ * 
+ * technicianAccepted
+ *   → Customer: "Technician has accepted your booking"
+ * 
+ * technicianArrived
+ *   → Customer: "Technician has arrived"
+ * 
+ * workStarted
+ *   → Customer: "Service has started"
+ * 
+ * completed
+ *   → Customer: "Service completed - please rate"
+ *   → Technician: "Job completed"
+ * 
+ * cancelled
+ *   → Customer + Technician (with reason)
+ */
+
+import * as functions from 'firebase-functions';
+import * as admin from 'firebase-admin';
+import { sendUserNotification } from '../shared/notification_helper';
+
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+
+const db = admin.firestore();
+
+/**
+ * BOOKING STATUS CHANGE TRIGGER
+ * Detects status updates and sends appropriate notifications
+ */
+export const onBookingStatusChange = functions.firestore
+  .document('bookings/{bookingId}')
+  .onUpdate(async (change, context) => {
+    const bookingId = context.params.bookingId;
+    const before = change.before.data();
+    const after = change.after.data();
+
+    if (!before || !after) return;
+
+    const previousStatus = before.status;
+    const newStatus = after.status;
+    const customerId = after.customerId;
+    const technicianId = after.technicianId;
+
+    // Only trigger if status actually changed
+    if (previousStatus === newStatus) return;
+
+    try {
+      console.log(`[BOOKING NOTIFICATION] Status change: ${previousStatus} → ${newStatus}`);
+
+      // ================================================
+      // STATUS: adminApproved
+      // ================================================
+      // Set by: Admin (when admin approves booking)
+      // Transitions from: pending_admin → admin_approved
+      if (newStatus === 'admin_approved' || newStatus === 'adminApproved') {
+        await handleAdminApproved(customerId, technicianId, bookingId, after);
+      }
+
+      // ================================================
+      // STATUS: technicianAccepted
+      // ================================================
+      // Set by: Technician (when they accept the job)
+      if (newStatus === 'technician_accepted' || newStatus === 'technicianAccepted') {
+        await handleTechnicianAccepted(customerId, technicianId, bookingId, after);
+      }
+
+      // ================================================
+      // STATUS: technicianArrived
+      // ================================================
+      // Set by: Technician (when they arrive at location)
+      if (newStatus === 'technician_arrived' || newStatus === 'technicianArrived') {
+        await handleTechnicianArrived(customerId, bookingId, after);
+      }
+
+      // ================================================
+      // STATUS: workStarted
+      // ================================================
+      // Set by: Technician (when work begins)
+      if (newStatus === 'work_started' || newStatus === 'workStarted') {
+        await handleWorkStarted(customerId, bookingId, after);
+      }
+
+      // ================================================
+      // STATUS: completed
+      // ================================================
+      // Set by: Technician (when service is complete)
+      if (newStatus === 'completed') {
+        await handleCompleted(customerId, technicianId, bookingId, after);
+      }
+
+      // ================================================
+      // STATUS: cancelled
+      // ================================================
+      // Set by: Customer, Technician, or System
+      if (newStatus === 'cancelled' && previousStatus !== 'cancelled') {
+        await handleCancelled(customerId, technicianId, bookingId, after);
+      }
+
+      console.log(`[BOOKING NOTIFICATION] Notifications sent for booking: ${bookingId}`);
+    } catch (error) {
+      console.error(`[BOOKING NOTIFICATION] Error for booking ${bookingId}:`, error);
+      // Don't fail the function - notifications are best-effort
+    }
+  });
+
+// ================================================
+// HANDLER: Admin Approved
+// ================================================
+async function handleAdminApproved(
+  customerId: string,
+  technicianId: string,
+  bookingId: string,
+  booking: any
+) {
+  // Fetch booking details for better messaging
+  const serviceName = booking.serviceName || 'Service';
+  const technicianName = booking.technicianName || 'A technician';
+
+  // Notify customer
+  await sendUserNotification({
+    userId: customerId,
+    userType: 'customer',
+    title: '✅ Booking Approved!',
+    body: `Your ${serviceName} booking has been approved and assigned to ${technicianName}.`,
+    type: 'booking_confirmed',
+    data: {
+      bookingId,
+      screen: 'booking_details',
+    },
+    priority: 'high',
+  }).catch(err => console.error('[BOOKING] Customer notification failed:', err));
+
+  // Notify technician (if assigned)
+  if (technicianId) {
+    const customerName = booking.customerName || 'A customer';
+    await sendUserNotification({
+      userId: technicianId,
+      userType: 'technician',
+      title: '🔔 New Job Assigned!',
+      body: `${serviceName} job assigned from ${customerName}. Review and accept/reject.`,
+      type: 'new_instant_booking',
+      data: {
+        bookingId,
+        screen: 'booking_details',
+      },
+      priority: 'high',
+    }).catch(err => console.error('[BOOKING] Technician notification failed:', err));
+  }
+}
+
+// ================================================
+// HANDLER: Technician Accepted
+// ================================================
+async function handleTechnicianAccepted(
+  customerId: string,
+  technicianId: string,
+  bookingId: string,
+  booking: any
+) {
+  const technicianName = booking.technicianName || 'Your technician';
+  const serviceName = booking.serviceName || 'Service';
+
+  // Notify customer
+  await sendUserNotification({
+    userId: customerId,
+    userType: 'customer',
+    title: '🎉 Technician Accepted!',
+    body: `${technicianName} has accepted your ${serviceName} booking and will arrive soon.`,
+    type: 'booking_confirmed',
+    data: {
+      bookingId,
+      screen: 'booking_details',
+    },
+    priority: 'high',
+  }).catch(err => console.error('[BOOKING] Customer notification failed:', err));
+}
+
+// ================================================
+// HANDLER: Technician Arrived
+// ================================================
+async function handleTechnicianArrived(
+  customerId: string,
+  bookingId: string,
+  booking: any
+) {
+  const technicianName = booking.technicianName || 'Your technician';
+
+  await sendUserNotification({
+    userId: customerId,
+    userType: 'customer',
+    title: '👷 Technician Has Arrived!',
+    body: `${technicianName} has arrived at your location and is ready to start.`,
+    type: 'technician_arrived',
+    data: {
+      bookingId,
+      screen: 'booking_tracking',
+    },
+    priority: 'high',
+  }).catch(err => console.error('[BOOKING] Notification failed:', err));
+}
+
+// ================================================
+// HANDLER: Work Started
+// ================================================
+async function handleWorkStarted(
+  customerId: string,
+  bookingId: string,
+  booking: any
+) {
+  const serviceName = booking.serviceName || 'Service';
+
+  await sendUserNotification({
+    userId: customerId,
+    userType: 'customer',
+    title: '⚙️ Service Started',
+    body: `The ${serviceName} service has started. You can track progress in real-time.`,
+    type: 'job_completed',
+    data: {
+      bookingId,
+      screen: 'booking_tracking',
+    },
+    priority: 'normal',
+  }).catch(err => console.error('[BOOKING] Notification failed:', err));
+}
+
+// ================================================
+// HANDLER: Completed
+// ================================================
+async function handleCompleted(
+  customerId: string,
+  technicianId: string,
+  bookingId: string,
+  booking: any
+) {
+  const technicianName = booking.technicianName || 'Your technician';
+  const serviceName = booking.serviceName || 'Service';
+
+  // Notify customer to rate
+  await sendUserNotification({
+    userId: customerId,
+    userType: 'customer',
+    title: '✅ Service Completed!',
+    body: `${technicianName} has completed the ${serviceName}. Please rate your experience.`,
+    type: 'job_completed',
+    data: {
+      bookingId,
+      screen: 'booking_details',
+    },
+    priority: 'normal',
+  }).catch(err => console.error('[BOOKING] Customer notification failed:', err));
+
+  // Notify technician
+  if (technicianId) {
+    await sendUserNotification({
+      userId: technicianId,
+      userType: 'technician',
+      title: '✅ Job Completed',
+      body: `You have successfully completed the ${serviceName} booking.`,
+      type: 'job_completed',
+      data: {
+        bookingId,
+        screen: 'booking_details',
+      },
+      priority: 'normal',
+    }).catch(err => console.error('[BOOKING] Technician notification failed:', err));
+  }
+}
+
+// ================================================
+// HANDLER: Cancelled
+// ================================================
+async function handleCancelled(
+  customerId: string,
+  technicianId: string,
+  bookingId: string,
+  booking: any
+) {
+  const reason = booking.cancellationReason || 'Booking was cancelled';
+  const cancelledBy = booking.cancelledBy || 'System';
+
+  // Notify customer
+  await sendUserNotification({
+    userId: customerId,
+    userType: 'customer',
+    title: '❌ Booking Cancelled',
+    body: reason,
+    type: 'booking_cancelled',
+    data: {
+      bookingId,
+      screen: 'booking_details',
+    },
+    priority: 'high',
+  }).catch(err => console.error('[BOOKING] Customer notification failed:', err));
+
+  // Notify technician (if assigned)
+  if (technicianId) {
+    await sendUserNotification({
+      userId: technicianId,
+      userType: 'technician',
+      title: '❌ Job Cancelled',
+      body: `Booking was cancelled. ${reason}`,
+      type: 'booking_cancelled',
+      data: {
+        bookingId,
+        screen: 'booking_details',
+      },
+      priority: 'high',
+    }).catch(err => console.error('[BOOKING] Technician notification failed:', err));
+  }
+}

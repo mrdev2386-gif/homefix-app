@@ -689,4 +689,14 @@ class FirestoreService {
           return snapshot.docs.map((doc) => HomeService.fromFirestore(doc)).whereType<HomeService>().toList();
         });
   }
+
+  Future<void> createCustomRequest(Map<String, dynamic> requestData) async {
+    try {
+      await _db.collection('custom_requests').add(requestData);
+      if (kDebugMode) debugPrint('✅ [CustomRequest] Created successfully');
+    } catch (e) {
+      if (kDebugMode) debugPrint('❌ [CustomRequest] Creation failed: $e');
+      rethrow;
+    }
+  }
 }

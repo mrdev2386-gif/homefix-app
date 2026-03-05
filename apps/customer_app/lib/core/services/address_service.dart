@@ -102,6 +102,8 @@ class AddressService {
     required double longitude,
     required String fullAddress,
     required String city,
+    required String district,
+    required String state,
     String? landmark,
     String? pincode,
   }) async {
@@ -113,6 +115,8 @@ class AddressService {
       fullAddress: fullAddress,
       landmark: landmark ?? '',
       city: city,
+      district: district,
+      state: state,
       pincode: pincode ?? '',
       latitude: latitude,
       longitude: longitude,

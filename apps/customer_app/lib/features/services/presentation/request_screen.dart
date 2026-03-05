@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
-import 'package:shimmer/shimmer.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../../../core/services/category_service.dart';
-import '../../../../core/models/category.dart';
-import '../../../../core/models/service_result.dart';
-import 'category_services_screen.dart';
-import '../../custom_request/presentation/custom_request_screen.dart';
+import '../../custom_request/presentation/custom_request_form_screen.dart';
+import '../../custom_request/widgets/custom_request_status_widget.dart';
 
 class RequestScreen extends StatefulWidget {
   const RequestScreen({super.key});
@@ -17,22 +14,35 @@ class RequestScreen extends StatefulWidget {
 }
 
 class _RequestScreenState extends State<RequestScreen> {
-  final CategoryService _categoryService = CategoryService();
+  Stream<QuerySnapshot>? _requestStream;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _requestStream = FirebaseFirestore.instance
+          .collection('custom_requests')
+          .where('customerId', isEqualTo: user.uid)
+          .orderBy('createdAt', descending: true)
+          .limit(1)
+          .snapshots();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
+      backgroundColor: const Color(0xFFF8F9FA),
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: () async {
-            setState(() {});
-          },
+          onRefresh: () async => setState(() {}),
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              _buildAppBar(context),
-              _buildCustomRequestBanner(context),
+              _buildHeader(),
+              _buildRequestStatusSection(),
+              _buildCreateRequestSection(),
             ],
           ),
         ),
@@ -40,28 +50,29 @@ class _RequestScreenState extends State<RequestScreen> {
     );
   }
 
-  Widget _buildAppBar(BuildContext context) {
+  Widget _buildHeader() {
     return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               'Service Requests',
-              style: GoogleFonts.outfit(
-                fontSize: 32,
-                fontWeight: FontWeight.w900,
-                color: AppTheme.textColor,
-                letterSpacing: -0.5,
+              style: GoogleFonts.inter(
+                fontSize: 28,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF1A1A1A),
+                height: 1.2,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Choose a category or request a custom service',
-              style: GoogleFonts.outfit(
+              'Track your custom service requests',
+              style: GoogleFonts.inter(
                 fontSize: 16,
-                color: AppTheme.subtitleColor,
+                color: const Color(0xFF6B7280),
+                height: 1.4,
               ),
             ),
           ],
@@ -70,70 +81,125 @@ class _RequestScreenState extends State<RequestScreen> {
     );
   }
 
-  Widget _buildCustomRequestBanner(BuildContext context) {
+  Widget _buildRequestStatusSection() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || _requestStream == null) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-        child: InkWell(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const CustomRequestScreen()),
-            );
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: StreamBuilder<QuerySnapshot>(
+          stream: _requestStream,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: CircularProgressIndicator(),
+                ),
+              );
+            }
+
+            if (snapshot.hasError || !snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              return const SizedBox.shrink();
+            }
+
+            return const CustomRequestStatusWidget();
           },
-          borderRadius: BorderRadius.circular(24),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCreateRequestSection() {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: _buildRequestButton(),
+      ),
+    );
+  }
+
+  Widget _buildRequestButton() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 24),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const CustomRequestFormScreen()),
+          ),
+          borderRadius: BorderRadius.circular(20),
           child: Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [AppTheme.primaryColor, AppTheme.primaryColor.withOpacity(0.8)],
+              gradient: const LinearGradient(
+                colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: AppTheme.primaryColor.withOpacity(0.3),
+                  color: const Color(0xFF667EEA).withOpacity(0.3),
                   blurRadius: 20,
-                  offset: const Offset(0, 10),
+                  offset: const Offset(0, 8),
                 ),
               ],
             ),
             child: Row(
               children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(
+                    Icons.add_task_rounded,
+                    color: Colors.white,
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(width: 20),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Request Custom Service',
-                        style: GoogleFonts.outfit(
+                        'Create New Request',
+                        style: GoogleFonts.inter(
                           fontSize: 20,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w700,
                           color: Colors.white,
+                          height: 1.2,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 6),
                       Text(
-                        'Can\'t find what you need? Describe it to us.',
-                        style: GoogleFonts.outfit(
+                        'Request any custom service not in our catalog',
+                        style: GoogleFonts.inter(
                           fontSize: 14,
                           color: Colors.white.withOpacity(0.9),
+                          height: 1.3,
                         ),
                       ),
                     ],
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.2),
-                    shape: BoxShape.circle,
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
-                    Icons.add_rounded,
+                    Icons.arrow_forward_rounded,
                     color: Colors.white,
-                    size: 28,
+                    size: 20,
                   ),
                 ),
               ],

@@ -110,4 +110,16 @@ class StorageService {
       fileName: '${docType}_${DateTime.now().millisecondsSinceEpoch}${p.extension(file.path)}',
     );
   }
+
+  Future<String> uploadCustomRequestImage(File file, String userId) async {
+    final int size = await file.length();
+    if (size > maxFileSizeBytes) {
+      throw Exception('File size exceeds maximum allowed size.');
+    }
+    return uploadFile(
+      file: file,
+      path: 'custom_requests/$userId/images',
+      fileName: 'request_image_${DateTime.now().millisecondsSinceEpoch}${p.extension(file.path)}',
+    );
+  }
 }
