@@ -18,6 +18,8 @@ import '../profile/presentation/saved_addresses_screen.dart';
 import '../profile/presentation/add_edit_address_screen.dart';
 import '../custom_request/presentation/custom_request_form_screen.dart';
 import '../dashboard/widgets/real_services_sections.dart';
+import '../cart/presentation/cart_screen.dart';
+import '../../core/providers/cart_provider.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -207,7 +209,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
           const SizedBox(width: 12),
-          // Right side: Notification + Profile
+          // Right side: Notification + Cart
           Row(
             children: [
               // Notification icon with rounded background
@@ -226,7 +228,7 @@ class _HomeScreenState extends State<HomeScreen>
                 child: _buildNotificationIcon(context),
               ),
               const SizedBox(width: 8),
-              // Profile avatar with rounded container
+              // Cart icon with rounded container
               Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -239,7 +241,7 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
                   ],
                 ),
-                child: _buildProfileAvatar(context),
+                child: _buildCartIcon(context),
               ),
             ],
           ),
@@ -282,20 +284,34 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildProfileAvatar(BuildContext context) {
-    return Consumer<AuthService>(
-      builder: (context, auth, _) {
-        final user = auth.currentUser;
-        return GestureDetector(
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SavedAddressesScreen())),
-          child: CircleAvatar(
-            radius: 18,
-            backgroundColor: Colors.grey[200],
-            backgroundImage: user?.photoURL != null ? NetworkImage(user!.photoURL!) : null,
-            child: user?.photoURL == null 
-                ? const Icon(Icons.person, size: 20, color: Colors.grey) 
-                : null,
-          ),
+  Widget _buildCartIcon(BuildContext context) {
+    return Consumer<CartProvider>(
+      builder: (context, cart, _) {
+        final itemCount = cart.itemCount;
+        return Stack(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.shopping_cart_outlined),
+              iconSize: 24,
+              color: AppTheme.textColor,
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CartScreen())),
+            ),
+            if (itemCount > 0)
+              Positioned(
+                right: 6,
+                top: 6,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(color: AppTheme.primaryColor, shape: BoxShape.circle),
+                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                  child: Text(
+                    '$itemCount',
+                    style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+          ],
         );
       },
     );

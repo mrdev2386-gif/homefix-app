@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:intl/intl.dart';
+import '../../../core/theme/app_theme.dart';
 
 class CustomRequestStatusWidget extends StatelessWidget {
   const CustomRequestStatusWidget({Key? key}) : super(key: key);
@@ -12,8 +14,7 @@ class CustomRequestStatusWidget extends StatelessWidget {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const SizedBox.shrink();
 
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
+    return StreamBuilder<QuerySnapshot>(\n      stream: FirebaseFirestore.instance
           .collection('custom_requests')
           .where('customerId', isEqualTo: user.uid)
           .orderBy('createdAt', descending: true)
@@ -21,316 +22,178 @@ class CustomRequestStatusWidget extends StatelessWidget {
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(32),
-              child: CircularProgressIndicator(),
-            ),
-          );
+          return const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
         }
 
         if (snapshot.hasError || !snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return const SizedBox.shrink();
         }
 
-        final data = snapshot.data!.docs.first.data() as Map<String, dynamic>;
-        return _buildStatusCard(data);
+        final doc = snapshot.data!.docs.first;
+        final data = doc.data() as Map<String, dynamic>;
+        return _buildStatusCard(context, doc.id, data);
       },
     );
   }
 
-  Widget _buildStatusCard(Map<String, dynamic> data) {
+  Widget _buildStatusCard(BuildContext context, String docId, Map<String, dynamic> data) {
     final title = data['title'] ?? 'Custom Request';
     final category = data['category'] ?? '';
     final description = data['description'] ?? '';
     final budget = data['budget'];
-    final location = data['location'] ?? '';
     final status = data['status'] ?? 'submitted';
     final createdAt = data['createdAt'];
     final images = (data['images'] as List<dynamic>?)?.cast<String>() ?? [];
 
     return Container(
       margin: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 30,
-            offset: const Offset(0, 8),
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildModernHeader(title, status),
-          _buildModernContent(category, description, budget, location, createdAt, images),
-          _buildModernTimeline(status),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildModernHeader(String title, String status) {
-    return Container(
-      padding: const EdgeInsets.all(28),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(24),
-          topRight: Radius.circular(24),
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.inter(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                    height: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _buildModernStatusBadge(status),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.2)),
-            ),
-            child: const Icon(
-              Icons.assignment_outlined,
-              color: Colors.white,
-              size: 28,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildModernStatusBadge(String status) {
-    final statusConfig = _getStatusConfig(status);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(25),
-        border: Border.all(color: Colors.white.withOpacity(0.3)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            statusConfig['label'],
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-              letterSpacing: 0.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildModernContent(String category, String description, dynamic budget, String location, dynamic createdAt, List<String> images) {
-    return Padding(
-      padding: const EdgeInsets.all(28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (category.isNotEmpty) _buildModernDetailRow(Icons.category_outlined, 'Category', category),
-          if (description.isNotEmpty) _buildModernDetailRow(Icons.description_outlined, 'Description', description),
-          if (budget != null) _buildModernDetailRow(Icons.currency_rupee, 'Budget', '₹${budget.toString()}'),
-          if (location.isNotEmpty) _buildModernDetailRow(Icons.location_on_outlined, 'Location', location),
-          _buildModernDetailRow(Icons.access_time, 'Created', _formatDate(createdAt)),
-          if (images.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            _buildModernImagePreview(images),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildModernDetailRow(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
-              ),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: Colors.white, size: 18),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF6B7280),
-                    letterSpacing: 0.3,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: GoogleFonts.inter(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1A1A1A),
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildModernImagePreview(List<String> images) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
-                ),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.image_outlined, color: Colors.white, size: 18),
-            ),
-            const SizedBox(width: 16),
-            Text(
-              'Images (${images.length})',
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF6B7280),
-                letterSpacing: 0.3,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          height: 90,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: images.length,
-            itemBuilder: (context, index) {
-              return Container(
-                margin: const EdgeInsets.only(right: 16),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: Image.network(
-                    images[index],
-                    width: 90,
-                    height: 90,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      width: 90,
-                      height: 90,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Colors.grey[200]!, Colors.grey[100]!],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Active Request',
+                      style: GoogleFonts.outfit(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w500,
                       ),
-                      child: const Icon(Icons.image_not_supported, color: Color(0xFF9CA3AF)),
                     ),
-                  ),
+                    const SizedBox(height: 4),
+                    Text(
+                      title,
+                      style: GoogleFonts.outfit(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
-              );
-            },
+              ),
+              _buildStatusBadge(status),
+            ],
           ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildModernTimeline(String currentStatus) {
-    return Container(
-      padding: const EdgeInsets.all(28),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [const Color(0xFFF8F9FA), Colors.grey[50]!],
-        ),
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(24),
-          bottomRight: Radius.circular(24),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+          const SizedBox(height: 16),
+          if (category.isNotEmpty) _buildDetailRow(Icons.category, category),
+          if (description.isNotEmpty) _buildDetailRow(Icons.description, description),
+          if (budget != null) _buildDetailRow(Icons.currency_rupee, '₹${budget.toString()}'),
+          _buildDetailRow(Icons.access_time, _formatDate(createdAt)),
+          if (images.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 80,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: images.length,
+                itemBuilder: (context, index) {
+                  return Container(
+                    margin: const EdgeInsets.only(right: 8),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        images[index],
+                        width: 80,
+                        height: 80,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          width: 80,
+                          height: 80,
+                          color: Colors.grey[200],
+                          child: const Icon(Icons.image_not_supported),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+          const Divider(height: 32),
           Text(
             'Request Timeline',
-            style: GoogleFonts.inter(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF1A1A1A),
+            style: GoogleFonts.outfit(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 20),
-          _buildModernTimelineSteps(currentStatus),
+          const SizedBox(height: 16),
+          _buildTimeline(status),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: () => _deleteRequest(context, docId, images),
+            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            label: const Text('Delete Request', style: TextStyle(color: Colors.red)),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Colors.red),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildModernTimelineSteps(String currentStatus) {
+  Widget _buildStatusBadge(String status) {
+    final config = _getStatusConfig(status);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: config['color'].withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        config['label'],
+        style: GoogleFonts.outfit(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: config['color'],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: Colors.grey[600]),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.outfit(fontSize: 14, color: Colors.grey[800]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimeline(String currentStatus) {
     final steps = [
-      {'key': 'submitted', 'label': 'Request Submitted', 'icon': Icons.send_outlined},
-      {'key': 'admin_review', 'label': 'Admin Review', 'icon': Icons.admin_panel_settings_outlined},
-      {'key': 'technician_assigned', 'label': 'Technician Assigned', 'icon': Icons.person_add_outlined},
-      {'key': 'accepted', 'label': 'Technician Accepted', 'icon': Icons.check_circle_outline},
-      {'key': 'in_progress', 'label': 'Service In Progress', 'icon': Icons.build_outlined},
-      {'key': 'completed', 'label': 'Service Completed', 'icon': Icons.task_alt_outlined},
+      {'key': 'submitted', 'label': 'Request Submitted'},
+      {'key': 'admin_review', 'label': 'Admin Review'},
+      {'key': 'technician_assigned', 'label': 'Technician Assigned'},
+      {'key': 'accepted', 'label': 'Technician Accepted'},
+      {'key': 'in_progress', 'label': 'Service In Progress'},
+      {'key': 'completed', 'label': 'Service Completed'},
     ];
 
     return Column(
@@ -345,54 +208,34 @@ class CustomRequestStatusWidget extends StatelessWidget {
             Column(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(10),
+                  width: 24,
+                  height: 24,
                   decoration: BoxDecoration(
-                    gradient: isCompleted ? const LinearGradient(
-                      colors: [Color(0xFF10B981), Color(0xFF059669)],
-                    ) : null,
-                    color: isCompleted ? null : const Color(0xFFE5E7EB),
+                    color: isCompleted ? Colors.green : Colors.grey[300],
                     shape: BoxShape.circle,
-                    boxShadow: isCompleted ? [
-                      BoxShadow(
-                        color: const Color(0xFF10B981).withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ] : null,
                   ),
-                  child: Icon(
-                    step['icon'] as IconData,
-                    color: isCompleted ? Colors.white : const Color(0xFF9CA3AF),
-                    size: 18,
-                  ),
+                  child: isCompleted
+                      ? const Icon(Icons.check, color: Colors.white, size: 16)
+                      : null,
                 ),
                 if (!isLast)
                   Container(
-                    width: 3,
-                    height: 40,
-                    margin: const EdgeInsets.symmetric(vertical: 4),
-                    decoration: BoxDecoration(
-                      gradient: isCompleted ? const LinearGradient(
-                        colors: [Color(0xFF10B981), Color(0xFF059669)],
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                      ) : null,
-                      color: isCompleted ? null : const Color(0xFFE5E7EB),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+                    width: 2,
+                    height: 30,
+                    color: isCompleted ? Colors.green : Colors.grey[300],
                   ),
               ],
             ),
-            const SizedBox(width: 20),
+            const SizedBox(width: 12),
             Expanded(
               child: Padding(
-                padding: EdgeInsets.only(bottom: isLast ? 0 : 40),
+                padding: EdgeInsets.only(bottom: isLast ? 0 : 30),
                 child: Text(
                   step['label'] as String,
-                  style: GoogleFonts.inter(
-                    fontSize: 15,
-                    fontWeight: isCompleted ? FontWeight.w700 : FontWeight.w500,
-                    color: isCompleted ? const Color(0xFF10B981) : const Color(0xFF6B7280),
+                  style: GoogleFonts.outfit(
+                    fontSize: 14,
+                    fontWeight: isCompleted ? FontWeight.w600 : FontWeight.normal,
+                    color: isCompleted ? Colors.green : Colors.grey[600],
                   ),
                 ),
               ),
@@ -407,19 +250,19 @@ class CustomRequestStatusWidget extends StatelessWidget {
     final statusOrder = ['submitted', 'admin_review', 'technician_assigned', 'accepted', 'in_progress', 'completed'];
     final currentIndex = statusOrder.indexOf(currentStatus);
     final stepIndex = statusOrder.indexOf(stepKey);
-    return stepIndex <= currentIndex;
+    return currentIndex >= 0 && stepIndex >= 0 && stepIndex <= currentIndex;
   }
 
   Map<String, dynamic> _getStatusConfig(String status) {
     final configs = {
-      'submitted': {'label': 'SUBMITTED', 'icon': Icons.send},
-      'admin_review': {'label': 'UNDER REVIEW', 'icon': Icons.admin_panel_settings},
-      'technician_assigned': {'label': 'ASSIGNED', 'icon': Icons.person_add},
-      'accepted': {'label': 'ACCEPTED', 'icon': Icons.check_circle},
-      'in_progress': {'label': 'IN PROGRESS', 'icon': Icons.build},
-      'completed': {'label': 'COMPLETED', 'icon': Icons.task_alt},
+      'submitted': {'label': 'SUBMITTED', 'color': Colors.blue},
+      'admin_review': {'label': 'UNDER REVIEW', 'color': Colors.orange},
+      'technician_assigned': {'label': 'ASSIGNED', 'color': Colors.purple},
+      'accepted': {'label': 'ACCEPTED', 'color': Colors.green},
+      'in_progress': {'label': 'IN PROGRESS', 'color': Colors.teal},
+      'completed': {'label': 'COMPLETED', 'color': Colors.green},
     };
-    return configs[status] ?? {'label': status.toUpperCase(), 'icon': Icons.info};
+    return configs[status] ?? {'label': status.toUpperCase(), 'color': Colors.grey};
   }
 
   String _formatDate(dynamic createdAt) {
@@ -429,5 +272,57 @@ class CustomRequestStatusWidget extends StatelessWidget {
       }
     } catch (_) {}
     return 'Recently';
+  }
+
+  Future<void> _deleteRequest(BuildContext context, String docId, List<String> images) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Request'),
+        content: const Text('Are you sure you want to delete this request?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      // Delete images from storage
+      for (final imageUrl in images) {
+        try {
+          await FirebaseStorage.instance.refFromURL(imageUrl).delete();
+        } catch (e) {
+          debugPrint('Failed to delete image: $e');
+        }
+      }
+
+      // Delete document
+      await FirebaseFirestore.instance.collection('custom_requests').doc(docId).delete();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Request deleted successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete: $e')),
+        );
+      }
+    }
   }
 }

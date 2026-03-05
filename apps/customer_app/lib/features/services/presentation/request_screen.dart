@@ -33,7 +33,7 @@ class _RequestScreenState extends State<RequestScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: Colors.grey[50],
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () async => setState(() {}),
@@ -41,7 +41,7 @@ class _RequestScreenState extends State<RequestScreen> {
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               _buildHeader(),
-              _buildRequestStatusSection(),
+              _buildActiveRequestSection(),
               _buildCreateRequestSection(),
             ],
           ),
@@ -52,27 +52,24 @@ class _RequestScreenState extends State<RequestScreen> {
 
   Widget _buildHeader() {
     return SliverToBoxAdapter(
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               'Service Requests',
-              style: GoogleFonts.inter(
+              style: GoogleFonts.outfit(
                 fontSize: 28,
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFF1A1A1A),
-                height: 1.2,
+                fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             Text(
               'Track your custom service requests',
-              style: GoogleFonts.inter(
-                fontSize: 16,
-                color: const Color(0xFF6B7280),
-                height: 1.4,
+              style: GoogleFonts.outfit(
+                fontSize: 14,
+                color: Colors.grey[600],
               ),
             ),
           ],
@@ -81,7 +78,7 @@ class _RequestScreenState extends State<RequestScreen> {
     );
   }
 
-  Widget _buildRequestStatusSection() {
+  Widget _buildActiveRequestSection() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || _requestStream == null) {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
@@ -89,7 +86,7 @@ class _RequestScreenState extends State<RequestScreen> {
 
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
         child: StreamBuilder<QuerySnapshot>(
           stream: _requestStream,
           builder: (context, snapshot) {
@@ -116,94 +113,17 @@ class _RequestScreenState extends State<RequestScreen> {
   Widget _buildCreateRequestSection() {
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: _buildRequestButton(),
-      ),
-    );
-  }
-
-  Widget _buildRequestButton() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 24),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => Navigator.push(
+        padding: const EdgeInsets.all(20),
+        child: ElevatedButton.icon(
+          onPressed: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const CustomRequestFormScreen()),
           ),
-          borderRadius: BorderRadius.circular(20),
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF667EEA).withOpacity(0.3),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const Icon(
-                    Icons.add_task_rounded,
-                    color: Colors.white,
-                    size: 32,
-                  ),
-                ),
-                const SizedBox(width: 20),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Create New Request',
-                        style: GoogleFonts.inter(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                          height: 1.2,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Request any custom service not in our catalog',
-                        style: GoogleFonts.inter(
-                          fontSize: 14,
-                          color: Colors.white.withOpacity(0.9),
-                          height: 1.3,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.arrow_forward_rounded,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                ),
-              ],
-            ),
+          icon: const Icon(Icons.add),
+          label: const Text('Create New Request'),
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            textStyle: const TextStyle(fontSize: 16),
           ),
         ),
       ),
