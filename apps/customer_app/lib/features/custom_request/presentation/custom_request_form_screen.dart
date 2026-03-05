@@ -129,31 +129,33 @@ class _CustomRequestFormScreenState extends State<CustomRequestFormScreen> {
       ),
       builder: (context) => Container(
         padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Select Category',
-              style: GoogleFonts.outfit(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Select Category',
+                style: GoogleFonts.outfit(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            ..._categories.map((category) => ListTile(
-              title: Text(category),
-              onTap: () {
-                setState(() {
-                  _selectedCategory = category;
-                });
-                Navigator.pop(context);
-              },
-              trailing: _selectedCategory == category
-                  ? const Icon(Icons.check_circle, color: AppTheme.primaryColor)
-                  : null,
-            )),
-          ],
+              const SizedBox(height: 20),
+              ..._categories.map((category) => ListTile(
+                title: Text(category),
+                onTap: () {
+                  setState(() {
+                    _selectedCategory = category;
+                  });
+                  Navigator.pop(context);
+                },
+                trailing: _selectedCategory == category
+                    ? const Icon(Icons.check_circle, color: AppTheme.primaryColor)
+                    : null,
+              )),
+            ],
+          ),
         ),
       ),
     );

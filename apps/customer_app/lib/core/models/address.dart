@@ -111,4 +111,18 @@ class Address {
       createdAt: createdAt ?? this.createdAt,
     );
   }
+
+  /// Get address snapshot for booking storage
+  Map<String, dynamic> toBookingSnapshot() {
+    return {
+      'addressId': id,
+      'addressLine': fullAddress,
+      'area': landmark.isNotEmpty ? landmark : city,
+      'district': district,
+      'state': state,
+      'pincode': pincode,
+      'latitude': latitude,
+      'longitude': longitude,
+    };
+  }
 }

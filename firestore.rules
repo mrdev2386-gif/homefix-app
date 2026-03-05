@@ -28,9 +28,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Customers Collection
-    match /customers/{uid} {
+    // Users Collection
+    match /users/{uid} {
       allow read, write: if request.auth.uid == uid;
+      
+      // Addresses Subcollection
+      match /addresses/{addressId} {
+        allow read, write: if request.auth.uid == uid;
+      }
     }
 
     // Technicians Collection

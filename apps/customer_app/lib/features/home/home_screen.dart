@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:customer_app/core/services/auth_service.dart';
 import '../../core/services/firestore_service.dart';
 import 'package:customer_app/core/services/category_service.dart';
 import 'package:customer_app/core/models/category.dart';
-import 'package:customer_app/core/models/banner_model.dart';
+import 'package:customer_app/core/models/address.dart';
 import '../../core/models/booking.dart';
 import '../../core/providers/location_provider.dart';
 import '../../core/services/notifications_service.dart';
@@ -15,7 +14,6 @@ import '../services/presentation/service_list_screen.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
 import '../support/presentation/support_screen.dart';
 import '../profile/presentation/saved_addresses_screen.dart';
-import '../profile/presentation/add_edit_address_screen.dart';
 import '../custom_request/presentation/custom_request_form_screen.dart';
 import '../dashboard/widgets/real_services_sections.dart';
 import '../cart/presentation/cart_screen.dart';
@@ -107,6 +105,9 @@ class _HomeScreenState extends State<HomeScreen>
             // Promotional Banners with real data
             SliverToBoxAdapter(child: _buildPromotionalBanners()),
             
+            // Quick Requests Section
+            SliverToBoxAdapter(child: _buildQuickRequests()),
+            
             // Popular Services
             SliverToBoxAdapter(child: _buildPopularServices()),
             
@@ -165,17 +166,11 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: StreamBuilder<DocumentSnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection('customers')
-                            .doc(Provider.of<AuthService>(context, listen: false).currentUser?.uid)
-                            .snapshots(),
-                        builder: (context, snapshot) {
-                          if (snapshot.hasData && snapshot.data?.data() != null) {
-                            final userData = snapshot.data!.data() as Map<String, dynamic>;
-                            final district = userData['serviceDistrict'] ?? 'Select Location';
+                      child: Consumer<AuthService>(
+                        builder: (context, auth, _) {
+                          if (auth.currentUser == null) {
                             return Text(
-                              '📍 $district',
+                              '📍 Select Location',
                               style: GoogleFonts.outfit(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
@@ -185,15 +180,35 @@ class _HomeScreenState extends State<HomeScreen>
                               overflow: TextOverflow.ellipsis,
                             );
                           }
-                          return Text(
-                            '📍 Select Location',
-                            style: GoogleFonts.outfit(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textColor,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          
+                          final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+                          return StreamBuilder<Address?>(
+                            stream: firestoreService.streamPrimaryAddress(auth.currentUser!.uid),
+                            builder: (context, snapshot) {
+                              String displayText = '📍 Select Location';
+                              if (snapshot.hasData && snapshot.data != null) {
+                                final address = snapshot.data!;
+                                // Show short address: Area/City • District
+                                final area = address.landmark.isNotEmpty ? address.landmark : address.city;
+                                if (area.isNotEmpty && address.district.isNotEmpty) {
+                                  displayText = '📍 $area • ${address.district}';
+                                } else if (address.district.isNotEmpty) {
+                                  displayText = '📍 ${address.district}';
+                                } else if (area.isNotEmpty) {
+                                  displayText = '📍 $area';
+                                }
+                              }
+                              return Text(
+                                displayText,
+                                style: GoogleFonts.outfit(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.textColor,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              );
+                            },
                           );
                         },
                       ),
@@ -844,87 +859,46 @@ class _HomeScreenState extends State<HomeScreen>
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-        ),
-        child: SingleChildScrollView(
+      builder: (context) => SafeArea(
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            left: 16,
+            right: 16,
+            top: 16,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Drag indicator
-              Center(
-                child: Container(
-                  margin: const EdgeInsets.only(top: 12),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            AppTheme.primaryColor.withValues(alpha: 0.15),
-                            AppTheme.primaryColor.withValues(alpha: 0.08),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: AppTheme.primaryColor.withValues(alpha: 0.15),
-                        ),
-                      ),
-                      child: Icon(
-                        Icons.location_on_rounded,
-                        color: AppTheme.primaryColor,
-                        size: 26,
-                      ),
-                    ),
-                    const SizedBox(width: 18),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Select Delivery Location',
-                          style: GoogleFonts.outfit(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            color: AppTheme.textColor,
-                            letterSpacing: -0.3,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Choose where to deliver',
-                          style: GoogleFonts.outfit(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: AppTheme.subtitleColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+              const SizedBox(height: 20),
+              Text(
+                'Select Delivery Location',
+                style: GoogleFonts.outfit(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-              _buildLocationOption(
-                context,
-                icon: Icons.home_work_outlined,
-                title: 'Saved Addresses',
-                subtitle: 'Select from frequently used locations',
+              const SizedBox(height: 20),
+              ListTile(
+                leading: const Icon(Icons.home_work_outlined),
+                title: const Text('Saved Addresses'),
+                subtitle: const Text('Select from frequently used locations'),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                 onTap: () => _handleSavedAddresses(context),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
             ],
           ),
         ),
@@ -942,80 +916,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildLocationOption(BuildContext context,
-      {required IconData icon,
-      required String title,
-      required String subtitle,
-      required VoidCallback onTap}) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(13),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    AppTheme.primaryColor.withValues(alpha: 0.15),
-                    AppTheme.primaryColor.withValues(alpha: 0.08),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: AppTheme.primaryColor.withValues(alpha: 0.15),
-                ),
-              ),
-              child: Icon(
-                icon,
-                color: AppTheme.primaryColor,
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 18),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    style: GoogleFonts.outfit(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                      color: AppTheme.textColor,
-                      letterSpacing: -0.2,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: GoogleFonts.outfit(
-                      color: AppTheme.subtitleColor,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Icon(
-              Icons.arrow_forward_rounded,
-              color: AppTheme.primaryColor,
-              size: 22,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+
 
   Future<void> _navigateToCustomRequest() async {
     final now = DateTime.now();

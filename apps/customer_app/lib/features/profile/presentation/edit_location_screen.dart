@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:customer_app/core/services/location_service.dart';
-import 'package:customer_app/core/services/functions_service.dart';
 import 'package:customer_app/core/widgets/location_selector.dart';
 
 class EditLocationScreen extends StatefulWidget {
@@ -19,7 +18,6 @@ class EditLocationScreen extends StatefulWidget {
 
 class _EditLocationScreenState extends State<EditLocationScreen> {
   final LocationService _locationService = LocationService();
-  final FunctionsService _functionsService = FunctionsService();
   late String? selectedState;
   late String? selectedDistrict;
   bool _isLoading = false;
@@ -43,10 +41,6 @@ class _EditLocationScreenState extends State<EditLocationScreen> {
 
     try {
       await _locationService.saveLocation(selectedState!, selectedDistrict!);
-      await _functionsService.updateUserProfile({
-        'state': selectedState,
-        'district': selectedDistrict,
-      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

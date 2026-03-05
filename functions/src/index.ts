@@ -281,6 +281,12 @@ export const cancelBooking = customerFeatures.cancelBooking;
 // TODO: verify usage before deletion
 // export const deleteAccount = customerFeatures.deleteAccount;
 export const manageAddress = customerFeatures.manageAddress;
+
+// Address Management (Secure)
+import * as addressManagement from './customer/address_management';
+export const setPrimaryAddress = addressManagement.setPrimaryAddress;
+export const manageAddressSecure = addressManagement.manageAddress;
+export const validateAddressForBooking = addressManagement.validateAddressForBooking;
 // TODO: verify usage before deletion
 export const managePaymentMethod = customerFeatures.managePaymentMethod; // TODO: verify usage before deletion
 // TODO: verify usage before deletion

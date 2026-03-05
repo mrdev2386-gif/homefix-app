@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import '../models/address.dart';
+import 'address_cache_service.dart';
 
 /// Production-grade Address Service
 /// Handles all address-related Firestore operations securely
@@ -16,7 +17,7 @@ class AddressService {
       return Stream.value([]);
     }
     return _db
-        .collection('customers')
+        .collection('users')
         .doc(userId)
         .collection('addresses')
         .snapshots()
@@ -40,7 +41,7 @@ class AddressService {
       return null;
     }
     final doc = await _db
-        .collection('customers')
+        .collection('users')
         .doc(userId)
         .collection('addresses')
         .doc(addressId)
@@ -56,15 +57,33 @@ class AddressService {
       debugPrint('[PATH GUARD] blocked empty id in saveAddress');
       return '';
     }
+    
+    // Check if this is the first address
+    final existingAddresses = await _db
+        .collection('users')
+        .doc(userId)
+        .collection('addresses')
+        .get();
+    
+    final isFirstAddress = existingAddresses.docs.isEmpty;
+    
     debugPrint('[WRITE GUARD] Direct write blocked in saveAddress');
     final callable = _functions.httpsCallable('manageAddress');
     final result = await callable.call({
       'action': address.id.isEmpty ? 'add' : 'edit',
       'addressId': address.id.isEmpty ? null : address.id,
       'addressData': address.toMap(),
+      'setAsPrimary': isFirstAddress, // Auto-set first address as primary
     });
 
-    return result.data['addressId'] as String? ?? '';
+    final addressId = result.data['addressId'] as String? ?? '';
+    
+    // If first address, set as primary
+    if (isFirstAddress && addressId.isNotEmpty) {
+      await setPrimaryAddress(userId, addressId);
+    }
+
+    return addressId;
   }
 
   /// Delete address via Cloud Function
@@ -73,25 +92,115 @@ class AddressService {
       debugPrint('[PATH GUARD] blocked empty id in deleteAddress');
       return;
     }
+    
+    // Check if deleting primary address
+    final addressDoc = await _db
+        .collection('users')
+        .doc(userId)
+        .collection('addresses')
+        .doc(addressId)
+        .get();
+    
+    final wasPrimary = addressDoc.data()?['isPrimary'] == true;
+    
     debugPrint('[WRITE GUARD] Direct write blocked in deleteAddress');
     final callable = _functions.httpsCallable('manageAddress');
     await callable.call({
       'action': 'delete',
       'addressId': addressId,
     });
+    
+    // If deleted address was primary, set next available as primary
+    if (wasPrimary) {
+      final remainingAddresses = await _db
+          .collection('users')
+          .doc(userId)
+          .collection('addresses')
+          .limit(1)
+          .get();
+      
+      if (remainingAddresses.docs.isNotEmpty) {
+        await setPrimaryAddress(userId, remainingAddresses.docs.first.id);
+      }
+    }
   }
 
-  /// Set default address via Cloud Function
-  Future<void> setDefaultAddress(String userId, String addressId) async {
+  /// Set primary address with Firestore batch update
+  Future<void> setPrimaryAddress(String userId, String addressId) async {
     if (userId.isEmpty || addressId.isEmpty) {
-      debugPrint('[PATH GUARD] blocked empty id in setDefaultAddress');
+      debugPrint('[PATH GUARD] blocked empty id in setPrimaryAddress');
       return;
     }
-    debugPrint('[WRITE GUARD] Direct write blocked in setDefaultAddress');
-    final callable = _functions.httpsCallable('manageAddress');
-    await callable.call({
-      'action': 'setDefault',
-      'addressId': addressId,
+
+    try {
+      final batch = _db.batch();
+      
+      // Get all addresses
+      final addressesSnapshot = await _db
+          .collection('users')
+          .doc(userId)
+          .collection('addresses')
+          .get();
+
+      // Set all addresses to non-primary
+      for (final doc in addressesSnapshot.docs) {
+        batch.update(doc.reference, {'isDefault': false, 'isPrimary': false});
+      }
+
+      // Set selected address as primary
+      final selectedAddressRef = _db
+          .collection('users')
+          .doc(userId)
+          .collection('addresses')
+          .doc(addressId);
+      batch.update(selectedAddressRef, {'isDefault': true, 'isPrimary': true});
+
+      // Get selected address data to update user document
+      final selectedAddressDoc = await selectedAddressRef.get();
+      if (selectedAddressDoc.exists) {
+        final addressData = selectedAddressDoc.data() as Map<String, dynamic>;
+        final userRef = _db.collection('users').doc(userId);
+        batch.update(userRef, {
+          'primaryAddressId': addressId,
+          'serviceDistrict': addressData['district'] ?? '',
+          'serviceState': addressData['state'] ?? '',
+        });
+        
+        // Cache primary address locally
+        final area = addressData['landmark']?.toString().isNotEmpty == true 
+            ? addressData['landmark'] 
+            : addressData['city'] ?? '';
+        await AddressCacheService.cachePrimaryAddress(
+          addressId: addressId,
+          district: addressData['district'] ?? '',
+          area: area,
+        );
+      }
+
+      await batch.commit();
+      debugPrint('✅ [Address] Primary address updated successfully');
+    } catch (e) {
+      debugPrint('❌ [Address] setPrimaryAddress failed: $e');
+      rethrow;
+    }
+  }
+
+  /// Stream primary address
+  Stream<Address?> streamPrimaryAddress(String userId) {
+    if (userId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in streamPrimaryAddress');
+      return Stream.value(null);
+    }
+    return _db
+        .collection('users')
+        .doc(userId)
+        .collection('addresses')
+        .where('isPrimary', isEqualTo: true)
+        .limit(1)
+        .snapshots()
+        .map((snapshot) {
+      if (snapshot.docs.isEmpty) return null;
+      return Address.fromFirestore(snapshot.docs.first);
     });
   }
 
@@ -153,7 +262,7 @@ class AddressService {
       return null;
     }
     try {
-      final doc = await _db.collection('customers').doc(userId).get();
+      final doc = await _db.collection('users').doc(userId).get();
       return doc.data()?['selectedAddressId'] as String?;
     } catch (e) {
       debugPrint('❌ [Address] getSelectedAddressId failed: $e');

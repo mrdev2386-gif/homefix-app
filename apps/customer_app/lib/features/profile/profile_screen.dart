@@ -521,14 +521,6 @@ class _ProfileContentState extends State<_ProfileContent> {
                       ),
                     ),
                   ),
-                  _settingsTile(Icons.notifications_none_rounded, l10n.notifications, l10n.translate('manageAlertsUpdates'), () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => SettingsScreen(user: widget.user),
-                      ),
-                    );
-                  }),
                   _settingsTile(Icons.language_rounded, l10n.language, l10n.translate('languageSubtitle'), () {
                     Navigator.push(
                       context,

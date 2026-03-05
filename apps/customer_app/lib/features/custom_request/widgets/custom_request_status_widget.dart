@@ -14,7 +14,8 @@ class CustomRequestStatusWidget extends StatelessWidget {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const SizedBox.shrink();
 
-    return StreamBuilder<QuerySnapshot>(\n      stream: FirebaseFirestore.instance
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
           .collection('custom_requests')
           .where('customerId', isEqualTo: user.uid)
           .orderBy('createdAt', descending: true)

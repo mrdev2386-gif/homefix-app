@@ -96,7 +96,7 @@ class FirestoreService {
   
   // --- Address Management ---
   Stream<List<Address>> streamAddresses(String userId) {
-    return _db.collection('customers').doc(userId).collection('addresses')
+    return _db.collection('users').doc(userId).collection('addresses')
         .snapshots()
         .map((snapshot) {
           final addresses = snapshot.docs.map((doc) => Address.fromFirestore(doc)).toList();
@@ -130,6 +130,75 @@ class FirestoreService {
     await callable.call({
       'action': 'setDefault',
       'addressId': addressId,
+    });
+  }
+
+  /// Set primary address with Firestore batch update
+  Future<void> setPrimaryAddress(String userId, String addressId) async {
+    if (userId.isEmpty || addressId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in setPrimaryAddress');
+      return;
+    }
+
+    try {
+      final batch = _db.batch();
+      
+      // Get all addresses
+      final addressesSnapshot = await _db
+          .collection('users')
+          .doc(userId)
+          .collection('addresses')
+          .get();
+
+      // Set all addresses to non-primary
+      for (final doc in addressesSnapshot.docs) {
+        batch.update(doc.reference, {'isDefault': false, 'isPrimary': false});
+      }
+
+      // Set selected address as primary
+      final selectedAddressRef = _db
+          .collection('users')
+          .doc(userId)
+          .collection('addresses')
+          .doc(addressId);
+      batch.update(selectedAddressRef, {'isDefault': true, 'isPrimary': true});
+
+      // Get selected address data to update user document
+      final selectedAddressDoc = await selectedAddressRef.get();
+      if (selectedAddressDoc.exists) {
+        final addressData = selectedAddressDoc.data() as Map<String, dynamic>;
+        final userRef = _db.collection('users').doc(userId);
+        batch.update(userRef, {
+          'primaryAddressId': addressId,
+          'serviceDistrict': addressData['district'] ?? '',
+          'serviceState': addressData['state'] ?? '',
+        });
+      }
+
+      await batch.commit();
+      debugPrint('✅ [Address] Primary address updated successfully');
+    } catch (e) {
+      debugPrint('❌ [Address] setPrimaryAddress failed: $e');
+      rethrow;
+    }
+  }
+
+  /// Stream primary address
+  Stream<Address?> streamPrimaryAddress(String userId) {
+    if (userId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in streamPrimaryAddress');
+      return Stream.value(null);
+    }
+    return _db
+        .collection('users')
+        .doc(userId)
+        .collection('addresses')
+        .where('isPrimary', isEqualTo: true)
+        .limit(1)
+        .snapshots()
+        .map((snapshot) {
+      if (snapshot.docs.isEmpty) return null;
+      return Address.fromFirestore(snapshot.docs.first);
     });
   }
 

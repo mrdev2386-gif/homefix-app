@@ -97,98 +97,109 @@ class SavedAddressesScreen extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.grey.shade100),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 15, offset: const Offset(0, 5))],
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 2))],
       ),
       child: InkWell(
         onTap: () async {
-          // Only set in LocationProvider if not primary selection mode
-          if (!isPrimarySelectionMode) {
-            final locationProvider = Provider.of<LocationProvider>(context, listen: false);
-            await locationProvider.setSelectedAddress(address);
-          }
-          
-          // Also set in CheckoutProvider if in selection mode (for checkout flow)
-          if (isSelectionMode) {
-            final checkoutProvider = Provider.of<CheckoutProvider>(context, listen: false);
-            checkoutProvider.setAddress(address);
-          }
-          
-          if (context.mounted) {
-            Navigator.pop(context, address);
-            if (!isPrimarySelectionMode) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Delivering to ${address.label}'),
-                  duration: const Duration(seconds: 2),
-                ),
-              );
+          if (isSelectionMode || isPrimarySelectionMode) {
+            // Set as primary address
+            await service.setPrimaryAddress(userId, address.id);
+            if (context.mounted) {
+              Navigator.pop(context, address);
             }
           }
         },
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
+          padding: const EdgeInsets.all(16),
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(color: AppTheme.accentColor, borderRadius: BorderRadius.circular(10)),
-                        child: Icon(
-                          address.label.toLowerCase() == 'home' ? Icons.home_rounded : 
-                          address.label.toLowerCase() == 'office' ? Icons.work_rounded : Icons.location_on_rounded,
-                          color: AppTheme.primaryColor,
-                          size: 18,
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: _getAddressColor(address.label).withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  _getAddressIcon(address.label),
+                  color: _getAddressColor(address.label),
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          address.label,
+                          style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        address.label,
-                        style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 16),
-                      ),
-                      if (address.isDefault) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(color: Colors.teal.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
-                          child: Text(
-                            'DEFAULT',
-                            style: GoogleFonts.outfit(color: Colors.teal, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                        if (address.isDefault) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              'PRIMARY',
+                              style: GoogleFonts.outfit(
+                                color: AppTheme.primaryColor,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${address.fullAddress}',
+                      style: GoogleFonts.outfit(fontSize: 14, color: Colors.grey[700]),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${address.city} • ${address.district} • ${address.pincode}',
+                      style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey[500]),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        if (!address.isDefault)
+                          TextButton.icon(
+                            onPressed: () => service.setPrimaryAddress(userId, address.id),
+                            icon: const Icon(Icons.check_circle_outline, size: 16),
+                            label: const Text('Set Primary'),
+                            style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),
+                          ),
+                        const Spacer(),
+                        IconButton(
+                          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AddEditAddressScreen(address: address))),
+                          icon: const Icon(Icons.edit_outlined, size: 20),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                        const SizedBox(width: 16),
+                        IconButton(
+                          onPressed: () => _confirmDelete(context, address, service, userId),
+                          icon: const Icon(Icons.delete_outline, size: 20, color: Colors.red),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
                         ),
                       ],
-                    ],
-                  ),
-                  _buildAddressMenu(context, address, service, userId),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                address.name,
-                style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 15, color: AppTheme.textColor),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                address.fullAddress,
-                style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.grey.shade500, height: 1.4),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Icon(Icons.phone_outlined, size: 14, color: Colors.grey.shade400),
-                  const SizedBox(width: 6),
-                  Text(
-                    address.phone,
-                    style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.grey.shade400),
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -197,22 +208,30 @@ class SavedAddressesScreen extends StatelessWidget {
     );
   }
 
+  IconData _getAddressIcon(String label) {
+    switch (label.toLowerCase()) {
+      case 'home':
+        return Icons.home;
+      case 'office':
+        return Icons.business;
+      default:
+        return Icons.location_on;
+    }
+  }
+
+  Color _getAddressColor(String label) {
+    switch (label.toLowerCase()) {
+      case 'home':
+        return Colors.blue;
+      case 'office':
+        return Colors.orange;
+      default:
+        return Colors.green;
+    }
+  }
+
   Widget _buildAddressMenu(BuildContext context, Address address, FirestoreService service, String userId) {
-    return PopupMenuButton<String>(
-      padding: EdgeInsets.zero,
-      icon: Icon(Icons.more_vert_rounded, color: Colors.grey.shade300),
-      onSelected: (value) async {
-        if (value == 'edit') {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => AddEditAddressScreen(address: address)));
-        } else if (value == 'delete') {
-          _confirmDelete(context, address, service, userId);
-        }
-      },
-      itemBuilder: (context) => [
-        const PopupMenuItem(value: 'edit', child: Text('Edit')),
-        const PopupMenuItem(value: 'delete', child: Text('Delete', style: TextStyle(color: Colors.red))),
-      ],
-    );
+    return const SizedBox.shrink();
   }
 
   void _confirmDelete(BuildContext context, Address address, FirestoreService service, String userId) {

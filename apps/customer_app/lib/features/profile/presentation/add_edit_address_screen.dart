@@ -25,6 +25,8 @@ class _AddEditAddressScreenState extends State<AddEditAddressScreen> {
   late TextEditingController _districtController;
   late TextEditingController _stateController;
   late TextEditingController _pincodeController;
+  late TextEditingController _field1Controller; // House/Floor/Location
+  late TextEditingController _field2Controller; // Area/Building/Address
   String _label = 'Home';
   bool _isDefault = false;
   bool _isLoading = false;
@@ -40,6 +42,8 @@ class _AddEditAddressScreenState extends State<AddEditAddressScreen> {
     _districtController = TextEditingController(text: widget.address?.district);
     _stateController = TextEditingController(text: widget.address?.state);
     _pincodeController = TextEditingController(text: widget.address?.pincode);
+    _field1Controller = TextEditingController();
+    _field2Controller = TextEditingController();
     if (widget.address != null) {
       _label = widget.address!.label;
       _isDefault = widget.address!.isDefault;
@@ -56,6 +60,8 @@ class _AddEditAddressScreenState extends State<AddEditAddressScreen> {
     _districtController.dispose();
     _stateController.dispose();
     _pincodeController.dispose();
+    _field1Controller.dispose();
+    _field2Controller.dispose();
     super.dispose();
   }
 
@@ -98,72 +104,41 @@ class _AddEditAddressScreenState extends State<AddEditAddressScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
         title: Text(
           widget.address == null ? 'Add New Address' : 'Edit Address',
-          style: GoogleFonts.outfit(fontWeight: FontWeight.w800),
+          style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.white,
-        foregroundColor: AppTheme.textColor,
         elevation: 0,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20),
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildLabelSelector(),
-              const SizedBox(height: 32),
-              _buildInputField('Receiver Name', _nameController, Icons.person_outline),
-              const SizedBox(height: 20),
-              _buildInputField('Phone Number', _phoneController, Icons.phone_android_outlined, keyboardType: TextInputType.phone),
-              const SizedBox(height: 20),
-              _buildInputField('Full Address', _addressController, Icons.location_on_outlined, maxLines: 3),
-              const SizedBox(height: 20),
-              _buildInputField('Landmark', _landmarkController, Icons.flag_outlined),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(child: _buildInputField('City', _cityController, Icons.location_city_outlined)),
-                  const SizedBox(width: 16),
-                  Expanded(child: _buildInputField('District', _districtController, Icons.map_outlined)),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(child: _buildInputField('State', _stateController, Icons.public_outlined)),
-                  const SizedBox(width: 16),
-                  Expanded(child: _buildInputField('Pincode', _pincodeController, Icons.pin_drop_outlined, keyboardType: TextInputType.number)),
-                ],
-              ),
+              _buildTypeSelector(),
+              const SizedBox(height: 24),
+              ..._buildDynamicFields(),
               const SizedBox(height: 16),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text('Set as Default Address', style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 15)),
+                title: Text('Set as Primary Address', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
                 value: _isDefault,
                 activeColor: AppTheme.primaryColor,
                 onChanged: (val) => setState(() => _isDefault = val),
               ),
-              const SizedBox(height: 48),
+              const SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
-                height: 56,
+                height: 50,
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : _saveAddress,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  ),
-                  child: _isLoading 
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : Text(
-                        widget.address == null ? 'Save Address' : 'Update Address',
-                        style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
-                      ),
+                  child: _isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : Text(widget.address == null ? 'Save Address' : 'Update Address'),
                 ),
               ),
             ],
@@ -173,33 +148,28 @@ class _AddEditAddressScreenState extends State<AddEditAddressScreen> {
     );
   }
 
-  Widget _buildLabelSelector() {
+  Widget _buildTypeSelector() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('SAVE AS', style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 12, color: Colors.grey.shade400, letterSpacing: 1)),
-        const SizedBox(height: 16),
+        Text('Address Type', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)),
+        const SizedBox(height: 12),
         Row(
           children: ['Home', 'Office', 'Other'].map((label) {
             final isSelected = _label == label;
-            return Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: GestureDetector(
-                onTap: () => setState(() => _label = label),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: isSelected ? AppTheme.primaryColor : const Color(0xFFF8F9FE),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: isSelected ? AppTheme.primaryColor : Colors.grey.shade100),
-                  ),
-                  child: Text(
-                    label,
-                    style: GoogleFonts.outfit(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 14,
-                      color: isSelected ? Colors.white : AppTheme.textColor,
-                    ),
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(label),
+                  selected: isSelected,
+                  onSelected: (selected) {
+                    if (selected) setState(() => _label = label);
+                  },
+                  selectedColor: AppTheme.primaryColor,
+                  labelStyle: GoogleFonts.outfit(
+                    fontWeight: FontWeight.w600,
+                    color: isSelected ? Colors.white : Colors.black,
                   ),
                 ),
               ),
@@ -210,27 +180,65 @@ class _AddEditAddressScreenState extends State<AddEditAddressScreen> {
     );
   }
 
-  Widget _buildInputField(String label, TextEditingController controller, IconData icon, {TextInputType? keyboardType, int maxLines = 1}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label.toUpperCase(), style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 11, color: Colors.grey.shade400, letterSpacing: 1.5)),
-        const SizedBox(height: 12),
-        TextFormField(
-          controller: controller,
-          keyboardType: keyboardType,
-          maxLines: maxLines,
-          style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 15),
-          validator: (v) => v!.isEmpty ? 'This field is required' : null,
-          decoration: InputDecoration(
-            prefixIcon: Icon(icon, size: 20, color: Colors.grey.shade400),
-            filled: true,
-            fillColor: const Color(0xFFF8F9FE),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          ),
+  List<Widget> _buildDynamicFields() {
+    switch (_label.toLowerCase()) {
+      case 'home':
+        return [
+          _buildField('Full Name', _nameController, Icons.person_outline),
+          _buildField('Phone', _phoneController, Icons.phone, keyboardType: TextInputType.phone),
+          _buildField('House / Flat No', _field1Controller, Icons.home_outlined),
+          _buildField('Area / Street', _field2Controller, Icons.location_city),
+          _buildField('Landmark (Optional)', _landmarkController, Icons.flag_outlined, required: false),
+          _buildField('City', _cityController, Icons.location_city_outlined),
+          _buildField('District', _districtController, Icons.map_outlined),
+          _buildField('State', _stateController, Icons.public_outlined),
+          _buildField('Pincode', _pincodeController, Icons.pin_drop_outlined, keyboardType: TextInputType.number),
+        ];
+      case 'office':
+        return [
+          _buildField('Office Name', _nameController, Icons.business_outlined),
+          _buildField('Contact Person', _field1Controller, Icons.person_outline),
+          _buildField('Phone', _phoneController, Icons.phone, keyboardType: TextInputType.phone),
+          _buildField('Floor / Unit Number', _field2Controller, Icons.stairs_outlined),
+          _buildField('Building Name', _addressController, Icons.apartment_outlined),
+          _buildField('Area / Street', _landmarkController, Icons.location_city),
+          _buildField('City', _cityController, Icons.location_city_outlined),
+          _buildField('District', _districtController, Icons.map_outlined),
+          _buildField('State', _stateController, Icons.public_outlined),
+          _buildField('Pincode', _pincodeController, Icons.pin_drop_outlined, keyboardType: TextInputType.number),
+        ];
+      default: // Other
+        return [
+          _buildField('Location Name', _nameController, Icons.location_on_outlined),
+          _buildField('Contact Name', _field1Controller, Icons.person_outline),
+          _buildField('Phone', _phoneController, Icons.phone, keyboardType: TextInputType.phone),
+          _buildField('Address Line', _addressController, Icons.home_outlined, maxLines: 2),
+          _buildField('Landmark', _landmarkController, Icons.flag_outlined),
+          _buildField('City', _cityController, Icons.location_city_outlined),
+          _buildField('District', _districtController, Icons.map_outlined),
+          _buildField('State', _stateController, Icons.public_outlined),
+          _buildField('Pincode', _pincodeController, Icons.pin_drop_outlined, keyboardType: TextInputType.number),
+        ];
+    }
+  }
+
+  Widget _buildField(String label, TextEditingController controller, IconData icon,
+      {TextInputType? keyboardType, int maxLines = 1, bool required = true}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: TextFormField(
+        controller: controller,
+        keyboardType: keyboardType,
+        maxLines: maxLines,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon, size: 20),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          filled: true,
+          fillColor: Colors.white,
         ),
-      ],
+        validator: required ? (v) => v!.isEmpty ? 'Required' : null : null,
+      ),
     );
   }
 }
