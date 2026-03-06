@@ -13,20 +13,20 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         return (
             <div className="w-full">
                 {label && (
-                    <label className="text-sm font-medium text-slate-300 mb-1.5 block">
+                    <label className="text-sm font-medium text-[#E5E7EB] mb-1.5 block">
                         {label}
                     </label>
                 )}
                 <div className="relative">
                     {leftIcon && (
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]">
                             {leftIcon}
                         </div>
                     )}
                     <input
                         type={type}
                         className={cn(
-                            "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+                            "flex h-10 w-full rounded-lg border border-[#374151] bg-[#1F2937] px-3 py-2 text-sm text-[#E5E7EB] ring-offset-[#0B1120] placeholder:text-[#6B7280] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366F1] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
                             leftIcon && "pl-10",
                             rightIcon && "pr-10",
                             className
@@ -35,7 +35,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
                         {...props}
                     />
                     {rightIcon && (
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280]">
                             {rightIcon}
                         </div>
                     )}

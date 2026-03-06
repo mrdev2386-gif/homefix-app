@@ -43,48 +43,12 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  try {
-    // Initialize App Check (Critical Security)
-    await initializeFirebase();
 
-    // 2. Initialize Crashlytics & Performance
-    if (!kIsWeb) {
-      FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
-      FirebasePerformance.instance.setPerformanceCollectionEnabled(true).catchError((e) {
-        debugPrint("Performance initialization failed: $e");
-      });
-      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-    }
-    
-    // 4. Initialize Push Notifications (FCM Token Management)
-    try {
-      await PushNotificationService().initialize();
-    } catch (e) {
-      debugPrint("Push notification service initialization failed: $e");
-    }
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
-    // 4.5 Initialize Notifications UI Service (Notification management)
-    try {
-      await NotificationsService().initialize();
-    } catch (e) {
-      debugPrint("Notifications initialization failed: $e");
-    }
-
-    // 5. Seed initial data
-    try {
-      // DatabaseSeeder.seedInitialData(); // Commented out - not needed for basic functionality
-    } catch (e) {
-      debugPrint("Database seeding failed: $e");
-    }
-
-  } catch (e) {
-    debugPrint("Firebase initialization failed: $e");
-  }
-  
-  // Image cache tuning for better performance
-  PaintingBinding.instance.imageCache.maximumSize = 100;
-  PaintingBinding.instance.imageCache.maximumSizeBytes = 50 << 20; // 50 MB
+  await initializeFirebaseAppCheck();
 
   runApp(const HomeFixApp());
 }
@@ -113,36 +77,38 @@ class HomeFixApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => BookingProvider()),
         ChangeNotifierProvider(create: (_) => LocationProvider()),
         ChangeNotifierProvider(create: (_) => CheckoutProvider()),
-        ChangeNotifierProvider(create: (_) => LocaleProvider()),
         ChangeNotifierProvider(create: (_) => NotificationsService()),
       ],
-      child: Consumer<LocaleProvider>(
-        builder: (context, localeProvider, child) {
-          return MaterialApp(
-            title: 'HomeFix',
-            navigatorKey: navigatorKey,
-            debugShowCheckedModeBanner: false,
-            theme: AppTheme.lightTheme,
-            darkTheme: AppTheme.darkTheme,
-            themeMode: ThemeMode.system,
-            locale: localeProvider.locale,
-            supportedLocales: const [
-              Locale('en'),
-              Locale('hi'),
-            ],
-            localizationsDelegates: const [
-              AppLocalizations.delegate,
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
-            routes: {
-              '/customRequest': (context) => const CustomRequestFormScreen(),
-              '/addresses': (context) => const SavedAddressesScreen(),
-            },
-            home: const AuthWrapper(),
-          );
-        },
+      child: ChangeNotifierProvider(
+        create: (_) => LocaleProvider(),
+        child: Consumer<LocaleProvider>(
+          builder: (context, localeProvider, child) {
+            return MaterialApp(
+              title: 'HomeFix',
+              navigatorKey: navigatorKey,
+              debugShowCheckedModeBanner: false,
+              theme: AppTheme.lightTheme,
+              darkTheme: AppTheme.darkTheme,
+              themeMode: ThemeMode.system,
+              locale: localeProvider.locale,
+              supportedLocales: const [
+                Locale('en'),
+                Locale('hi'),
+              ],
+              localizationsDelegates: const [
+                AppLocalizations.delegate,
+                GlobalMaterialLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+              ],
+              routes: {
+                '/customRequest': (context) => const CustomRequestFormScreen(),
+                '/addresses': (context) => const SavedAddressesScreen(),
+              },
+              home: const AuthWrapper(),
+            );
+          },
+        ),
       ),
     );
   }
@@ -187,6 +153,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
       if (user != null) {
         localeProvider.setUserId(user.uid);
+        await localeProvider.initialize(user.uid);
 
         _userDataSubscription = firestoreService.streamUserModel(user.uid).listen((userData) {
           if (mounted) {

@@ -1,24 +1,21 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 import { Loader2 } from "lucide-react"
-// import { Slot } from "@radix-ui/react-slot" // Probably not installed
-// So I will just support default button props
 
 const buttonVariants = {
-    default: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/10 active:scale-[0.98]",
-    destructive: "bg-rose-600 text-white hover:bg-rose-500 shadow-lg shadow-rose-600/10 active:scale-[0.98]",
-    outline: "border border-slate-800 bg-slate-900/50 text-slate-300 hover:bg-slate-800 hover:text-white active:scale-[0.98]",
-    secondary: "bg-slate-800 text-slate-200 hover:bg-slate-700 active:scale-[0.98]",
-    ghost: "text-slate-400 hover:bg-slate-800 hover:text-white active:scale-[0.95]",
-    link: "text-indigo-400 underline-offset-4 hover:underline",
+    default: "bg-[#6366F1] text-white hover:bg-[#4F46E5] shadow-lg shadow-[#6366F1]/20 active:scale-[0.98] transition-all duration-200",
+    destructive: "bg-red-600 text-white hover:bg-red-700 shadow-lg shadow-red-600/20 active:scale-[0.98] transition-all duration-200",
+    outline: "border border-[#374151] bg-transparent text-[#E5E7EB] hover:bg-[#1F2937] hover:border-[#6366F1] active:scale-[0.98] transition-all duration-200",
+    secondary: "bg-[#1F2937] text-[#E5E7EB] hover:bg-[#374151] active:scale-[0.98] transition-all duration-200",
+    ghost: "text-[#9CA3AF] hover:bg-[#1F2937] hover:text-[#E5E7EB] active:scale-[0.95] transition-all duration-200",
+    link: "text-[#6366F1] underline-offset-4 hover:underline",
 }
 
-
 const buttonSizes = {
-    default: "h-10 px-4 py-2",
+    default: "h-10 px-4 py-2 rounded-lg",
     sm: "h-9 rounded-md px-3",
-    lg: "h-11 rounded-md px-8",
-    icon: "h-10 w-10",
+    lg: "h-11 rounded-lg px-8",
+    icon: "h-10 w-10 rounded-lg",
 }
 
 export interface ButtonProps
@@ -34,7 +31,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         return (
             <button
                 className={cn(
-                    "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+                    "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-[#0B1120] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366F1] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
                     buttonVariants[variant],
                     buttonSizes[size],
                     className

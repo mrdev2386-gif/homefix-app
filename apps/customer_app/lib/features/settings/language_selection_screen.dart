@@ -78,7 +78,7 @@ class LanguageSelectionScreen extends StatelessWidget {
                     const SizedBox(width: 16),
                     Expanded(
                       child: Text(
-                        currentLocale.languageCode == 'hi'
+                        currentLocale?.languageCode == 'hi'
                             ? 'ऐप की भाषा बदलने के लिए नीचे से चुनें'
                             : 'Select your preferred language below',
                         style: GoogleFonts.outfit(
@@ -119,7 +119,7 @@ class LanguageSelectionScreen extends StatelessWidget {
                     itemBuilder: (context, index) {
                       final language = languages[index];
                       final isSelected =
-                          currentLocale.languageCode == language['code'];
+                          currentLocale?.languageCode == language['code'];
 
                       return ListTile(
                         onTap: () async {

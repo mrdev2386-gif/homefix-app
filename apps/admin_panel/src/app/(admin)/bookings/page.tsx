@@ -1,348 +1,444 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { adminApi } from '@/lib/admin-api';
-import StatusBadge from '@/components/ui/StatusBadge';
-import Table from '@/components/ui/Table';
-import { Input } from '@/components/ui/Input';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import {
-    Search, Calendar, Filter, MoreHorizontal, IndianRupee,
-    User, Wrench, Clock, MapPin, ChevronRight, CheckCircle2,
-    XCircle, Send, Activity, Eye, Layers, ArrowRight, Hash,
-    ArrowUpRight
-} from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { useState, useEffect } from 'react';
+import { PageHeader, StatusBadge, Column, ConfirmDialog, StatCard } from '@/components/ui';
+import { Search, Filter, X, CheckCircle, XCircle, Calendar, Clock, TrendingUp, Package, Eye, Phone, MapPin, IndianRupee } from 'lucide-react';
+import { Timestamp } from 'firebase/firestore';
+import { subscribeToBookings, AdminBooking, approveBookingAction, rejectBookingAction } from '@/lib/services/adminBookingService';
 
 export default function BookingsPage() {
-    const [bookings, setBookings] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [activeTab, setActiveTab] = useState('all');
-    const [processingId, setProcessingId] = useState<string | null>(null);
-    const [selectedBooking, setSelectedBooking] = useState<any>(null);
-    const [isActionModalOpen, setActionModalOpen] = useState(false);
-    const [actionType, setActionType] = useState<string>('');
-    const [actionPayload, setActionPayload] = useState<any>({});
+  const [bookings, setBookings] = useState<AdminBooking[]>([]);
+  const [filteredBookings, setFilteredBookings] = useState<AdminBooking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [paymentFilter, setPaymentFilter] = useState('all');
+  const [selectedBooking, setSelectedBooking] = useState<AdminBooking | null>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    variant?: 'default' | 'danger';
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
-    useEffect(() => {
-        const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'));
-        const unsubscribe = onSnapshot(q, (snap) => {
-            setBookings(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, []);
-
-    const filteredBookings = bookings.filter(b => {
-        const matchesSearch = b.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            b.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            b.serviceTitle?.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesTab = activeTab === 'all' || b.status === activeTab;
-        return matchesSearch && matchesTab;
+  useEffect(() => {
+    const unsubscribe = subscribeToBookings((bookingsData) => {
+      console.log('Fetched bookings:', bookingsData.length);
+      setBookings(bookingsData);
+      setLoading(false);
     });
 
-    const handleAction = async (bookingId: string, action: string) => {
-        // Get the booking to check its status
-        const booking = bookings.find(b => b.id === bookingId);
-        if (!booking) return;
+    return () => unsubscribe();
+  }, []);
 
-        // NEW FLOW: Use new functions for pending_admin status
-        if (action === 'approve' || action === 'reject') {
-            if (booking.status !== 'pending_admin') {
-                alert('This booking cannot be approved/rejected. Current status: ' + booking.status);
-                return;
-            }
+  useEffect(() => {
+    filterBookings();
+  }, [bookings, searchTerm, statusFilter, paymentFilter]);
 
-            setSelectedBooking(booking);
-            setActionType(action);
-            setActionPayload({});
-            setActionModalOpen(true);
-            return;
-        }
+  const filterBookings = () => {
+    let filtered = [...bookings];
 
-        // Open modal for other actions
-        setSelectedBooking(booking);
-        setActionType(action);
-        setActionPayload({});
-        setActionModalOpen(true);
-    };
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(b => b.status === statusFilter);
+    }
 
-    const executeAction = async () => {
-        if (!selectedBooking) return;
+    if (paymentFilter !== 'all') {
+      filtered = filtered.filter(b => b.paymentStatus === paymentFilter);
+    }
 
-        setProcessingId(selectedBooking.id);
+    if (searchTerm) {
+      filtered = filtered.filter(b => 
+        b.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        b.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        b.technicianName?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    setFilteredBookings(filtered);
+  };
+
+  const stats = {
+    total: bookings.length,
+    pending: bookings.filter(b => b.status === 'PENDING_ADMIN_APPROVAL').length,
+    active: bookings.filter(b => ['ADMIN_APPROVED', 'TECHNICIAN_ACCEPTED', 'IN_PROGRESS'].includes(b.status)).length,
+    completed: bookings.filter(b => b.status === 'COMPLETED').length,
+  };
+
+  const handleApprove = (bookingId: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Approve Booking',
+      message: 'This will notify the technician. Are you sure?',
+      onConfirm: async () => {
+        setProcessing(true);
         try {
-            await adminApi.manageBooking(selectedBooking.id, actionType, actionPayload);
-            alert('Action completed successfully!');
-            setActionModalOpen(false);
-        } catch (e: any) {
-            console.error('Action failed:', e);
-            alert(`Action failed: ${e.message}`);
+          await approveBookingAction(bookingId);
+          setConfirmDialog({ ...confirmDialog, isOpen: false });
+        } catch (error: any) {
+          console.error('Error approving booking:', error);
+          alert(`Failed: ${error.message}`);
         } finally {
-            setProcessingId(null);
+          setProcessing(false);
         }
+      },
+    });
+  };
+
+  const handleReject = (bookingId: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Reject Booking',
+      message: 'This will cancel the booking and notify the customer. Are you sure?',
+      variant: 'danger',
+      onConfirm: async () => {
+        setProcessing(true);
+        try {
+          await rejectBookingAction(bookingId, 'Rejected by admin');
+          setConfirmDialog({ ...confirmDialog, isOpen: false });
+        } catch (error: any) {
+          console.error('Error rejecting booking:', error);
+          alert(`Failed: ${error.message}`);
+        } finally {
+          setProcessing(false);
+        }
+      },
+    });
+  };
+
+  const getStatusVariant = (status: string): 'success' | 'warning' | 'error' | 'info' | 'default' => {
+    const map: Record<string, 'success' | 'warning' | 'error' | 'info' | 'default'> = {
+      'PENDING_ADMIN_APPROVAL': 'warning',
+      'ADMIN_APPROVED': 'info',
+      'TECHNICIAN_ACCEPTED': 'info',
+      'IN_PROGRESS': 'info',
+      'COMPLETED': 'success',
+      'CANCELLED': 'error',
     };
+    return map[status] || 'default';
+  };
 
-    const columns = [
-        {
-            key: 'id',
-            label: 'Reference',
-            render: (b: any) => (
-                <div className="flex flex-col">
-                    <span className="font-mono text-[10px] font-black text-indigo-400 tracking-wider">#{b.id.substring(0, 8).toUpperCase()}</span>
-                    <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">
-                        {b.paymentMode === 'online' ? 'Digital' : 'Cash'} - {b.paymentStatus || 'Pending'}
-                    </span>
-                </div>
-            )
-        },
-        {
-            key: 'serviceTitle',
-            label: 'Service Details',
-            render: (b: any) => (
-                <div className="flex flex-col">
-                    <span className="font-black text-white text-sm tracking-tight">{b.serviceTitle || 'General Service'}</span>
-                    <div className="flex items-center gap-1.5 mt-1">
-                        <Calendar size={10} className="text-slate-500" />
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                            {b.createdAt?.seconds ? new Date(b.createdAt.seconds * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'Recently'}
-                        </span>
-                    </div>
-                </div>
-            )
-        },
-        {
-            key: 'customerName',
-            label: 'Customer Info',
-            render: (b: any) => (
-                <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-[10px] font-black text-slate-400">
-                        {b.customerName?.[0] || 'U'}
-                    </div>
-                    <div className="flex flex-col">
-                        <span className="text-sm font-bold text-slate-200">{b.customerName || 'Anonymous'}</span>
-                        <span className="text-[10px] font-medium text-slate-500 truncate max-w-[120px]">{b.customerEmail}</span>
-                    </div>
-                </div>
-            )
-        },
-        {
-            key: 'technician',
-            label: 'Execution Force',
-            render: (b: any) => (
-                b.assignedTechnicianName ? (
-                    <div className="flex items-center gap-2.5 px-3 py-1.5 bg-emerald-500/5 border border-emerald-500/10 rounded-xl w-fit">
-                        <Wrench size={12} className="text-emerald-500" />
-                        <span className="text-[11px] font-black text-emerald-400 uppercase tracking-wider">{b.assignedTechnicianName}</span>
-                    </div>
-                ) : (
-                    <Badge className="bg-slate-800/50 text-slate-500 border-slate-700/50 font-bold text-[9px] uppercase tracking-wider">Unassigned</Badge>
-                )
-            )
-        },
-        {
-            key: 'amount',
-            label: 'Value',
-            render: (b: any) => (
-                <div className="flex flex-col items-end mr-4">
-                    <span className="text-sm font-black text-white">₹{(b.finalAmount || b.totalAmount || 0).toLocaleString()}</span>
-                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{b.isPaid ? 'Settled' : 'Unpaid'}</span>
-                </div>
-            )
-        },
-        {
-            key: 'status',
-            label: 'Lifecycle',
-            render: (b: any) => <StatusBadge status={b.status} />
-        },
-        {
-            key: 'actions',
-            label: 'Control',
-            align: 'right' as const,
-            render: (b: any) => (
-                <div className="flex justify-end gap-2 pr-2">
-                    {/* NEW FLOW: Approve/Reject for pending_admin status */}
-                    {b.status === 'pending_admin' && (
-                        <>
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 bg-green-500/10 border-green-500/20 text-green-400 hover:bg-green-500 hover:text-white rounded-lg font-black text-[9px] uppercase tracking-widest px-3"
-                                disabled={processingId === b.id}
-                                onClick={() => handleAction(b.id, 'approve')}
-                            >
-                                Approve
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-8 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg font-black text-[9px] uppercase tracking-widest px-3"
-                                disabled={processingId === b.id}
-                                onClick={() => handleAction(b.id, 'reject')}
-                            >
-                                Reject
-                            </Button>
-                        </>
-                    )}
-                    {/* Legacy: Assign for confirmed/requested (for backward compatibility) */}
-                    {(b.status === 'confirmed' || b.status === 'requested') && (
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 bg-indigo-500/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-500 hover:text-white rounded-lg font-black text-[9px] uppercase tracking-widest px-3"
-                            disabled={processingId === b.id}
-                            onClick={() => handleAction(b.id, 'assign')}
-                        >
-                            Assign Force
-                        </Button>
-                    )}
-                    {!['completed', 'cancelled'].includes(b.status) && (
-                        <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg font-black text-[9px] uppercase tracking-widest px-3"
-                            disabled={processingId === b.id}
-                            onClick={() => handleAction(b.id, 'cancel')}
-                        >
-                            Terminate
-                        </Button>
-                    )}
-                </div>
-            )
-        }
+  const formatStatus = (status: string) => status.replace(/_/g, ' ');
+
+  const formatDate = (timestamp: any) => {
+    if (!timestamp) return '-';
+    if (timestamp instanceof Timestamp) return timestamp.toDate().toLocaleDateString();
+    if (timestamp.toDate) return timestamp.toDate().toLocaleDateString();
+    if (timestamp instanceof Date) return timestamp.toLocaleDateString();
+    return '-';
+  };
+
+  const getTimeline = (booking: any) => {
+    const timeline = [
+      { label: 'Booking Created', date: booking.createdAt, completed: true },
+      { label: 'Admin Approved', date: booking.adminApprovedAt, completed: ['ADMIN_APPROVED', 'TECHNICIAN_ACCEPTED', 'IN_PROGRESS', 'COMPLETED'].includes(booking.status) },
+      { label: 'Technician Accepted', date: booking.technicianAcceptedAt, completed: ['TECHNICIAN_ACCEPTED', 'IN_PROGRESS', 'COMPLETED'].includes(booking.status) },
+      { label: 'Service Started', date: booking.serviceStartedAt, completed: ['IN_PROGRESS', 'COMPLETED'].includes(booking.status) },
+      { label: 'Service Completed', date: booking.completedAt, completed: booking.status === 'COMPLETED' },
     ];
+    return timeline;
+  };
 
-    const tabs = [
-        { id: 'all', label: 'All Operations' },
-        { id: 'pending_admin', label: 'Pending Approval' },
-        { id: 'technician_pending', label: 'Technician Pending' },
-        { id: 'awaiting_payment', label: 'Awaiting Payment' },
-        { id: 'confirmed', label: 'Confirmed' },
-        { id: 'completed', label: 'Completed' },
-        { id: 'cancelled', label: 'Cancelled' }
-    ];
-
-    return (
-        <div className="space-y-8 max-w-[1400px] mx-auto">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div>
-                    <h1 className="text-4xl font-black text-white tracking-tight leading-tight uppercase">Operational Stream</h1>
-                    <div className="flex items-center gap-2 mt-1">
-                        <p className="text-slate-500 text-sm font-medium">Real-time status of all platform service transactions.</p>
-                        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-indigo-500/10 text-indigo-400 rounded-md border border-indigo-500/20 text-[10px] font-black uppercase tracking-widest">
-                            <Activity size={10} className="animate-pulse" />
-                            {bookings.filter(b => b.status === 'assigned').length} active
-                        </div>
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-4">
-                    <div className="relative w-full md:w-80 group">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 h-4 w-4 group-focus-within:text-indigo-400 transition-colors" />
-                        <Input
-                            placeholder="Enter reference or customer name..."
-                            className="pl-10 bg-slate-900/50 border-slate-800 text-slate-200 placeholder:text-slate-600 rounded-xl h-12 focus:ring-indigo-500/50"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
-                    </div>
-                </div>
-            </div>
-
-            <div className="space-y-6">
-                <div className="flex items-center gap-2 p-1 bg-slate-900/50 border border-slate-800 rounded-2xl w-fit overflow-x-auto no-scrollbar">
-                    {tabs.map((tab) => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
-                            className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.15em] transition-all whitespace-nowrap ${activeTab === tab.id
-                                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
-                                : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'
-                                }`}
-                        >
-                            {tab.label}
-                        </button>
-                    ))}
-                </div>
-
-                <Card className="border-slate-800 bg-slate-900/40 backdrop-blur-md overflow-hidden rounded-3xl">
-                    <CardContent className="p-0">
-                        <Table
-                            columns={columns}
-                            data={filteredBookings}
-                            loading={loading}
-                            emptyMessage="The operational stream is currently clear."
-                            className="[&_tr]:border-slate-800/50 [&_th]:bg-transparent [&_th]:text-slate-500 [&_th]:text-[10px] [&_th]:font-black [&_th]:uppercase [&_th]:tracking-[0.2em] [&_th]:py-6"
-                        />
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* Action Modal */}
-            {isActionModalOpen && selectedBooking && (
-                <div className="fixed inset-0 bg-[#0f172a]/95 backdrop-blur-xl flex items-center justify-center z-[100] p-4 animate-in fade-in duration-300">
-                    <Card className="w-full max-w-lg bg-slate-900 border-slate-800 shadow-2xl shadow-black/50 overflow-hidden rounded-3xl">
-                        <div className="p-6 border-b border-slate-800 flex items-center justify-between">
-                            <div>
-                                <h2 className="text-xl font-black text-white uppercase">
-                                    {actionType === 'assign' ? 'Assign Technician' :
-                                        actionType === 'reassign' ? 'Reassign Technician' :
-                                            actionType === 'cancel' ? 'Cancel Booking' :
-                                                'Complete Booking'}
-                                </h2>
-                                <p className="text-slate-500 text-xs mt-1">Booking: #{selectedBooking.id.substring(0, 8).toUpperCase()}</p>
-                            </div>
-                            <Button variant="ghost" onClick={() => setActionModalOpen(false)} className="text-slate-500 hover:text-white">
-                                <XCircle size={20} />
-                            </Button>
-                        </div>
-                        <CardContent className="p-6 space-y-4">
-                            {(actionType === 'assign' || actionType === 'reassign') && (
-                                <div className="space-y-2">
-                                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Technician UID</label>
-                                    <Input
-                                        placeholder="Enter technician UID"
-                                        value={actionPayload.technicianId || ''}
-                                        onChange={(e) => setActionPayload({ ...actionPayload, technicianId: e.target.value })}
-                                        className="bg-slate-800/50 border-slate-700 text-white"
-                                    />
-                                </div>
-                            )}
-                            {(actionType === 'cancel' || actionType === 'complete') && (
-                                <div className="space-y-2">
-                                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Reason / Notes</label>
-                                    <textarea
-                                        className="flex min-h-[80px] w-full rounded-xl border border-slate-700 bg-slate-800/50 px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none"
-                                        placeholder="Enter reason or notes..."
-                                        value={actionPayload.reason || ''}
-                                        onChange={(e) => setActionPayload({ ...actionPayload, reason: e.target.value })}
-                                    />
-                                </div>
-                            )}
-                            <div className="flex gap-3 pt-2">
-                                <Button
-                                    variant="outline"
-                                    onClick={() => setActionModalOpen(false)}
-                                    className="flex-1 border-slate-700 text-slate-400 hover:text-white"
-                                >
-                                    Cancel
-                                </Button>
-                                <Button
-                                    onClick={executeAction}
-                                    disabled={processingId === selectedBooking.id}
-                                    className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white"
-                                >
-                                    {processingId === selectedBooking.id ? 'Processing...' : 'Confirm'}
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-            )}
+  const columns: Column[] = [
+    { 
+      key: 'id', 
+      label: 'Booking ID',
+      render: (item) => <span className="text-sm font-mono text-[#6366F1]">{item.id.substring(0, 8)}</span>
+    },
+    { 
+      key: 'customerName', 
+      label: 'Customer',
+      render: (item) => (
+        <div>
+          <p className="text-sm text-[#E5E7EB]">{item.customerName}</p>
+          <p className="text-xs text-[#6B7280]">{item.customerPhone}</p>
         </div>
-    );
+      )
+    },
+    { 
+      key: 'technicianName', 
+      label: 'Technician',
+      render: (item) => (
+        <div>
+          <p className="text-sm text-[#E5E7EB]">{item.technicianName || 'Not assigned yet'}</p>
+          <p className="text-xs text-[#6B7280]">{item.technicianPhone || ''}</p>
+        </div>
+      )
+    },
+    { 
+      key: 'serviceName', 
+      label: 'Service',
+      render: (item) => (
+        <div>
+          <p className="text-sm text-[#E5E7EB]">{item.serviceName}</p>
+          <p className="text-xs text-[#6B7280]">{item.categoryName}</p>
+        </div>
+      )
+    },
+    { 
+      key: 'location', 
+      label: 'City / Address',
+      render: (item) => <span className="text-sm text-[#9CA3AF]">{item.city || '-'}</span>
+    },
+    { 
+      key: 'bookingDate', 
+      label: 'Booking Date',
+      render: (item) => (
+        <div>
+          <p className="text-sm text-[#E5E7EB]">{formatDate(item.bookingDate)}</p>
+          <p className="text-xs text-[#6B7280]">{item.timeSlot || ''}</p>
+        </div>
+      )
+    },
+    { 
+      key: 'servicePrice', 
+      label: 'Price',
+      render: (item) => <span className="text-sm font-medium text-[#E5E7EB]">₹{item.servicePrice}</span>
+    },
+    {
+      key: 'paymentStatus',
+      label: 'Payment',
+      render: (item) => (
+        <StatusBadge 
+          status={item.paymentStatus || 'PENDING'} 
+          variant={item.paymentStatus === 'PAID' ? 'success' : item.paymentStatus === 'FAILED' ? 'error' : 'warning'}
+        />
+      )
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (item) => <StatusBadge status={formatStatus(item.status)} variant={getStatusVariant(item.status)} />
+    },
+    {
+      key: 'actions',
+      label: 'Actions',
+      align: 'right',
+      render: (item) => (
+        <div className="flex items-center gap-2 justify-end">
+          <button
+            onClick={() => { setSelectedBooking(item); setShowDetailsModal(true); }}
+            className="px-3 py-1 text-xs bg-[#1F2937] text-[#E5E7EB] rounded-lg hover:bg-[#374151]"
+          >
+            <Eye size={12} className="inline mr-1" />
+            View
+          </button>
+          {item.status === 'PENDING_ADMIN_APPROVAL' && (
+            <>
+              <button
+                onClick={() => handleApprove(item.id)}
+                disabled={processing}
+                className="px-3 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                <CheckCircle size={12} className="inline mr-1" />
+                Approve
+              </button>
+              <button
+                onClick={() => handleReject(item.id)}
+                disabled={processing}
+                className="px-3 py-1 text-xs bg-red-600 text-white rounded-lg hover:bg-red-700"
+              >
+                <XCircle size={12} className="inline mr-1" />
+                Reject
+              </button>
+            </>
+          )}
+          {item.status === 'ADMIN_APPROVED' && (
+            <span className="text-xs text-[#6B7280] italic">Waiting for technician</span>
+          )}
+        </div>
+      )
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <PageHeader title="Bookings Management" description="Moderate and manage all service bookings" />
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+        <StatCard title="Total Bookings" value={stats.total} icon={Package} color="purple" />
+        <StatCard title="Pending Approval" value={stats.pending} icon={Clock} color="orange" />
+        <StatCard title="Active Bookings" value={stats.active} icon={TrendingUp} color="blue" />
+        <StatCard title="Completed" value={stats.completed} icon={CheckCircle} color="green" />
+      </div>
+
+      <div className="admin-card p-3 sm:p-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" size={18} />
+            <input
+              type="text"
+              placeholder="Search..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="input-field w-full pl-10 pr-4"
+            />
+            {searchTerm && <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280]"><X size={18} /></button>}
+          </div>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="input-field">
+            <option value="all">All Status</option>
+            <option value="PENDING_ADMIN_APPROVAL">Pending Approval</option>
+            <option value="ADMIN_APPROVED">Admin Approved</option>
+            <option value="TECHNICIAN_ACCEPTED">Technician Accepted</option>
+            <option value="IN_PROGRESS">In Progress</option>
+            <option value="COMPLETED">Completed</option>
+            <option value="CANCELLED">Cancelled</option>
+          </select>
+          <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)} className="input-field">
+            <option value="all">All Payments</option>
+            <option value="PENDING">Pending</option>
+            <option value="PAID">Paid</option>
+            <option value="FAILED">Failed</option>
+          </select>
+          <div className="flex items-center justify-end">
+            <span className="text-sm text-[#9CA3AF]">Showing {filteredBookings.length} of {bookings.length}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-card p-4 sm:p-6">
+        {loading ? (
+          <div className="space-y-4">{[1,2,3].map(i => <div key={i} className="h-16 bg-[#1F2937] rounded animate-pulse" />)}</div>
+        ) : filteredBookings.length === 0 ? (
+          <div className="text-center py-12 text-[#6B7280]">No bookings found</div>
+        ) : (
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+            <div className="inline-block min-w-full align-middle">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-[#1F2937]">
+                    {columns.map(col => (
+                      <th key={col.key} className={`text-left text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider py-3 px-3 sm:px-4 ${col.align === 'right' ? 'text-right' : ''}`}>
+                        {col.label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredBookings.map(item => (
+                    <tr key={item.id} className="border-b border-[#1F2937] hover:bg-[#1F2937]/50">
+                      {columns.map(col => (
+                        <td key={col.key} className={`py-3 sm:py-4 px-3 sm:px-4 ${col.align === 'right' ? 'text-right' : ''}`}>
+                          {col.render ? col.render(item) : item[col.key]}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {showDetailsModal && selectedBooking && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-[#111827] rounded-xl sm:rounded-2xl max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto border border-[#1F2937]">
+            <div className="sticky top-0 bg-[#111827] border-b border-[#1F2937] p-4 sm:p-6 flex items-center justify-between z-10">
+              <h2 className="text-lg sm:text-xl font-bold text-[#E5E7EB]">Booking Details</h2>
+              <button onClick={() => setShowDetailsModal(false)} className="text-[#6B7280] hover:text-[#E5E7EB]"><X size={24} /></button>
+            </div>
+            <div className="p-4 sm:p-6 space-y-6">
+              {/* Customer, Technician, Service Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+                {/* Customer */}
+                <div className="space-y-3 bg-[#1F2937] p-4 rounded-lg">
+                  <h3 className="text-xs sm:text-sm font-bold text-[#E5E7EB] uppercase tracking-wider">Customer</h3>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-[#E5E7EB]">{selectedBooking.customerName}</p>
+                    <div className="flex items-center gap-2 text-[#9CA3AF]"><Phone size={14} /><span className="text-xs sm:text-sm">{selectedBooking.customerPhone}</span></div>
+                    {selectedBooking.customerAddress && <div className="flex items-start gap-2 text-[#9CA3AF]"><MapPin size={14} className="mt-1" /><span className="text-xs sm:text-sm">{selectedBooking.customerAddress}</span></div>}
+                    {selectedBooking.city && <p className="text-xs text-[#6B7280]">{selectedBooking.city}</p>}
+                  </div>
+                </div>
+                {/* Technician */}
+                <div className="space-y-3 bg-[#1F2937] p-4 rounded-lg">
+                  <h3 className="text-xs sm:text-sm font-bold text-[#E5E7EB] uppercase tracking-wider">Technician</h3>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-[#E5E7EB]">{selectedBooking.technicianName || 'Not assigned yet'}</p>
+                    {selectedBooking.technicianPhone && <div className="flex items-center gap-2 text-[#9CA3AF]"><Phone size={14} /><span className="text-xs sm:text-sm">{selectedBooking.technicianPhone}</span></div>}
+                    {selectedBooking.technicianRating && <p className="text-xs text-[#6B7280]">⭐ {selectedBooking.technicianRating.toFixed(1)}</p>}
+                    {selectedBooking.technicianExperience && <p className="text-xs text-[#6B7280]">{selectedBooking.technicianExperience}</p>}
+                  </div>
+                </div>
+                {/* Service */}
+                <div className="space-y-3 bg-[#1F2937] p-4 rounded-lg">
+                  <h3 className="text-xs sm:text-sm font-bold text-[#E5E7EB] uppercase tracking-wider">Service</h3>
+                  <div className="space-y-2">
+                    {selectedBooking.serviceImage && <img src={selectedBooking.serviceImage} alt={selectedBooking.serviceName} className="w-full h-24 object-cover rounded" />}
+                    <p className="text-sm font-medium text-[#E5E7EB]">{selectedBooking.serviceName}</p>
+                    <p className="text-xs text-[#6B7280]">{selectedBooking.categoryName}</p>
+                    <div className="flex items-center gap-2 text-[#10B981]"><IndianRupee size={14} /><span className="text-sm font-bold">₹{selectedBooking.servicePrice}</span></div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Booking & Payment Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                {/* Booking */}
+                <div className="space-y-3 bg-[#1F2937] p-4 rounded-lg">
+                  <h3 className="text-xs sm:text-sm font-bold text-[#E5E7EB] uppercase tracking-wider">Booking</h3>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2"><Calendar size={14} className="text-[#6B7280]" /><span className="text-xs sm:text-sm text-[#E5E7EB]">{formatDate(selectedBooking.bookingDate)}</span></div>
+                    <div className="flex items-center gap-2"><Clock size={14} className="text-[#6B7280]" /><span className="text-xs sm:text-sm text-[#E5E7EB]">{selectedBooking.timeSlot}</span></div>
+                    <StatusBadge status={formatStatus(selectedBooking.status)} variant={getStatusVariant(selectedBooking.status)} />
+                  </div>
+                </div>
+                {/* Payment */}
+                <div className="space-y-3 bg-[#1F2937] p-4 rounded-lg">
+                  <h3 className="text-xs sm:text-sm font-bold text-[#E5E7EB] uppercase tracking-wider">Payment</h3>
+                  <div className="space-y-2">
+                    <p className="text-xs sm:text-sm text-[#9CA3AF]">Method: {selectedBooking.paymentMethod || 'Not specified'}</p>
+                    <StatusBadge status={selectedBooking.paymentStatus || 'PENDING'} variant={selectedBooking.paymentStatus === 'PAID' ? 'success' : 'warning'} />
+                    {selectedBooking.transactionId && <p className="text-xs text-[#6B7280] font-mono break-all">TXN: {selectedBooking.transactionId}</p>}
+                  </div>
+                </div>
+              </div>
+
+              {/* Booking Timeline */}
+              <div className="space-y-3 bg-[#1F2937] p-4 rounded-lg">
+                <h3 className="text-xs sm:text-sm font-bold text-[#E5E7EB] uppercase tracking-wider">Booking Timeline</h3>
+                <div className="space-y-3">
+                  {getTimeline(selectedBooking).map((step, idx) => (
+                    <div key={idx} className="flex items-center gap-3 sm:gap-4">
+                      <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${step.completed ? 'bg-green-600' : 'bg-[#374151]'}`}>
+                        {step.completed ? <CheckCircle size={14} className="text-white" /> : <div className="w-2 h-2 rounded-full bg-[#6B7280]" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-xs sm:text-sm ${step.completed ? 'text-[#E5E7EB] font-medium' : 'text-[#6B7280]'}`}>{step.label}</p>
+                        {step.date && <p className="text-xs text-[#6B7280]">{formatDate(step.date)}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              {selectedBooking.status === 'PENDING_ADMIN_APPROVAL' && (
+                <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-[#1F2937]">
+                  <button onClick={() => { setShowDetailsModal(false); handleApprove(selectedBooking.id); }} className="flex-1 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm sm:text-base">
+                    <CheckCircle size={16} className="inline mr-2" />Approve Booking
+                  </button>
+                  <button onClick={() => { setShowDetailsModal(false); handleReject(selectedBooking.id); }} className="flex-1 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium text-sm sm:text-base">
+                    <XCircle size={16} className="inline mr-2" />Reject Booking
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        variant={confirmDialog.variant}
+      />
+    </div>
+  );
 }

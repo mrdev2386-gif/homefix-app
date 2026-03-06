@@ -1,27 +1,30 @@
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 
-Future<void> initializeFirebase() async {
-  await Firebase.initializeApp();
-
+Future<void> initializeFirebaseAppCheck() async {
   if (kDebugMode) {
+    // Disable Play Integrity during debug builds
     await FirebaseAppCheck.instance.activate(
       androidProvider: AndroidProvider.debug,
-      appleProvider: AppleProvider.debug,
     );
 
+    // Generate debug token
     try {
       final token = await FirebaseAppCheck.instance.getToken(true);
-      debugPrint('🔥 Firebase App Check Debug Token: $token');
-      debugPrint('📋 Copy this token and register it in Firebase Console → App Check → Manage Debug Tokens');
+      print('');
+      print('==============================');
+      print('🔥 FIREBASE APP CHECK TOKEN');
+      print(token);
+      print('==============================');
+      print('Copy this token and add it in Firebase Console');
+      print('');
     } catch (e) {
-      debugPrint('❌ App Check Token Error: $e');
+      print('Debug token generation failed: $e');
     }
   } else {
+    // Production security
     await FirebaseAppCheck.instance.activate(
       androidProvider: AndroidProvider.playIntegrity,
-      appleProvider: AppleProvider.appAttest,
     );
   }
 }

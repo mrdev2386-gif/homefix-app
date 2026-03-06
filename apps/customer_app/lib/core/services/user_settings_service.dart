@@ -1,131 +1,88 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import '../models/user_settings.dart';
 
 class UserSettingsService {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  UserSettingsService();
 
-  /// Stream user settings
+  FirebaseFirestore get firestore => FirebaseFirestore.instance;
+
   Stream<UserSettings> streamUserSettings(String userId) {
-    if (userId.isEmpty) {
-      debugPrint('[PATH GUARD] blocked empty id in streamUserSettings');
-      return Stream.value(UserSettings.defaults());
-    }
-    return _db
-        .collection('customers')
+    return firestore
+        .collection('user_settings')
         .doc(userId)
-        .collection('settings')
-        .doc('preferences')
         .snapshots()
-        .map((doc) => UserSettings.fromFirestore(doc));
+        .map((doc) {
+      if (!doc.exists) {
+        return UserSettings.defaults();
+      }
+
+      final data = doc.data();
+      if (data == null) {
+        return UserSettings.defaults();
+      }
+
+      return UserSettings(
+        notifications: NotificationSettings.fromMap(data['notifications'] as Map<String, dynamic>? ?? {}),
+        privacy: PrivacySettings.fromMap(data['privacy'] as Map<String, dynamic>? ?? {}),
+        preferences: PreferenceSettings.fromMap(data['preferences'] as Map<String, dynamic>? ?? {}),
+      );
+    });
   }
 
-  /// Get user settings once
-  Future<UserSettings> getUserSettings(String userId) async {
-    if (userId.isEmpty) {
-      debugPrint('[PATH GUARD] blocked empty id in getUserSettings');
-      return UserSettings.defaults();
-    }
-    try {
-      final doc = await _db
-          .collection('customers')
-          .doc(userId)
-          .collection('settings')
-          .doc('preferences')
-          .get();
-      
-      return UserSettings.fromFirestore(doc);
-    } catch (e) {
-      debugPrint('Error getting user settings: $e');
-      return UserSettings.defaults();
-    }
+  Future<UserSettings?> getUserSettings(String userId) async {
+    final doc = await firestore
+        .collection('user_settings')
+        .doc(userId)
+        .get();
+
+    if (!doc.exists) return null;
+
+    final data = doc.data();
+    if (data == null) return null;
+
+    return UserSettings(
+      notifications: NotificationSettings.fromMap(data['notifications'] as Map<String, dynamic>? ?? {}),
+      privacy: PrivacySettings.fromMap(data['privacy'] as Map<String, dynamic>? ?? {}),
+      preferences: PreferenceSettings.fromMap(data['preferences'] as Map<String, dynamic>? ?? {}),
+    );
   }
 
-  /// Update notification settings
   Future<void> updateNotificationSettings(
     String userId,
     NotificationSettings settings,
   ) async {
-    if (userId.isEmpty) {
-      debugPrint('[PATH GUARD] blocked empty id in updateNotificationSettings');
-      return;
-    }
-    debugPrint('[WRITE GUARD] Direct write blocked in updateNotificationSettings');
-    await updateAllSettings(userId, UserSettings(
-      notifications: settings,
-      privacy: PrivacySettings.defaults(),
-      preferences: PreferenceSettings.defaults(),
-    ));
+    await firestore
+        .collection('user_settings')
+        .doc(userId)
+        .set(
+          {'notifications': settings.toMap()},
+          SetOptions(merge: true),
+        );
   }
 
-  /// Update privacy settings
   Future<void> updatePrivacySettings(
     String userId,
     PrivacySettings settings,
   ) async {
-    if (userId.isEmpty) {
-      debugPrint('[PATH GUARD] blocked empty id in updatePrivacySettings');
-      return;
-    }
-    debugPrint('[WRITE GUARD] Direct write blocked in updatePrivacySettings');
-    await updateAllSettings(userId, UserSettings(
-      notifications: NotificationSettings.defaults(),
-      privacy: settings,
-      preferences: PreferenceSettings.defaults(),
-    ));
+    await firestore
+        .collection('user_settings')
+        .doc(userId)
+        .set(
+          {'privacy': settings.toMap()},
+          SetOptions(merge: true),
+        );
   }
 
-  /// Update preference settings
   Future<void> updatePreferenceSettings(
     String userId,
-    PreferenceSettings settings,
+    Map<String, dynamic> preferences,
   ) async {
-    if (userId.isEmpty) {
-      debugPrint('[PATH GUARD] blocked empty id in updatePreferenceSettings');
-      return;
-    }
-    debugPrint('[WRITE GUARD] Direct write blocked in updatePreferenceSettings');
-    await updateAllSettings(userId, UserSettings(
-      notifications: NotificationSettings.defaults(),
-      privacy: PrivacySettings.defaults(),
-      preferences: settings,
-    ));
-  }
-
-  /// Update all settings at once
-  Future<void> updateAllSettings(
-    String userId,
-    UserSettings settings,
-  ) async {
-    if (userId.isEmpty) {
-      debugPrint('[PATH GUARD] blocked empty id in updateAllSettings');
-      return;
-    }
-    debugPrint('[WRITE GUARD] Direct write blocked in updateAllSettings');
-    try {
-      final callable = FirebaseFunctions.instance.httpsCallable('updateUserSettingsCallable');
-      await callable.call(settings.toMap());
-      debugPrint('✅ [Settings] Updated via callable');
-    } catch (e) {
-      debugPrint('❌ [Settings] Update failed: $e');
-      rethrow;
-    }
-  }
-
-  /// Initialize default settings for new user
-  Future<void> initializeDefaultSettings(String userId) async {
-    if (userId.isEmpty) {
-      debugPrint('[PATH GUARD] blocked empty id in initializeDefaultSettings');
-      return;
-    }
-    debugPrint('[WRITE GUARD] Direct write blocked in initializeDefaultSettings');
-    try {
-      final callable = FirebaseFunctions.instance.httpsCallable('initializeUserSettingsCallable');
-      await callable.call();
-      debugPrint('✅ [Settings] Initialized via callable');
-    } catch (e) {
-      debugPrint('❌ [Settings] Initialization failed: $e');
-    }
+    await firestore
+        .collection('user_settings')
+        .doc(userId)
+        .set(
+          preferences,
+          SetOptions(merge: true),
+        );
   }
 }

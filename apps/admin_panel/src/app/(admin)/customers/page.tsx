@@ -1,466 +1,446 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { 
-    Search, Mail, Smartphone, 
-    Activity, ShieldAlert, ShieldCheck, Clock, Hash,
-    Eye, ChevronLeft, ChevronRight, Users
-} from 'lucide-react';
-
+import { useState, useEffect } from 'react';
+import { PageHeader, DataTable, StatusBadge, Column, ConfirmDialog } from '@/components/ui';
+import { Search, Filter, X, User, Calendar, Wallet, ShoppingBag } from 'lucide-react';
 import { db } from '@/lib/firebase';
-import { 
-    collection, 
-    query, 
-    orderBy, 
-    limit, 
-    startAfter, 
-    getDocs, 
-    getCountFromServer,
-    Timestamp 
-} from 'firebase/firestore';
+import { collection, query, orderBy, limit as firestoreLimit, getDocs, where, Timestamp } from 'firebase/firestore';
 import { adminApi } from '@/lib/admin-api';
-import CustomerDetailDrawer from '@/components/CustomerDetailDrawer';
-
-import Table from '@/components/ui/Table';
-import { Input } from '@/components/ui/Input';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import { Card, CardContent } from '@/components/ui/Card';
-
-// Customer type based on Firestore schema
-interface Customer {
-    uid: string;
-    name: string;
-    phone: string;
-    email?: string;
-    photoUrl?: string;
-    createdAt: Timestamp | { seconds: number; nanoseconds: number };
-    lastActiveAt?: Timestamp | { seconds: number; nanoseconds: number };
-    isBlocked?: boolean;
-    walletBalance?: number;
-    totalBookings?: number;
-}
-
-// Skeleton row component
-function SkeletonRow() {
-    return (
-        <tr className="border-b border-slate-800/50">
-            <td className="py-4 px-4">
-                <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-2xl bg-slate-800 animate-pulse" />
-                    <div className="space-y-2">
-                        <div className="h-4 w-32 bg-slate-800 rounded animate-pulse" />
-                        <div className="h-3 w-20 bg-slate-800 rounded animate-pulse" />
-                    </div>
-                </div>
-            </td>
-            <td className="py-4 px-4"><div className="h-4 w-24 bg-slate-800 rounded animate-pulse" /></td>
-            <td className="py-4 px-4"><div className="h-4 w-40 bg-slate-800 rounded animate-pulse" /></td>
-            <td className="py-4 px-4"><div className="h-4 w-24 bg-slate-800 rounded animate-pulse" /></td>
-            <td className="py-4 px-4"><div className="h-4 w-24 bg-slate-800 rounded animate-pulse" /></td>
-            <td className="py-4 px-4"><div className="h-6 w-16 bg-slate-800 rounded animate-pulse" /></td>
-            <td className="py-4 px-4"><div className="h-8 w-24 bg-slate-800 rounded animate-pulse" /></td>
-        </tr>
-    );
-}
-
-// Empty state component
-function EmptyState({ searchTerm }: { searchTerm: string }) {
-    return (
-        <tr>
-            <td colSpan={7} className="py-16">
-                <div className="flex flex-col items-center justify-center text-center">
-                    <div className="w-20 h-20 rounded-3xl bg-slate-800/50 flex items-center justify-center mb-4">
-                        <Users size={40} className="text-slate-600" />
-                    </div>
-                    <h3 className="text-lg font-black text-white uppercase tracking-wide mb-2">
-                        {searchTerm ? 'No Results Found' : 'No Customers Yet'}
-                    </h3>
-                    <p className="text-sm font-medium text-slate-500 max-w-sm">
-                        {searchTerm 
-                            ? `No customers found matching "${searchTerm}". Try a different search term.`
-                            : 'There are no customers in the system yet.'
-                        }
-                    </p>
-                </div>
-            </td>
-        </tr>
-    );
-}
 
 export default function CustomersPage() {
-    const [customers, setCustomers] = useState<Customer[]>([]);
-    const [totalCount, setTotalCount] = useState(0);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [loading, setLoading] = useState(true);
-    const [initialLoading, setInitialLoading] = useState(true);
-    const [lastDoc, setLastDoc] = useState<any>(null);
-    const [hasMore, setHasMore] = useState(true);
-    const [page, setPage] = useState(1);
-    const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
-    const [drawerOpen, setDrawerOpen] = useState(false);
-    const LIMIT = 20;
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [filteredCustomers, setFilteredCustomers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [recentBookings, setRecentBookings] = useState<any[]>([]);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    variant?: 'default' | 'danger';
+    requireInput?: boolean;
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
-    // Debounced search term
-    const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    fetchCustomers();
+  }, []);
 
-    // Debounce search (300ms)
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            setDebouncedSearch(searchTerm);
-            setPage(1);
-            setLastDoc(null);
-        }, 300);
-        return () => clearTimeout(timer);
-    }, [searchTerm]);
+  useEffect(() => {
+    filterCustomers();
+  }, [customers, searchTerm, statusFilter]);
 
-    // Fetch customers from Firestore
-    const fetchCustomers = useCallback(async (isSearch: boolean = false) => {
-        setLoading(true);
+  const fetchCustomers = async () => {
+    try {
+      setLoading(true);
+      const customersQuery = query(
+        collection(db, 'customers'),
+        orderBy('createdAt', 'desc'),
+        firestoreLimit(100)
+      );
+      const snapshot = await getDocs(customersQuery);
+      const customersData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setCustomers(customersData);
+    } catch (error) {
+      console.error('Error fetching customers:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filterCustomers = () => {
+    let filtered = [...customers];
+
+    if (statusFilter !== 'all') {
+      if (statusFilter === 'active') {
+        filtered = filtered.filter(c => !c.blocked);
+      } else if (statusFilter === 'blocked') {
+        filtered = filtered.filter(c => c.blocked === true);
+      }
+    }
+
+    if (searchTerm) {
+      filtered = filtered.filter(c => 
+        c.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.phone?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    setFilteredCustomers(filtered);
+  };
+
+  const handleViewDetails = async (customer: any) => {
+    setSelectedCustomer(customer);
+    
+    try {
+      const bookingsQuery = query(
+        collection(db, 'bookings'),
+        where('customerId', '==', customer.id),
+        orderBy('createdAt', 'desc'),
+        firestoreLimit(5)
+      );
+      const bookingsSnapshot = await getDocs(bookingsQuery);
+      const bookingsData = bookingsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setRecentBookings(bookingsData);
+    } catch (error) {
+      console.error('Error fetching bookings:', error);
+      setRecentBookings([]);
+    }
+    
+    setShowDetailsModal(true);
+  };
+
+  const handleBlock = (customerId: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Block Customer',
+      message: 'Are you sure you want to block this customer? They will not be able to place new bookings.',
+      variant: 'danger',
+      requireInput: true,
+      onConfirm: async () => {
         try {
-            const customersRef = collection(db, 'customers');
-            
-            let q;
-            
-            if (isSearch && debouncedSearch) {
-                // For search, we need to get all and filter client-side since Firestore doesn't support full-text search
-                // Get total count first
-                const countSnapshot = await getCountFromServer(customersRef);
-                setTotalCount(countSnapshot.data().count);
-                
-                // Query all customers ordered by createdAt
-                q = query(
-                    customersRef,
-                    orderBy('createdAt', 'desc'),
-                    limit(1000) // Get enough for search filtering
-                );
-            } else {
-                // Get total count
-                const countSnapshot = await getCountFromServer(customersRef);
-                setTotalCount(countSnapshot.data().count);
-                
-                if (lastDoc) {
-                    q = query(
-                        customersRef,
-                        orderBy('createdAt', 'desc'),
-                        startAfter(lastDoc),
-                        limit(LIMIT)
-                    );
-                } else {
-                    q = query(
-                        customersRef,
-                        orderBy('createdAt', 'desc'),
-                        limit(LIMIT)
-                    );
-                }
-            }
-
-            const snapshot = await getDocs(q);
-            
-            let fetchedCustomers = snapshot.docs.map(doc => {
-                const data = doc.data() as Record<string, any>;
-                return {
-                    uid: doc.id,
-                    ...data
-                } as Customer;
-            });
-
-            // Client-side search filtering if needed
-            if (isSearch && debouncedSearch) {
-                const searchLower = debouncedSearch.toLowerCase();
-                fetchedCustomers = fetchedCustomers.filter(c => 
-                    (c.name?.toLowerCase().includes(searchLower)) ||
-                    (c.phone?.toLowerCase().includes(searchLower)) ||
-                    (c.email?.toLowerCase().includes(searchLower))
-                );
-                // Apply pagination to filtered results
-                const startIdx = (page - 1) * LIMIT;
-                fetchedCustomers = fetchedCustomers.slice(startIdx, startIdx + LIMIT);
-            }
-
-            setCustomers(fetchedCustomers);
-            setHasMore(snapshot.docs.length === LIMIT);
-
-            // Set last doc for next page
-            if (snapshot.docs.length > 0 && !isSearch) {
-                setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
-            }
-        } catch (e: any) {
-            console.error('Failed to fetch customers:', e);
-            
-            // Handle specific Firestore errors
-            if (e.code === 'permission-denied') {
-                alert('Permission denied. You do not have access to customer data.');
-            } else if (e.code === 'unavailable') {
-                alert('Service unavailable. Please check your connection and try again.');
-            } else if (e.code === 'internal') {
-                alert('Internal error. Please try again later.');
-            }
-        } finally {
-            setLoading(false);
-            setInitialLoading(false);
+          await adminApi.blockUser(customerId, true);
+          await fetchCustomers();
+          setConfirmDialog({ ...confirmDialog, isOpen: false });
+        } catch (error) {
+          console.error('Error blocking customer:', error);
         }
-    }, [debouncedSearch, lastDoc, page]);
+      },
+    });
+  };
 
-    // Initial fetch and search
-    useEffect(() => {
-        const isSearch = debouncedSearch.length > 0;
-        fetchCustomers(isSearch);
-    }, [debouncedSearch, page]);
-
-    // Handle pagination
-    const handleNextPage = () => {
-        if (hasMore && !loading) {
-            setPage(p => p + 1);
+  const handleUnblock = (customerId: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Unblock Customer',
+      message: 'Are you sure you want to unblock this customer? They will be able to place bookings again.',
+      onConfirm: async () => {
+        try {
+          await adminApi.blockUser(customerId, false);
+          await fetchCustomers();
+          setConfirmDialog({ ...confirmDialog, isOpen: false });
+        } catch (error) {
+          console.error('Error unblocking customer:', error);
         }
-    };
+      },
+    });
+  };
 
-    const handlePrevPage = () => {
-        if (page > 1 && !loading) {
-            setPage(p => p - 1);
-            setLastDoc(null); // Reset for simplicity
-        }
-    };
-
-    // Handle view details
-    const handleViewDetails = (customerId: string) => {
-        setSelectedCustomerId(customerId);
-        setDrawerOpen(true);
-    };
-
-    // Handle action complete (block/unblock)
-    const handleActionComplete = () => {
-        fetchCustomers(debouncedSearch.length > 0);
-    };
-
-    // Format date helper
-    const formatDate = (timestamp: any) => {
-        if (!timestamp) return 'N/A';
-        const date = timestamp.seconds ? new Date(timestamp.seconds * 1000) : new Date(timestamp);
-        return date.toLocaleDateString('en-IN', {
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric'
-        });
-    };
-
-    // Table columns
-    const columns = [
-        {
-            key: 'customer',
-            label: 'Customer',
-            render: (c: Customer) => (
-                <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center overflow-hidden">
-                        {c.photoUrl ? (
-                            <img src={c.photoUrl} alt={c.name} className="w-full h-full object-cover" />
-                        ) : (
-                            <span className="text-xs font-black text-slate-500">{c.name?.[0] || 'U'}</span>
-                        )}
-                    </div>
-                    <div className="flex flex-col">
-                        <span className="font-black text-white text-sm tracking-tight">{c.name || 'Anonymous User'}</span>
-                        <div className="flex items-center gap-1 mt-0.5">
-                            <Hash size={10} className="text-indigo-500" />
-                            <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-tighter">{c.uid.substring(0, 10)}</span>
-                        </div>
-                    </div>
-                </div>
-            )
-        },
-        {
-            key: 'phone',
-            label: 'Phone',
-            render: (c: Customer) => (
-                <div className="flex items-center gap-2">
-                    <Smartphone size={12} className="text-emerald-500" />
-                    <span className="text-sm font-bold text-slate-300 uppercase tracking-wider">{c.phone || 'N/A'}</span>
-                </div>
-            )
-        },
-        {
-            key: 'email',
-            label: 'Email',
-            render: (c: Customer) => (
-                <div className="flex items-center gap-2">
-                    <Mail size={12} className="text-indigo-500" />
-                    <span className="text-sm font-medium text-slate-400">{c.email || 'N/A'}</span>
-                </div>
-            )
-        },
-        {
-            key: 'joinedAt',
-            label: 'Joined Date',
-            render: (c: Customer) => (
-                <div className="flex items-center gap-2">
-                    <Clock size={12} className="text-slate-600" />
-                    <span className="text-sm font-medium text-slate-300">{formatDate(c.createdAt)}</span>
-                </div>
-            )
-        },
-        {
-            key: 'lastActive',
-            label: 'Last Active',
-            render: (c: Customer) => (
-                <div className="flex items-center gap-2">
-                    <Clock size={12} className="text-purple-500" />
-                    <span className="text-sm font-medium text-slate-300">
-                        {c.lastActiveAt ? formatDate(c.lastActiveAt) : 'Never'}
-                    </span>
-                </div>
-            )
-        },
-        {
-            key: 'status',
-            label: 'Status',
-            render: (c: Customer) => (
-                c.isBlocked ? (
-                    <Badge className="bg-red-500/10 text-red-400 border-red-500/20 font-black text-[9px] uppercase tracking-widest px-2.5 py-1">
-                        <ShieldAlert size={10} className="mr-1.5" /> Blocked
-                    </Badge>
-                ) : (
-                    <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 font-black text-[9px] uppercase tracking-widest px-2.5 py-1">
-                        <ShieldCheck size={10} className="mr-1.5" /> Active
-                    </Badge>
-                )
-            )
-        },
-        {
-            key: 'actions',
-            label: 'Actions',
-            align: 'right' as const,
-            render: (c: Customer) => (
-                <div className="flex items-center justify-end gap-2">
-                    <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => handleViewDetails(c.uid)}
-                        className="h-9 border-slate-800 text-[10px] font-black uppercase tracking-widest rounded-xl bg-slate-900/50 text-slate-400 hover:text-white hover:border-indigo-500/30"
-                    >
-                        <Eye size={14} className="mr-2" /> Details
-                    </Button>
-                </div>
-            )
-        }
-    ];
-
-    return (
-        <>
-            <div className="space-y-8 max-w-[1600px] mx-auto pb-20">
-                {/* Header */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div>
-                        <h1 className="text-4xl font-black text-white tracking-tight leading-tight uppercase">Customer Registry</h1>
-                        <div className="flex items-center gap-2 mt-1">
-                            <p className="text-slate-500 text-sm font-medium">Manage and view all registered customers.</p>
-                            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-indigo-500/10 text-indigo-400 rounded-md border border-indigo-500/20 text-[10px] font-black uppercase tracking-widest">
-                                <Activity size={10} className="animate-pulse" />
-                                {totalCount} Total
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Search */}
-                    <div className="relative group">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 h-4 w-4 group-focus-within:text-indigo-400 transition-colors" />
-                        <Input
-                            placeholder="Search by name or phone..."
-                            className="w-full md:w-80 pl-10 bg-slate-900/50 border-slate-800 text-slate-200 placeholder:text-slate-600 rounded-xl h-12 focus:ring-indigo-500/50 focus:border-indigo-500/50"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
-                    </div>
-                </div>
-
-                {/* Table */}
-                <Card className="border-slate-800 bg-slate-900/40 backdrop-blur-md overflow-hidden rounded-3xl">
-                    <CardContent className="p-0">
-                        {/* Table Header */}
-                        <div className="overflow-x-auto">
-                            <table className="w-full">
-                                <thead>
-                                    <tr className="border-b border-slate-800/50">
-                                        {columns.map((col) => (
-                                            <th 
-                                                key={col.key} 
-                                                className={`py-4 px-4 text-left text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ${col.align === 'right' ? 'text-right' : ''}`}
-                                            >
-                                                {col.label}
-                                            </th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-800/50">
-                                    {initialLoading ? (
-                                        // Show skeleton while initial loading
-                                        Array.from({ length: 5 }).map((_, i) => (
-                                            <SkeletonRow key={i} />
-                                        ))
-                                    ) : customers.length === 0 ? (
-                                        <EmptyState searchTerm={debouncedSearch} />
-                                    ) : (
-                                        customers.map((customer) => (
-                                            <tr 
-                                                key={customer.uid} 
-                                                className="hover:bg-white/[0.02] transition-colors"
-                                            >
-                                                {columns.map((col) => (
-                                                    <td 
-                                                        key={col.key} 
-                                                        className={`py-4 px-4 ${col.align === 'right' ? 'text-right' : ''}`}
-                                                    >
-                                                        {col.render(customer)}
-                                                    </td>
-                                                ))}
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {/* Pagination */}
-                        {!initialLoading && customers.length > 0 && (
-                            <div className="flex items-center justify-between p-6 border-t border-slate-800/50">
-                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
-                                    Showing {(page - 1) * LIMIT + 1} to {Math.min(page * LIMIT, totalCount)} of {totalCount} records
-                                </span>
-                                <div className="flex items-center gap-2">
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        disabled={page === 1 || loading}
-                                        onClick={handlePrevPage}
-                                        className="h-8 w-8 p-0 rounded-lg border-slate-800 bg-slate-900/50 text-slate-400 hover:text-white disabled:opacity-50"
-                                    >
-                                        <ChevronLeft size={14} />
-                                    </Button>
-                                    <div className="h-8 px-3 flex items-center bg-indigo-500/10 border border-indigo-500/20 rounded-lg">
-                                        <span className="text-xs font-black text-indigo-400">{page}</span>
-                                    </div>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        disabled={!hasMore || loading}
-                                        onClick={handleNextPage}
-                                        className="h-8 w-8 p-0 rounded-lg border-slate-800 bg-slate-900/50 text-slate-400 hover:text-white disabled:opacity-50"
-                                    >
-                                        <ChevronRight size={14} />
-                                    </Button>
-                                </div>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+  const columns: Column[] = [
+    { 
+      key: 'name', 
+      label: 'Customer Name',
+      sortable: true,
+      render: (item) => (
+        <div className="flex items-center gap-2">
+          {item.photoUrl ? (
+            <img src={item.photoUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
+              <User size={16} className="text-indigo-600" />
             </div>
+          )}
+          <span className="text-sm font-medium text-gray-900">{item.name || 'N/A'}</span>
+        </div>
+      )
+    },
+    { 
+      key: 'phone', 
+      label: 'Phone Number',
+      render: (item) => (
+        <span className="text-sm text-gray-900">{item.phone || 'N/A'}</span>
+      )
+    },
+    { 
+      key: 'city', 
+      label: 'City',
+      render: (item) => (
+        <span className="text-sm text-gray-600">{item.city || item.district || 'N/A'}</span>
+      )
+    },
+    { 
+      key: 'totalBookings', 
+      label: 'Total Bookings',
+      render: (item) => (
+        <span className="text-sm text-gray-900">{item.totalBookings || 0}</span>
+      )
+    },
+    { 
+      key: 'completedBookings', 
+      label: 'Completed',
+      render: (item) => (
+        <span className="text-sm text-gray-900">{item.completedBookings || 0}</span>
+      )
+    },
+    { 
+      key: 'walletBalance', 
+      label: 'Wallet Balance',
+      render: (item) => (
+        <span className="text-sm font-medium text-gray-900">₹{item.walletBalance || 0}</span>
+      )
+    },
+    {
+      key: 'status',
+      label: 'Account Status',
+      render: (item) => (
+        <StatusBadge 
+          status={item.blocked ? 'Blocked' : 'Active'} 
+          variant={item.blocked ? 'error' : 'success'}
+        />
+      )
+    },
+    {
+      key: 'actions',
+      label: 'Actions',
+      align: 'right',
+      render: (item) => (
+        <div className="flex items-center gap-2 justify-end">
+          <button
+            onClick={() => handleViewDetails(item)}
+            className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            View
+          </button>
+          {item.blocked ? (
+            <button
+              onClick={() => handleUnblock(item.id)}
+              className="px-3 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              Unblock
+            </button>
+          ) : (
+            <button
+              onClick={() => handleBlock(item.id)}
+              className="px-3 py-1 text-xs bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              Block
+            </button>
+          )}
+        </div>
+      )
+    },
+  ];
 
-            {/* Customer Detail Drawer */}
-            <CustomerDetailDrawer
-                customerId={selectedCustomerId}
-                isOpen={drawerOpen}
-                onClose={() => setDrawerOpen(false)}
-                onActionComplete={handleActionComplete}
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Customers"
+        description="Manage and monitor all platform customers"
+      />
+
+      {/* Filters */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+            <input
+              type="text"
+              placeholder="Search by name or phone..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
             />
-        </>
-    );
+            {searchTerm && (
+              <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            )}
+          </div>
+
+          <div className="relative">
+            <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent appearance-none bg-white"
+            >
+              <option value="all">All Status</option>
+              <option value="active">Active</option>
+              <option value="blocked">Blocked</option>
+            </select>
+          </div>
+
+          <div className="flex items-center justify-end">
+            <span className="text-sm text-gray-600">
+              Showing {filteredCustomers.length} of {customers.length} customers
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Customers Table */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <DataTable columns={columns} data={filteredCustomers} loading={loading} emptyMessage="No customers found" />
+      </div>
+
+      {/* Customer Details Modal */}
+      {showDetailsModal && selectedCustomer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-900">Customer Details</h2>
+              <button onClick={() => setShowDetailsModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={24} />
+              </button>
+            </div>
+            <div className="p-6 space-y-6">
+              {/* Profile Section */}
+              <div className="flex items-start gap-6">
+                {selectedCustomer.photoUrl ? (
+                  <img src={selectedCustomer.photoUrl} alt="" className="w-24 h-24 rounded-full object-cover" />
+                ) : (
+                  <div className="w-24 h-24 rounded-full bg-indigo-100 flex items-center justify-center">
+                    <User size={48} className="text-indigo-600" />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <h3 className="text-2xl font-bold text-gray-900">{selectedCustomer.name}</h3>
+                  <p className="text-gray-600">{selectedCustomer.phone}</p>
+                  <p className="text-gray-600">{selectedCustomer.email || 'N/A'}</p>
+                  <div className="mt-2">
+                    <StatusBadge 
+                      status={selectedCustomer.blocked ? 'Blocked' : 'Active'} 
+                      variant={selectedCustomer.blocked ? 'error' : 'success'}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Location Info */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Location Information</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-600">City</p>
+                    <p className="text-sm font-medium text-gray-900">{selectedCustomer.city || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">District</p>
+                    <p className="text-sm font-medium text-gray-900">{selectedCustomer.district || 'N/A'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Statistics */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Statistics</h3>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <ShoppingBag size={20} className="text-indigo-600" />
+                      <p className="text-sm text-gray-600">Total Bookings</p>
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">{selectedCustomer.totalBookings || 0}</p>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Calendar size={20} className="text-green-600" />
+                      <p className="text-sm text-gray-600">Completed</p>
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">{selectedCustomer.completedBookings || 0}</p>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <X size={20} className="text-red-600" />
+                      <p className="text-sm text-gray-600">Cancelled</p>
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">{selectedCustomer.cancelledBookings || 0}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Financial Info */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Financial Information</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Wallet size={20} className="text-green-600" />
+                      <p className="text-sm text-gray-600">Wallet Balance</p>
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">₹{selectedCustomer.walletBalance || 0}</p>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <ShoppingBag size={20} className="text-indigo-600" />
+                      <p className="text-sm text-gray-600">Total Spent</p>
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">₹{selectedCustomer.totalSpent || 0}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Recent Bookings */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Bookings</h3>
+                {recentBookings.length > 0 ? (
+                  <div className="space-y-2">
+                    {recentBookings.map((booking) => (
+                      <div key={booking.id} className="border border-gray-200 rounded-lg p-3 flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{booking.serviceType || 'N/A'}</p>
+                          <p className="text-xs text-gray-600">
+                            {booking.createdAt instanceof Timestamp 
+                              ? booking.createdAt.toDate().toLocaleDateString()
+                              : 'N/A'}
+                          </p>
+                        </div>
+                        <StatusBadge status={booking.status} variant="info" />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 text-center py-4">No recent bookings</p>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-3 pt-4 border-t border-gray-200">
+                {selectedCustomer.blocked ? (
+                  <button
+                    onClick={() => {
+                      setShowDetailsModal(false);
+                      handleUnblock(selectedCustomer.id);
+                    }}
+                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                  >
+                    Unblock Customer
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setShowDetailsModal(false);
+                      handleBlock(selectedCustomer.id);
+                    }}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                  >
+                    Block Customer
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        variant={confirmDialog.variant}
+        requireInput={confirmDialog.requireInput}
+        inputLabel="Block Reason"
+        inputPlaceholder="Enter reason for blocking..."
+      />
+    </div>
+  );
 }

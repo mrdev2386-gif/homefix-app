@@ -35,7 +35,7 @@
       "port": 5002
     },
     "firestore": {
-      "port": 8082
+      "port": 8083
     },
     "storage": {
       "port": 9198

@@ -1,701 +1,484 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { 
-    collection, 
-    query, 
-    orderBy, 
-    onSnapshot, 
-    where,
-    limit,
-    startAfter,
-    getDocs
-} from 'firebase/firestore';
+import { useState, useEffect } from 'react';
+import { PageHeader, DataTable, StatusBadge, Column, ConfirmDialog } from '@/components/ui';
+import { Search, Filter, X, Image as ImageIcon } from 'lucide-react';
 import { db } from '@/lib/firebase';
+import { collection, query, where, orderBy, limit as firestoreLimit, getDocs, Timestamp } from 'firebase/firestore';
 import { adminApi } from '@/lib/admin-api';
-import StatusBadge from '@/components/ui/StatusBadge';
-import Table from '@/components/ui/Table';
-import { Input } from '@/components/ui/Input';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
-import {
-    Search,
-    Calendar,
-    Filter,
-    XCircle,
-    CheckCircle2,
-    RefreshCw,
-    ArrowRightCircle,
-    Eye,
-    Clock,
-    MapPin,
-    User,
-    Phone,
-    FileText,
-    ImageIcon,
-    ChevronLeft,
-    ChevronRight,
-    Loader2,
-    AlertCircle,
-    X
-} from 'lucide-react';
-
-interface CustomRequest {
-    id: string;
-    customerId: string;
-    customerName: string;
-    phone: string;
-    serviceTitle: string;
-    description: string;
-    location: string;
-    images: string[];
-    status: 'pending' | 'reviewed' | 'rejected' | 'converted';
-    createdAt: { seconds: number; nanoseconds: number };
-    adminNotes?: string;
-}
-
-const ITEMS_PER_PAGE = 10;
-
-const statusFilters = [
-    { value: 'all', label: 'All Status' },
-    { value: 'pending', label: 'Pending' },
-    { value: 'reviewed', label: 'Reviewed' },
-    { value: 'rejected', label: 'Rejected' },
-    { value: 'converted', label: 'Converted' }
-];
 
 export default function CustomRequestsPage() {
-    const [requests, setRequests] = useState<CustomRequest[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [statusFilter, setStatusFilter] = useState('all');
-    const [dateFilter, setDateFilter] = useState('');
-    const [processingId, setProcessingId] = useState<string | null>(null);
-    const [selectedRequest, setSelectedRequest] = useState<CustomRequest | null>(null);
-    const [isDetailsOpen, setIsDetailsOpen] = useState(false);
-    const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
-    const [rejectNotes, setRejectNotes] = useState('');
-    const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-    
-    // Pagination
-    const [lastDoc, setLastDoc] = useState<any>(null);
-    const [hasMore, setHasMore] = useState(true);
-    const [currentPage, setCurrentPage] = useState(1);
+  const [requests, setRequests] = useState<any[]>([]);
+  const [filteredRequests, setFilteredRequests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedRequest, setSelectedRequest] = useState<any>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [availableTechnicians, setAvailableTechnicians] = useState<any[]>([]);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    variant?: 'default' | 'danger';
+    requireInput?: boolean;
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
-    // Show toast notification
-    const showToast = (type: 'success' | 'error', message: string) => {
-        setToast({ type, message });
-        setTimeout(() => setToast(null), 4000);
-    };
+  useEffect(() => {
+    fetchRequests();
+  }, []);
 
-    // Build query based on filters
-    const buildQuery = useCallback((page: number = 1, lastDocument: any = null) => {
-        if (!db) return null;
-        
-        let constraints: any[] = [];
-        
-        // Add status filter
-        if (statusFilter !== 'all') {
-            constraints.push(where('status', '==', statusFilter));
-        }
-        
-        // Add order
-        constraints.push(orderBy('createdAt', 'desc'));
-        
-        // Add pagination
-        if (page === 1) {
-            constraints.push(limit(ITEMS_PER_PAGE));
-        } else if (lastDocument) {
-            constraints.push(startAfter(lastDocument));
-            constraints.push(limit(ITEMS_PER_PAGE));
-        }
-        
-        return query(collection(db, 'customRequests'), ...constraints);
-    }, [statusFilter]);
+  useEffect(() => {
+    filterRequests();
+  }, [requests, searchTerm, statusFilter]);
 
-    // Fetch requests
-    const fetchRequests = useCallback(async (page: number = 1, reset: boolean = false) => {
-        if (!db) return;
-        
-        setLoading(true);
+  const fetchRequests = async () => {
+    try {
+      setLoading(true);
+      const requestsQuery = query(
+        collection(db, 'custom_requests'),
+        orderBy('createdAt', 'desc'),
+        firestoreLimit(100)
+      );
+      const snapshot = await getDocs(requestsQuery);
+      const requestsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setRequests(requestsData);
+    } catch (error) {
+      console.error('Error fetching requests:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filterRequests = () => {
+    let filtered = [...requests];
+
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(r => r.status === statusFilter);
+    }
+
+    if (searchTerm) {
+      filtered = filtered.filter(r => 
+        r.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.customerName?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    setFilteredRequests(filtered);
+  };
+
+  const handleViewDetails = (request: any) => {
+    setSelectedRequest(request);
+    setShowDetailsModal(true);
+  };
+
+  const handleAssignTechnician = async (request: any) => {
+    setSelectedRequest(request);
+    try {
+      const techQuery = query(
+        collection(db, 'technicians'),
+        where('status', '==', 'approved'),
+        where('isOnline', '==', true),
+        firestoreLimit(20)
+      );
+      const techSnapshot = await getDocs(techQuery);
+      let techs = techSnapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data() 
+      })) as Array<{ id: string; district?: string; [key: string]: any }>;
+      
+      // Filter by district if available
+      if (request.district) {
+        techs = techs.filter(t => t.district === request.district);
+      }
+      
+      setAvailableTechnicians(techs);
+      setShowAssignModal(true);
+    } catch (error) {
+      console.error('Error fetching technicians:', error);
+    }
+  };
+
+  const handleMarkResolved = (requestId: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Mark as Resolved',
+      message: 'Are you sure you want to mark this request as resolved?',
+      onConfirm: async () => {
         try {
-            let q;
-            
-            if (statusFilter === 'all') {
-                // No status filter - simple query
-                if (page === 1) {
-                    q = query(
-                        collection(db, 'customRequests'),
-                        orderBy('createdAt', 'desc'),
-                        limit(ITEMS_PER_PAGE)
-                    );
-                } else {
-                    q = query(
-                        collection(db, 'customRequests'),
-                        orderBy('createdAt', 'desc'),
-                        startAfter(lastDoc),
-                        limit(ITEMS_PER_PAGE)
-                    );
-                }
-            } else {
-                // With status filter - need composite index
-                if (page === 1) {
-                    q = query(
-                        collection(db, 'customRequests'),
-                        where('status', '==', statusFilter),
-                        orderBy('createdAt', 'desc'),
-                        limit(ITEMS_PER_PAGE)
-                    );
-                } else {
-                    q = query(
-                        collection(db, 'customRequests'),
-                        where('status', '==', statusFilter),
-                        orderBy('createdAt', 'desc'),
-                        startAfter(lastDoc),
-                        limit(ITEMS_PER_PAGE)
-                    );
-                }
-            }
-            
-            const snapshot = await getDocs(q);
-            const newRequests: CustomRequest[] = [];
-            snapshot.docs.forEach((d) => {
-                const docData = d.data() as Record<string, unknown>;
-                const item: CustomRequest = {
-                    id: d.id,
-                    customerId: docData.customerId as string || '',
-                    customerName: docData.customerName as string || '',
-                    phone: docData.phone as string || '',
-                    serviceTitle: docData.serviceTitle as string || '',
-                    description: docData.description as string || '',
-                    location: docData.location as string || '',
-                    images: (docData.images as string[]) || [],
-                    status: (docData.status as CustomRequest['status']) || 'pending',
-                    createdAt: docData.createdAt as CustomRequest['createdAt'] || { seconds: 0, nanoseconds: 0 },
-                    adminNotes: docData.adminNotes as string | undefined,
-                };
-                newRequests.push(item);
-            });
-            
-            if (page === 1 || reset) {
-                setRequests(newRequests);
-            } else {
-                setRequests(prev => [...prev, ...newRequests]);
-            }
-            
-            setLastDoc(snapshot.docs[snapshot.docs.length - 1]);
-            setHasMore(snapshot.docs.length === ITEMS_PER_PAGE);
-            setCurrentPage(page);
-        } catch (error: any) {
-            console.error('Error fetching requests:', error);
-            showToast('error', `Failed to load requests: ${error.message}`);
-        } finally {
-            setLoading(false);
+          await adminApi.convertCustomRequest(requestId);
+          await fetchRequests();
+          setConfirmDialog({ ...confirmDialog, isOpen: false });
+        } catch (error) {
+          console.error('Error marking resolved:', error);
         }
-    }, [statusFilter, lastDoc]);
-
-    // Initial load and filter changes
-    useEffect(() => {
-        fetchRequests(1, true);
-    }, [statusFilter]);
-
-    // Real-time listener for updates
-    useEffect(() => {
-        if (!db) return;
-        
-        const q = query(collection(db, 'customRequests'), orderBy('createdAt', 'desc'));
-        const unsubscribe = onSnapshot(q, (snap) => {
-            // Only update if on first page and no filters
-            if (currentPage === 1 && statusFilter === 'all' && !searchTerm) {
-                setRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })) as CustomRequest[]);
-                setLoading(false);
-            }
-        });
-        
-        return () => unsubscribe();
-    }, [currentPage, statusFilter, searchTerm]);
-
-    // Filter requests locally for search
-    const filteredRequests = requests.filter(r => {
-        const matchesSearch = !searchTerm || 
-            r.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            r.phone?.includes(searchTerm) ||
-            r.serviceTitle?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            r.id.toLowerCase().includes(searchTerm.toLowerCase());
-        
-        const matchesDate = !dateFilter || 
-            new Date(r.createdAt?.seconds * 1000).toISOString().split('T')[0] === dateFilter;
-        
-        return matchesSearch && matchesDate;
+      },
     });
+  };
 
-    // Handle actions
-    const handleMarkAsReviewed = async (requestId: string) => {
-        setProcessingId(requestId);
+  const handleReject = (requestId: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Reject Request',
+      message: 'Are you sure you want to reject this custom request?',
+      variant: 'danger',
+      requireInput: true,
+      onConfirm: async () => {
         try {
-            await adminApi.markCustomRequestAsReviewed(requestId);
-            showToast('success', 'Request marked as reviewed');
-            fetchRequests(currentPage, true);
-        } catch (error: any) {
-            console.error('Error marking as reviewed:', error);
-            showToast('error', `Failed: ${error.message}`);
-        } finally {
-            setProcessingId(null);
+          await adminApi.rejectCustomRequest(requestId, 'Rejected by admin');
+          await fetchRequests();
+          setConfirmDialog({ ...confirmDialog, isOpen: false });
+        } catch (error) {
+          console.error('Error rejecting request:', error);
         }
+      },
+    });
+  };
+
+  const handleAssign = async (requestId: string, technicianId: string) => {
+    try {
+      await adminApi.approveServiceRequest(requestId, technicianId);
+      await fetchRequests();
+      setShowAssignModal(false);
+    } catch (error) {
+      console.error('Error assigning technician:', error);
+    }
+  };
+
+  const getStatusVariant = (status: string): 'success' | 'warning' | 'error' | 'info' | 'default' => {
+    const statusMap: Record<string, 'success' | 'warning' | 'error' | 'info' | 'default'> = {
+      'pending': 'warning',
+      'assigned': 'info',
+      'in_progress': 'info',
+      'resolved': 'success',
+      'rejected': 'error',
     };
+    return statusMap[status] || 'default';
+  };
 
-    const handleConvertToBooking = async (requestId: string) => {
-        setProcessingId(requestId);
-        try {
-            const result = await adminApi.convertCustomRequest(requestId);
-            showToast('success', 'Request converted to booking successfully');
-            fetchRequests(currentPage, true);
-        } catch (error: any) {
-            console.error('Error converting to booking:', error);
-            showToast('error', `Failed: ${error.message}`);
-        } finally {
-            setProcessingId(null);
-        }
-    };
+  const formatStatus = (status: string): string => {
+    return status.split('_').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1)
+    ).join(' ');
+  };
 
-    const handleReject = () => {
-        if (!selectedRequest || !rejectNotes.trim()) return;
-        
-        setProcessingId(selectedRequest.id);
-        adminApi.rejectCustomRequest(selectedRequest.id, rejectNotes)
-            .then(() => {
-                showToast('success', 'Request rejected');
-                setIsRejectModalOpen(false);
-                setRejectNotes('');
-                fetchRequests(currentPage, true);
-            })
-            .catch((error: any) => {
-                console.error('Error rejecting request:', error);
-                showToast('error', `Failed: ${error.message}`);
-            })
-            .finally(() => {
-                setProcessingId(null);
-            });
-    };
-
-    const openRejectModal = (request: CustomRequest) => {
-        setSelectedRequest(request);
-        setIsRejectModalOpen(true);
-    };
-
-    const openDetails = (request: CustomRequest) => {
-        setSelectedRequest(request);
-        setIsDetailsOpen(true);
-    };
-
-    const columns = [
-        {
-            key: 'id',
-            label: 'Reference',
-            render: (r: CustomRequest) => (
-                <div className="flex flex-col">
-                    <span className="font-mono text-[10px] font-black text-indigo-400 tracking-wider">#{r.id.substring(0, 8).toUpperCase()}</span>
-                    <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">
-                        {r.createdAt ? new Date(r.createdAt.seconds * 1000).toLocaleDateString() : 'N/A'}
-                    </span>
-                </div>
-            )
-        },
-        {
-            key: 'serviceTitle',
-            label: 'Service',
-            render: (r: CustomRequest) => (
-                <div className="flex flex-col max-w-xs">
-                    <span className="font-black text-white text-sm tracking-tight truncate">{r.serviceTitle || 'Custom Service'}</span>
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1 truncate">{r.description?.substring(0, 50)}</span>
-                </div>
-            )
-        },
-        {
-            key: 'customer',
-            label: 'Customer',
-            render: (r: CustomRequest) => (
-                <div className="flex items-center gap-3">
-                    <div className="flex flex-col">
-                        <span className="text-sm font-bold text-slate-200">{r.customerName || 'Unknown'}</span>
-                        <span className="text-[10px] font-medium text-slate-500">{r.phone || 'No phone'}</span>
-                    </div>
-                </div>
-            )
-        },
-        {
-            key: 'location',
-            label: 'Location',
-            render: (r: CustomRequest) => (
-                <span className="text-xs text-slate-400 max-w-[120px] truncate block">{r.location || 'N/A'}</span>
-            )
-        },
-        {
-            key: 'status',
-            label: 'Status',
-            render: (r: CustomRequest) => <StatusBadge status={r.status || 'pending'} />
-        },
-        {
-            key: 'actions',
-            label: 'Actions',
-            align: 'right' as const,
-            render: (r: CustomRequest) => (
-                <div className="flex justify-end gap-2 pr-2">
-                    <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-slate-500 hover:text-white hover:bg-slate-800 font-black text-[9px] uppercase tracking-widest px-3 h-9 rounded-xl"
-                        onClick={() => openDetails(r)}
-                    >
-                        <Eye size={14} className="mr-1" /> View
-                    </Button>
-                    {r.status === 'pending' && (
-                        <>
-                            <Button
-                                size="sm"
-                                className="bg-blue-600 hover:bg-blue-500 text-white font-black text-[9px] uppercase tracking-widest px-3 h-9 rounded-xl"
-                                onClick={() => handleMarkAsReviewed(r.id)}
-                                disabled={processingId === r.id}
-                            >
-                                {processingId === r.id ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} className="mr-1" />}
-                                Review
-                            </Button>
-                            <Button
-                                size="sm"
-                                className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[9px] uppercase tracking-widest px-3 h-9 rounded-xl"
-                                onClick={() => handleConvertToBooking(r.id)}
-                                disabled={processingId === r.id}
-                            >
-                                {processingId === r.id ? <Loader2 size={12} className="animate-spin" /> : <ArrowRightCircle size={12} className="mr-1" />}
-                                Convert
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-slate-500 hover:text-red-400 hover:bg-red-500/10 font-black text-[9px] uppercase tracking-widest px-3 h-9 rounded-xl"
-                                onClick={() => openRejectModal(r)}
-                                disabled={processingId === r.id}
-                            >
-                                <XCircle size={12} className="mr-1" />
-                                Reject
-                            </Button>
-                        </>
-                    )}
-                </div>
-            )
-        }
-    ];
-
-    return (
-        <div className="space-y-8 max-w-[1600px] mx-auto p-4 md:p-8">
-            {/* Toast Notification */}
-            {toast && (
-                <div className={`fixed top-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border ${
-                    toast.type === 'success' 
-                        ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
-                        : 'bg-red-500/10 border-red-500/20 text-red-400'
-                }`}>
-                    {toast.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
-                    <span className="text-sm font-medium">{toast.message}</span>
-                </div>
-            )}
-
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div>
-                    <h1 className="text-4xl font-black text-white tracking-tight leading-tight uppercase">Custom Requests</h1>
-                    <div className="flex items-center gap-2 mt-1">
-                        <p className="text-slate-500 text-sm font-medium">Review and manage custom service requests from customers.</p>
-                        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-indigo-500/10 text-indigo-400 rounded-md border border-indigo-500/20 text-[10px] font-black uppercase tracking-widest">
-                            {requests.filter(r => r.status === 'pending').length} Pending
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Filters */}
-            <div className="flex flex-wrap gap-4 items-center">
-                <div className="relative flex-1 min-w-[200px] max-w-md">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 h-4 w-4" />
-                    <Input
-                        placeholder="Search by name, phone, service..."
-                        className="pl-12 bg-slate-900/50 border-slate-800 text-white h-12 rounded-2xl"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                </div>
-                
-                <div className="flex items-center gap-3">
-                    <Filter className="text-slate-500 h-4 w-4" />
-                    <select
-                        value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
-                        className="bg-slate-900/50 border border-slate-800 text-white h-12 px-4 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-indigo-500/50 focus:outline-none"
-                    >
-                        {statusFilters.map(filter => (
-                            <option key={filter.value} value={filter.value}>{filter.label}</option>
-                        ))}
-                    </select>
-                </div>
-
-                <div className="flex items-center gap-3">
-                    <Calendar className="text-slate-500 h-4 w-4" />
-                    <input
-                        type="date"
-                        value={dateFilter}
-                        onChange={(e) => setDateFilter(e.target.value)}
-                        className="bg-slate-900/50 border border-slate-800 text-white h-12 px-4 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-indigo-500/50 focus:outline-none"
-                    />
-                </div>
-
-                {(statusFilter !== 'all' || dateFilter || searchTerm) && (
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                            setStatusFilter('all');
-                            setDateFilter('');
-                            setSearchTerm('');
-                        }}
-                        className="text-slate-400 hover:text-white"
-                    >
-                        Clear Filters
-                    </Button>
-                )}
-            </div>
-
-            {/* Table */}
-            <Card className="border-slate-800 bg-slate-900/40 backdrop-blur-md overflow-hidden rounded-3xl">
-                <CardContent className="p-0">
-                    <Table
-                        columns={columns}
-                        data={filteredRequests}
-                        loading={loading}
-                        emptyMessage="No custom requests found."
-                        className="[&_tr]:border-slate-800/50 [&_th]:text-slate-500 [&_th]:text-[10px] [&_th]:font-black [&_th]:uppercase [&_th]:tracking-widest [&_th]:py-6"
-                    />
-                </CardContent>
-            </Card>
-
-            {/* Pagination */}
-            {!loading && requests.length > 0 && (
-                <div className="flex items-center justify-between">
-                    <div className="text-sm text-slate-500">
-                        Page {currentPage} {hasMore && '- Showing top results'}
-                    </div>
-                    <div className="flex gap-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => fetchRequests(currentPage - 1)}
-                            disabled={currentPage === 1}
-                            className="border-slate-700 text-slate-300 hover:bg-slate-800"
-                        >
-                            <ChevronLeft size={16} />
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => fetchRequests(currentPage + 1)}
-                            disabled={!hasMore}
-                            className="border-slate-700 text-slate-300 hover:bg-slate-800"
-                        >
-                            <ChevronRight size={16} />
-                        </Button>
-                    </div>
-                </div>
-            )}
-
-            {/* Details Drawer */}
-            {isDetailsOpen && selectedRequest && (
-                <div className="fixed inset-0 bg-[#0f172a]/95 backdrop-blur-xl flex items-center justify-center z-50 p-4">
-                    <Card className="w-full max-w-2xl bg-slate-900 border-slate-800 rounded-3xl overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto">
-                        <div className="p-6 border-b border-slate-800 flex justify-between items-center sticky top-0 bg-slate-900 z-10">
-                            <div>
-                                <h2 className="text-xl font-black text-white uppercase tracking-tight">Request Details</h2>
-                                <p className="text-slate-500 text-xs font-bold mt-0.5 tracking-wider uppercase">
-                                    Ref: #{selectedRequest.id.substring(0, 8).toUpperCase()}
-                                </p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <StatusBadge status={selectedRequest.status} />
-                                <Button variant="ghost" onClick={() => setIsDetailsOpen(false)} className="text-slate-500 hover:text-white rounded-full h-10 w-10 p-0">
-                                    <X size={24} />
-                                </Button>
-                            </div>
-                        </div>
-                        
-                        <div className="p-6 space-y-6">
-                            {/* Customer Info */}
-                            <div className="space-y-4">
-                                <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                    <User size={14} /> Customer Information
-                                </h3>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="p-4 bg-slate-800/50 rounded-2xl border border-slate-800">
-                                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Name</p>
-                                        <p className="text-white font-medium">{selectedRequest.customerName || 'N/A'}</p>
-                                    </div>
-                                    <div className="p-4 bg-slate-800/50 rounded-2xl border border-slate-800">
-                                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Phone</p>
-                                        <p className="text-white font-medium">{selectedRequest.phone || 'N/A'}</p>
-                                    </div>
-                                    <div className="p-4 bg-slate-800/50 rounded-2xl border border-slate-800 col-span-2">
-                                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Location</p>
-                                        <p className="text-white font-medium flex items-center gap-2">
-                                            <MapPin size={14} className="text-slate-500" />
-                                            {selectedRequest.location || 'N/A'}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Request Info */}
-                            <div className="space-y-4">
-                                <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                    <FileText size={14} /> Request Information
-                                </h3>
-                                <div className="space-y-4">
-                                    <div className="p-4 bg-slate-800/50 rounded-2xl border border-slate-800">
-                                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Service Title</p>
-                                        <p className="text-white font-medium text-lg">{selectedRequest.serviceTitle || 'Custom Service'}</p>
-                                    </div>
-                                    <div className="p-4 bg-slate-800/50 rounded-2xl border border-slate-800">
-                                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Description</p>
-                                        <p className="text-white font-medium leading-relaxed">{selectedRequest.description || 'No description provided'}</p>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-sm text-slate-400">
-                                        <Clock size={14} />
-                                        <span>Created: {selectedRequest.createdAt ? new Date(selectedRequest.createdAt.seconds * 1000).toLocaleString() : 'N/A'}</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Images */}
-                            {selectedRequest.images && selectedRequest.images.length > 0 && (
-                                <div className="space-y-4">
-                                    <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                                        <ImageIcon size={14} /> Images ({selectedRequest.images.length})
-                                    </h3>
-                                    <div className="grid grid-cols-3 gap-3">
-                                        {selectedRequest.images.map((img, idx) => (
-                                            <div key={idx} className="aspect-square bg-slate-800 rounded-xl overflow-hidden border border-slate-700">
-                                                <img 
-                                                    src={img} 
-                                                    alt={`Image ${idx + 1}`}
-                                                    className="w-full h-full object-cover hover:scale-110 transition-transform duration-300"
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Admin Notes */}
-                            {selectedRequest.adminNotes && (
-                                <div className="space-y-4">
-                                    <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Admin Notes</h3>
-                                    <div className="p-4 bg-amber-500/10 rounded-2xl border border-amber-500/20">
-                                        <p className="text-amber-400 font-medium">{selectedRequest.adminNotes}</p>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Actions */}
-                            {selectedRequest.status === 'pending' && (
-                                <div className="flex gap-3 pt-4 border-t border-slate-800">
-                                    <Button 
-                                        className="flex-1 bg-blue-600 hover:bg-blue-500 text-white h-12 rounded-2xl font-black text-[10px] uppercase tracking-widest"
-                                        onClick={() => {
-                                            setIsDetailsOpen(false);
-                                            handleMarkAsReviewed(selectedRequest.id);
-                                        }}
-                                        disabled={processingId === selectedRequest.id}
-                                    >
-                                        <RefreshCw size={16} className="mr-2" />
-                                        Mark as Reviewed
-                                    </Button>
-                                    <Button 
-                                        className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white h-12 rounded-2xl font-black text-[10px] uppercase tracking-widest"
-                                        onClick={() => {
-                                            setIsDetailsOpen(false);
-                                            handleConvertToBooking(selectedRequest.id);
-                                        }}
-                                        disabled={processingId === selectedRequest.id}
-                                    >
-                                        <ArrowRightCircle size={16} className="mr-2" />
-                                        Convert to Booking
-                                    </Button>
-                                    <Button 
-                                        variant="destructive"
-                                        className="flex-1 bg-red-600 hover:bg-red-500 text-white h-12 rounded-2xl font-black text-[10px] uppercase tracking-widest"
-                                        onClick={() => {
-                                            setIsDetailsOpen(false);
-                                            openRejectModal(selectedRequest);
-                                        }}
-                                        disabled={processingId === selectedRequest.id}
-                                    >
-                                        <XCircle size={16} className="mr-2" />
-                                        Reject
-                                    </Button>
-                                </div>
-                            )}
-                        </div>
-                    </Card>
-                </div>
-            )}
-
-            {/* Reject Modal */}
-            {isRejectModalOpen && selectedRequest && (
-                <div className="fixed inset-0 bg-[#0f172a]/95 backdrop-blur-xl flex items-center justify-center z-50 p-4">
-                    <Card className="w-full max-w-md bg-slate-900 border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
-                        <div className="p-6 border-b border-slate-800 flex justify-between items-center">
-                            <div>
-                                <h2 className="text-xl font-black text-white uppercase tracking-tight">Reject Request</h2>
-                                <p className="text-slate-500 text-xs font-bold mt-0.5 tracking-wider uppercase">
-                                    Ref: #{selectedRequest.id.substring(0, 8).toUpperCase()}
-                                </p>
-                            </div>
-                            <Button variant="ghost" onClick={() => setIsRejectModalOpen(false)} className="text-slate-500 hover:text-white rounded-full h-10 w-10 p-0">
-                                <X size={24} />
-                            </Button>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
-                                    Rejection Reason (Admin Notes)
-                                </label>
-                                <textarea
-                                    value={rejectNotes}
-                                    onChange={(e) => setRejectNotes(e.target.value)}
-                                    placeholder="Enter reason for rejection..."
-                                    className="w-full h-32 bg-slate-800/50 border border-slate-700 text-white p-4 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-red-500/50 focus:outline-none resize-none"
-                                />
-                            </div>
-                            <div className="flex gap-3 pt-4">
-                                <Button 
-                                    variant="outline" 
-                                    className="flex-1 h-12 rounded-2xl font-black text-[10px] uppercase tracking-widest border-slate-700 text-slate-300"
-                                    onClick={() => setIsRejectModalOpen(false)}
-                                >
-                                    Cancel
-                                </Button>
-                                <Button 
-                                    className="flex-1 bg-red-600 hover:bg-red-500 text-white h-12 rounded-2xl font-black text-[10px] uppercase tracking-widest"
-                                    onClick={handleReject}
-                                    disabled={!rejectNotes.trim() || processingId === selectedRequest.id}
-                                >
-                                    {processingId === selectedRequest.id ? (
-                                        <Loader2 size={16} className="animate-spin" />
-                                    ) : (
-                                        'Confirm Rejection'
-                                    )}
-                                </Button>
-                            </div>
-                        </div>
-                    </Card>
-                </div>
-            )}
+  const columns: Column[] = [
+    { 
+      key: 'id', 
+      label: 'Request ID',
+      sortable: true,
+      render: (item) => (
+        <span className="text-sm font-mono text-gray-900">
+          {item.id.substring(0, 8)}
+        </span>
+      )
+    },
+    { 
+      key: 'customerName', 
+      label: 'Customer',
+      render: (item) => (
+        <span className="text-sm text-gray-900">{item.customerName || 'N/A'}</span>
+      )
+    },
+    { 
+      key: 'description', 
+      label: 'Description',
+      render: (item) => (
+        <span className="text-sm text-gray-900 truncate max-w-xs block">
+          {item.description || 'N/A'}
+        </span>
+      )
+    },
+    { 
+      key: 'category', 
+      label: 'Category',
+      render: (item) => (
+        <span className="text-sm text-gray-600">{item.category || 'General'}</span>
+      )
+    },
+    { 
+      key: 'location', 
+      label: 'Location',
+      render: (item) => (
+        <span className="text-sm text-gray-600">{item.district || item.city || 'N/A'}</span>
+      )
+    },
+    { 
+      key: 'createdAt', 
+      label: 'Requested Date',
+      render: (item) => {
+        const date = item.createdAt instanceof Timestamp 
+          ? item.createdAt.toDate().toLocaleDateString()
+          : 'N/A';
+        return <span className="text-sm text-gray-600">{date}</span>;
+      }
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (item) => (
+        <StatusBadge 
+          status={formatStatus(item.status || 'pending')} 
+          variant={getStatusVariant(item.status || 'pending')}
+        />
+      )
+    },
+    {
+      key: 'actions',
+      label: 'Actions',
+      align: 'right',
+      render: (item) => (
+        <div className="flex items-center gap-2 justify-end">
+          <button
+            onClick={() => handleViewDetails(item)}
+            className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            View
+          </button>
+          {item.status === 'pending' && (
+            <>
+              <button
+                onClick={() => handleAssignTechnician(item)}
+                className="px-3 py-1 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                Assign
+              </button>
+              <button
+                onClick={() => handleReject(item.id)}
+                className="px-3 py-1 text-xs bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Reject
+              </button>
+            </>
+          )}
+          {(item.status === 'assigned' || item.status === 'in_progress') && (
+            <button
+              onClick={() => handleMarkResolved(item.id)}
+              className="px-3 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              Resolve
+            </button>
+          )}
         </div>
-    );
+      )
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Custom Requests"
+        description="Review and manage custom service requests from customers"
+      />
+
+      {/* Filters */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+            <input
+              type="text"
+              placeholder="Search by ID or customer name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X size={18} />
+              </button>
+            )}
+          </div>
+
+          {/* Status Filter */}
+          <div className="relative">
+            <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent appearance-none bg-white"
+            >
+              <option value="all">All Status</option>
+              <option value="pending">Pending</option>
+              <option value="assigned">Assigned</option>
+              <option value="in_progress">In Progress</option>
+              <option value="resolved">Resolved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
+
+          {/* Results Count */}
+          <div className="flex items-center justify-end">
+            <span className="text-sm text-gray-600">
+              Showing {filteredRequests.length} of {requests.length} requests
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Requests Table */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <DataTable
+          columns={columns}
+          data={filteredRequests}
+          loading={loading}
+          emptyMessage="No custom requests found"
+        />
+      </div>
+
+      {/* Request Details Modal */}
+      {showDetailsModal && selectedRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-900">Request Details</h2>
+              <button
+                onClick={() => setShowDetailsModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-600">Request ID</p>
+                  <p className="text-sm font-medium text-gray-900">{selectedRequest.id}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Status</p>
+                  <StatusBadge 
+                    status={formatStatus(selectedRequest.status || 'pending')} 
+                    variant={getStatusVariant(selectedRequest.status || 'pending')}
+                  />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Customer</p>
+                  <p className="text-sm font-medium text-gray-900">{selectedRequest.customerName || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Category</p>
+                  <p className="text-sm font-medium text-gray-900">{selectedRequest.category || 'General'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Phone</p>
+                  <p className="text-sm font-medium text-gray-900">{selectedRequest.phone || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Requested Date</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {selectedRequest.createdAt instanceof Timestamp 
+                      ? selectedRequest.createdAt.toDate().toLocaleString()
+                      : 'N/A'}
+                  </p>
+                </div>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600 mb-2">Description</p>
+                <p className="text-sm text-gray-900">{selectedRequest.description || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600 mb-2">Address</p>
+                <p className="text-sm text-gray-900">
+                  {selectedRequest.address || 'N/A'}<br />
+                  {selectedRequest.district}, {selectedRequest.state}<br />
+                  {selectedRequest.pincode}
+                </p>
+              </div>
+              {selectedRequest.images && selectedRequest.images.length > 0 && (
+                <div>
+                  <p className="text-sm text-gray-600 mb-2">Uploaded Images</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {selectedRequest.images.map((img: string, idx: number) => (
+                      <div key={idx} className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center">
+                        <ImageIcon className="text-gray-400" size={32} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {selectedRequest.technicianName && (
+                <div>
+                  <p className="text-sm text-gray-600 mb-2">Assigned Technician</p>
+                  <p className="text-sm font-medium text-gray-900">{selectedRequest.technicianName}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Technician Modal */}
+      {showAssignModal && selectedRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-900">Assign Technician</h2>
+              <button
+                onClick={() => setShowAssignModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              {availableTechnicians.length === 0 ? (
+                <p className="text-center text-gray-500 py-8">No available technicians found in this area</p>
+              ) : (
+                availableTechnicians.map(tech => (
+                  <div key={tech.id} className="border border-gray-200 rounded-lg p-4 hover:border-indigo-500 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900">{tech.name}</p>
+                        <div className="flex items-center gap-4 mt-1">
+                          <p className="text-sm text-gray-600">{tech.city || tech.district}</p>
+                          <p className="text-sm text-gray-600">Rating: {tech.rating || 'N/A'}</p>
+                          {tech.experience && (
+                            <p className="text-sm text-gray-600">Exp: {tech.experience}</p>
+                          )}
+                        </div>
+                        <div className="mt-2">
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">
+                            Online & Available
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleAssign(selectedRequest.id, tech.id)}
+                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                      >
+                        Assign
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        variant={confirmDialog.variant}
+        requireInput={confirmDialog.requireInput}
+        inputLabel="Reason for rejection"
+        inputPlaceholder="Enter reason..."
+      />
+    </div>
+  );
 }

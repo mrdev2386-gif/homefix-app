@@ -202,6 +202,23 @@ class FirestoreService {
     });
   }
 
+  /// Get primary address (async version)
+  Future<Address?> getPrimaryAddress(String userId) async {
+    if (userId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in getPrimaryAddress');
+      return null;
+    }
+    final snapshot = await _db
+        .collection('users')
+        .doc(userId)
+        .collection('addresses')
+        .where('isPrimary', isEqualTo: true)
+        .limit(1)
+        .get();
+    if (snapshot.docs.isEmpty) return null;
+    return Address.fromFirestore(snapshot.docs.first);
+  }
+
 
   // --- Cart Management ---
   Stream<List<CartItem>> streamCart(String userId) {

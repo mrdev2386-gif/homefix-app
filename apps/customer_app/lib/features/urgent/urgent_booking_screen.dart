@@ -3,6 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/models/address.dart';
+import '../../core/services/firestore_service.dart';
+import 'package:provider/provider.dart';
 
 class UrgentBookingScreen extends StatefulWidget {
   const UrgentBookingScreen({super.key});
@@ -13,47 +16,47 @@ class UrgentBookingScreen extends StatefulWidget {
 
 class _UrgentBookingScreenState extends State<UrgentBookingScreen> {
   String? _userDistrict;
+  Address? _userAddress;
   bool _isLoading = true;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _loadUserDistrict();
+    _loadUserData();
   }
 
-  Future<void> _loadUserDistrict() async {
+  Future<void> _loadUserData() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         setState(() {
           _isLoading = false;
-          _error = 'User not logged in';
+          _error = 'Please login to continue';
         });
         return;
       }
 
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
+      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+      final address = await firestoreService.getPrimaryAddress(user.uid);
 
-      if (!userDoc.exists || !userDoc.data()!.containsKey('district')) {
+      if (address == null || address.district.isEmpty) {
         setState(() {
           _isLoading = false;
-          _error = 'Please set your district in your profile';
+          _error = 'Please add your address with district in profile';
         });
         return;
       }
 
       setState(() {
-        _userDistrict = userDoc.data()!['district'] as String?;
+        _userAddress = address;
+        _userDistrict = address.district;
         _isLoading = false;
       });
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _error = 'Error loading user data: $e';
+        _error = 'Error: $e';
       });
     }
   }
@@ -65,9 +68,7 @@ class _UrgentBookingScreenState extends State<UrgentBookingScreen> {
       appBar: AppBar(
         title: Text(
           'Urgent Booking',
-          style: GoogleFonts.outfit(
-            fontWeight: FontWeight.w600,
-          ),
+          style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
         ),
         backgroundColor: Colors.white,
         foregroundColor: AppTheme.textColor,
@@ -94,10 +95,7 @@ class _UrgentBookingScreenState extends State<UrgentBookingScreen> {
               Text(
                 _error!,
                 textAlign: TextAlign.center,
-                style: GoogleFonts.outfit(
-                  fontSize: 16,
-                  color: Colors.grey[600],
-                ),
+                style: GoogleFonts.outfit(fontSize: 16, color: Colors.grey[600]),
               ),
             ],
           ),
@@ -111,8 +109,9 @@ class _UrgentBookingScreenState extends State<UrgentBookingScreen> {
   Widget _buildTechnicianList() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
-          .collectionGroup('services')
-          .where('urgentBooking.enabled', isEqualTo: true)
+          .collection('technicians')
+          .where('isOnline', isEqualTo: true)
+          .where('district', isEqualTo: _userDistrict)
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -121,271 +120,265 @@ class _UrgentBookingScreenState extends State<UrgentBookingScreen> {
 
         if (snapshot.hasError) {
           return Center(
-            child: Text(
-              'Error: ${snapshot.error}',
-              style: GoogleFonts.outfit(color: Colors.red),
-            ),
+            child: Text('Error: ${snapshot.error}', style: GoogleFonts.outfit(color: Colors.red)),
           );
         }
 
-        final services = snapshot.docs ?? [];
-        
-        // Filter by district - we need to get technician data to check district
-        final filteredServices = <QueryDocumentSnapshot>[];
-        
-        for (final serviceDoc in services) {
-          final serviceData = serviceDoc.data() as Map<String, dynamic>?;
-          if (serviceData == null) continue;
-          
-          // Get parent technician document reference
-          final techRef = serviceDoc.reference.parent.parent;
-          if (techRef == null) continue;
-          
-          try {
-            final techDoc = await techRef.get();
-            final techData = techDoc.data() as Map<String, dynamic>?;
-            if (techData == null) continue;
-            
-            final techDistrict = techData['district'] as String?;
-            if (techDistrict != null && techDistrict.toLowerCase() == _userDistrict?.toLowerCase()) {
-              filteredServices.add(serviceDoc);
-            }
-          } catch (e) {
-            // Skip this service if we can't get technician data
-            continue;
-          }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return _buildEmptyView();
         }
 
-        if (filteredServices.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No urgent booking services available in your district',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.outfit(
-                      fontSize: 16,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Current district: ${_userDistrict ?? "Not set"}',
-                    style: GoogleFonts.outfit(
-                      fontSize: 14,
-                      color: Colors.grey[500],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
+        final technicians = snapshot.data!.docs;
 
         return ListView.builder(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          itemCount: filteredServices.length,
+          padding: const EdgeInsets.all(16),
+          itemCount: technicians.length,
           itemBuilder: (context, index) {
-            final serviceDoc = filteredServices[index];
-            return _buildServiceCard(serviceDoc);
+            final techDoc = technicians[index];
+            final techData = techDoc.data() as Map<String, dynamic>;
+            return _buildTechnicianCard(techDoc.id, techData);
           },
         );
       },
     );
   }
 
-  Widget _buildServiceCard(QueryDocumentSnapshot serviceDoc) {
-    final serviceData = serviceDoc.data() as Map<String, dynamic>;
-    final serviceName = serviceData['name'] ?? serviceData['serviceName'] ?? 'Service';
-    final categoryName = serviceData['category'] ?? serviceData['categoryName'] ?? 'General';
-    final urgentBooking = serviceData['urgentBooking'] as Map<String, dynamic>?;
-    final arrivalTime = urgentBooking?['arrivalTime'] ?? 'Quick';
-    final urgentFee = urgentBooking?['urgentFee'] as int? ?? 0;
+  Widget _buildEmptyView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              'No Technicians Available',
+              style: GoogleFonts.outfit(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textColor,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'No online technicians in $_userDistrict right now',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.outfit(fontSize: 14, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-    // Get technician data
-    final techRef = serviceDoc.reference.parent.parent;
-    
-    return FutureBuilder<DocumentSnapshot>(
-      future: techRef?.get(),
-      builder: (context, techSnapshot) {
-        String technicianName = 'Loading...';
-        double rating = 4.5;
-        String district = '';
-        String? technicianId;
+  Widget _buildTechnicianCard(String techId, Map<String, dynamic> techData) {
+    final name = techData['name'] ?? 'Unknown';
+    final skills = (techData['skills'] as List<dynamic>?)?.join(', ') ?? 'N/A';
+    final rating = (techData['rating'] ?? 4.5).toDouble();
+    final district = techData['district'] ?? 'N/A';
+    final phone = techData['phone'] ?? '';
 
-        if (techSnapshot.hasData && techSnapshot.data != null) {
-          final techData = techSnapshot.data!.data() as Map<String, dynamic>?;
-          if (techData != null) {
-            technicianName = techData['name'] ?? 'Unknown Technician';
-            rating = (techData['rating'] is num) 
-                ? (techData['rating'] as num).toDouble() 
-                : 4.5;
-            district = techData['district'] ?? '';
-            technicianId = techSnapshot.data!.id;
-          }
-        }
-
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                blurRadius: 6,
-                color: Colors.black.withValues(alpha: 0.08),
-                offset: const Offset(0, 2),
+    return Container(
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            blurRadius: 6,
+            color: Colors.black.withValues(alpha: 0.08),
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Text(
+                    name[0].toUpperCase(),
+                    style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.primaryColor,
+                      fontSize: 24,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            name,
+                            style: GoogleFonts.outfit(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: AppTheme.textColor,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade50,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                  color: Colors.green,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Online',
+                                style: GoogleFonts.outfit(
+                                  fontSize: 11,
+                                  color: Colors.green.shade700,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      skills,
+                      style: GoogleFonts.outfit(
+                        fontSize: 13,
+                        color: Colors.grey[600],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Technician name
-                Text(
-                  technicianName,
-                  style: GoogleFonts.outfit(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: AppTheme.textColor,
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(Icons.star, color: Colors.amber, size: 16),
+              const SizedBox(width: 4),
+              Text(
+                rating.toStringAsFixed(1),
+                style: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 14),
+              ),
+              const SizedBox(width: 16),
+              Icon(Icons.location_on, color: Colors.grey[600], size: 16),
+              const SizedBox(width: 4),
+              Text(
+                district,
+                style: GoogleFonts.outfit(fontSize: 14, color: Colors.grey[600]),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => _createUrgentBooking(techId, techData),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                elevation: 0,
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.flash_on, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Book Urgent Service',
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 15),
                   ),
-                ),
-                const SizedBox(height: 8),
-                
-                // Service category
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.shade50,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        categoryName,
-                        style: GoogleFonts.outfit(
-                          fontSize: 12,
-                          color: Colors.orange.shade800,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        serviceName,
-                        style: GoogleFonts.outfit(
-                          fontSize: 12,
-                          color: Colors.blue.shade800,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                
-                // Rating and District
-                Row(
-                  children: [
-                    Icon(Icons.star, size: 16, color: Colors.amber.shade600),
-                    const SizedBox(width: 4),
-                    Text(
-                      rating.toStringAsFixed(1),
-                      style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Icon(Icons.location_on, size: 16, color: Colors.grey[500]),
-                    const SizedBox(width: 4),
-                    Text(
-                      district,
-                      style: GoogleFonts.outfit(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                
-                // Urgent info
-                Row(
-                  children: [
-                    Icon(Icons.flash_on, size: 16, color: Colors.orange),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Arrival: $arrivalTime',
-                      style: GoogleFonts.outfit(
-                        fontSize: 13,
-                        color: Colors.orange.shade700,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Icon(Icons.currency_rupee, size: 14, color: Colors.green),
-                    Text(
-                      '+$urgentFee urgent fee',
-                      style: GoogleFonts.outfit(
-                        fontSize: 13,
-                        color: Colors.green.shade700,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                
-                // Book Now button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      // TODO: Implement booking logic
-                      // This would create a booking with the selected technician and service
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Booking with $technicianName for $serviceName'),
-                          backgroundColor: AppTheme.primaryColor,
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: Text(
-                      'Book Now',
-                      style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        );
-      },
+        ],
+      ),
     );
+  }
+
+  Future<void> _createUrgentBooking(String techId, Map<String, dynamic> techData) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null || _userAddress == null) return;
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      final bookingData = {
+        'customerId': user.uid,
+        'technicianId': techId,
+        'technicianName': techData['name'] ?? 'Unknown',
+        'serviceType': (techData['skills'] as List<dynamic>?)?.first ?? 'General Service',
+        'status': 'pending',
+        'isUrgent': true,
+        'urgentFee': 100,
+        'address': {
+          'addressLine': _userAddress!.fullAddress,
+          'city': _userAddress!.city,
+          'district': _userAddress!.district,
+          'pincode': _userAddress!.pincode,
+          'landmark': _userAddress!.landmark,
+        },
+        'scheduledDate': DateTime.now().toIso8601String(),
+        'scheduledTime': 'ASAP',
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      await FirebaseFirestore.instance.collection('bookings').add(bookingData);
+
+      if (mounted) {
+        Navigator.pop(context);
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Urgent booking created! Technician will contact you soon.'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 }

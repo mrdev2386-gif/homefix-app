@@ -365,6 +365,10 @@ export const admin_manageReview = adminReviews.manageReview;
 import * as adminDisputes from './admin/disputes';
 export const admin_manageDispute = adminDisputes.manageDispute;
 
+import * as bookingModeration from './admin/booking_moderation';
+export const approveBooking = bookingModeration.approveBooking;
+export const rejectBooking = bookingModeration.rejectBooking;
+
 import {
     admin_manageProfessionalVideos,
     admin_manageCleaningEssentials,

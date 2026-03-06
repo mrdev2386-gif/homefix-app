@@ -38,11 +38,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return (
         <div className="min-h-screen bg-[#0f172a] flex overflow-hidden selection:bg-indigo-500/30">
             {/* Sidebar handles its own responsive visibility */}
-            <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+            <Sidebar collapsed={!isSidebarOpen} />
 
             {/* Main Content Area */}
             <div className="flex-1 flex flex-col min-h-screen transition-all duration-300 w-full lg:ml-64">
-                <Topbar onMenuClick={toggleSidebar} />
+                <Topbar onToggleSidebar={toggleSidebar} pageTitle="Dashboard" />
 
                 <main className="flex-1 p-4 md:p-8 overflow-y-auto no-scrollbar overflow-x-hidden w-full max-w-[1600px] mx-auto">
                     <div className="animate-in space-y-8 pb-20">

@@ -61,52 +61,25 @@ class FirebaseInit {
   static Future<void> _extractDebugToken() async {
     AppLogger.debug('FIREBASE', 'Starting debug token extraction');
 
-    // Strategy A
     try {
-      AppLogger.debug('FIREBASE', 'Strategy A: Fetching with forceRefresh=true');
+      AppLogger.debug('FIREBASE', 'Fetching App Check token with forceRefresh=true');
       final token = await FirebaseAppCheck.instance.getToken(true);
 
-      if (token != null && token.isNotEmpty) {
-        // ONLY log token in kDebugMode and NEVER in release
-        if (kDebugMode) {
-          debugPrint('🔥 APP_CHECK_DEBUG_TOKEN: $token');
-          debugPrint('👉 Copy token to Firebase Console → App Check → Manage debug tokens');
+      if (kDebugMode) {
+        if (token != null) {
+          debugPrint('✅ Firebase App Check Debug Mode Enabled');
+          debugPrint('🔥 Firebase App Check Debug Token: $token');
+          debugPrint('📋 Register token in Firebase Console → App Check → Debug Tokens');
+        } else {
+          debugPrint('❌ App Check token returned null');
         }
-        return;
-      } else {
-        AppLogger.debug('FIREBASE', 'Strategy A returned null/empty token');
       }
+      return;
     } catch (e) {
-      AppLogger.debug('FIREBASE', 'Strategy A failed', data: e);
-    }
-
-    // Strategy B
-    try {
-      AppLogger.debug('FIREBASE', 'Strategy B: Fetching with forceRefresh=false');
-      final token = await FirebaseAppCheck.instance.getToken(false);
-
-      if (token != null && token.isNotEmpty) {
-        if (kDebugMode) {
-          debugPrint('🔥 APP_CHECK_FALLBACK_TOKEN: $token');
-        }
-        return;
-      } else {
-        AppLogger.debug('FIREBASE', 'Strategy B returned null/empty token');
+      if (kDebugMode) {
+        debugPrint('❌ App Check Token Error: $e');
       }
-    } catch (e) {
-      AppLogger.debug('FIREBASE', 'Strategy B failed', data: e);
-    }
-
-    // Strategy C - Token listener
-    try {
-      AppLogger.debug('FIREBASE', 'Strategy C: Setting up token listener');
-      FirebaseAppCheck.instance.onTokenChange.listen((token) {
-        if (token != null && token.isNotEmpty && kDebugMode) {
-          debugPrint('🔥 APP_CHECK_NEW_TOKEN: $token');
-        }
-      });
-    } catch (e) {
-      AppLogger.debug('FIREBASE', 'Strategy C failed', data: e);
+      AppLogger.debug('FIREBASE', 'Token extraction failed', data: e);
     }
 
     AppLogger.debug('FIREBASE', 'Debug token extraction complete');

@@ -18,15 +18,15 @@ export default function LoadingState({
         {Array.from({ length: rows }).map((_, i) => (
           <div
             key={i}
-            className="bg-slate-900 border border-slate-800 rounded-lg p-6 animate-pulse"
+            className="bg-[#111827] border border-[#1F2937] rounded-lg p-6 animate-pulse"
           >
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-slate-800 rounded-lg" />
+              <div className="w-12 h-12 bg-[#1F2937] rounded-lg" />
               <div className="flex-1 space-y-3">
-                <div className="h-4 bg-slate-800 rounded w-1/4" />
-                <div className="h-3 bg-slate-800 rounded w-3/4" />
+                <div className="h-4 bg-[#1F2937] rounded w-1/4" />
+                <div className="h-3 bg-[#1F2937] rounded w-3/4" />
               </div>
-              <div className="w-20 h-8 bg-slate-800 rounded" />
+              <div className="w-20 h-8 bg-[#1F2937] rounded" />
             </div>
           </div>
         ))}
@@ -36,8 +36,8 @@ export default function LoadingState({
 
   return (
     <div className="flex flex-col items-center justify-center py-12 px-4">
-      <Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-4" />
-      <p className="text-slate-400 font-semibold">{message}</p>
+      <Loader2 className="w-12 h-12 text-[#6366F1] animate-spin mb-4" />
+      <p className="text-[#9CA3AF] font-medium">{message}</p>
     </div>
   );
 }
@@ -48,7 +48,7 @@ interface SkeletonProps {
 
 export function Skeleton({ className = '' }: SkeletonProps) {
   return (
-    <div className={`bg-slate-800 rounded animate-pulse ${className}`} />
+    <div className={`bg-[#1F2937] rounded animate-pulse ${className}`} />
   );
 }
 
@@ -59,9 +59,9 @@ interface TableSkeletonProps {
 
 export function TableSkeleton({ rows = 5, columns = 5 }: TableSkeletonProps) {
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+    <div className="bg-[#111827] border border-[#1F2937] rounded-lg overflow-hidden">
       {/* Header */}
-      <div className="border-b border-slate-800 p-4">
+      <div className="border-b border-[#1F2937] p-4">
         <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
           {Array.from({ length: columns }).map((_, i) => (
             <Skeleton key={i} className="h-4 w-3/4" />
@@ -71,7 +71,7 @@ export function TableSkeleton({ rows = 5, columns = 5 }: TableSkeletonProps) {
       
       {/* Rows */}
       {Array.from({ length: rows }).map((_, rowIndex) => (
-        <div key={rowIndex} className="border-b border-slate-800 p-4 last:border-b-0">
+        <div key={rowIndex} className="border-b border-[#1F2937] p-4 last:border-b-0">
           <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}>
             {Array.from({ length: columns }).map((_, colIndex) => (
               <Skeleton key={colIndex} className="h-4" />
@@ -91,7 +91,7 @@ export function CardSkeleton({ count = 3 }: CardSkeletonProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="bg-slate-900 border border-slate-800 rounded-lg p-6 animate-pulse">
+        <div key={i} className="bg-[#111827] border border-[#1F2937] rounded-lg p-6 animate-pulse">
           <Skeleton className="h-4 w-1/2 mb-4" />
           <Skeleton className="h-8 w-3/4 mb-2" />
           <Skeleton className="h-3 w-1/3" />
