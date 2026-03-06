@@ -85,6 +85,7 @@ class Technician {
   final String? aadhaarFrontUrl;
   final String? aadhaarBackUrl;
   final String? profilePhotoUrl;
+  final String? state;
   final String? district;
   final int? experienceYears;
   final String? primaryCategoryId;
@@ -155,6 +156,7 @@ class Technician {
     this.aadhaarFrontUrl,
     this.aadhaarBackUrl,
     this.profilePhotoUrl,
+    this.state,
     this.district,
     this.experienceYears,
     this.primaryCategoryId,
@@ -300,6 +302,7 @@ class Technician {
       aadhaarFrontUrl: data['aadhaarFrontUrl'],
       aadhaarBackUrl: data['aadhaarBackUrl'],
       profilePhotoUrl: data['profilePhotoUrl'],
+      state: data['state'],
       district: data['district'],
       experienceYears: data['experienceYears'],
       primaryCategoryId: data['primaryCategoryId'],
@@ -382,6 +385,7 @@ class Technician {
       'aadhaarFrontUrl': aadhaarFrontUrl,
       'aadhaarBackUrl': aadhaarBackUrl,
       'profilePhotoUrl': profilePhotoUrl,
+      'state': state,
       'district': district,
       'experienceYears': experienceYears,
       'primaryCategoryId': primaryCategoryId,
@@ -504,6 +508,7 @@ class Technician {
     String? aadhaarFrontUrl,
     String? aadhaarBackUrl,
     String? profilePhotoUrl,
+    String? state,
     String? district,
     int? experienceYears,
     String? primaryCategoryId,
@@ -568,6 +573,7 @@ class Technician {
       aadhaarFrontUrl: aadhaarFrontUrl ?? this.aadhaarFrontUrl,
       aadhaarBackUrl: aadhaarBackUrl ?? this.aadhaarBackUrl,
       profilePhotoUrl: profilePhotoUrl ?? this.profilePhotoUrl,
+      state: state ?? this.state,
       district: district ?? this.district,
       experienceYears: experienceYears ?? this.experienceYears,
       primaryCategoryId: primaryCategoryId ?? this.primaryCategoryId,

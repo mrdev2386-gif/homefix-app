@@ -16,6 +16,7 @@ class UrgentBookingScreen extends StatefulWidget {
 
 class _UrgentBookingScreenState extends State<UrgentBookingScreen> {
   String? _userDistrict;
+  String? _userState;
   Address? _userAddress;
   bool _isLoading = true;
   String? _error;
@@ -37,20 +38,26 @@ class _UrgentBookingScreenState extends State<UrgentBookingScreen> {
         return;
       }
 
-      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-      final address = await firestoreService.getPrimaryAddress(user.uid);
+      // Read district and state directly from user profile in Firestore
+      final userDoc = await FirebaseFirestore.instance
+          .collection('customers')
+          .doc(user.uid)
+          .get();
 
-      if (address == null || address.district.isEmpty) {
+      final district = userDoc.data()?['district'];
+      final state = userDoc.data()?['state'];
+
+      if (district == null || district.isEmpty || state == null || state.isEmpty) {
         setState(() {
           _isLoading = false;
-          _error = 'Please add your address with district in profile';
+          _error = 'Please complete your profile with state and district information';
         });
         return;
       }
 
       setState(() {
-        _userAddress = address;
-        _userDistrict = address.district;
+        _userDistrict = district.toLowerCase(); // Normalize to lowercase
+        _userState = state.toLowerCase(); // Normalize to lowercase
         _isLoading = false;
       });
     } catch (e) {
@@ -111,6 +118,7 @@ class _UrgentBookingScreenState extends State<UrgentBookingScreen> {
       stream: FirebaseFirestore.instance
           .collection('technicians')
           .where('isOnline', isEqualTo: true)
+          .where('state', isEqualTo: _userState)
           .where('district', isEqualTo: _userDistrict)
           .snapshots(),
       builder: (context, snapshot) {
@@ -162,7 +170,7 @@ class _UrgentBookingScreenState extends State<UrgentBookingScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'No online technicians in $_userDistrict right now',
+              'No online technicians in $_userState, $_userDistrict right now',
               textAlign: TextAlign.center,
               style: GoogleFonts.outfit(fontSize: 14, color: Colors.grey[600]),
             ),
@@ -330,7 +338,7 @@ class _UrgentBookingScreenState extends State<UrgentBookingScreen> {
   Future<void> _createUrgentBooking(String techId, Map<String, dynamic> techData) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null || _userAddress == null) return;
+      if (user == null) return;
 
       showDialog(
         context: context,
@@ -346,13 +354,7 @@ class _UrgentBookingScreenState extends State<UrgentBookingScreen> {
         'status': 'pending',
         'isUrgent': true,
         'urgentFee': 100,
-        'address': {
-          'addressLine': _userAddress!.fullAddress,
-          'city': _userAddress!.city,
-          'district': _userAddress!.district,
-          'pincode': _userAddress!.pincode,
-          'landmark': _userAddress!.landmark,
-        },
+        'district': _userDistrict, // Use the validated district
         'scheduledDate': DateTime.now().toIso8601String(),
         'scheduledTime': 'ASAP',
         'createdAt': FieldValue.serverTimestamp(),

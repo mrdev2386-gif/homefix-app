@@ -9,7 +9,7 @@ import 'package:customer_app/core/models/address.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
 import 'add_edit_address_screen.dart';
 
-class SavedAddressesScreen extends StatelessWidget {
+class SavedAddressesScreen extends StatefulWidget {
   final bool isSelectionMode;
   final bool isPrimarySelectionMode;
 
@@ -18,6 +18,21 @@ class SavedAddressesScreen extends StatelessWidget {
     this.isSelectionMode = false,
     this.isPrimarySelectionMode = false,
   });
+
+  @override
+  State<SavedAddressesScreen> createState() => _SavedAddressesScreenState();
+}
+
+class _SavedAddressesScreenState extends State<SavedAddressesScreen> {
+  late bool isSelectionMode;
+  late bool isPrimarySelectionMode;
+
+  @override
+  void initState() {
+    super.initState();
+    isSelectionMode = widget.isSelectionMode;
+    isPrimarySelectionMode = widget.isPrimarySelectionMode;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -41,11 +56,34 @@ class SavedAddressesScreen extends StatelessWidget {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          final addresses = snapshot.data ?? [];
-          if (addresses.isEmpty) {
+          
+          if (snapshot.hasError) {
+            debugPrint('[SAVED_ADDRESSES] Stream error: ${snapshot.error}');
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text('Error loading addresses', style: GoogleFonts.outfit(fontSize: 16)),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () => setState(() {}),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
+          }
+          
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            debugPrint('[SAVED_ADDRESSES] No addresses found');
             return _buildEmptyState(context);
           }
-
+          
+          final addresses = snapshot.data!;
+          debugPrint('[SAVED_ADDRESSES] Displaying ${addresses.length} addresses');
+          
           return ListView.builder(
             padding: const EdgeInsets.all(20),
             itemCount: addresses.length,
@@ -162,7 +200,7 @@ class SavedAddressesScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '${address.fullAddress}',
+                      address.fullAddress,
                       style: GoogleFonts.outfit(fontSize: 14, color: Colors.grey[700]),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -177,7 +215,22 @@ class SavedAddressesScreen extends StatelessWidget {
                       children: [
                         if (!address.isDefault)
                           TextButton.icon(
-                            onPressed: () => service.setPrimaryAddress(userId, address.id),
+                            onPressed: () async {
+                              try {
+                                await service.setPrimaryAddress(userId, address.id);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Primary address updated')),
+                                  );
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Error: $e')),
+                                  );
+                                }
+                              }
+                            },
                             icon: const Icon(Icons.check_circle_outline, size: 16),
                             label: const Text('Set Primary'),
                             style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0)),

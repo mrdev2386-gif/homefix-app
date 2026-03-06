@@ -79,6 +79,7 @@ class _TechnicianOnboardingFlowScreenState
 
       _formData['fullName'] = tech.name;
       _formData['email'] = tech.email;
+      _formData['state'] = tech.state;
       _formData['district'] = tech.district;
       _formData['experienceYears'] = tech.experienceYears;
       _formData['aadhaarNumber'] = tech.aadhaarNumber;
@@ -212,6 +213,7 @@ class _TechnicianOnboardingFlowScreenState
         return {
           'name': _formData['fullName'] ?? '',
           'email': _formData['email'] ?? '',
+          'state': _formData['state'] ?? '',
           'district': _formData['district'] ?? '',
           'experienceYears': _formData['experienceYears'] ?? 0,
           'gender': _formData['gender'],

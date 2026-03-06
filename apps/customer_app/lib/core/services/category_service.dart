@@ -63,74 +63,59 @@ class CategoryService {
     }
   }
 
-  Stream<ServiceResult<List<HomeService>>> getRecentlyAddedServicesResult(
-      {int limit = 10, String? district}) {
-    Query query = _firestore
-        .collectionGroup('technician_services')
-        .where('isPublished', isEqualTo: true)
-        .where('status', isEqualTo: 'active')
-        .where('technicianApproved', isEqualTo: true);
-
-    if (district != null && district.isNotEmpty) {
-      query = query.where('district', isEqualTo: district);
-    }
-
-    return _errorToData(
-      (query as Query<Map<String, dynamic>>)
-          .orderBy('createdAt', descending: true)
-          .limit(limit)
-          .snapshots()
-          .map((snapshot) {
-        final services = snapshot.docs
-            .map((doc) => HomeService.fromFirestore(doc))
-            .whereType<HomeService>()
-            .toList();
-        return ServiceResult.success(services);
-      }),
-      (e) => ServiceResult.error(e.toString()),
-    );
-  }
-
   Stream<List<HomeService>> getRecentlyAddedServices({int limit = 10, String? district}) {
-    return getRecentlyAddedServicesResult(limit: limit, district: district)
-        .map((r) => r.data ?? []);
-  }
-
-  Stream<ServiceResult<List<HomeService>>> getServicesByCategoryResult(
-      String categoryId, {String? district}) {
-    if (categoryId.isEmpty) {
-      return Stream.value(ServiceResult.empty());
-    }
-
     Query query = _firestore
-        .collectionGroup('technician_services')
-        .where('categoryId', isEqualTo: categoryId)
-        .where('status', isEqualTo: 'active')
-        .where('isPublished', isEqualTo: true)
-        .where('technicianApproved', isEqualTo: true);
+        .collection('technician_services')
+        .where('status', isEqualTo: 'active');
 
     if (district != null && district.isNotEmpty) {
       query = query.where('district', isEqualTo: district);
     }
 
-    return _errorToData(
-      (query as Query<Map<String, dynamic>>)
-          .limit(50)
-          .snapshots()
-          .map((snapshot) {
-        final services = snapshot.docs
-            .map((doc) => HomeService.fromFirestore(doc))
-            .whereType<HomeService>()
-            .toList();
-        services.sort((a, b) => a.order.compareTo(b.order));
-        return ServiceResult.success(services);
-      }),
-      (e) => ServiceResult.error(e.toString()),
-    );
+    return query
+        .orderBy('createdAt', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map((snapshot) {
+      final services = snapshot.docs
+          .map((doc) => HomeService.fromFirestore(doc))
+          .whereType<HomeService>()
+          .toList();
+      return services;
+    }).handleError((error) {
+      if (kDebugMode) debugPrint('❌ [CategoryService] Recently added services error: $error');
+      return <HomeService>[];
+    });
   }
 
   Stream<List<HomeService>> getServicesByCategory(String categoryId, {String? district}) {
-    return getServicesByCategoryResult(categoryId, district: district).map((r) => r.data ?? []);
+    if (categoryId.isEmpty) {
+      return Stream.value([]);
+    }
+
+    Query query = _firestore
+        .collection('technician_services')
+        .where('categoryId', isEqualTo: categoryId)
+        .where('status', isEqualTo: 'active');
+
+    if (district != null && district.isNotEmpty) {
+      query = query.where('district', isEqualTo: district);
+    }
+
+    return query
+        .limit(50)
+        .snapshots()
+        .map((snapshot) {
+      final services = snapshot.docs
+          .map((doc) => HomeService.fromFirestore(doc))
+          .whereType<HomeService>()
+          .toList();
+      services.sort((a, b) => a.order.compareTo(b.order));
+      return services;
+    }).handleError((error) {
+      if (kDebugMode) debugPrint('❌ [CategoryService] Services by category error: $error');
+      return <HomeService>[];
+    });
   }
 
   Stream<ServiceResult<List<HomeService>>> getSubServicesResult(
@@ -238,68 +223,55 @@ class CategoryService {
     return null;
   }
 
-  Stream<ServiceResult<List<HomeService>>> getAllServicesResult({String? district}) {
+  Stream<List<HomeService>> getAllServices({String? district}) {
     Query query = _firestore
-        .collectionGroup('technician_services')
-        .where('isPublished', isEqualTo: true)
-        .where('status', isEqualTo: 'active')
-        .where('technicianApproved', isEqualTo: true);
+        .collection('technician_services')
+        .where('status', isEqualTo: 'active');
 
     if (district != null && district.isNotEmpty) {
       query = query.where('district', isEqualTo: district);
     }
 
-    return _errorToData(
-      (query as Query<Map<String, dynamic>>)
-          .orderBy('createdAt', descending: true)
-          .limit(50)
-          .snapshots()
-          .map((snapshot) {
-        final services = snapshot.docs
-            .map((doc) => HomeService.fromFirestore(doc))
-            .whereType<HomeService>()
-            .toList();
-        return ServiceResult.success(services);
-      }),
-      (e) => ServiceResult.error(e.toString()),
-    );
+    return query
+        .orderBy('createdAt', descending: true)
+        .limit(50)
+        .snapshots()
+        .map((snapshot) {
+      final services = snapshot.docs
+          .map((doc) => HomeService.fromFirestore(doc))
+          .whereType<HomeService>()
+          .toList();
+      return services;
+    }).handleError((error) {
+      if (kDebugMode) debugPrint('❌ [CategoryService] All services error: $error');
+      return <HomeService>[];
+    });
   }
 
-  Stream<List<HomeService>> getAllServices({String? district}) {
-    return getAllServicesResult(district: district).map((r) => r.data ?? []);
-  }
-
-  Stream<ServiceResult<List<HomeService>>> getTopServicesResult(
-      {int limit = 10, String? district}) {
+  Stream<List<HomeService>> getTopServices({int limit = 10, String? district}) {
     Query query = _firestore
-        .collectionGroup('technician_services')
-        .where('isPublished', isEqualTo: true)
+        .collection('technician_services')
         .where('status', isEqualTo: 'active')
-        .where('technicianApproved', isEqualTo: true)
         .where('isTopService', isEqualTo: true);
 
     if (district != null && district.isNotEmpty) {
       query = query.where('district', isEqualTo: district);
     }
 
-    return _errorToData(
-      (query as Query<Map<String, dynamic>>)
-          .orderBy('order')
-          .limit(limit)
-          .snapshots()
-          .map((snapshot) {
-        final services = snapshot.docs
-            .map((doc) => HomeService.fromFirestore(doc))
-            .whereType<HomeService>()
-            .toList();
-        return ServiceResult.success(services);
-      }),
-      (e) => ServiceResult.error(e.toString()),
-    );
-  }
-
-  Stream<List<HomeService>> getTopServices({int limit = 10, String? district}) {
-    return getTopServicesResult(limit: limit, district: district).map((r) => r.data ?? []);
+    return query
+        .orderBy('order')
+        .limit(limit)
+        .snapshots()
+        .map((snapshot) {
+      final services = snapshot.docs
+          .map((doc) => HomeService.fromFirestore(doc))
+          .whereType<HomeService>()
+          .toList();
+      return services;
+    }).handleError((error) {
+      if (kDebugMode) debugPrint('❌ [CategoryService] Top services error: $error');
+      return <HomeService>[];
+    });
   }
 
   Stream<ServiceResult<List<HomeService>>> getTopRatedServicesResult({int limit = 10, String? district}) {

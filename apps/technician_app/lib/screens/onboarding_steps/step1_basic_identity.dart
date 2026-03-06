@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'dart:io';
 import 'package:technician_app/core/providers/technician_provider.dart';
 import '../../core/services/category_data_service.dart';
+import '../../core/widgets/location_selector.dart';
 
 class Step1BasicIdentity extends StatefulWidget {
   final Map<String, dynamic> formData;
@@ -22,12 +23,13 @@ class Step1BasicIdentity extends StatefulWidget {
 
 class _Step1BasicIdentityState extends State<Step1BasicIdentity> {
   late TextEditingController _nameController;
-  late TextEditingController _cityController;
   late TextEditingController _searchController;
   final CategoryDataService _categoryService = CategoryDataService();
   
   File? _profilePhoto;
   String? _selectedGender;
+  String? _selectedState;
+  String? _selectedDistrict;
   DateTime? _selectedDOB;
   List<CategoryData> _allCategories = [];
   List<String> _selectedCategories = [];
@@ -44,11 +46,10 @@ class _Step1BasicIdentityState extends State<Step1BasicIdentity> {
     _nameController = TextEditingController(
       text: widget.formData['fullName'] ?? '',
     );
-    _cityController = TextEditingController(
-      text: widget.formData['district'] ?? '',
-    );
     _searchController = TextEditingController();
     _selectedGender = widget.formData['gender'];
+    _selectedState = widget.formData['state'];
+    _selectedDistrict = widget.formData['district'];
     _selectedDOB = widget.formData['dob'];
     
     // Backward compatibility: convert single category to list
@@ -82,7 +83,6 @@ class _Step1BasicIdentityState extends State<Step1BasicIdentity> {
   @override
   void dispose() {
     _nameController.dispose();
-    _cityController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -180,13 +180,7 @@ class _Step1BasicIdentityState extends State<Step1BasicIdentity> {
             onChanged: (value) => widget.onDataChanged('fullName', value),
           ),
           const SizedBox(height: 16),
-          _buildTextField(
-            controller: _cityController,
-            label: 'City',
-            hint: 'Enter your city',
-            icon: Icons.location_on_outlined,
-            onChanged: (value) => widget.onDataChanged('district', value),
-          ),
+          _buildLocationSelector(),
           const SizedBox(height: 16),
           _buildGenderSelector(),
           const SizedBox(height: 16),
@@ -259,6 +253,35 @@ class _Step1BasicIdentityState extends State<Step1BasicIdentity> {
                     ],
                   ),
       ),
+    );
+  }
+
+  Widget _buildLocationSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Location',
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: const Color(0xFF0F172A),
+          ),
+        ),
+        const SizedBox(height: 8),
+        LocationSelector(
+          initialState: _selectedState,
+          initialDistrict: _selectedDistrict,
+          onLocationChanged: (state, district) {
+            setState(() {
+              _selectedState = state;
+              _selectedDistrict = district;
+            });
+            widget.onDataChanged('state', state);
+            widget.onDataChanged('district', district);
+          },
+        ),
+      ],
     );
   }
 

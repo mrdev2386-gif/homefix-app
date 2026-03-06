@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react';
 import { PageHeader, DataTable, StatusBadge, Column, ConfirmDialog, StatCard, Modal } from '@/components/ui';
 import { Eye, CheckCircle, XCircle, Ban, Trash2, Package, Clock, AlertTriangle, Search, X, Check, Ban as BanIcon } from 'lucide-react';
-import { db } from '@/lib/firebase';
-import { collection, query, getDocs, doc, updateDoc, deleteDoc, collectionGroup, orderBy } from 'firebase/firestore';
+import { db, functions } from '@/lib/firebase';
+import { collection, query, getDocs, orderBy } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 
-type ModerationStatus = 'pending' | 'approved' | 'rejected' | 'disabled';
+type ModerationStatus = 'pending' | 'active' | 'rejected' | 'disabled';
 
 interface TechnicianService {
   id: string;
@@ -195,33 +196,30 @@ export default function TechnicianServicesPage() {
         return;
       }
 
-      const serviceRef = doc(db, 'technician_services', serviceId);
-
-      if (action === 'delete') {
-        await deleteDoc(serviceRef);
-        showToast('Service deleted successfully');
-      } else {
-        const newStatus: ModerationStatus = 
-          action === 'approve' ? 'approved' :
-          action === 'reject' ? 'rejected' :
-          action === 'disable' ? 'disabled' : 'pending';
-        
-        await updateDoc(serviceRef, { status: newStatus });
-        
-        if (action === 'approve') {
-          showToast('Service approved successfully! It is now visible in customer app.');
-        } else if (action === 'disable') {
-          showToast('Service disabled successfully');
-        } else if (action === 'reject') {
-          showToast('Service rejected');
-        }
+      // Use Cloud Functions instead of direct Firestore writes
+      if (action === 'approve') {
+        const approveService = httpsCallable(functions, 'approveService');
+        await approveService({ serviceId });
+        showToast('Service approved successfully! It is now visible in customer app.');
+      } else if (action === 'reject') {
+        const rejectService = httpsCallable(functions, 'rejectService');
+        await rejectService({ serviceId });
+        showToast('Service rejected');
+      } else if (action === 'disable') {
+        const disableService = httpsCallable(functions, 'disableService');
+        await disableService({ serviceId });
+        showToast('Service disabled successfully');
+      } else if (action === 'delete') {
+        // Note: Delete should also use Cloud Function in production
+        showToast('Delete functionality requires Cloud Function implementation', 'error');
+        return;
       }
       
       setConfirmDialog({ ...confirmDialog, isOpen: false });
       await fetchServices();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error executing action:', error);
-      showToast('Failed to execute action', 'error');
+      showToast(error.message || 'Failed to execute action', 'error');
     }
   };
 
@@ -232,7 +230,7 @@ export default function TechnicianServicesPage() {
 
   const getStatusVariant = (status: ModerationStatus): 'success' | 'warning' | 'error' | 'info' | 'default' | 'purple' => {
     switch (status) {
-      case 'approved': return 'success';
+      case 'active': return 'success';
       case 'rejected': return 'default';
       case 'disabled': return 'error';
       default: return 'warning';
@@ -242,7 +240,9 @@ export default function TechnicianServicesPage() {
   const stats = {
     total: services.length,
     pending: services.filter(s => s.status === 'pending').length,
-    approved: services.filter(s => s.status === 'approved').length,
+    active: services.filter(s => s.status === 'active').length,
+    disabled: services.filter(s => s.status === 'disabled').length,
+  };d').length,
     disabled: services.filter(s => s.status === 'disabled').length,
   };
 
@@ -371,7 +371,7 @@ export default function TechnicianServicesPage() {
               </button>
             </>
           )}
-          {item.status === 'approved' && (
+          {item.status === 'active' && (
             <button 
               onClick={() => handleAction('disable', item.id, item.title)}
               className="px-3 py-1 text-xs bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
@@ -411,7 +411,7 @@ export default function TechnicianServicesPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <StatCard title="Total Listings" value={stats.total} icon={Package} color="purple" />
         <StatCard title="Pending Approval" value={stats.pending} icon={Clock} color="orange" />
-        <StatCard title="Approved Listings" value={stats.approved} icon={CheckCircle} color="green" />
+        <StatCard title="Active Listings" value={stats.active} icon={CheckCircle} color="green" />
         <StatCard title="Disabled Listings" value={stats.disabled} icon={BanIcon} color="red" />
       </div>
 
@@ -463,7 +463,7 @@ export default function TechnicianServicesPage() {
           >
             <option value="">All Statuses</option>
             <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
+            <option value="active">Active</option>
             <option value="rejected">Rejected</option>
             <option value="disabled">Disabled</option>
           </select>
@@ -617,7 +617,7 @@ export default function TechnicianServicesPage() {
                   </button>
                 </>
               )}
-              {selectedService.status === 'approved' && (
+              {selectedService.status === 'active' && (
                 <button
                   onClick={() => {
                     setShowDetailsModal(false);

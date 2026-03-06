@@ -73,12 +73,32 @@ class _AddEditAddressScreenState extends State<AddEditAddressScreen> {
       final auth = Provider.of<AuthService>(context, listen: false);
       final firestore = Provider.of<FirestoreService>(context, listen: false);
 
+      // Construct full address based on label type
+      String fullAddress = _addressController.text;
+      if (_label.toLowerCase() == 'home') {
+        final parts = [
+          _field1Controller.text, // House/Flat No
+          _field2Controller.text, // Area/Street
+        ].where((e) => e.isNotEmpty);
+        fullAddress = parts.join(', ');
+      } else if (_label.toLowerCase() == 'office') {
+        final parts = [
+          _field2Controller.text, // Floor/Unit
+          _addressController.text, // Building Name
+        ].where((e) => e.isNotEmpty);
+        fullAddress = parts.join(', ');
+      }
+      
+      if (fullAddress.isEmpty) {
+        fullAddress = _addressController.text;
+      }
+
       final address = Address(
         id: widget.address?.id ?? '',
         label: _label,
         name: _nameController.text,
         phone: _phoneController.text,
-        fullAddress: _addressController.text,
+        fullAddress: fullAddress,
         landmark: _landmarkController.text,
         city: _cityController.text,
         district: _districtController.text,
@@ -90,11 +110,27 @@ class _AddEditAddressScreenState extends State<AddEditAddressScreen> {
         createdAt: widget.address?.createdAt ?? DateTime.now(),
       );
 
+      debugPrint('[ADD_EDIT_ADDRESS] Saving address: ${address.displayAddress}');
       await firestore.saveAddress(auth.currentUser!.uid, address);
-      if (mounted) Navigator.pop(context);
-    } catch (e) {
+      
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(widget.address == null ? 'Address saved successfully' : 'Address updated successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      debugPrint('[ADD_EDIT_ADDRESS] Error saving address: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

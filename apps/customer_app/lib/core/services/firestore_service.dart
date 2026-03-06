@@ -96,25 +96,81 @@ class FirestoreService {
   
   // --- Address Management ---
   Stream<List<Address>> streamAddresses(String userId) {
-    return _db.collection('users').doc(userId).collection('addresses')
+    debugPrint('[ADDRESS_LIST] Starting stream for user $userId');
+    return _db.collection('customers').doc(userId).collection('addresses')
         .snapshots()
         .map((snapshot) {
-          final addresses = snapshot.docs.map((doc) => Address.fromFirestore(doc)).toList();
+          debugPrint('[ADDRESS_LIST] Loaded ${snapshot.docs.length} addresses');
+          final addresses = snapshot.docs.map((doc) {
+            try {
+              return Address.fromFirestore(doc);
+            } catch (e) {
+              debugPrint('[ADDRESS_LIST] Error parsing address ${doc.id}: $e');
+              return null;
+            }
+          }).whereType<Address>().toList();
+          
           addresses.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          debugPrint('[ADDRESS_LIST] Returning ${addresses.length} valid addresses');
           return addresses;
         });
   }
   
   Future<void> saveAddress(String userId, Address address) async {
+    debugPrint('[ADDRESS_SAVE] Starting save for user $userId, isDefault: ${address.isDefault}');
+    
+    // If this is being set as default, first clear any existing default addresses
+    if (address.isDefault) {
+      try {
+        final existingDefaults = await _db
+            .collection('customers')
+            .doc(userId)
+            .collection('addresses')
+            .where('isDefault', isEqualTo: true)
+            .get();
+        
+        // Clear existing defaults
+        for (final doc in existingDefaults.docs) {
+          if (doc.id != address.id) { // Don't clear if editing the same address
+            await doc.reference.update({'isDefault': false});
+          }
+        }
+        debugPrint('[ADDRESS_SAVE] Cleared ${existingDefaults.docs.length} existing default addresses');
+      } catch (e) {
+        debugPrint('[ADDRESS_SAVE] Error clearing existing defaults: $e');
+      }
+    }
+    
+    // Save address via Cloud Function
     final callable = FirebaseFunctions.instance.httpsCallable('manageAddress');
     await callable.call({
       'action': address.id.isEmpty ? 'add' : 'edit',
       if (address.id.isNotEmpty) 'addressId': address.id,
-      'label': address.label ?? "",
-      'fullAddress': address.fullAddress ?? "",
-      'latitude': address.latitude ?? 0.0,
-      'longitude': address.longitude ?? 0.0,
+      'label': address.label,
+      'name': address.name,
+      'phone': address.phone,
+      'fullAddress': address.fullAddress,
+      'landmark': address.landmark,
+      'city': address.city,
+      'district': address.district,
+      'state': address.state,
+      'pincode': address.pincode,
+      'latitude': address.latitude,
+      'longitude': address.longitude,
+      'isDefault': address.isDefault,
     });
+    
+    // If this is set as primary/default, also update user profile
+    if (address.isDefault) {
+      await savePrimaryAddressToProfile(
+        userId: userId,
+        address: address.fullAddress,
+        district: address.district,
+        state: address.state,
+      );
+    }
+    
+    debugPrint('[ADDRESS_SAVE] Address saved successfully for user $userId');
   }
 
   Future<void> deleteAddress(String userId, String addressId) async {
@@ -133,52 +189,35 @@ class FirestoreService {
     });
   }
 
-  /// Set primary address with Firestore batch update
+  /// Set primary address - alias for setDefaultAddress for backward compatibility
   Future<void> setPrimaryAddress(String userId, String addressId) async {
-    if (userId.isEmpty || addressId.isEmpty) {
-      debugPrint('[PATH GUARD] blocked empty id in setPrimaryAddress');
+    await setDefaultAddress(userId, addressId);
+  }
+
+  /// Save primary address to user profile in Firestore
+  Future<void> savePrimaryAddressToProfile({
+    required String userId,
+    required String address,
+    required String district,
+    required String state,
+  }) async {
+    if (userId.isEmpty) {
+      debugPrint('[PATH GUARD] blocked empty id in savePrimaryAddressToProfile');
       return;
     }
 
     try {
-      final batch = _db.batch();
+      await _db.collection('customers').doc(userId).set({
+        'primaryAddress': address,
+        'district': district.toLowerCase(),
+        'state': state.toLowerCase(),
+        'addressUpdatedAt': FieldValue.serverTimestamp(),
+        'profileCompleted': true,
+      }, SetOptions(merge: true));
       
-      // Get all addresses
-      final addressesSnapshot = await _db
-          .collection('users')
-          .doc(userId)
-          .collection('addresses')
-          .get();
-
-      // Set all addresses to non-primary
-      for (final doc in addressesSnapshot.docs) {
-        batch.update(doc.reference, {'isDefault': false, 'isPrimary': false});
-      }
-
-      // Set selected address as primary
-      final selectedAddressRef = _db
-          .collection('users')
-          .doc(userId)
-          .collection('addresses')
-          .doc(addressId);
-      batch.update(selectedAddressRef, {'isDefault': true, 'isPrimary': true});
-
-      // Get selected address data to update user document
-      final selectedAddressDoc = await selectedAddressRef.get();
-      if (selectedAddressDoc.exists) {
-        final addressData = selectedAddressDoc.data() as Map<String, dynamic>;
-        final userRef = _db.collection('users').doc(userId);
-        batch.update(userRef, {
-          'primaryAddressId': addressId,
-          'serviceDistrict': addressData['district'] ?? '',
-          'serviceState': addressData['state'] ?? '',
-        });
-      }
-
-      await batch.commit();
-      debugPrint('✅ [Address] Primary address updated successfully');
+      debugPrint('✅ [Address] Primary address saved to user profile');
     } catch (e) {
-      debugPrint('❌ [Address] setPrimaryAddress failed: $e');
+      debugPrint('❌ [Address] Failed to save primary address to profile: $e');
       rethrow;
     }
   }
@@ -190,10 +229,10 @@ class FirestoreService {
       return Stream.value(null);
     }
     return _db
-        .collection('users')
+        .collection('customers')
         .doc(userId)
         .collection('addresses')
-        .where('isPrimary', isEqualTo: true)
+        .where('isDefault', isEqualTo: true)
         .limit(1)
         .snapshots()
         .map((snapshot) {
@@ -202,21 +241,29 @@ class FirestoreService {
     });
   }
 
-  /// Get primary address (async version)
-  Future<Address?> getPrimaryAddress(String userId) async {
+  /// Get primary address from user profile
+  Future<Map<String, dynamic>?> getPrimaryAddressFromProfile(String userId) async {
     if (userId.isEmpty) {
-      debugPrint('[PATH GUARD] blocked empty id in getPrimaryAddress');
+      debugPrint('[PATH GUARD] blocked empty id in getPrimaryAddressFromProfile');
       return null;
     }
-    final snapshot = await _db
-        .collection('users')
-        .doc(userId)
-        .collection('addresses')
-        .where('isPrimary', isEqualTo: true)
-        .limit(1)
-        .get();
-    if (snapshot.docs.isEmpty) return null;
-    return Address.fromFirestore(snapshot.docs.first);
+    
+    try {
+      final userDoc = await _db.collection('customers').doc(userId).get();
+      if (!userDoc.exists) return null;
+      
+      final data = userDoc.data();
+      if (data == null) return null;
+      
+      return {
+        'primaryAddress': data['primaryAddress'],
+        'district': data['district'],
+        'state': data['state'],
+      };
+    } catch (e) {
+      debugPrint('❌ [Address] Failed to get primary address from profile: $e');
+      return null;
+    }
   }
 
 

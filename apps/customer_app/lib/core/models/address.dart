@@ -125,4 +125,30 @@ class Address {
       'longitude': longitude,
     };
   }
+
+  /// Get formatted display address string
+  String get displayAddress {
+    final parts = [
+      if (fullAddress.isNotEmpty) fullAddress,
+      if (landmark.isNotEmpty) landmark,
+      if (city.isNotEmpty) city,
+      if (district.isNotEmpty) district,
+      if (state.isNotEmpty) state,
+      if (pincode.isNotEmpty) pincode,
+    ];
+    return parts.join(', ');
+  }
+
+  /// Get short display address (without pincode and state)
+  String get shortDisplayAddress {
+    final parts = [
+      if (fullAddress.isNotEmpty) fullAddress,
+      if (city.isNotEmpty) city,
+      if (district.isNotEmpty) district,
+    ];
+    return parts.join(', ');
+  }
+
+  @override
+  String toString() => displayAddress;
 }

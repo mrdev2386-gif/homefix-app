@@ -17,6 +17,9 @@ import * as admin from 'firebase-admin';
 import Razorpay from 'razorpay';
 import { v4 as uuidv4 } from 'uuid';
 
+// Import service moderation functions
+export * from './admin/service_moderation';
+
 // Initialize Firebase Admin
 admin.initializeApp();
 const db = admin.firestore();

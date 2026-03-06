@@ -116,6 +116,7 @@ class OnboardingService {
   Future<void> saveBasicDetails({
     required String fullName,
     String? email,
+    String? state,
     String? district,
     int? experienceYears,
   }) async {
@@ -129,6 +130,7 @@ class OnboardingService {
       final result = await _callFunction('saveTechnicianBasicDetails', {
         'fullName': fullName,
         'email': email ?? '',
+        'state': state ?? '',
         'district': district ?? '',
         'experienceYears': experienceYears ?? 0,
       });
