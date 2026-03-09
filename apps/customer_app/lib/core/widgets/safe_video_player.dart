@@ -280,7 +280,7 @@ class _SafeVideoPlayerState extends State<SafeVideoPlayer> {
             opacity: _controller!.value.isPlaying ? 0.0 : 1.0,
             duration: const Duration(milliseconds: 300),
             child: Container(
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: Colors.black54,
                 shape: BoxShape.circle,
               ),

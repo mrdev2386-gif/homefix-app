@@ -1,6 +1,7 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, ChangeNotifier;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/category.dart';
 import '../models/service.dart';
 import '../models/banner_model.dart';
@@ -16,8 +17,91 @@ Stream<T> _errorToData<T>(Stream<T> source, T Function(Object error) fallback) {
   ));
 }
 
-class CategoryService {
+class CategoryService extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // Location caching to prevent repeated Firestore reads
+  Map<String, String>? _cachedLocation;
+  bool _locationFetched = false;
+
+  /// Get user's location with caching to prevent repeated Firestore reads
+  Future<Map<String, String>?> getUserLocationCached() async {
+    if (_locationFetched) {
+      return _cachedLocation;
+    }
+
+    _cachedLocation = await _getUserLocation();
+    _locationFetched = true;
+    
+    return _cachedLocation;
+  }
+
+  /// Clear location cache (call when user updates address)
+  void clearLocationCache() {
+    _cachedLocation = null;
+    _locationFetched = false;
+    
+    // Notify listeners when cache is cleared
+    notifyListeners();
+  }
+
+  /// Get user's location from their primary address with safe fallback handling
+  Future<Map<String, String>?> _getUserLocation() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        if (kDebugMode) debugPrint('⚠️ [CategoryService] No authenticated user');
+        return null;
+      }
+
+      // Get user document
+      final userDoc = await _firestore.collection('customers').doc(user.uid).get();
+      if (!userDoc.exists) {
+        if (kDebugMode) debugPrint('⚠️ [CategoryService] User document not found');
+        return null;
+      }
+
+      // Get primary address ID
+      final primaryAddressId = userDoc.data()?['primaryAddressId'];
+      if (primaryAddressId == null) {
+        if (kDebugMode) debugPrint('⚠️ [CategoryService] No primary address set');
+        return null;
+      }
+
+      // Get address document
+      final addressDoc = await _firestore
+          .collection('customers')
+          .doc(user.uid)
+          .collection('addresses')
+          .doc(primaryAddressId)
+          .get();
+
+      if (!addressDoc.exists) {
+        if (kDebugMode) debugPrint('⚠️ [CategoryService] Primary address document not found');
+        return null;
+      }
+
+      // Extract location data
+      final addressData = addressDoc.data();
+      final state = addressData?['state'];
+      final district = addressData?['district'];
+
+      if (state == null || district == null || state.isEmpty || district.isEmpty) {
+        if (kDebugMode) debugPrint('⚠️ [CategoryService] Incomplete location data: state=$state, district=$district');
+        return null;
+      }
+
+      if (kDebugMode) debugPrint('✅ [CategoryService] User location: $state/$district');
+      return {
+        'state': state,
+        'district': district,
+      };
+    } catch (e) {
+      if (kDebugMode) debugPrint('❌ [CategoryService] Error getting user location: $e');
+      return null;
+    }
+  }
 
   Stream<List<Category>> streamCategories() {
     return _firestore
@@ -63,16 +147,24 @@ class CategoryService {
     }
   }
 
-  Stream<List<HomeService>> getRecentlyAddedServices({int limit = 10, String? district}) {
-    Query query = _firestore
-        .collection('technician_services')
-        .where('status', isEqualTo: 'active');
+  Stream<List<HomeService>> getRecentlyAddedServices({int limit = 10}) async* {
+    final location = await getUserLocationCached();
 
-    if (district != null && district.isNotEmpty) {
-      query = query.where('district', isEqualTo: district);
+    if (location == null) {
+      if (kDebugMode) debugPrint('⚠️ [CategoryService] No location data - returning empty results');
+      yield [];
+      return;
     }
 
-    return query
+    Query query = _firestore
+        .collection('technician_services')
+        .where('status', isEqualTo: 'approved')
+        .where('state', isEqualTo: location['state'])
+        .where('district', isEqualTo: location['district']);
+
+    if (kDebugMode) debugPrint('✅ [CategoryService] Filtering by location: ${location['state']}/${location['district']}');
+
+    yield* query
         .orderBy('createdAt', descending: true)
         .limit(limit)
         .snapshots()
@@ -88,21 +180,30 @@ class CategoryService {
     });
   }
 
-  Stream<List<HomeService>> getServicesByCategory(String categoryId, {String? district}) {
+  Stream<List<HomeService>> getServicesByCategory(String categoryId) async* {
     if (categoryId.isEmpty) {
-      return Stream.value([]);
+      yield [];
+      return;
+    }
+
+    final location = await getUserLocationCached();
+
+    if (location == null) {
+      if (kDebugMode) debugPrint('⚠️ [CategoryService] No location data - returning empty results for category');
+      yield [];
+      return;
     }
 
     Query query = _firestore
         .collection('technician_services')
         .where('categoryId', isEqualTo: categoryId)
-        .where('status', isEqualTo: 'active');
+        .where('status', isEqualTo: 'approved')
+        .where('state', isEqualTo: location['state'])
+        .where('district', isEqualTo: location['district']);
 
-    if (district != null && district.isNotEmpty) {
-      query = query.where('district', isEqualTo: district);
-    }
+    if (kDebugMode) debugPrint('✅ [CategoryService] Category filtering by location: ${location['state']}/${location['district']}');
 
-    return query
+    yield* query
         .limit(50)
         .snapshots()
         .map((snapshot) {
@@ -223,16 +324,24 @@ class CategoryService {
     return null;
   }
 
-  Stream<List<HomeService>> getAllServices({String? district}) {
-    Query query = _firestore
-        .collection('technician_services')
-        .where('status', isEqualTo: 'active');
+  Stream<List<HomeService>> getAllServices() async* {
+    final location = await getUserLocationCached();
 
-    if (district != null && district.isNotEmpty) {
-      query = query.where('district', isEqualTo: district);
+    if (location == null) {
+      if (kDebugMode) debugPrint('⚠️ [CategoryService] No location data - returning empty results');
+      yield [];
+      return;
     }
 
-    return query
+    Query query = _firestore
+        .collection('technician_services')
+        .where('status', isEqualTo: 'approved')
+        .where('state', isEqualTo: location['state'])
+        .where('district', isEqualTo: location['district']);
+
+    if (kDebugMode) debugPrint('✅ [CategoryService] All services filtering by location: ${location['state']}/${location['district']}');
+
+    yield* query
         .orderBy('createdAt', descending: true)
         .limit(50)
         .snapshots()
@@ -248,18 +357,25 @@ class CategoryService {
     });
   }
 
-  Stream<List<HomeService>> getTopServices({int limit = 10, String? district}) {
-    Query query = _firestore
-        .collection('technician_services')
-        .where('status', isEqualTo: 'active')
-        .where('isTopService', isEqualTo: true);
+  Stream<List<HomeService>> getTopServices({int limit = 10}) async* {
+    final location = await getUserLocationCached();
 
-    if (district != null && district.isNotEmpty) {
-      query = query.where('district', isEqualTo: district);
+    if (location == null) {
+      if (kDebugMode) debugPrint('⚠️ [CategoryService] No location data - returning empty results');
+      yield [];
+      return;
     }
 
-    return query
-        .orderBy('order')
+    Query query = _firestore
+        .collection('technician_services')
+        .where('status', isEqualTo: 'approved')
+        .where('state', isEqualTo: location['state'])
+        .where('district', isEqualTo: location['district']);
+
+    if (kDebugMode) debugPrint('✅ [CategoryService] Top services filtering by location: ${location['state']}/${location['district']}');
+
+    yield* query
+        .orderBy('createdAt', descending: true)
         .limit(limit)
         .snapshots()
         .map((snapshot) {
@@ -482,11 +598,22 @@ class CategoryService {
 
   Future<List<HomeService>> getAllServicesOnce() async {
     try {
-      final snapshot = await _firestore
-          .collectionGroup('technician_services')
-          .where('isPublished', isEqualTo: true)
-          .where('status', isEqualTo: 'active')
-          .where('technicianApproved', isEqualTo: true)
+      final location = await getUserLocationCached();
+
+      if (location == null) {
+        if (kDebugMode) debugPrint('⚠️ [CategoryService] No location data - returning empty results');
+        return [];
+      }
+
+      Query query = _firestore
+          .collection('technician_services')
+          .where('status', isEqualTo: 'approved')
+          .where('state', isEqualTo: location['state'])
+          .where('district', isEqualTo: location['district']);
+
+      if (kDebugMode) debugPrint('✅ [CategoryService] getAllServicesOnce filtering by location: ${location['state']}/${location['district']}');
+
+      final snapshot = await query
           .orderBy('createdAt', descending: true)
           .limit(100)
           .get();

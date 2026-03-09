@@ -107,7 +107,7 @@ class BlockScreen extends StatelessWidget {
   }
 
   Widget _buildIllustration(bool isBlocked) {
-    return Container(
+    return SizedBox(
       width: 160,
       height: 160,
       child: Stack(

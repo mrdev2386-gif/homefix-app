@@ -134,7 +134,7 @@ class CartItem {
       quantity: quantity ?? this.quantity,
       totalPrice: totalPrice ?? this.totalPrice,
       technicianId: technicianId ?? this.technicianId,
-      finalPriceSnapshot: finalPriceSnapshot ?? this.finalPriceSnapshot,
+      finalPriceSnapshot: finalPriceSnapshot ?? finalPriceSnapshot,
       scheduledAt: scheduledAt ?? this.scheduledAt,
     );
   }

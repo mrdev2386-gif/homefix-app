@@ -41,12 +41,11 @@ class FirestoreService {
   }
   
   /// CRITICAL: Stream for Home Screen "All Services"
+  /// FIX: Query technician_services collection directly (not collectionGroup)
+  /// Filters: status='approved' (not 'active'), no isPublished/technicianApproved checks
   Stream<List<HomeService>> streamAllTechnicianServices({int limit = 50}) {
-    return _db.collectionGroup('technician_services')
-        .where('status', isEqualTo: 'active')
-        .where('isPublished', isEqualTo: true)
-        .where('technicianApproved', isEqualTo: true)
-        .orderBy('createdAt', descending: true)
+    return _db.collection('technician_services')
+        .where('status', isEqualTo: 'approved')
         .limit(limit)
         .snapshots()
         .map((snapshot) {
@@ -54,6 +53,7 @@ class FirestoreService {
               .map((doc) => HomeService.fromFirestore(doc))
               .whereType<HomeService>()
               .toList();
+          services.sort((a, b) => b.createdAt.compareTo(a.createdAt));
           return services;
         });
   }
@@ -735,74 +735,46 @@ class FirestoreService {
   }
 
   Stream<List<HomeService>> streamRecommendedServices(String userId, {int limit = 10}) {
-    // 1. Fetch user's last booking categories or district
-    return _db.collection('bookings')
-        .where('customerId', isEqualTo: userId)
-        .orderBy('createdAt', descending: true)
-        .limit(2)
+    return _db.collection('technician_services')
+        .where('status', isEqualTo: 'approved')
+        .limit(limit * 3)
         .snapshots()
         .asyncMap((snapshot) async {
-          final List<String> preferredCategoryIds = [];
-          String? userDistrict;
-
-          if (snapshot.docs.isNotEmpty) {
-            for (var doc in snapshot.docs) {
-              final catId = doc.data()['categoryId'];
-              if (catId != null) preferredCategoryIds.add(catId);
-            }
-          }
-
-          // Also get user district for localized recommendations
-          final customerDoc = await _db.collection('customers').doc(userId).get();
-          if (customerDoc.exists) {
-            userDistrict = customerDoc.data()?['district'];
-          }
-
-          // 2. Build Query
-          Query query = _db.collectionGroup('technician_services')
-              .where('status', isEqualTo: 'active')
-              .where('isPublished', isEqualTo: true)
-              .where('technicianApproved', isEqualTo: true);
-
-          // Priority 1: Preferred Categories
-          if (preferredCategoryIds.isNotEmpty) {
-            query = query.where('categoryId', whereIn: preferredCategoryIds.take(10).toList());
-          } 
-          // Priority 2: User District
-          else if (userDistrict != null && userDistrict.isNotEmpty) {
-            query = query.where('technicianDistrict', isEqualTo: userDistrict);
-          }
-          // Fallback: Top Rated (handled via post-processing or orderBy)
-          else {
-            query = query.where('rating', isGreaterThanOrEqualTo: 4.0).orderBy('rating', descending: true);
-          }
-
-          final finalSnapshot = await query.limit(limit).get();
+          final userLocation = await _getUserLocation(userId);
+          final services = snapshot.docs
+              .map((doc) => HomeService.fromFirestore(doc))
+              .whereType<HomeService>()
+              .toList();
           
-          // If query returned nothing, absolute fallback to Top Rated
-          if (finalSnapshot.docs.isEmpty) {
-            final fallbackSnapshot = await _db.collectionGroup('technician_services')
-                .where('status', isEqualTo: 'active')
-                .where('isPublished', isEqualTo: true)
-                .where('technicianApproved', isEqualTo: true)
-                .where('rating', isGreaterThanOrEqualTo: 4.0)
-                .orderBy('rating', descending: true)
-                .limit(limit)
-                .get();
-            return fallbackSnapshot.docs.map((doc) => HomeService.fromFirestore(doc)).whereType<HomeService>().toList();
+          if (userLocation != null && userLocation['state']!.isNotEmpty && userLocation['district']!.isNotEmpty) {
+            return services
+                .where((s) => (s.technicianDistrict?.toLowerCase() ?? '') == userLocation['district'])
+                .take(limit)
+                .toList();
           }
-
-          return finalSnapshot.docs.map((doc) => HomeService.fromFirestore(doc)).whereType<HomeService>().toList();
+          return services.take(limit).toList();
         });
   }
 
   Stream<List<HomeService>> streamTopRatedTechnicianServices({int limit = 10}) {
-    return _db.collectionGroup('technician_services')
-        .where('status', isEqualTo: 'active')
-        .where('isPublished', isEqualTo: true)
-        .where('technicianApproved', isEqualTo: true)
-        .where('rating', isGreaterThanOrEqualTo: 4.0)
-        .orderBy('rating', descending: true)
+    return _db.collection('technician_services')
+        .where('status', isEqualTo: 'approved')
+        .limit(limit * 2)
+        .snapshots()
+        .map((snapshot) {
+          final services = snapshot.docs
+              .map((doc) => HomeService.fromFirestore(doc))
+              .whereType<HomeService>()
+              .toList();
+          services.sort((a, b) => b.rating.compareTo(a.rating));
+          return services.take(limit).toList();
+        });
+  }
+
+  Stream<List<HomeService>> streamRecentTechnicianServices({int limit = 10}) {
+    return _db.collection('technician_services')
+        .where('status', isEqualTo: 'approved')
+        .orderBy('createdAt', descending: true)
         .limit(limit)
         .snapshots()
         .map((snapshot) {
@@ -810,16 +782,68 @@ class FirestoreService {
         });
   }
 
-  Stream<List<HomeService>> streamRecentTechnicianServices({int limit = 10}) {
-    return _db.collectionGroup('technician_services')
-        .where('status', isEqualTo: 'active')
-        .where('isPublished', isEqualTo: true)
-        .where('technicianApproved', isEqualTo: true)
-        .orderBy('createdAt', descending: true)
-        .limit(limit)
+  Future<Map<String, String>?> _getUserLocation(String userId) async {
+    try {
+      final userDoc = await _db.collection('customers').doc(userId).get();
+      if (!userDoc.exists) return null;
+      final data = userDoc.data();
+      return {
+        'state': (data?['state'] ?? '').toString().toLowerCase(),
+        'district': (data?['district'] ?? '').toString().toLowerCase(),
+      };
+    } catch (e) {
+      debugPrint('Error getting user location: $e');
+      return null;
+    }
+  }
+
+  Stream<List<HomeService>> streamNearbyServices(String userId, {int limit = 10}) {
+    return _db.collection('technician_services')
+        .where('status', isEqualTo: 'approved')
+        .limit(limit * 3)
+        .snapshots()
+        .asyncMap((snapshot) async {
+          final userLocation = await _getUserLocation(userId);
+          final services = snapshot.docs
+              .map((doc) => HomeService.fromFirestore(doc))
+              .whereType<HomeService>()
+              .toList();
+          
+          if (userLocation != null && userLocation['district']!.isNotEmpty) {
+            return services
+                .where((s) => (s.technicianDistrict?.toLowerCase() ?? '') == userLocation['district'])
+                .take(limit)
+                .toList();
+          }
+          return services.take(limit).toList();
+        });
+  }
+
+  Future<HomeService?> getServiceById(String serviceId) async {
+    try {
+      final doc = await _db.collection('technician_services').doc(serviceId).get();
+      if (!doc.exists) return null;
+      return HomeService.fromFirestore(doc);
+    } catch (e) {
+      debugPrint('Error fetching service: $e');
+      return null;
+    }
+  }
+
+  Stream<List<HomeService>> streamSubServices(String categoryId, String serviceId) {
+    return _db
+        .collection('categories')
+        .doc(categoryId)
+        .collection('services')
+        .doc(serviceId)
+        .collection('subServices')
+        .where('isActive', isEqualTo: true)
         .snapshots()
         .map((snapshot) {
-          return snapshot.docs.map((doc) => HomeService.fromFirestore(doc)).whereType<HomeService>().toList();
+          return snapshot.docs
+              .map((doc) => HomeService.fromFirestore(doc))
+              .whereType<HomeService>()
+              .toList();
         });
   }
 

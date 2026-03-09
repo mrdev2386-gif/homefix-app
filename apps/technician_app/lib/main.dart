@@ -13,11 +13,13 @@ import 'screens/app_onboarding_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/technician_onboarding_flow_screen.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/complete_location_screen.dart';
 import 'features/technician/screens/profile_under_review_screen.dart';
 import 'features/technician/services/add_service_screen.dart';
 import 'core/services/technician_catalog_service.dart';
 import 'core/firebase/firebase_init.dart';
 import 'core/utils/app_logger.dart';
+import 'core/widgets/technician_status_guard.dart';
 
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_performance/firebase_performance.dart';
@@ -650,15 +652,18 @@ class _AuthenticatedGateState extends State<_AuthenticatedGate> {
 
         final tech = provider.technician;
         
-        // compute a combined flag so that KYC-complete techs don't get stuck
-        final bool onboardDone = (tech?.onboardingCompleted ?? false) || (tech?.isKycComplete ?? false);
+        // NORMALIZED: Check profile completion from Firestore
+        final profileCompletion = tech?.getProfileCompletion() ?? 0;
+        
+        // Simplified onboarding completion check
+        final bool onboardingComplete = profileCompletion == 100;
+        
         AppLogger.provider('Auth gate routing decision', data: {
           'uid': tech?.uid,
           'exists': tech != null,
-          'onboardingCompleted': tech?.onboardingCompleted,
-          'isKycComplete': tech?.isKycComplete,
-          'combinedOnboard': onboardDone,
-          'isApproved': tech?.isApproved,
+          'profileCompletion': profileCompletion,
+          'onboardingComplete': onboardingComplete,
+          'status': tech?.status,
         });
         
         // Document doesn't exist - go to onboarding (Auth trigger will create it soon)
@@ -668,26 +673,31 @@ class _AuthenticatedGateState extends State<_AuthenticatedGate> {
         }
         
         // Onboarding not complete - show onboarding flow
-        if (!onboardDone) {
-          AppLogger.info('AUTH', 'Onboarding not complete');
+        if (!onboardingComplete) {
+          AppLogger.info('AUTH', 'Onboarding not complete (profileCompletion: $profileCompletion)');
           return const TechnicianOnboardingFlowScreen();
         }
         
-        // Onboarding done but KYC not complete - show onboarding
-        if (!tech.isKycComplete) {
-          AppLogger.info('AUTH', 'Onboarding done but KYC not complete');
-          return const TechnicianOnboardingFlowScreen();
+        // CRITICAL: Check location before allowing dashboard access
+        final state = tech.state;
+        final district = tech.district;
+        
+        if (state == null || district == null || state.isEmpty || district.isEmpty) {
+          AppLogger.info('AUTH', 'Location missing - forcing location completion');
+          return const CompleteTechnicianLocationScreen();
         }
         
-        // KYC complete but not approved - show review screen
-        if (!tech.isApproved) {
-          AppLogger.info('AUTH', 'KYC complete but not approved - showing review');
-          return const ProfileUnderReviewScreen();
+        // Profile complete and location set - check approval status
+        if (tech.status == "approved") {
+          AppLogger.info('AUTH', 'Technician approved - opening dashboard');
+          return const DashboardScreen();
+        } else {
+          AppLogger.info('AUTH', 'Technician pending approval - showing waiting screen');
+          return TechnicianStatusGuard(
+            dashboardScreen: const DashboardScreen(),
+            onboardingScreen: const TechnicianOnboardingFlowScreen(),
+          );
         }
-        
-        // Fully approved - show dashboard
-        AppLogger.info('AUTH', 'Full authorization - showing dashboard');
-        return const DashboardScreen();
       },
     );
   }

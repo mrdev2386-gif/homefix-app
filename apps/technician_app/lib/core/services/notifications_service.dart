@@ -7,7 +7,6 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'dart:convert';
-import '../models/booking.dart';
 import 'booking_service.dart';
 import '../../screens/job_details_screen.dart';
 import '../../main.dart';

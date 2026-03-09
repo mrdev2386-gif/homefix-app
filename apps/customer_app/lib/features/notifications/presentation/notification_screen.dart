@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../../../core/services/notifications_service.dart' show NotificationsService, NotificationModel;
 import 'package:customer_app/core/services/auth_service.dart';

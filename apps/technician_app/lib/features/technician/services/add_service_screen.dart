@@ -524,6 +524,19 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     print("serviceId=$_selectedServiceId");
     print("isEdit=${widget.isEdit}");
     
+    // APPROVAL CHECK: Validate technician approval before proceeding
+    final techProvider = context.read<TechnicianProvider>();
+    if (!techProvider.canCreateServices()) {
+      final message = techProvider.getServiceBlockMessage();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    
     // PART 2: Prevent rapid taps
     final now = DateTime.now();
     if (_lastSaveTap != null && 
@@ -1570,6 +1583,8 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
 
 /// Shimmer loading placeholder widget
 class ShimmerLoading extends StatefulWidget {
+  const ShimmerLoading({super.key});
+
   @override
   State<ShimmerLoading> createState() => _ShimmerLoadingState();
 }

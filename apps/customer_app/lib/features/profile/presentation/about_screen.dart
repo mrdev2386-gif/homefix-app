@@ -20,7 +20,7 @@ class AboutScreen extends StatelessWidget {
         child: Column(
           children: [
             const SizedBox(height: 40),
-            SafeNetworkImage(
+            const SafeNetworkImage(
               imageUrl: 'https://cdn-icons-png.flaticon.com/512/3064/3064155.png',
               height: 120,
               fit: BoxFit.contain,

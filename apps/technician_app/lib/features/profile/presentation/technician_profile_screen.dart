@@ -422,7 +422,7 @@ class _VerificationAndCompletionCardState extends State<_VerificationAndCompleti
   }
 
   int _getProfileCompletion(Technician tech) {
-    return tech.calculateProfileCompletion();
+    return tech.getProfileCompletion();
   }
 
   @override
@@ -2520,7 +2520,7 @@ class _EditAvailabilityScreenState extends State<EditAvailabilityScreen> {
   TimeOfDay _startTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay _endTime = const TimeOfDay(hour: 18, minute: 0);
   bool _isSaving = false;
-  List<int> _selectedDays = [1, 2, 3, 4, 5]; // Mon-Fri
+  final List<int> _selectedDays = [1, 2, 3, 4, 5]; // Mon-Fri
   bool _emergencyAvailable = false;
 
   final List<String> _dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];

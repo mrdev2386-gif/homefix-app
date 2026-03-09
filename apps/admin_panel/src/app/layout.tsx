@@ -9,6 +9,11 @@ import { AuthProvider } from '@/components/AuthProvider'
 export const metadata: Metadata = {
     title: 'HomeFix Admin Portal',
     description: 'Service Marketplace Administration',
+    icons: {
+        icon: '/favicon.svg',
+        shortcut: '/favicon.svg',
+        apple: '/favicon.svg',
+    },
 }
 
 export default function RootLayout({

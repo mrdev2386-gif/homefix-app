@@ -115,8 +115,17 @@ export const createBookingRequest = functions.https.onCall(
             }
         }
 
-        // 3. Rate Limiting (Hardening)
-        await checkRateLimit(customerId, 'create_booking', 5, 60);
+        // 3. Rate Limiting (Hardening) - PRODUCTION SAFETY
+        // Limit: 10 bookings per hour per user to prevent abuse
+        try {
+            await checkRateLimit(customerId, 'create_booking', 10, 3600);
+        } catch (rateLimitError: any) {
+            console.warn(`[createBookingRequest] Rate limit exceeded for ${customerId}`);
+            throw new functions.https.HttpsError(
+                'resource-exhausted',
+                'Too many booking requests. Please try again later.'
+            );
+        }
 
         // 4. Input validation
         if (!serviceId || !technicianId || !categoryId || !categoryName || !scheduledDate || !scheduledTime || !address || !price) {

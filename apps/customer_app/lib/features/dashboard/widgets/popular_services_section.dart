@@ -44,7 +44,7 @@ class PopularServicesSection extends StatelessWidget {
                       color: AppTheme.primaryColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Icon(
+                    child: const Icon(
                       Icons.trending_up_rounded,
                       color: AppTheme.primaryColor,
                       size: 16,
@@ -258,9 +258,9 @@ class _PopularServiceCardState extends State<_PopularServiceCard> {
                     Row(
                       children: [
                         if (widget.service.rating > 0) ...[
-                          Icon(
+                          const Icon(
                             Icons.star_rounded,
-                            color: const Color(0xFFFFB800),
+                            color: Color(0xFFFFB800),
                             size: 14,
                           ),
                           const SizedBox(width: 2),

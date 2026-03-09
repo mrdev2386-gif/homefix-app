@@ -103,7 +103,7 @@ class _MatchingLoadingOverlayState extends State<MatchingLoadingOverlay>
                       color: AppTheme.primaryColor.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(
+                    child: const Icon(
                       Icons.person_search_rounded,
                       size: 48,
                       color: AppTheme.primaryColor,

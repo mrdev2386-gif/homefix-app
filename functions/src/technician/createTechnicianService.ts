@@ -14,6 +14,9 @@ import * as https from "firebase-functions/v2/https";
 
 const db = admin.firestore();
 
+// Total onboarding steps: basic, professional, kyc, portfolio
+const TOTAL_ONBOARDING_STEPS = 4;
+
 /**
  * Tag normalization for search optimization
  * - Lowercase
@@ -112,10 +115,26 @@ function generateSearchKeywords(
  * - no keyword stuffing (same tag repeated > 2 times)
  * - serviceId must exist if provided
  * - subServiceId must exist if provided
+ * - REQUIRED FIELDS: title, price, technicianId, subServiceId
  * 
  * Debug log: [TECH_SERVICE_QUALITY_REJECT]
  */
 async function validateServiceInput(data: any): Promise<{ valid: boolean; error?: string }> {
+    // STEP 3: REQUIRED FIELDS VALIDATION
+    if (!data.title || typeof data.title !== 'string') {
+        throw new https.HttpsError("invalid-argument", "Missing required field: title");
+    }
+    
+    if (data.price === undefined || data.price === null || typeof data.price !== 'number') {
+        throw new https.HttpsError("invalid-argument", "Missing required field: price");
+    }
+    
+    // technicianId is validated from auth context
+    
+    if (!data.subServiceId || typeof data.subServiceId !== 'string') {
+        throw new https.HttpsError("invalid-argument", "Missing required field: subServiceId");
+    }
+
     // Required fields check
     if (!data.categoryId || typeof data.categoryId !== 'string') {
         return { valid: false, error: 'Category is required' };
@@ -260,8 +279,22 @@ async function validateServiceInput(data: any): Promise<{ valid: boolean; error?
 /**
  * Check for duplicate/spam services
  * Prevents technician from creating too many services in a short time
+ * STEP 4: RATE LIMITING - Maximum 20 services per technician
  */
 async function checkDuplicateSpam(technicianId: string): Promise<{ allowed: boolean; error?: string }> {
+    // STEP 4: Rate limiting - check total service count
+    const totalServices = await db.collection('technician_services')
+        .where('technicianId', '==', technicianId)
+        .where('status', 'in', ['pending', 'approved'])
+        .get();
+
+    if (totalServices.size >= 20) {
+        return {
+            allowed: false,
+            error: 'Maximum 20 services allowed per technician. Please contact support if you need more.'
+        };
+    }
+
     const now = admin.firestore.Timestamp.now();
     const oneHourAgo = new Date(now.toDate().getTime() - 60 * 60 * 1000);
 
@@ -280,6 +313,37 @@ async function checkDuplicateSpam(technicianId: string): Promise<{ allowed: bool
     }
 
     return { allowed: true };
+}
+
+/**
+ * Check for duplicate service by technicianId + subServiceId
+ * Prevents technicians from creating duplicate services
+ */
+async function checkDuplicateService(
+    technicianId: string,
+    subServiceId: string
+): Promise<{ allowed: boolean; error?: string }> {
+    try {
+        const existingServices = await db.collection('technician_services')
+            .where('technicianId', '==', technicianId)
+            .where('subServiceId', '==', subServiceId)
+            .where('status', 'in', ['pending', 'approved'])
+            .limit(1)
+            .get();
+
+        if (!existingServices.empty) {
+            console.log(`[TECH_SERVICE_DUPLICATE] Service already exists: technicianId=${technicianId}, subServiceId=${subServiceId}`);
+            return {
+                allowed: false,
+                error: 'This service already exists for this technician.'
+            };
+        }
+
+        return { allowed: true };
+    } catch (error) {
+        console.error('[TECH_SERVICE] Error checking duplicate service:', error);
+        return { allowed: true }; // Allow on error to prevent blocking
+    }
 }
 
 /**
@@ -491,7 +555,7 @@ export const createTechnicianService = onCall(
         const technicianId = request.auth.uid;
         const data = request.data;
 
-        // 1.1 Check if technician is approved AND has admin approval for service management
+        // 1.1 Check if technician profile is approved and has 100% completion
         const techDoc = await db.collection('technicians').doc(technicianId).get();
         if (!techDoc.exists) {
             throw new https.HttpsError(
@@ -501,14 +565,18 @@ export const createTechnicianService = onCall(
         }
         const techData = techDoc.data()!;
 
-        // CRITICAL: Both isApproved AND adminApproved must be true for service management
-        const isApproved = techData.isApproved || false;
-        const adminApproved = techData.adminApproved || false;
+        // CRITICAL: profileApproved must be true for service management
+        const profileApproved = techData.profileApproved || false;
+        
+        // Calculate profile completion
+        const stepsCompleted = techData.stepsCompleted || {};
+        const completedSteps = Object.values(stepsCompleted).filter(Boolean).length;
+        const profileCompletion = Math.round((completedSteps / TOTAL_ONBOARDING_STEPS) * 100);
 
-        if (!isApproved || !adminApproved) {
+        if (!profileApproved || profileCompletion < 100) {
             throw new https.HttpsError(
                 "permission-denied",
-                "You must be fully approved by admin to create services. Please wait for admin approval."
+                "You must have 100% profile completion and admin approval to create services."
             );
         }
 
@@ -541,6 +609,15 @@ export const createTechnicianService = onCall(
         if (!titleCheck.allowed) {
             console.log(`[TECH_SERVICE] Duplicate title check failed: ${titleCheck.error}`);
             throw new https.HttpsError("invalid-argument", titleCheck.error!);
+        }
+
+        // 4.1. PRODUCTION: Check for duplicate service by technicianId + subServiceId
+        if (data.subServiceId) {
+            const duplicateCheck = await checkDuplicateService(technicianId, data.subServiceId);
+            if (!duplicateCheck.allowed) {
+                console.log(`[TECH_SERVICE] Duplicate service check failed: ${duplicateCheck.error}`);
+                throw new https.HttpsError("invalid-argument", duplicateCheck.error!);
+            }
         }
 
         // 5. Verify category exists
@@ -636,10 +713,10 @@ export const createTechnicianService = onCall(
             imageUrl: data.imageUrl,
 
             // Status
-            isActive: true,
-            isPublished: false,  // ✅ Not visible until admin approves
-            technicianApproved: false,  // ✅ Pending admin approval
-            status: 'pending_admin_approval',  // ✅ Awaiting admin review
+            isActive: false,             // ✅ FIXED: Must be false until admin approves
+            isPublished: false,          // ✅ Not visible until admin approves
+            technicianApproved: false,   // ✅ Pending admin approval
+            status: 'pending',           // ✅ Awaiting admin review
 
             // Timestamps
             createdAt: now,
@@ -712,7 +789,7 @@ export const updateTechnicianService = onCall(
 
         console.log(`[TECH_SERVICE] Updating service ${serviceId} for technician: ${technicianId}`);
 
-        // 1.1 Check if technician has admin approval for service management
+        // 1.1 Check if technician profile is approved and has 100% completion
         const techDoc = await db.collection('technicians').doc(technicianId).get();
         if (!techDoc.exists) {
             throw new https.HttpsError(
@@ -722,14 +799,18 @@ export const updateTechnicianService = onCall(
         }
         const techData = techDoc.data()!;
 
-        // CRITICAL: Both isApproved AND adminApproved must be true for service management
-        const isApproved = techData.isApproved || false;
-        const adminApproved = techData.adminApproved || false;
+        // CRITICAL: profileApproved must be true for service management
+        const profileApproved = techData.profileApproved || false;
+        
+        // Calculate profile completion
+        const stepsCompleted = techData.stepsCompleted || {};
+        const completedSteps = Object.values(stepsCompleted).filter(Boolean).length;
+        const profileCompletion = Math.round((completedSteps / TOTAL_ONBOARDING_STEPS) * 100);
 
-        if (!isApproved || !adminApproved) {
+        if (!profileApproved || profileCompletion < 100) {
             throw new https.HttpsError(
                 "permission-denied",
-                "You must be fully approved by admin to update services. Please wait for admin approval."
+                "You must have 100% profile completion and admin approval to update services."
             );
         }
 
@@ -875,7 +956,7 @@ export const deleteTechnicianService = onCall(
 
         console.log(`[TECH_SERVICE] Deleting service ${serviceId} for technician: ${technicianId}`);
 
-        // 1.1 Check if technician has admin approval for service management
+        // 1.1 Check if technician profile is approved and has 100% completion
         const techDoc = await db.collection('technicians').doc(technicianId).get();
         if (!techDoc.exists) {
             throw new https.HttpsError(
@@ -885,14 +966,18 @@ export const deleteTechnicianService = onCall(
         }
         const techData = techDoc.data()!;
 
-        // CRITICAL: Both isApproved AND adminApproved must be true for service management
-        const isApproved = techData.isApproved || false;
-        const adminApproved = techData.adminApproved || false;
+        // CRITICAL: profileApproved must be true for service management
+        const profileApproved = techData.profileApproved || false;
+        
+        // Calculate profile completion
+        const stepsCompleted = techData.stepsCompleted || {};
+        const completedSteps = Object.values(stepsCompleted).filter(Boolean).length;
+        const profileCompletion = Math.round((completedSteps / TOTAL_ONBOARDING_STEPS) * 100);
 
-        if (!isApproved || !adminApproved) {
+        if (!profileApproved || profileCompletion < 100) {
             throw new https.HttpsError(
                 "permission-denied",
-                "You must be fully approved by admin to delete services. Please wait for admin approval."
+                "You must have 100% profile completion and admin approval to delete services."
             );
         }
 

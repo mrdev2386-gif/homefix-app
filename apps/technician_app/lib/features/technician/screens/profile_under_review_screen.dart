@@ -39,7 +39,7 @@ class _ProfileUnderReviewScreenState extends State<ProfileUnderReviewScreen> {
     if (mounted) {
       setState(() => _isRefreshing = false);
       
-      if (tech != null && tech.isApproved) {
+      if (tech != null && tech.status == "approved") {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const DashboardScreen()),
         );

@@ -569,7 +569,7 @@ class _InstantBookingScreenState extends State<InstantBookingScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.error_outline_rounded, size: 64, color: AppTheme.errorColor),
+          const Icon(Icons.error_outline_rounded, size: 64, color: AppTheme.errorColor),
           const SizedBox(height: 16),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -709,7 +709,7 @@ class _InstantBookingScreenState extends State<InstantBookingScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
+                      const Icon(
                         Icons.access_time_rounded,
                         size: 12,
                         color: AppTheme.successColor,
@@ -838,7 +838,7 @@ class _InstantBookingScreenState extends State<InstantBookingScreen> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    Icon(Icons.star_rounded, size: 14, color: AppTheme.warningColor),
+                    const Icon(Icons.star_rounded, size: 14, color: AppTheme.warningColor),
                     const SizedBox(width: 4),
                     Text(
                       service.rating.toStringAsFixed(1),

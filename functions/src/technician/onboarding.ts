@@ -1,6 +1,6 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import { assertAuthenticated } from '../shared/security';
+import { assertAuthenticated, encrypt, sanitizeString, sanitizeEmail, sanitizeAadhaar } from '../shared/security';
 
 const db = admin.firestore();
 
@@ -52,29 +52,19 @@ export const createTechnicianProfile = functions.https.onCall(async (data, conte
     const existingDoc = await db.collection('technicians').doc(uid).get();
 
     if (existingDoc.exists) {
-        // Update existing - only allow specific fields
+        // Return existing onboarding state instead of throwing error
         const existingData = existingDoc.data();
-        const currentStep = existingData?.onboardingStep;
-
-        // Only allow update if still in early onboarding stages
-        if (currentStep && !['phone', 'basicDetails'].includes(currentStep)) {
-            throw new functions.https.HttpsError(
-                'failed-precondition',
-                'Onboarding already in progress. Cannot reinitialize.'
-            );
-        }
-
-        await db.collection('technicians').doc(uid).update({
-            phone: phone,
-            email: email || existingData?.email || '',
-            onboardingStep: 'basicDetails',
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-
+        const currentStep = existingData?.onboardingStep || 'basicDetails';
+        const status = existingData?.status || 'pending';
+        
+        console.log(`[createTechnicianProfile] Technician ${uid} already exists, returning current state: ${currentStep}`);
+        
         return {
             success: true,
-            message: 'Profile updated',
-            step: 'basicDetails'
+            message: 'Profile already exists',
+            step: currentStep,
+            status: status,
+            existing: true
         };
     }
 
@@ -93,7 +83,7 @@ export const createTechnicianProfile = functions.https.onCall(async (data, conte
         isKycComplete: false,
         isApproved: false,
         adminApproved: false, // Explicit admin approval flag
-        status: 'pending_verification',
+        status: 'pending',
         kycStatus: 'pending',
 
         // Initialize empty fields
@@ -153,8 +143,13 @@ export const saveTechnicianBasicDetails = functions.https.onCall(async (data, co
     const uid = context.auth!.uid;
     const { fullName, email, district, experienceYears } = data;
 
+    // SECURITY FIX: Sanitize inputs
+    const sanitizedFullName = sanitizeString(fullName || '', 100);
+    const sanitizedEmail = sanitizeEmail(email || '');
+    const sanitizedDistrict = sanitizeString(district || '', 50);
+
     // Validation
-    if (!fullName || fullName.length < 2) {
+    if (!sanitizedFullName || sanitizedFullName.length < 2) {
         throw new functions.https.HttpsError(
             'invalid-argument',
             'Full name is required (min 2 characters)'
@@ -245,12 +240,13 @@ export const saveTechnicianBasicDetails = functions.https.onCall(async (data, co
 
     // Update technician profile
     await db.collection('technicians').doc(uid).update({
-        fullName: fullName,
-        name: fullName, // Alias for compatibility
-        email: email || '',
-        district: district || '',
+        fullName: sanitizedFullName,
+        name: sanitizedFullName, // Alias for compatibility
+        email: sanitizedEmail,
+        district: sanitizedDistrict,
         experienceYears: experienceYears || 0,
         onboardingStep: targetStep,
+        'stepsCompleted.basic': true,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
@@ -276,8 +272,11 @@ export const saveTechnicianDocuments = functions.https.onCall(async (data, conte
         documentType
     } = data;
 
+    // SECURITY FIX: Sanitize Aadhaar
+    const sanitizedAadhaar = sanitizeAadhaar(aadhaarNumber || '');
+
     // Validate required fields
-    if (!aadhaarNumber || aadhaarNumber.length !== 12) {
+    if (!sanitizedAadhaar || sanitizedAadhaar.length !== 12) {
         throw new functions.https.HttpsError(
             'invalid-argument',
             'Valid 12-digit Aadhaar number is required'
@@ -311,20 +310,26 @@ export const saveTechnicianDocuments = functions.https.onCall(async (data, conte
         );
     }
 
+    // CRITICAL SECURITY FIX: Encrypt Aadhaar before storing
+    const encryptedAadhaar = encrypt(sanitizedAadhaar);
+    
     // Mask Aadhaar for display (store last 4 digits)
-    const maskedAadhaar = `XXXX-XXXX-${aadhaarNumber.substring(8)}`;
+    const maskedAadhaar = `XXXX-XXXX-${sanitizedAadhaar.substring(8)}`;
 
     // Update technician profile with documents
     await db.collection('technicians').doc(uid).update({
-        aadhaarNumber: aadhaarNumber, // In production, encrypt this
+        aadhaarNumber: encryptedAadhaar, // ENCRYPTED
         aadhaarMasked: maskedAadhaar,
         aadhaarFrontUrl: aadhaarFrontUrl,
         aadhaarBackUrl: aadhaarBackUrl || '',
         profilePhotoUrl: profilePhotoUrl,
         documentType: documentType || 'Aadhaar Card',
         onboardingStep: 'services',
+        'stepsCompleted.kyc': true,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
+
+    console.log(`[SECURITY] Aadhaar encrypted and stored for technician ${uid}`);
 
     return {
         success: true,
@@ -390,6 +395,7 @@ export const saveTechnicianServices = functions.https.onCall(async (data, contex
         primaryCategoryName: categoryName,
         skills: skills,
         onboardingStep: 'review',
+        'stepsCompleted.services': true,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
@@ -443,15 +449,16 @@ export const submitTechnicianKyc = functions.https.onCall(async (data, context) 
     console.log('[KYC SUBMIT] Marking technician as KYC complete:', uid);
 
     // Submit the application - this marks KYC as complete
-    await db.collection('technicians').doc(uid).set({
+    await db.collection('technicians').doc(uid).update({
         isKycComplete: true,
         onboardingCompleted: true, // keep for backward compatibility
         onboardingStep: 'submitted',
         status: 'pending',
         kycStatus: 'pending',
+        'stepsCompleted.review': true,
         submittedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+    });
 
     console.log('[KYC SUBMIT] Successfully marked KYC complete');
 
@@ -602,8 +609,8 @@ export const saveTechnicianStepData = functions.https.onCall(async (data, contex
     filteredData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
 
     try {
-        // Update with merge
-        await db.collection('technicians').doc(uid).set(filteredData, { merge: true });
+        // Update with merge to preserve existing profile fields
+        await db.collection('technicians').doc(uid).update(filteredData);
         console.log(`[CF saveTechnicianStepData] WRITE SUCCESS`);
     } catch (error) {
         console.error(`[CF saveTechnicianStepData] ERROR:`, error);

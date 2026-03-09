@@ -177,7 +177,7 @@ class _PremiumSearchBarState extends State<PremiumSearchBar> {
                       color: AppTheme.primaryColor.withOpacity(0.1),
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(
+                    child: const Icon(
                       Icons.tune_rounded,
                       color: AppTheme.primaryColor,
                       size: 18,

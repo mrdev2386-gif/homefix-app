@@ -77,6 +77,9 @@ class Technician {
   final bool isKycComplete;
   final bool isApproved;
   final bool adminApproved; // Additional approval flag for service management
+  final bool profileApproved; // New field for profile approval workflow
+  final bool profileApprovalRequested; // Auto-set when profile reaches 100%
+  final bool profileRejected; // Set when admin rejects profile
   /// Indicates if the technician has completed onboarding (legacy/hardening flag)
   /// This mirrors the Firestore field `onboardingCompleted` and is used in
   /// routing logic (see `main.dart`).
@@ -88,7 +91,7 @@ class Technician {
   final String? state;
   final String? district;
   final int? experienceYears;
-  final String? primaryCategoryId;
+  final List<String>? primaryCategoryId;
   final String? primaryCategoryName;
   final String? documentType;
   final String? gender;
@@ -112,6 +115,7 @@ class Technician {
   final int? maxDailyJobs;
   final bool? dynamicPricingAllowed;
   final Map<String, dynamic>? stepsCompleted;
+  final int? profileCompletion;
   
   // Bank details fields
   final String? bankName;
@@ -124,6 +128,11 @@ class Technician {
 
   // Custom services added by technician
   final List<String>? customServices;
+  
+  // Step 4 professional fields
+  final String? experienceDescription;
+  final List<String>? tools;
+  final String? workPreference;
 
   Technician({
     required this.uid,
@@ -151,6 +160,9 @@ class Technician {
     this.isKycComplete = false,
     this.isApproved = false,
     this.adminApproved = false, // Default to false - must be approved to manage services
+    this.profileApproved = false, // Default to false - must be approved by admin
+    this.profileApprovalRequested = false, // Default to false - set when profile reaches 100%
+    this.profileRejected = false, // Default to false - set when admin rejects
     this.onboardingCompleted = false,
     this.aadhaarNumber,
     this.aadhaarFrontUrl,
@@ -181,6 +193,7 @@ class Technician {
     this.maxDailyJobs,
     this.dynamicPricingAllowed,
     this.stepsCompleted,
+    this.profileCompletion,
     this.bankName,
     this.accountNumber,
     this.ifscCode,
@@ -189,6 +202,9 @@ class Technician {
     this.bankRejectionReason,
     this.bankSubmittedAt,
     this.customServices,
+    this.experienceDescription,
+    this.tools,
+    this.workPreference,
   });
 
   factory Technician.fromFirestore(DocumentSnapshot doc) {
@@ -217,38 +233,81 @@ class Technician {
     // PART 2: PROFILE NULL-SAFE MAPPING
     final fullName = (data['fullName'] ?? data['name'] ?? '').toString();
     final email = (data['email'] ?? '').toString();
-    final stepsMap = (data['stepsCompleted'] ?? {}) as Map<String, dynamic>;
+    final rawStepsMap = (data['stepsCompleted'] ?? {}) as Map<String, dynamic>;
 
     debugPrint('[TECH PROFILE] fullName=$fullName email=$email');
 
-    // Handle legacy status field
-    String status = data['status'] ?? 'pending_verification';
+    // Handle legacy status field - normalize "active" to "approved"
+    String status = data['status'] ?? 'pending';
+    if (status == 'active') {
+      status = 'approved';
+      debugPrint('[STATUS NORMALIZATION] Document ${doc.id}: active → approved');
+    }
     String? kycStatus = data['kycStatus'];
+
+    // NORMALIZE STEP FIELDS: Map legacy fields to normalized structure with enhanced safety
+    final normalizedStepsMap = <String, dynamic>{};
+    
+    // Map legacy fields to normalized fields with multiple fallback sources
+    normalizedStepsMap['personalDetails'] = rawStepsMap['personalDetails'] ?? rawStepsMap['basic'] ?? false;
+    normalizedStepsMap['serviceCategories'] = rawStepsMap['serviceCategories'] ?? rawStepsMap['professional'] ?? false;
+    normalizedStepsMap['portfolio'] = rawStepsMap['portfolio'] ?? rawStepsMap['bank'] ?? false;
+    normalizedStepsMap['verification'] = rawStepsMap['verification'] ?? rawStepsMap['kyc'] ?? false;
+    
+    // Enhanced safety: Check for any remaining legacy fields and log them
+    final legacyFields = ['basic', 'professional', 'kyc', 'services', 'bank']
+        .where((key) => rawStepsMap.containsKey(key))
+        .toList();
+    
+    if (legacyFields.isNotEmpty) {
+      debugPrint('[LEGACY FIELDS DETECTED] Document ${doc.id} has legacy fields: ${legacyFields.join(", ")}');
+    }
+    
+    debugPrint('[STEP NORMALIZATION] Raw: $rawStepsMap');
+    debugPrint('[STEP NORMALIZATION] Normalized: $normalizedStepsMap');
+    
+    // Calculate profile completion from normalized fields
+    int completedSteps = 0;
+    if (normalizedStepsMap['personalDetails'] == true) completedSteps++;
+    if (normalizedStepsMap['serviceCategories'] == true) completedSteps++;
+    if (normalizedStepsMap['portfolio'] == true) completedSteps++;
+    if (normalizedStepsMap['verification'] == true) completedSteps++;
+    
+    final calculatedCompletion = (completedSteps * 100) ~/ 4;
+    debugPrint('[PROFILE COMPLETION] Calculated from normalized: $calculatedCompletion% ($completedSteps/4)');
+    
+    // Update Firestore with normalized structure if needed
+    if (legacyFields.isNotEmpty || status != data['status'] || calculatedCompletion != (data['profileCompletion'] ?? 0)) {
+      _updateFirestoreWithNormalizedSteps(doc.id, normalizedStepsMap, calculatedCompletion, status);
+    }
     
     // SELF-HEALING KYC RESOLUTION - SINGLE SOURCE OF TRUTH
     // Check multiple sources to determine if KYC is truly complete
     final bool resolvedKyc =
         data['isKycComplete'] == true ||
         data['onboardingCompleted'] == true ||
-        (stepsMap['kyc'] == true &&
-         stepsMap['bank'] == true &&
-         stepsMap['services'] == true);
+        (normalizedStepsMap['verification'] == true &&
+         normalizedStepsMap['portfolio'] == true);  // Only check required normalized steps
+    
+    // Legacy data migration: map 'bank' to 'portfolio' - REMOVED (handled in normalization above)
     
     debugPrint('[FINAL HARDEN] resolvedKyc=$resolvedKyc');
     
     // Use resolved value as SINGLE source of truth
     bool isKycComplete = resolvedKyc;
-    bool isApproved = data['isApproved'] ?? false;
-    bool adminApproved = data['adminApproved'] ?? false;
+    bool profileApprovalRequested = data['profileApprovalRequested'] ?? false;
+    bool profileRejected = data['profileRejected'] ?? false;
     
-    // Legacy conversion: if kycStatus is 'approved', set isApproved = true
-    // BUT DO NOT override isKycComplete - it's already resolved above
+    // SECURITY FIX: Use SINGLE approval source - only status == "approved"
+    bool isApproved = (status == "approved");
+    bool adminApproved = isApproved; // adminApproved mirrors isApproved
+    bool profileApproved = isApproved; // profileApproved mirrors isApproved
+    
+    // Legacy conversion: if kycStatus is 'approved', set approval flags
     if (kycStatus == 'approved') {
       isApproved = true;
       adminApproved = true;
-    } else if (status == 'approved') {
-      isApproved = true;
-      adminApproved = true;
+      profileApproved = true;
     }
     
     // FIX 2: Onboarding step sanity guard & safe value getter
@@ -297,23 +356,34 @@ class Technician {
       isKycComplete: isKycComplete,
       isApproved: isApproved,
       adminApproved: adminApproved,
+      profileApproved: profileApproved,
+      profileApprovalRequested: profileApprovalRequested,
+      profileRejected: profileRejected,
       onboardingCompleted: data['onboardingCompleted'] == true,
       aadhaarNumber: data['aadhaarNumber'],
       aadhaarFrontUrl: data['aadhaarFrontUrl'],
       aadhaarBackUrl: data['aadhaarBackUrl'],
       profilePhotoUrl: data['profilePhotoUrl'],
-      state: data['state'],
-      district: data['district'],
-      experienceYears: data['experienceYears'],
-      primaryCategoryId: data['primaryCategoryId'],
-      primaryCategoryName: data['primaryCategoryName'],
-      documentType: data['documentType'],
-      gender: data['gender'],
+      state: data['state']?.toString(),
+      district: data['district']?.toString(),
+      experienceYears: data['experienceYears'] as int?,
+      primaryCategoryId: (data['primaryCategoryId'] as List?)
+          ?.map((e) => e.toString())
+          .toList(),
+      primaryCategoryName: data['primaryCategoryName']?.toString(),
+      documentType: data['documentType']?.toString(),
+      gender: data['gender']?.toString(),
       dateOfBirth: data['dateOfBirth'] != null
-          ? (data['dateOfBirth'] as Timestamp).toDate()
+          ? (data['dateOfBirth'] is Timestamp
+              ? (data['dateOfBirth'] as Timestamp).toDate()
+              : data['dateOfBirth'] is String
+                  ? DateTime.tryParse(data['dateOfBirth'])
+                  : null)
           : null,
-      bio: data['bio'],
-      serviceAreas: List<String>.from(data['serviceAreas'] ?? []),
+      bio: data['bio']?.toString(),
+      serviceAreas: (data['serviceAreas'] as List?)
+          ?.map((e) => e.toString())
+          .toList(),
       workStartTime: data['workStartTime'] != null
           ? TimeOfDay(
               hour: (data['workStartTime'] as Map)['hour'] ?? 0,
@@ -334,25 +404,53 @@ class Technician {
       languagePreferences: (data['languagePreferences'] as List?)
           ?.map((e) => e.toString())
           .toList(),
-      referralCodeUsed: data['referralCodeUsed'],
-      panNumber: data['panNumber'],
-      accountType: data['accountType'],
-      payoutPreference: data['payoutPreference'],
+      referralCodeUsed: data['referralCodeUsed']?.toString(),
+      panNumber: data['panNumber']?.toString(),
+      accountType: data['accountType']?.toString(),
+      payoutPreference: data['payoutPreference']?.toString(),
       maxDailyJobs: data['maxDailyJobs'],
       dynamicPricingAllowed: data['dynamicPricingAllowed'],
-      stepsCompleted: stepsMap,
+      stepsCompleted: normalizedStepsMap,
+      profileCompletion: data['profileCompletion'] as int?,
       // Bank details - root level only (no legacy fallback)
-      bankName: data['bankName'],
-      accountNumber: data['accountNumber'],
-      ifscCode: data['ifscCode'],
-      accountHolderName: data['accountHolderName'],
-      bankStatus: data['bankStatus'],
-      bankRejectionReason: data['bankRejectionReason'],
+      bankName: data['bankName']?.toString(),
+      accountNumber: data['accountNumber']?.toString(),
+      ifscCode: data['ifscCode']?.toString(),
+      accountHolderName: data['accountHolderName']?.toString(),
+      bankStatus: data['bankStatus']?.toString(),
+      bankRejectionReason: data['bankRejectionReason']?.toString(),
       bankSubmittedAt: data['bankSubmittedAt'] != null
           ? (data['bankSubmittedAt'] as Timestamp).toDate()
           : null,
       customServices: (data['customServices'] as List?)?.map((e) => e.toString()).toList(),
+      experienceDescription: data['experienceDescription']?.toString(),
+      tools: (data['tools'] as List?)?.map((e) => e.toString()).toList(),
+      workPreference: data['workPreference']?.toString(),
     );
+  }
+
+  /// Update Firestore with normalized step structure
+  static void _updateFirestoreWithNormalizedSteps(
+    String docId, 
+    Map<String, dynamic> normalizedSteps, 
+    int calculatedCompletion,
+    String normalizedStatus
+  ) {
+    // Update Firestore asynchronously to normalize legacy data
+    FirebaseFirestore.instance
+        .collection('technicians')
+        .doc(docId)
+        .update({
+      'stepsCompleted': normalizedSteps,
+      'profileCompletion': calculatedCompletion,
+      'status': normalizedStatus,
+      'updatedAt': FieldValue.serverTimestamp(),
+      'normalizedAt': FieldValue.serverTimestamp(),
+    }).catchError((error) {
+      debugPrint('[STEP NORMALIZATION] Failed to update Firestore: $error');
+    });
+    
+    debugPrint('[STEP NORMALIZATION] Updated Firestore: completion=$calculatedCompletion%, status=$normalizedStatus');
   }
 
   Map<String, dynamic> toMap() {
@@ -380,6 +478,9 @@ class Technician {
       'isKycComplete': isKycComplete,
       'isApproved': isApproved,
       'adminApproved': adminApproved,
+      'profileApproved': profileApproved,
+      'profileApprovalRequested': profileApprovalRequested,
+      'profileRejected': profileRejected,
       'onboardingCompleted': onboardingCompleted,
       'aadhaarNumber': aadhaarNumber,
       'aadhaarFrontUrl': aadhaarFrontUrl,
@@ -414,6 +515,7 @@ class Technician {
       if (maxDailyJobs != null) 'maxDailyJobs': maxDailyJobs,
       if (dynamicPricingAllowed != null) 'dynamicPricingAllowed': dynamicPricingAllowed,
       if (stepsCompleted != null) 'stepsCompleted': stepsCompleted,
+      if (profileCompletion != null) 'profileCompletion': profileCompletion,
       if (bankName != null) 'bankName': bankName,
       if (accountNumber != null) 'accountNumber': accountNumber,
       if (ifscCode != null) 'ifscCode': ifscCode,
@@ -421,6 +523,10 @@ class Technician {
       if (bankStatus != null) 'bankStatus': bankStatus,
       if (bankRejectionReason != null) 'bankRejectionReason': bankRejectionReason,
       if (bankSubmittedAt != null) 'bankSubmittedAt': Timestamp.fromDate(bankSubmittedAt!),
+      if (customServices != null) 'customServices': customServices,
+      if (experienceDescription != null) 'experienceDescription': experienceDescription,
+      if (tools != null) 'tools': tools,
+      if (workPreference != null) 'workPreference': workPreference,
     };
   }
   
@@ -434,13 +540,16 @@ class Technician {
   
   /// Check if technician can access dashboard
   bool get canAccessDashboard {
-    return isKycComplete && isApproved;
+    return isKycComplete && status == "approved";
   }
   
   /// Check if technician can add/edit services
-  /// CRITICAL: Requires adminApproved == true for service management
+  /// SECURITY: Requires profileCompletion == 100% AND status == "approved" ONLY
   bool get canManageServices {
-    return isKycComplete && isApproved && adminApproved;
+    print("[TECH STATUS] ${status}");
+    print("[PROFILE COMPLETION] ${getProfileCompletion()}");
+    print("[SERVICE ALLOWED] ${status == 'approved'}");
+    return getProfileCompletion() == 100 && status == "approved";
   }
   
   /// Check if technician is in onboarding process
@@ -450,32 +559,48 @@ class Technician {
   
   /// Check if technician is under review
   bool get isUnderReview {
-    return isKycComplete && !isApproved;
+    return isKycComplete && status != "approved";
   }
 
-  /// Calculate profile completion percentage
-  int calculateProfileCompletion() {
-    if (stepsCompleted != null && stepsCompleted!.isNotEmpty) {
-      final totalSteps = 5;
-      int completedSteps = 0;
-      for (final entry in stepsCompleted!.entries) {
-        if (entry.value == true) completedSteps++;
-      }
-      return ((completedSteps / totalSteps) * 100).round().clamp(0, 100);
+  /// Get profile completion percentage
+  /// SECURITY: ALWAYS calculate dynamically - never use stored values
+  /// Only required steps count: personalDetails, serviceCategories, portfolio, verification
+  /// FIX #2: If admin approved, force 100% completion
+  int getProfileCompletion() {
+    // FIX #2: If technician is approved by admin, always show 100%
+    if (status == "approved") {
+      return 100;
     }
     
-    int completed = 0;
-    int total = 8;
-    if (name.isNotEmpty) completed++;
-    if (phone.isNotEmpty) completed++;
-    if (profilePhotoUrl != null && profilePhotoUrl!.isNotEmpty) completed++;
-    if (skills.isNotEmpty) completed++;
-    if (experienceYears != null && experienceYears! > 0) completed++;
-    if (bankStatus == 'approved') completed++;
-    if ((aadhaarFrontUrl != null && aadhaarFrontUrl!.isNotEmpty) || (panNumber != null && panNumber!.isNotEmpty)) completed++;
-    if ((customServices != null && customServices!.isNotEmpty) || skills.isNotEmpty) completed++;
-    return ((completed / total) * 100).round().clamp(0, 100);
+    // SECURITY: Always calculate dynamically, never trust stored values
+    // Calculate based on required steps only - NORMALIZED FIELDS
+    final stepsMap = stepsCompleted ?? {};
+    int completedRequiredSteps = 0;
+    const int totalRequiredSteps = 4; // personalDetails, serviceCategories, portfolio, verification
+    
+    // Check required steps only - NORMALIZED FIELD NAMES
+    if (stepsMap['personalDetails'] == true) {
+      completedRequiredSteps++;
+    }
+    
+    if (stepsMap['serviceCategories'] == true) {
+      completedRequiredSteps++;
+    }
+    
+    if (stepsMap['portfolio'] == true) {
+      completedRequiredSteps++;
+    }
+    
+    if (stepsMap['verification'] == true) {
+      completedRequiredSteps++;
+    }
+    
+    final completion = (completedRequiredSteps * 100) ~/ totalRequiredSteps;
+    print("[PROFILE COMPLETION] Calculated: $completion% ($completedRequiredSteps/$totalRequiredSteps)");
+    
+    return completion;
   }
+
 
   Technician copyWith({
     String? uid,
@@ -503,6 +628,9 @@ class Technician {
     bool? isKycComplete,
     bool? isApproved,
     bool? adminApproved,
+    bool? profileApproved,
+    bool? profileApprovalRequested,
+    bool? profileRejected,
     bool? onboardingCompleted,
     String? aadhaarNumber,
     String? aadhaarFrontUrl,
@@ -511,7 +639,7 @@ class Technician {
     String? state,
     String? district,
     int? experienceYears,
-    String? primaryCategoryId,
+    List<String>? primaryCategoryId,
     String? primaryCategoryName,
     String? documentType,
     String? gender,
@@ -541,6 +669,9 @@ class Technician {
     String? bankRejectionReason,
     DateTime? bankSubmittedAt,
     List<String>? customServices,
+    String? experienceDescription,
+    List<String>? tools,
+    String? workPreference,
   }) {
     return Technician(
       uid: uid ?? this.uid,
@@ -568,6 +699,9 @@ class Technician {
       isKycComplete: isKycComplete ?? this.isKycComplete,
       isApproved: isApproved ?? this.isApproved,
       adminApproved: adminApproved ?? this.adminApproved,
+      profileApproved: profileApproved ?? this.profileApproved,
+      profileApprovalRequested: profileApprovalRequested ?? this.profileApprovalRequested,
+      profileRejected: profileRejected ?? this.profileRejected,
       onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
       aadhaarNumber: aadhaarNumber ?? this.aadhaarNumber,
       aadhaarFrontUrl: aadhaarFrontUrl ?? this.aadhaarFrontUrl,
@@ -598,6 +732,7 @@ class Technician {
       maxDailyJobs: maxDailyJobs ?? this.maxDailyJobs,
       dynamicPricingAllowed: dynamicPricingAllowed ?? this.dynamicPricingAllowed,
       stepsCompleted: stepsCompleted ?? this.stepsCompleted,
+      profileCompletion: profileCompletion ?? this.profileCompletion,
       bankName: bankName ?? this.bankName,
       accountNumber: accountNumber ?? this.accountNumber,
       ifscCode: ifscCode ?? this.ifscCode,
@@ -606,6 +741,9 @@ class Technician {
       bankRejectionReason: bankRejectionReason ?? this.bankRejectionReason,
       bankSubmittedAt: bankSubmittedAt ?? this.bankSubmittedAt,
       customServices: customServices ?? this.customServices,
+      experienceDescription: experienceDescription ?? this.experienceDescription,
+      tools: tools ?? this.tools,
+      workPreference: workPreference ?? this.workPreference,
     );
   }
 }

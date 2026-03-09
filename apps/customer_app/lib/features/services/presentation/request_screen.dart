@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../../core/theme/app_theme.dart';
-import '../../custom_request/presentation/custom_request_form_screen.dart';
-import '../../custom_request/widgets/custom_request_status_widget.dart';
+import '../../../../core/services/category_service.dart';
+import '../../custom_request/presentation/custom_request_screen.dart';
 
 class RequestScreen extends StatefulWidget {
   const RequestScreen({super.key});
@@ -14,35 +12,22 @@ class RequestScreen extends StatefulWidget {
 }
 
 class _RequestScreenState extends State<RequestScreen> {
-  Stream<QuerySnapshot>? _requestStream;
-
-  @override
-  void initState() {
-    super.initState();
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      _requestStream = FirebaseFirestore.instance
-          .collection('custom_requests')
-          .where('customerId', isEqualTo: user.uid)
-          .orderBy('createdAt', descending: true)
-          .limit(1)
-          .snapshots();
-    }
-  }
+  final CategoryService _categoryService = CategoryService();
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: AppTheme.backgroundColor,
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: () async => setState(() {}),
+          onRefresh: () async {
+            setState(() {});
+          },
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              _buildHeader(),
-              _buildActiveRequestSection(),
-              _buildCreateRequestSection(),
+              _buildAppBar(context),
+              _buildCustomRequestBanner(context),
             ],
           ),
         ),
@@ -50,26 +35,28 @@ class _RequestScreenState extends State<RequestScreen> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildAppBar(BuildContext context) {
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               'Service Requests',
               style: GoogleFonts.outfit(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
+                fontSize: 32,
+                fontWeight: FontWeight.w900,
+                color: AppTheme.textColor,
+                letterSpacing: -0.5,
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 8),
             Text(
-              'Track your custom service requests',
+              'Choose a category or request a custom service',
               style: GoogleFonts.outfit(
-                fontSize: 14,
-                color: Colors.grey[600],
+                fontSize: 16,
+                color: AppTheme.subtitleColor,
               ),
             ),
           ],
@@ -78,52 +65,74 @@ class _RequestScreenState extends State<RequestScreen> {
     );
   }
 
-  Widget _buildActiveRequestSection() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null || _requestStream == null) {
-      return const SliverToBoxAdapter(child: SizedBox.shrink());
-    }
-
+  Widget _buildCustomRequestBanner(BuildContext context) {
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: StreamBuilder<QuerySnapshot>(
-          stream: _requestStream,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(32),
-                  child: CircularProgressIndicator(),
-                ),
-              );
-            }
-
-            if (snapshot.hasError || !snapshot.hasData || snapshot.data!.docs.isEmpty) {
-              return const SizedBox.shrink();
-            }
-
-            return const CustomRequestStatusWidget();
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+        child: InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const CustomRequestScreen()),
+            );
           },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCreateRequestSection() {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: ElevatedButton.icon(
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const CustomRequestFormScreen()),
-          ),
-          icon: const Icon(Icons.add),
-          label: const Text('Create New Request'),
-          style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            textStyle: const TextStyle(fontSize: 16),
+          borderRadius: BorderRadius.circular(24),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppTheme.primaryColor, AppTheme.primaryColor.withOpacity(0.8)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.primaryColor.withOpacity(0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Request Custom Service',
+                        style: GoogleFonts.outfit(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Can\'t find what you need? Describe it to us.',
+                        style: GoogleFonts.outfit(
+                          fontSize: 14,
+                          color: Colors.white.withOpacity(0.9),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.add_rounded,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

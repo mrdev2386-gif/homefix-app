@@ -35,7 +35,7 @@ class WalletScreen extends StatefulWidget {
 
 class _WalletScreenState extends State<WalletScreen> {
   final WalletService _walletService = WalletService();
-  bool _isWithdrawing = false;
+  final bool _isWithdrawing = false;
   
   @override
   void initState() {

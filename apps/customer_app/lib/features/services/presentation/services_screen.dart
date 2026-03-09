@@ -7,6 +7,7 @@ import 'package:customer_app/core/models/category.dart';
 import 'package:customer_app/core/services/category_service.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
 import '../widgets/empty_state_view.dart';
+import '../widgets/location_missing_empty_state.dart';
 import 'service_details_screen.dart';
 import 'sub_service_screen.dart';
 import 'category_services_screen.dart';
@@ -24,9 +25,6 @@ class ServicesScreen extends StatefulWidget {
 
 class _ServicesScreenState extends State<ServicesScreen>
     with AutomaticKeepAliveClientMixin {
-  
-  // Service
-  final CategoryService _categoryService = CategoryService();
   
   // Controllers
   final TextEditingController _searchController = TextEditingController();
@@ -71,15 +69,32 @@ class _ServicesScreenState extends State<ServicesScreen>
   Future<void> _fetchAllData() async {
     debugPrint('🔍 [ServicesScreen] Starting data fetch...');
     
+    final categoryService = Provider.of<CategoryService>(context, listen: false);
+    
     setState(() {
       _isLoading = true;
       _errorType = null;
     });
     
     try {
+      // Check if user has location first
+      final location = await categoryService.getUserLocationCached();
+      if (location == null) {
+        debugPrint('⚠️ [ServicesScreen] No user location - will show location missing state');
+        setState(() {
+          _categories = [];
+          _allServices = [];
+          _topRatedServices = [];
+          _recentServices = [];
+          _trendingServices = [];
+          _isLoading = false;
+        });
+        return;
+      }
+      
       // Fetch categories
       debugPrint('📁 [ServicesScreen] Fetching categories...');
-      final categories = await _categoryService.getCategoriesOnce();
+      final categories = await categoryService.getCategoriesOnce();
       debugPrint('✅ [ServicesScreen] Categories loaded: ${categories.length}');
       
       // Log each category with service count
@@ -88,9 +103,9 @@ class _ServicesScreenState extends State<ServicesScreen>
         debugPrint('   ${i + 1}. ${cat.name} (ID: ${cat.id}, Services: ${cat.serviceCount}, Active: ${cat.isActive})');
       }
       
-      // Fetch all services using collectionGroup
+      // Fetch all services using cached location
       debugPrint('🛠️ [ServicesScreen] Fetching all services...');
-      final allServicesSnapshot = await _categoryService.getAllServicesOnce();
+      final allServicesSnapshot = await categoryService.getAllServicesOnce();
       debugPrint('✅ [ServicesScreen] All services loaded: ${allServicesSnapshot.length}');
       
       // Group services by category for logging
@@ -226,12 +241,14 @@ class _ServicesScreenState extends State<ServicesScreen>
     if (_isNavigating || !mounted) return;
     _isNavigating = true;
     
+    final categoryService = Provider.of<CategoryService>(context, listen: false);
+    
     debugPrint('👆 [ServicesScreen] Service tapped: ${service.title}');
     HapticFeedback.lightImpact();
     
     try {
       // Check if service has sub-services
-      final hasSubServices = await _categoryService.serviceHasSubServices(
+      final hasSubServices = await categoryService.serviceHasSubServices(
         service.category,
         service.id,
       );
@@ -322,7 +339,23 @@ class _ServicesScreenState extends State<ServicesScreen>
     }
     
     if (_categories.isEmpty && _allServices.isEmpty) {
-      return _buildEmptyState();
+      // Check if this is due to missing location
+      return FutureBuilder<Map<String, String>?>(
+        future: Provider.of<CategoryService>(context, listen: false).getUserLocationCached(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return _buildLoadingState();
+          }
+          
+          if (snapshot.data == null) {
+            // No location data - show location missing empty state
+            return const LocationMissingEmptyState();
+          } else {
+            // Has location but no services - show regular empty state
+            return _buildEmptyState();
+          }
+        },
+      );
     }
     
     return _buildContent();

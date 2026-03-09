@@ -564,7 +564,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Future<void> _pickAddress() async {
     final address = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => SavedAddressesScreen(isSelectionMode: true)),
+      MaterialPageRoute(builder: (context) => const SavedAddressesScreen(isSelectionMode: true)),
     );
     if (address != null && mounted) {
       Provider.of<CheckoutProvider>(context, listen: false).setAddress(address as Address);

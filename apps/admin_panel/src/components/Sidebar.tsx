@@ -11,14 +11,20 @@ import {
   Briefcase, 
   Star, 
   AlertTriangle,
-  Wrench
+  Wrench,
+  Shield,
+  Settings,
+  ClipboardList
 } from 'lucide-react';
 
 const menuItems = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Bookings', href: '/bookings', icon: Calendar },
+  { name: 'Booking Approvals', href: '/booking-approvals', icon: ClipboardList },
   { name: 'Custom Requests', href: '/custom-requests', icon: FileText },
   { name: 'Technicians', href: '/technicians', icon: Users },
+  { name: 'Technician Approvals', href: '/technician-approvals', icon: Shield },
+  { name: 'Service Approvals', href: '/service-approvals', icon: Settings },
   { name: 'Applications', href: '/applications', icon: UserCheck },
   { name: 'Customers', href: '/customers', icon: Users },
   { name: 'Services', href: '/services', icon: Briefcase },
@@ -66,7 +72,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
               {!collapsed && <span className="text-sm font-medium">{item.name}</span>}
             </Link>
           );
-        })}}
+        })}
       </nav>
     </aside>
   );

@@ -575,7 +575,7 @@ class _LocationConfirmDialogState extends State<LocationConfirmDialog> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+              borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
             ),
             filled: true,
             fillColor: Colors.grey.shade50,
@@ -623,7 +623,7 @@ class LocationDetectionDialog extends StatelessWidget {
                 color: AppTheme.primaryColor.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
-              child: SizedBox(
+              child: const SizedBox(
                 width: 40,
                 height: 40,
                 child: CircularProgressIndicator(

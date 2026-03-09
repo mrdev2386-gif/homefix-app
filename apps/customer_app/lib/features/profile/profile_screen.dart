@@ -24,7 +24,7 @@ import 'presentation/about_screen.dart';
 import 'presentation/policy_screen.dart';
 import 'presentation/saved_addresses_screen.dart';
 import 'widgets/profile_shimmer.dart';
-import '../wallet/presentation/wallet_screen.dart';
+
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -480,18 +480,7 @@ class _ProfileContentState extends State<_ProfileContent> {
                         trailing: Icon(Icons.chevron_right, color: Colors.grey[400]),
                         onTap: () => _selectPrimaryAddress(context),
                       ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 16),
-                        child: Divider(height: 1),
-                      ),
-                      _buildInfoRow(
-                        icon: Icons.account_balance_wallet_rounded,
-                        color: Colors.green,
-                        title: l10n.translate('walletBalance'),
-                        value: '₹${widget.user.walletBalance.toStringAsFixed(2)}',
-                        trailing: Icon(Icons.chevron_right, color: Colors.grey[400]),
-                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CustomerWalletScreen())),
-                      ),
+
                     ],
                   ),
                 ),

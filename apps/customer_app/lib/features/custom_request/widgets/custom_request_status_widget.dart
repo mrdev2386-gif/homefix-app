@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:intl/intl.dart';
-import '../../../core/theme/app_theme.dart';
 
 class CustomRequestStatusWidget extends StatelessWidget {
   const CustomRequestStatusWidget({Key? key}) : super(key: key);
@@ -17,313 +14,289 @@ class CustomRequestStatusWidget extends StatelessWidget {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('custom_requests')
-          .where('customerId', isEqualTo: user.uid)
+          .where('userId', isEqualTo: user.uid)
           .orderBy('createdAt', descending: true)
           .limit(1)
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
+          return const Padding(
+            padding: EdgeInsets.all(16),
+            child: Center(child: CircularProgressIndicator()),
+          );
         }
 
         if (snapshot.hasError || !snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return const SizedBox.shrink();
         }
 
-        final doc = snapshot.data!.docs.first;
-        final data = doc.data() as Map<String, dynamic>;
-        return _buildStatusCard(context, doc.id, data);
+        return Column(
+          children: snapshot.data!.docs.map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            return _buildRequestCard(data);
+          }).toList(),
+        );
       },
     );
   }
 
-  Widget _buildStatusCard(BuildContext context, String docId, Map<String, dynamic> data) {
-    final title = data['title'] ?? 'Custom Request';
-    final category = data['category'] ?? '';
-    final description = data['description'] ?? '';
-    final budget = data['budget'];
-    final status = data['status'] ?? 'submitted';
-    final createdAt = data['createdAt'];
+  Widget _buildRequestCard(Map<String, dynamic> data) {
+    final status = data['status'] as String? ?? 'pending_admin_review';
+    final title = data['title'] as String? ?? 'Custom Request';
+    final category = data['category'] as String? ?? 'Service';
+    final description = data['description'] as String? ?? '';
+    final location = data['location'] as String? ?? '';
+    final budget = data['budget'] as dynamic;
     final images = (data['images'] as List<dynamic>?)?.cast<String>() ?? [];
+    final createdAt = data['createdAt'];
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 24),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Active Request',
-                      style: GoogleFonts.outfit(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                        fontWeight: FontWeight.w500,
-                      ),
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 3,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Title and Status
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      title,
-                      style: GoogleFonts.outfit(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-              ),
-              _buildStatusBadge(status),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (category.isNotEmpty) _buildDetailRow(Icons.category, category),
-          if (description.isNotEmpty) _buildDetailRow(Icons.description, description),
-          if (budget != null) _buildDetailRow(Icons.currency_rupee, '₹${budget.toString()}'),
-          _buildDetailRow(Icons.access_time, _formatDate(createdAt)),
-          if (images.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                _buildStatusBadge(status),
+              ],
+            ),
+            const SizedBox(height: 16),
+            
+            // Request Details
+            _buildDetailRow('Category', category, Icons.category),
+            const SizedBox(height: 8),
+            if (description.isNotEmpty) ...[_buildDetailRow('Description', description, Icons.description), const SizedBox(height: 8)],
+            if (budget != null) ...[_buildDetailRow('Budget', '₹${budget.toString()}', Icons.currency_rupee), const SizedBox(height: 8)],
+            if (location.isNotEmpty) ...[_buildDetailRow('Location', location, Icons.location_on), const SizedBox(height: 8)],
+            _buildDetailRow('Created', _formatDate(createdAt), Icons.access_time),
+            
+            // Images Preview
+            if (images.isNotEmpty) ...[const SizedBox(height: 12), _buildImagePreview(images)],
+            
+            // Tracking Timeline
+            const SizedBox(height: 16),
+            const Divider(),
             const SizedBox(height: 12),
-            SizedBox(
-              height: 80,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: images.length,
-                itemBuilder: (context, index) {
-                  return Container(
-                    margin: const EdgeInsets.only(right: 8),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        images[index],
-                        width: 80,
-                        height: 80,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          width: 80,
-                          height: 80,
-                          color: Colors.grey[200],
-                          child: const Icon(Icons.image_not_supported),
-                        ),
-                      ),
-                    ),
-                  );
-                },
+            Text(
+              'Request Timeline',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
               ),
             ),
+            const SizedBox(height: 12),
+            _buildTrackingTimeline(status),
           ],
-          const Divider(height: 32),
-          Text(
-            'Request Timeline',
-            style: GoogleFonts.outfit(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildTimeline(status),
-          const SizedBox(height: 16),
-          OutlinedButton.icon(
-            onPressed: () => _deleteRequest(context, docId, images),
-            icon: const Icon(Icons.delete_outline, color: Colors.red),
-            label: const Text('Delete Request', style: TextStyle(color: Colors.red)),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: Colors.red),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusBadge(String status) {
-    final config = _getStatusConfig(status);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: config['color'].withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        config['label'],
-        style: GoogleFonts.outfit(
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          color: config['color'],
         ),
       ),
     );
   }
 
-  Widget _buildDetailRow(IconData icon, String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: Colors.grey[600]),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: GoogleFonts.outfit(fontSize: 14, color: Colors.grey[800]),
-            ),
+  Widget _buildDetailRow(String label, String value, IconData icon) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: Colors.grey[600]),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Widget _buildTimeline(String currentStatus) {
+  Widget _buildImagePreview(List<String> images) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Images (${images.length})',
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: Colors.black54,
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 70,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: images.length,
+            itemBuilder: (context, index) {
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    images[index],
+                    width: 70,
+                    height: 70,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 70,
+                      height: 70,
+                      color: Colors.grey[300],
+                      child: const Icon(Icons.image_not_supported),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTrackingTimeline(String status) {
     final steps = [
-      {'key': 'submitted', 'label': 'Request Submitted'},
-      {'key': 'admin_review', 'label': 'Admin Review'},
-      {'key': 'technician_assigned', 'label': 'Technician Assigned'},
-      {'key': 'accepted', 'label': 'Technician Accepted'},
-      {'key': 'in_progress', 'label': 'Service In Progress'},
-      {'key': 'completed', 'label': 'Service Completed'},
+      {'label': 'Request Submitted', 'key': 'submitted'},
+      {'label': 'Admin Review', 'key': 'admin_review'},
+      {'label': 'Technician Assigned', 'key': 'technician_assigned'},
+      {'label': 'Technician Accepted', 'key': 'accepted'},
+      {'label': 'Service In Progress', 'key': 'in_progress'},
+      {'label': 'Service Completed', 'key': 'completed'},
     ];
 
     return Column(
-      children: steps.asMap().entries.map((entry) {
-        final index = entry.key;
-        final step = entry.value;
-        final isCompleted = _isStepCompleted(step['key'] as String, currentStatus);
-        final isLast = index == steps.length - 1;
-
-        return Row(
-          children: [
-            Column(
-              children: [
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: isCompleted ? Colors.green : Colors.grey[300],
-                    shape: BoxShape.circle,
-                  ),
-                  child: isCompleted
-                      ? const Icon(Icons.check, color: Colors.white, size: 16)
-                      : null,
-                ),
-                if (!isLast)
-                  Container(
-                    width: 2,
-                    height: 30,
-                    color: isCompleted ? Colors.green : Colors.grey[300],
-                  ),
-              ],
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Padding(
-                padding: EdgeInsets.only(bottom: isLast ? 0 : 30),
-                child: Text(
-                  step['label'] as String,
-                  style: GoogleFonts.outfit(
-                    fontSize: 14,
-                    fontWeight: isCompleted ? FontWeight.w600 : FontWeight.normal,
-                    color: isCompleted ? Colors.green : Colors.grey[600],
-                  ),
-                ),
-              ),
-            ),
-          ],
+      children: steps.map((step) {
+        final isCompleted = _isStepCompleted(step['key']!, status);
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _buildTrackingStep(step['label']!, isCompleted),
         );
       }).toList(),
     );
   }
 
   bool _isStepCompleted(String stepKey, String currentStatus) {
-    final statusOrder = ['submitted', 'admin_review', 'technician_assigned', 'accepted', 'in_progress', 'completed'];
-    final currentIndex = statusOrder.indexOf(currentStatus);
-    final stepIndex = statusOrder.indexOf(stepKey);
-    return currentIndex >= 0 && stepIndex >= 0 && stepIndex <= currentIndex;
+    switch (stepKey) {
+      case 'submitted':
+        return true; // Always completed
+      case 'admin_review':
+        return !['pending_admin_review', 'rejected'].contains(currentStatus);
+      case 'technician_assigned':
+        return ['technician_assigned', 'accepted', 'in_progress', 'completed'].contains(currentStatus);
+      case 'accepted':
+        return ['accepted', 'in_progress', 'completed'].contains(currentStatus);
+      case 'in_progress':
+        return ['in_progress', 'completed'].contains(currentStatus);
+      case 'completed':
+        return currentStatus == 'completed';
+      default:
+        return false;
+    }
   }
 
-  Map<String, dynamic> _getStatusConfig(String status) {
-    final configs = {
-      'submitted': {'label': 'SUBMITTED', 'color': Colors.blue},
-      'admin_review': {'label': 'UNDER REVIEW', 'color': Colors.orange},
-      'technician_assigned': {'label': 'ASSIGNED', 'color': Colors.purple},
-      'accepted': {'label': 'ACCEPTED', 'color': Colors.green},
-      'in_progress': {'label': 'IN PROGRESS', 'color': Colors.teal},
-      'completed': {'label': 'COMPLETED', 'color': Colors.green},
+  Widget _buildTrackingStep(String label, bool completed) {
+    return Row(
+      children: [
+        Icon(
+          completed ? Icons.check_circle : Icons.radio_button_unchecked,
+          color: completed ? Colors.green : Colors.grey,
+          size: 18,
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: completed ? FontWeight.w600 : FontWeight.w400,
+            color: completed ? Colors.green[700] : Colors.grey[600],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatusBadge(String status) {
+    final colors = {
+      'pending_admin_review': Colors.orange,
+      'approved': Colors.blue,
+      'technician_assigned': Colors.purple,
+      'accepted': Colors.green,
+      'in_progress': Colors.teal,
+      'completed': Colors.teal,
+      'rejected': Colors.red,
     };
-    return configs[status] ?? {'label': status.toUpperCase(), 'color': Colors.grey};
+    final displayTexts = {
+      'pending_admin_review': 'PENDING',
+      'approved': 'APPROVED',
+      'technician_assigned': 'ASSIGNED',
+      'accepted': 'ACCEPTED',
+      'in_progress': 'IN PROGRESS',
+      'completed': 'COMPLETED',
+      'rejected': 'REJECTED',
+    };
+
+    final color = colors[status] ?? Colors.grey;
+    final displayText = displayTexts[status] ?? status.toUpperCase();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Text(
+        displayText,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: color,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
   }
 
   String _formatDate(dynamic createdAt) {
     try {
       if (createdAt is Timestamp) {
-        return DateFormat('dd MMM yyyy, hh:mm a').format(createdAt.toDate());
+        return DateFormat('dd MMM yyyy').format(createdAt.toDate());
+      } else if (createdAt is String) {
+        final parsed = DateTime.tryParse(createdAt);
+        if (parsed != null) {
+          return DateFormat('dd MMM yyyy').format(parsed);
+        }
       }
     } catch (_) {}
     return 'Recently';
-  }
-
-  Future<void> _deleteRequest(BuildContext context, String docId, List<String> images) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Request'),
-        content: const Text('Are you sure you want to delete this request?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    try {
-      // Delete images from storage
-      for (final imageUrl in images) {
-        try {
-          await FirebaseStorage.instance.refFromURL(imageUrl).delete();
-        } catch (e) {
-          debugPrint('Failed to delete image: $e');
-        }
-      }
-
-      // Delete document
-      await FirebaseFirestore.instance.collection('custom_requests').doc(docId).delete();
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Request deleted successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete: $e')),
-        );
-      }
-    }
   }
 }

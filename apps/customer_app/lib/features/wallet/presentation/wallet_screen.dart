@@ -349,7 +349,7 @@ class _CustomerWalletScreenState extends State<CustomerWalletScreen> {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(color: AppTheme.primaryColor.withValues(alpha: 0.1), shape: BoxShape.circle),
-            child: Icon(Icons.account_balance_wallet_outlined, size: 40, color: AppTheme.primaryColor),
+            child: const Icon(Icons.account_balance_wallet_outlined, size: 40, color: AppTheme.primaryColor),
           ),
           const SizedBox(height: 16),
           const Text('No transactions yet', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
@@ -475,7 +475,7 @@ class _CustomerWalletScreenState extends State<CustomerWalletScreen> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(color: AppColors.error.withValues(alpha: 0.1), shape: BoxShape.circle),
-              child: Icon(Icons.error_outline, size: 48, color: AppColors.error),
+              child: const Icon(Icons.error_outline, size: 48, color: AppColors.error),
             ),
             const SizedBox(height: 16),
             Text(message, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.error)),
@@ -566,7 +566,7 @@ class _CustomerTransactionHistoryScreenState extends State<CustomerTransactionHi
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: AppTheme.primaryColor.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(Icons.receipt_long_outlined, size: 48, color: AppTheme.primaryColor)),
+          Container(padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: AppTheme.primaryColor.withValues(alpha: 0.1), shape: BoxShape.circle), child: const Icon(Icons.receipt_long_outlined, size: 48, color: AppTheme.primaryColor)),
           const SizedBox(height: 16),
           const Text('No transactions yet', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18)),
           const SizedBox(height: 8),

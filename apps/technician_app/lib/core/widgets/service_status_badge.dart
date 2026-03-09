@@ -4,9 +4,9 @@ class ServiceStatusBadge extends StatelessWidget {
   final String status;
 
   const ServiceStatusBadge({
-    Key? key,
+    super.key,
     required this.status,
-  }) : super(key: key);
+  });
 
   Color _getStatusColor() {
     switch (status) {

@@ -88,16 +88,37 @@ class AuthService {
   }) async {
     // Format phone number to E.164
     final formattedPhone = formatPhoneIN(phoneNumber);
-    debugPrint('[Auth] Formatting phone: $phoneNumber -> $formattedPhone');
+    debugPrint('[Auth] 📱 Sending OTP to: $formattedPhone');
     
-    await _auth.verifyPhoneNumber(
-      phoneNumber: formattedPhone,
-      verificationCompleted: verificationCompleted,
-      verificationFailed: verificationFailed,
-      codeSent: codeSent,
-      codeAutoRetrievalTimeout: codeAutoRetrievalTimeout,
-      timeout: const Duration(seconds: 60),
-    );
+    try {
+      await _auth.verifyPhoneNumber(
+        phoneNumber: formattedPhone,
+        verificationCompleted: (credential) {
+          debugPrint('[Auth] ✅ Auto-verification completed');
+          verificationCompleted(credential);
+        },
+        verificationFailed: (e) {
+          debugPrint('[Auth] ❌ Verification failed: ${e.code} - ${e.message}');
+          if (e.code == 'app-not-verified' || e.code == 'app-not-authorized') {
+            debugPrint('[Auth] 🔧 App Check / Play Integrity issue detected');
+            debugPrint('[Auth] 🔧 Check Firebase Console → App Check settings');
+          }
+          verificationFailed(e);
+        },
+        codeSent: (verificationId, resendToken) {
+          debugPrint('[Auth] ✅ OTP sent successfully. Verification ID: ${verificationId.substring(0, 10)}...');
+          codeSent(verificationId, resendToken);
+        },
+        codeAutoRetrievalTimeout: (verificationId) {
+          debugPrint('[Auth] ⏱️ Auto-retrieval timeout for: ${verificationId.substring(0, 10)}...');
+          codeAutoRetrievalTimeout(verificationId);
+        },
+        timeout: const Duration(seconds: 60),
+      );
+    } catch (e) {
+      debugPrint('[Auth] ❌ Exception during phone verification: $e');
+      rethrow;
+    }
   }
 
   Future<UserCredential> signInWithOtp(String verificationId, String smsCode) async {
@@ -192,7 +213,7 @@ class AuthService {
     try {
       final doc = await _db.collection('customers').doc(uid).get();
       if (!doc.exists) return false;
-      final data = doc.data() as Map<String, dynamic>?;
+      final data = doc.data();
       return data?['profileCompleted'] == true || 
              (data?['district']?.toString().isNotEmpty ?? false);
     } catch (e) {

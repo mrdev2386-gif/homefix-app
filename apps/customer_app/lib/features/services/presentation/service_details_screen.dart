@@ -99,7 +99,9 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
     debugPrint('✅ [ServiceDetails] IDs valid — starting stream');
     debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    _categoryService.getSubServices(categoryId, serviceId).listen((homeServices) {
+    // FIX: Use asBroadcastStream() to allow multiple listeners and prevent
+    // "Stream has already been listened to" assertion error
+    _categoryService.getSubServices(categoryId, serviceId).asBroadcastStream().listen((homeServices) {
       debugPrint('📦 [ServiceDetails] SubServices stream event received');
       debugPrint('   subServices.length = ${homeServices.length}');
       if (homeServices.isEmpty) {
@@ -342,7 +344,7 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
             if (isSelected)
               Container(
                 padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   color: AppTheme.primaryColor,
                   shape: BoxShape.circle,
                 ),
@@ -417,7 +419,7 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
                 const Icon(Icons.star_rounded, color: Colors.orange, size: 18),
                 const SizedBox(width: 4),
                 Text(
-                  service.rating.toStringAsFixed(1),
+                  service.rating > 0 ? service.rating.toStringAsFixed(1) : 'New',
                   style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 16),
                 ),
               ],
@@ -425,9 +427,39 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
           ],
         ),
         const SizedBox(height: 16),
-        Text(
-          service.title,
-          style: GoogleFonts.outfit(fontSize: 28, fontWeight: FontWeight.w900, height: 1.1, color: AppTheme.textColor),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                service.title,
+                style: GoogleFonts.outfit(fontSize: 28, fontWeight: FontWeight.w900, height: 1.1, color: AppTheme.textColor),
+              ),
+            ),
+            if (service.urgentBookingEnabled)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange, width: 1),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.flash_on, color: Colors.orange, size: 14),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Urgent',
+                      style: GoogleFonts.outfit(
+                        color: Colors.orange,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
         ),
       ],
     );
@@ -517,7 +549,8 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
   Widget _buildBottomAction(BuildContext context, HomeService service) {
     final hasSubServices = _subServices.isNotEmpty;
     final canBook = !hasSubServices || _selectedSubService != null;
-    final displayPrice = _selectedSubService?.price ?? service.basePrice;
+    final displayPrice = _selectedSubService?.price ?? (service.offerPrice ?? service.basePrice);
+    final originalPrice = service.originalPrice;
     final priceLabel = _selectedSubService != null 
         ? _selectedSubService!.name 
         : (hasSubServices ? 'Select an option below' : 'Starting at');
@@ -544,9 +577,26 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
                     letterSpacing: 1,
                   ),
                 ),
-                Text(
-                  '₹${displayPrice.toStringAsFixed(0)}',
-                  style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.textColor),
+                Row(
+                  children: [
+                    if (originalPrice != null && originalPrice > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: Text(
+                          '₹${originalPrice.toStringAsFixed(0)}',
+                          style: GoogleFonts.outfit(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[500],
+                            decoration: TextDecoration.lineThrough,
+                          ),
+                        ),
+                      ),
+                    Text(
+                      '₹${displayPrice.toStringAsFixed(0)}',
+                      style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.textColor),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -601,8 +651,8 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
     // Enforce subService selection - only subServices are bookable
     if (_subServices.isNotEmpty && _selectedSubService == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Please select an option to proceed'),
+        const SnackBar(
+          content: Text('Please select an option to proceed'),
           backgroundColor: AppTheme.errorColor,
           behavior: SnackBarBehavior.floating,
         ),
@@ -692,9 +742,9 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
       ),
       title: Text(name, style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 14)),
       subtitle: Text(review, style: GoogleFonts.outfit(fontSize: 13, color: AppTheme.subtitleColor)),
-      trailing: Row(
+      trailing: const Row(
         mainAxisSize: MainAxisSize.min,
-        children: const [
+        children: [
           Icon(Icons.star_rounded, color: Colors.orange, size: 14),
           Icon(Icons.star_rounded, color: Colors.orange, size: 14),
           Icon(Icons.star_rounded, color: Colors.orange, size: 14),

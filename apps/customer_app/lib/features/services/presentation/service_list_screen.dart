@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:customer_app/core/models/service.dart';
 import 'package:customer_app/core/models/category.dart';
-import '../../../core/models/banner_model.dart';
 import 'package:customer_app/core/services/category_service.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
 import '../../../core/providers/location_provider.dart';

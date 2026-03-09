@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:technician_app/core/providers/technician_provider.dart';
 import 'package:technician_app/core/models/technician.dart';
 import 'package:technician_app/screens/onboarding_steps/step1_basic_identity.dart';
 import 'package:technician_app/screens/onboarding_steps/step2_professional_details.dart';
 import 'package:technician_app/screens/onboarding_steps/step3_kyc_verification.dart';
-
-import 'package:technician_app/screens/onboarding_steps/step5_service_setup.dart';
+import 'package:technician_app/screens/onboarding_steps/step4_work_portfolio.dart';
 import 'package:technician_app/screens/onboarding_steps/step6_success.dart';
+import 'package:technician_app/core/services/onboarding_validation_service.dart';
 
 class TechnicianOnboardingFlowScreen extends StatefulWidget {
   const TechnicianOnboardingFlowScreen({super.key});
@@ -42,21 +43,41 @@ class _TechnicianOnboardingFlowScreenState
     super.dispose();
   }
 
-  void _resumeFromLastStep() {
+  void _resumeFromLastStep() async {
     final provider = context.read<TechnicianProvider>();
     final tech = provider.technician;
 
     if (tech != null) {
+      // CRITICAL FIX: Check if onboarding is complete
+      // If profileCompletion == 100 OR onboardingStep == 'submitted', navigate to success
+      final profileCompletion = tech.getProfileCompletion();
+      final isComplete = tech.isKycComplete || 
+                        tech.onboardingCompleted || 
+                        profileCompletion == 100 ||
+                        tech.onboardingStep == 'submitted';
+      
+      if (isComplete) {
+        // Onboarding complete - show success screen
+        setState(() {
+          _currentStep = 4; // Success screen
+        });
+        if (_pageController.hasClients) {
+          _pageController.jumpToPage(4);
+        }
+        return;
+      }
+      
+      // Not complete - find last incomplete step
       final step = tech.currentOnboardingStep;
       final stepsCompleted = tech.stepsCompleted ?? {};
       
       int safeStep = step.stepIndex;
       
       final completedSteps = [
-        if (stepsCompleted['basic'] == true) 0,
-        if (stepsCompleted['professional'] == true) 1,
-        if (stepsCompleted['kyc'] == true) 2,
-        if (stepsCompleted['services'] == true) 3,
+        if (stepsCompleted['personalDetails'] == true) 0,
+        if (stepsCompleted['serviceCategories'] == true) 1,
+        if (stepsCompleted['portfolio'] == true) 2,
+        if (stepsCompleted['verification'] == true) 3,
       ];
       
       if (completedSteps.isNotEmpty) {
@@ -66,7 +87,8 @@ class _TechnicianOnboardingFlowScreenState
         }
       }
       
-      safeStep = safeStep.clamp(0, 3);
+      // CRITICAL FIX: Remove clamp - allow navigation to step 4
+      safeStep = safeStep.clamp(0, 4); // Allow step 4 (Success)
       
       if (_currentStep != safeStep) {
         setState(() {
@@ -77,6 +99,86 @@ class _TechnicianOnboardingFlowScreenState
         }
       }
 
+      // Load comprehensive data from Firestore
+      await _loadFirestoreData(tech);
+    }
+  }
+
+  Future<void> _loadFirestoreData(Technician tech) async {
+    try {
+      // Load additional data directly from Firestore to get all fields
+      final uid = tech.uid;
+      final doc = await FirebaseFirestore.instance
+          .collection('technicians')
+          .doc(uid)
+          .get();
+      
+      if (doc.exists) {
+        final data = doc.data()!;
+        
+        // Basic details
+        _formData['fullName'] = data['name'] ?? tech.name ?? '';
+        _formData['email'] = data['email'] ?? tech.email ?? '';
+        _formData['state'] = data['state'] ?? tech.state ?? '';
+        _formData['district'] = data['district'] ?? tech.district ?? '';
+        _formData['experienceYears'] = data['experienceYears'] ?? tech.experienceYears ?? 0;
+        _formData['gender'] = data['gender'];
+        
+        // Parse date of birth
+        if (data['dateOfBirth'] != null) {
+          if (data['dateOfBirth'] is Timestamp) {
+            _formData['dob'] = (data['dateOfBirth'] as Timestamp).toDate();
+          } else if (data['dateOfBirth'] is String) {
+            try {
+              _formData['dob'] = DateTime.parse(data['dateOfBirth']);
+            } catch (e) {
+              debugPrint('Error parsing dateOfBirth: $e');
+            }
+          }
+        }
+        
+        // Categories
+        _formData['primaryCategoryId'] = data['primaryCategoryId'] ?? tech.primaryCategoryId;
+        _formData['primaryCategoryName'] = data['primaryCategoryName'] ?? tech.primaryCategoryName;
+        
+        // Images and documents
+        _formData['profilePhotoUrl'] = data['profilePhotoUrl'] ?? tech.profilePhotoUrl;
+        _formData['aadhaarNumber'] = data['aadhaarNumber'] ?? tech.aadhaarNumber;
+        _formData['aadhaarFrontUrl'] = data['aadhaarFrontUrl'] ?? tech.aadhaarFrontUrl;
+        _formData['aadhaarBackUrl'] = data['aadhaarBackUrl'] ?? tech.aadhaarBackUrl;
+        _formData['selfieUrl'] = data['selfieUrl'];
+        
+        // Professional details
+        _formData['skills'] = data['skills'] ?? tech.skills ?? [];
+        _formData['bio'] = data['bio'];
+        _formData['languagePreferences'] = data['languagePreferences'] ?? tech.languagePreferences ?? [];
+        
+        // Other fields
+        _formData['referralCode'] = data['referralCodeUsed'] ?? tech.referralCodeUsed;
+        _formData['panNumber'] = data['panNumber'] ?? tech.panNumber;
+        _formData['accountType'] = data['accountType'] ?? tech.accountType;
+        _formData['payoutPreference'] = data['payoutPreference'] ?? tech.payoutPreference;
+        _formData['maxDailyJobs'] = data['maxDailyJobs'] ?? tech.maxDailyJobs;
+        _formData['dynamicPricingAllowed'] = data['dynamicPricingAllowed'] ?? tech.dynamicPricingAllowed ?? false;
+        
+        // Portfolio photos
+        _formData['portfolioPhotos'] = (data['portfolioPhotos'] as List?)?.map((e) => e.toString()).toList() ?? [];
+        
+        // Professional details for Step 4
+        _formData['experienceDescription'] = data['experienceDescription'];
+        _formData['tools'] = (data['tools'] as List?)?.map((e) => e.toString()).toList() ?? [];
+        _formData['workPreference'] = data['workPreference'];
+        
+        debugPrint('[Onboarding] Loaded data from Firestore: ${_formData.keys.length} fields');
+        
+        // Trigger UI update
+        if (mounted) {
+          setState(() {});
+        }
+      }
+    } catch (e) {
+      debugPrint('[Onboarding] Error loading Firestore data: $e');
+      // Fallback to technician object data
       _formData['fullName'] = tech.name;
       _formData['email'] = tech.email;
       _formData['state'] = tech.state;
@@ -94,9 +196,12 @@ class _TechnicianOnboardingFlowScreenState
       _formData['panNumber'] = tech.panNumber;
       _formData['accountType'] = tech.accountType;
       _formData['payoutPreference'] = tech.payoutPreference;
-
       _formData['maxDailyJobs'] = tech.maxDailyJobs;
       _formData['dynamicPricingAllowed'] = tech.dynamicPricingAllowed;
+      _formData['portfolioPhotos'] = [];
+      _formData['experienceDescription'] = '';
+      _formData['tools'] = [];
+      _formData['workPreference'] = null;
     }
   }
 
@@ -109,17 +214,28 @@ class _TechnicianOnboardingFlowScreenState
 
     FocusScope.of(context).unfocus();
 
-    if (_currentStep == 0) {
-      final categories = _formData['primaryCategoryId'];
-      if (categories == null || (categories is List && categories.isEmpty)) {
+    // COMPREHENSIVE VALIDATION FOR EACH STEP
+    final validationErrors = _validateCurrentStep();
+    
+    if (validationErrors.isNotEmpty) {
+      // Show error message
+      final errorMessage = validationErrors.values.first ?? 'Please complete all required fields before continuing.';
+      
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Select at least one category'),
-            duration: Duration(seconds: 2),
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+            action: SnackBarAction(
+              label: 'OK',
+              textColor: Colors.white,
+              onPressed: () {},
+            ),
           ),
         );
-        return;
       }
+      return;
     }
 
     if (_currentStep == 4) {
@@ -127,6 +243,27 @@ class _TechnicianOnboardingFlowScreenState
     } else {
       await _saveCurrentStep();
     }
+  }
+
+  // Validate current step with comprehensive checks
+  Map<String, String?> _validateCurrentStep() {
+    switch (_currentStep) {
+      case 0:
+        return OnboardingValidationService.validateStep1(_formData);
+      case 1:
+        return OnboardingValidationService.validateStep2(_formData);
+      case 2:
+        return OnboardingValidationService.validateStep3(_formData);
+      case 3:
+        return OnboardingValidationService.validateStep4(_formData);
+      default:
+        return {};
+    }
+  }
+
+  // Check if Continue button should be enabled
+  bool get _canProceed {
+    return OnboardingValidationService.isStepComplete(_currentStep, _formData);
   }
 
   Future<void> _saveCurrentStep() async {
@@ -139,8 +276,15 @@ class _TechnicianOnboardingFlowScreenState
     try {
       final provider = context.read<TechnicianProvider>();
       final data = _getStepData(stepToSave);
-      debugPrint('[ONBOARD_SAVE] payload=$data');
       
+      // Calculate profile completion
+      final completion = OnboardingValidationService.calculateOnboardingProgress(_formData);
+      data['profileCompletion'] = completion;
+      data['onboardingStep'] = stepToSave + 1;
+      
+      debugPrint('[ONBOARD_SAVE] payload=$data, completion=$completion%');
+      
+      // CRITICAL FIX: Await Firestore write before navigation
       await provider.saveStepData(
         step: stepToSave,
         data: data,
@@ -162,21 +306,21 @@ class _TechnicianOnboardingFlowScreenState
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Step saved successfully'),
-            duration: Duration(seconds: 2),
+          SnackBar(
+            content: Text('Step saved successfully ($completion% complete)'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: Colors.green,
           ),
         );
       }
       
       debugPrint('[Onboarding] Calling nextPage');
       
-      // CRITICAL FIX: Reset _isSavingStep BEFORE page transition
-      // This allows onPageChanged to properly sync state during programmatic navigation
       if (mounted) {
         setState(() => _isSavingStep = false);
       }
       
+      // CRITICAL FIX: Only navigate after Firestore write succeeds
       await _pageController.nextPage(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
@@ -188,7 +332,7 @@ class _TechnicianOnboardingFlowScreenState
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Connection issue. Your progress is safe. Tap to retry.'),
+            content: const Text('Connection issue. Your progress is safe. Tap to retry.'),
             backgroundColor: Colors.orange,
             duration: const Duration(seconds: 6),
             action: SnackBarAction(
@@ -199,8 +343,6 @@ class _TechnicianOnboardingFlowScreenState
         );
       }
     } finally {
-      // _isSavingStep already reset before nextPage() call above
-      // This is a safety reset in case of exceptions before reaching nextPage
       if (mounted && _isSavingStep) {
         setState(() => _isSavingStep = false);
       }
@@ -217,7 +359,7 @@ class _TechnicianOnboardingFlowScreenState
           'district': _formData['district'] ?? '',
           'experienceYears': _formData['experienceYears'] ?? 0,
           'gender': _formData['gender'],
-          'dateOfBirth': _formData['dob'],
+          'dateOfBirth': (_formData['dob'] as DateTime?)?.toIso8601String(),
           'primaryCategoryId': _formData['primaryCategoryId'],
           'primaryCategoryName': _formData['primaryCategoryName'],
           'profilePhotoUrl': _formData['profilePhotoUrl'],
@@ -236,13 +378,10 @@ class _TechnicianOnboardingFlowScreenState
         };
       case 3:
         return {
-          'skills': _formData['skills'] ?? [],
-          'basePrice': _formData['basePrice'],
-          'visitingCharge': _formData['visitingCharge'],
-          'maxTravelDistance': _formData['maxTravelDistance'],
-          'maxDailyJobs': _formData['maxDailyJobs'],
-          'dynamicPricingAllowed': _formData['dynamicPricingAllowed'] ?? false,
-          'emergencyServiceAvailable': _formData['emergencyServiceAvailable'] ?? false,
+          'experienceDescription': _formData['experienceDescription'],
+          'tools': _formData['tools'] ?? [],
+          'workPreference': _formData['workPreference'],
+          'portfolioPhotos': _formData['portfolioPhotos'] ?? [],
         };
       default:
         return {};
@@ -261,6 +400,30 @@ class _TechnicianOnboardingFlowScreenState
   Future<void> _submitApplication() async {
     final provider = context.read<TechnicianProvider>();
     if (provider.isSubmittingApplication) return;
+
+    // FINAL VALIDATION BEFORE SUBMISSION
+    final validation = OnboardingValidationService.validateCompleteProfile(_formData);
+    
+    if (validation['isValid'] != true) {
+      final missingFields = validation['missingFields'] as List;
+      final errorMsg = 'Please complete your profile before submitting for verification.\n\nMissing: ${missingFields.join(", ")}';
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMsg),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'OK',
+              textColor: Colors.white,
+              onPressed: () {},
+            ),
+          ),
+        );
+      }
+      return;
+    }
 
     setState(() => _isSubmitting = true);
 
@@ -367,7 +530,7 @@ class _TechnicianOnboardingFlowScreenState
                       _formData[key] = value;
                     },
                   ),
-                  Step5ServiceSetup(
+                  Step4WorkPortfolio(
                     formData: _formData,
                     onDataChanged: (key, value) {
                       _formData[key] = value;
@@ -463,11 +626,12 @@ class _TechnicianOnboardingFlowScreenState
               child: SizedBox(
                 height: 52,
                 child: ElevatedButton(
-                  onPressed: (_isSavingStep || _isSubmitting) ? null : _nextStep,
+                  onPressed: (_isSavingStep || _isSubmitting || !_canProceed) ? null : _nextStep,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF6366F1),
                     foregroundColor: Colors.white,
                     disabledBackgroundColor: const Color(0xFFE5E7EB),
+                    disabledForegroundColor: const Color(0xFF9CA3AF),
                     elevation: 0,
                     minimumSize: const Size.fromHeight(52),
                     shape: RoundedRectangleBorder(
@@ -505,7 +669,7 @@ class _TechnicianOnboardingFlowScreenState
       'Personal Details',
       'Professional Details',
       'KYC Verification',
-      'Availability',
+      'Work Portfolio',
       'Success',
     ];
     return titles[step];

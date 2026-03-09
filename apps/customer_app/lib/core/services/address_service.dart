@@ -3,12 +3,16 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import '../models/address.dart';
 import 'address_cache_service.dart';
+import 'category_service.dart';
 
 /// Production-grade Address Service
 /// Handles all address-related Firestore operations securely
 class AddressService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  final CategoryService categoryService;
+
+  AddressService(this.categoryService);
 
   /// Stream user's saved addresses
   Stream<List<Address>> streamAddresses(String userId) {
@@ -83,6 +87,9 @@ class AddressService {
       await setPrimaryAddress(userId, addressId);
     }
 
+    // Clear location cache after saving address
+    categoryService.clearLocationCache();
+
     return addressId;
   }
 
@@ -123,6 +130,9 @@ class AddressService {
         await setPrimaryAddress(userId, remainingAddresses.docs.first.id);
       }
     }
+    
+    // Clear location cache after deleting address
+    categoryService.clearLocationCache();
   }
 
   /// Set primary address with Firestore batch update
@@ -179,6 +189,9 @@ class AddressService {
 
       await batch.commit();
       debugPrint('✅ [Address] Primary address updated successfully');
+      
+      // Clear location cache after setting primary address
+      categoryService.clearLocationCache();
     } catch (e) {
       debugPrint('❌ [Address] setPrimaryAddress failed: $e');
       rethrow;
@@ -249,6 +262,9 @@ class AddressService {
         'selectedAddressId': addressId,
       });
       debugPrint('✅ [Address] Selected address updated via callable');
+      
+      // Clear location cache after updating selected address
+      categoryService.clearLocationCache();
     } catch (e) {
       debugPrint('❌ [Address] Update failed: $e');
       rethrow;

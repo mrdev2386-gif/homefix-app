@@ -47,14 +47,14 @@ class ImageSizeGuard {
             'Image too large: ${(recompressed.length / 1024).toStringAsFixed(2)}KB (max 500KB)',
           );
         }
-        final tempFile = File(imageFile.path + '.compressed.jpg');
+        final tempFile = File('${imageFile.path}.compressed.jpg');
         await tempFile.writeAsBytes(recompressed);
         debugPrint('[ImageSizeGuard] Final size: ${(recompressed.length / 1024).toStringAsFixed(2)}KB');
         return tempFile;
       }
 
       // Write compressed file
-      final tempFile = File(imageFile.path + '.compressed.jpg');
+      final tempFile = File('${imageFile.path}.compressed.jpg');
       await tempFile.writeAsBytes(compressed);
       debugPrint('[ImageSizeGuard] Final size: ${(compressed.length / 1024).toStringAsFixed(2)}KB');
 

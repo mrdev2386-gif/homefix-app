@@ -1,12 +1,13 @@
-import { initializeApp } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import * as admin from 'firebase-admin';
 
-// Initialize at the very top
-initializeApp();
+// Safe initialization - only initialize if not already initialized
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
 console.log("BOOT OK - Functions loading...");
 
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import * as functions from 'firebase-functions';
-import * as admin from 'firebase-admin';
 import * as testing from './testing';
 import { getAppConfig } from './shared/config';
 import * as crypto from 'crypto';
@@ -88,7 +89,7 @@ import * as fraudProtection from './fraud_protection';
 import { onBookingCreatedMatch } from './matching/matching_v2';
 
 
-const db = getFirestore();
+const db = admin.firestore();
 
 const getDb = () => admin.firestore();
 
@@ -127,6 +128,24 @@ export {
     updateBookingStatusGeneric as updateBookingStatus,
     markWorkCompleted
 } from './booking/new_booking_flow';
+
+// ==========================================
+// SECURE BOOKING LIFECYCLE FUNCTIONS
+// ==========================================
+import * as bookingLifecycle from './booking/booking_lifecycle';
+export const notifyAdminNewBooking = bookingLifecycle.notifyAdminNewBooking;
+export const approveBookingByAdmin = bookingLifecycle.approveBookingByAdmin;
+export const rejectBookingByAdmin = bookingLifecycle.rejectBookingByAdmin;
+export const technicianAcceptBooking = bookingLifecycle.technicianAcceptBooking;
+export const technicianStartJob = bookingLifecycle.technicianStartJob;
+export const completeBooking = bookingLifecycle.completeBooking;
+export const cancelBooking = bookingLifecycle.cancelBooking;
+export const technicianRejectBooking = bookingLifecycle.technicianRejectBooking;
+export const verifyBookingPayment = bookingLifecycle.verifyBookingPayment;
+
+// Refund System
+import * as refundSystem from './booking/refund_system';
+export const refundBookingPayment = refundSystem.refundBookingPayment;
 
 // QR Wallet Payment
 import * as paymentQR from './booking/payment_qr';
@@ -174,27 +193,26 @@ export { checkRateLimit } from './shared/utils';
 // TECHNICIAN SERVICE LISTINGS (YouTube-style)
 // ==========================================
 
-// TODO: verify usage before deletion
-export const createTechnicianService = technicianServices.createTechnicianService;
-// TODO: verify usage before deletion
-export const updateTechnicianService = technicianServices.updateTechnicianService;
-// TODO: verify usage before deletion
-export const deleteTechnicianService = technicianServices.deleteTechnicianService;
-export const getMyTechnicianServices = technicianServices.getMyTechnicianServices;
-// TODO: verify usage before deletion
-// export const toggleTechnicianServiceStatus = technicianServices.toggleTechnicianServiceStatus;
-
-// NEW: Technician Services Management (Single Source of Truth)
+// Technician Services Management (Single Source of Truth)
+// Using services_management.ts as the authoritative implementation
 export const addTechnicianService = techServicesManagement.addTechnicianService;
-export const updateTechnicianServiceNew = techServicesManagement.updateTechnicianService;
-export const toggleTechnicianServiceStatusNew = techServicesManagement.toggleTechnicianServiceStatus;
-export const deleteTechnicianServiceNew = techServicesManagement.deleteTechnicianService;
+export const createTechnicianService = techServicesManagement.addTechnicianService;
+export const updateTechnicianService = techServicesManagement.updateTechnicianService;
+export const deleteTechnicianService = techServicesManagement.deleteTechnicianService;
+export const toggleTechnicianServiceStatus = techServicesManagement.toggleTechnicianServiceStatus;
+export const getMyTechnicianServices = technicianServices.getMyTechnicianServices;
 
 /**
  * Scheduled function to remind users about items in their cart.
  * Runs every 4 hours.
  */
-export const onCartAbandoned = functions.pubsub.schedule('every 4 hours').onRun(async (context) => {
+export const onCartAbandoned = onSchedule(
+    {
+        schedule: 'every 4 hours',
+        timeZone: 'Asia/Kolkata',
+        memory: '256MiB'
+    },
+    async (event) => {
     const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000);
 
     // Suggestion: Cart items are in customers/{uid}/cart_items
@@ -277,7 +295,7 @@ export const processWalletTransaction = technicianFinance.processWalletTransacti
 
 export const updateUserProfile = customerFeatures.updateUserProfile;
 export const updateTechnicianProfile = customerFeatures.updateTechnicianProfile; // TODO: verify usage before deletion
-export const cancelBooking = customerFeatures.cancelBooking;
+// cancelBooking moved to booking_lifecycle.ts
 // TODO: verify usage before deletion
 // export const deleteAccount = customerFeatures.deleteAccount;
 export const manageAddress = customerFeatures.manageAddress;
@@ -287,6 +305,17 @@ import * as addressManagement from './customer/address_management';
 export const setPrimaryAddress = addressManagement.setPrimaryAddress;
 export const manageAddressSecure = addressManagement.manageAddress;
 export const validateAddressForBooking = addressManagement.validateAddressForBooking;
+
+// Cart Management (Secure)
+import * as cartManagement from './customer/cart_management';
+export const addToCartCallable = cartManagement.addToCartCallable;
+export const updateCartQuantityCallable = cartManagement.updateCartQuantityCallable;
+export const removeFromCartCallable = cartManagement.removeFromCartCallable;
+export const clearCartCallable = cartManagement.clearCartCallable;
+
+// Favorites Management (Secure)
+import * as favoritesManagement from './customer/favorites_management';
+export const toggleFavoriteCallable = favoritesManagement.toggleFavoriteCallable;
 // TODO: verify usage before deletion
 export const managePaymentMethod = customerFeatures.managePaymentMethod; // TODO: verify usage before deletion
 // TODO: verify usage before deletion
@@ -345,6 +374,12 @@ export const getSubServicePriceHistory = adminServices.getSubServicePriceHistory
 // Service Nesting Migration (PHASE 12)
 // export const migrateServicesToNested = adminServices.migrateServicesToNested;
 
+// Admin Service Management (Production-Ready)
+import * as adminServiceMgmt from './admin/service_management';
+export const admin_approveService = adminServiceMgmt.admin_approveService;
+export const admin_rejectService = adminServiceMgmt.admin_rejectService;
+export const admin_disableService = adminServiceMgmt.admin_disableService;
+
 export const admin_manageBooking = adminBookings.adminManageBooking;
 
 import * as adminImages from './admin/images';
@@ -361,6 +396,10 @@ export const admin_manageRiskProfile = adminRisk.manageRiskProfile;
 
 import * as adminReviews from './admin/reviews';
 export const admin_manageReview = adminReviews.manageReview;
+
+// Review Aggregation Trigger
+import { onReviewCreated } from './reviews/review_triggers';
+export { onReviewCreated };
 
 import * as adminDisputes from './admin/disputes';
 export const admin_manageDispute = adminDisputes.manageDispute;

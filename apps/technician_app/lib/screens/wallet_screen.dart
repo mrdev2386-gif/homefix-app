@@ -13,7 +13,6 @@ import '../core/services/wallet_service.dart';
 import '../core/models/wallet.dart';
 import '../core/models/wallet_transaction.dart';
 import '../core/models/bank_account.dart';
-import '../core/models/bank_account.dart' show BankAccountStatus;
 import '../core/providers/technician_provider.dart';
 import 'add_bank_account_screen.dart';
 

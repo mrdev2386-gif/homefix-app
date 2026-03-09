@@ -1,54 +1,88 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import { assertAuthenticated } from '../shared/security';
 
 const db = admin.firestore();
 
-export const updateTechnicianPersonalDetails = functions.region('us-central1').https.onCall(async (data, context) => {
-    assertAuthenticated(context);
-    const uid = context.auth!.uid;
+export const updateTechnicianPersonalDetails = functions.region('asia-south1').https.onCall(async (data, context) => {
+    console.log("Auth UID:", context.auth?.uid);
     
-    const { fullName, email, city, experience, gender, bio } = data;
-    
-    if (!fullName || fullName.trim().length < 2) {
-        throw new functions.https.HttpsError('invalid-argument', 'Full name is required (min 2 characters)');
+    if (!context.auth) {
+        throw new functions.https.HttpsError(
+            "unauthenticated",
+            "User must be logged in"
+        );
     }
     
-    if (email !== undefined && email !== null) {
-        const emailRegex = /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/;
-        if (!emailRegex.test(email.trim())) {
-            throw new functions.https.HttpsError('invalid-argument', 'Invalid email format');
+    const uid = context.auth.uid;
+    console.log(`[updateTechnicianPersonalDetails] Request from uid: ${uid}`);
+    console.log(`[updateTechnicianPersonalDetails] Request data:`, data);
+
+    // Protected fields that cannot be modified by users
+    const protectedFields = new Set([
+        'uid', 'walletBalance', 'rating', 'totalJobs', 'isApproved', 
+        'createdAt', 'adminApproved', 'isKycComplete', 'onboardingCompleted',
+        'role', 'status', 'bankStatus', 'aadhaarFrontStatus', 'aadhaarBackStatus',
+        'profilePhotoStatus'
+    ]);
+
+    const updates: Record<string, any> = {};
+
+    // Dynamically build updates from request data
+    for (const [key, value] of Object.entries(data)) {
+        // Skip protected fields
+        if (protectedFields.has(key)) {
+            console.log(`[updateTechnicianPersonalDetails] Skipping protected field: ${key}`);
+            continue;
+        }
+        
+        // Skip null and undefined values
+        if (value !== null && value !== undefined) {
+            updates[key] = value;
+            console.log(`[updateTechnicianPersonalDetails] Adding field: ${key} = ${value}`);
+            
+            // Special handling for fullName - also update name field for compatibility
+            if (key === 'fullName') {
+                updates['name'] = value;
+                console.log(`[updateTechnicianPersonalDetails] Also updating name field: ${value}`);
+            }
         }
     }
-    
-    const techDoc = await db.collection('technicians').doc(uid).get();
-    if (!techDoc.exists) {
-        throw new functions.https.HttpsError('not-found', 'Technician profile not found');
+
+    // If no valid fields to update, return early
+    if (Object.keys(updates).length === 0) {
+        console.log(`[updateTechnicianPersonalDetails] No fields to update`);
+        return { success: true, message: 'Nothing to update', updatedFields: [] };
     }
-    
-    const updateData: Record<string, any> = {
-        fullName: fullName.trim(),
-        name: fullName.trim(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+
+    // Always add timestamp to trigger stream updates
+    updates.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+    console.log(`[updateTechnicianPersonalDetails] Final updates object:`, updates);
+
+    try {
+        // Update technician document using .update() to preserve existing fields
+        await db.collection('technicians').doc(uid).update(updates);
+        console.log(`[updateTechnicianPersonalDetails] Firestore update successful`);
+    } catch (error) {
+        console.error(`[updateTechnicianPersonalDetails] Firestore update failed:`, error);
+        throw new functions.https.HttpsError('internal', 'Failed to update profile');
+    }
+
+    const updatedFields = Object.keys(updates).filter(key => key !== 'updatedAt');
+    console.log(`[updateTechnicianPersonalDetails] Updated fields: ${updatedFields.join(', ')}`);
+
+    return {
+        success: true,
+        message: 'Profile updated successfully',
+        updatedFields
     };
-    
-    if (email !== undefined && email !== null) updateData.email = email.trim();
-    if (city !== undefined) updateData.district = city.trim();
-    if (experience !== undefined && experience !== null) updateData.experienceYears = parseInt(experience.toString(), 10) || 0;
-    if (gender !== undefined && gender !== null) updateData.gender = gender;
-    if (bio !== undefined) updateData.bio = bio ? bio.trim() : '';
-    
-    await db.collection('technicians').doc(uid).update(updateData);
-    
-    console.log(`[updateTechnicianPersonalDetails] Updated for uid: ${uid}`);
-    
-    return { success: true, message: 'Personal details updated successfully' };
 });
 
-export const updateTechnicianBankDetails = functions.region('us-central1').https.onCall(async (data, context) => {
-    assertAuthenticated(context);
-    const uid = context.auth!.uid;
+export const updateTechnicianBankDetails = functions.region('asia-south1').https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
+    }
     
+    const uid = context.auth.uid;
     const { accountHolderName, bankName, accountNumber, ifscCode } = data;
     
     if (!accountHolderName || accountHolderName.trim().length < 3) {
@@ -107,10 +141,12 @@ export const updateTechnicianBankDetails = functions.region('us-central1').https
     };
 });
 
-export const reuploadVerificationDocument = functions.region('us-central1').https.onCall(async (data, context) => {
-    assertAuthenticated(context);
-    const uid = context.auth!.uid;
+export const reuploadVerificationDocument = functions.region('asia-south1').https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
+    }
     
+    const uid = context.auth.uid;
     const { documentType, documentUrl } = data;
     
     if (!documentType || !['aadhaarFront', 'aadhaarBack', 'profilePhoto'].includes(documentType)) {
@@ -165,10 +201,12 @@ export const reuploadVerificationDocument = functions.region('us-central1').http
     };
 });
 
-export const adminUpdateBankStatus = functions.region('us-central1').https.onCall(async (data, context) => {
-    assertAuthenticated(context);
+export const adminUpdateBankStatus = functions.region('asia-south1').https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
+    }
     
-    const adminDoc = await db.collection('admins').doc(context.auth!.uid).get();
+    const adminDoc = await db.collection('admins').doc(context.auth.uid).get();
     if (!adminDoc.exists) {
         throw new functions.https.HttpsError('permission-denied', 'Only admins can update bank status');
     }
@@ -214,10 +252,12 @@ export const adminUpdateBankStatus = functions.region('us-central1').https.onCal
     };
 });
 
-export const adminUpdateDocumentStatus = functions.region('us-central1').https.onCall(async (data, context) => {
-    assertAuthenticated(context);
+export const adminUpdateDocumentStatus = functions.region('asia-south1').https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
+    }
     
-    const adminDoc = await db.collection('admins').doc(context.auth!.uid).get();
+    const adminDoc = await db.collection('admins').doc(context.auth.uid).get();
     if (!adminDoc.exists) {
         throw new functions.https.HttpsError('permission-denied', 'Only admins');
     }

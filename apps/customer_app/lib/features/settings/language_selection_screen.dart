@@ -196,7 +196,7 @@ class LanguageSelectionScreen extends StatelessWidget {
                         trailing: isSelected
                             ? Container(
                                 padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
+                                decoration: const BoxDecoration(
                                   color: AppTheme.primaryColor,
                                   shape: BoxShape.circle,
                                 ),

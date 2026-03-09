@@ -7,11 +7,11 @@ class LocationSelector extends StatefulWidget {
   final Function(String state, String district) onLocationChanged;
 
   const LocationSelector({
-    Key? key,
+    super.key,
     this.initialState,
     this.initialDistrict,
     required this.onLocationChanged,
-  }) : super(key: key);
+  });
 
   @override
   State<LocationSelector> createState() => _LocationSelectorState();

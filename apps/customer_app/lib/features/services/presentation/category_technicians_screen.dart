@@ -6,7 +6,7 @@ class CategoryTechniciansScreen extends StatefulWidget {
   final String categoryName;
   final String categoryId;
 
-  const CategoryTechniciansScreen({
+  const CategoryTechniciansScreen({super.key, 
     required this.categoryName,
     required this.categoryId,
   });
@@ -44,12 +44,13 @@ class _CategoryTechniciansScreenState extends State<CategoryTechniciansScreen> {
 
           return StreamBuilder<QuerySnapshot>(
             stream: _firestore
-                .collectionGroup('technician_services')
-                .where('categoryId', isEqualTo: widget.categoryId)
+                .collection('technician_services')
+                .where('category', isEqualTo: widget.categoryId)
                 .where('state', isEqualTo: state)
                 .where('district', isEqualTo: district)
-                .where('isPublished', isEqualTo: true)
-                .where('status', isEqualTo: 'active')
+                .where('status', isEqualTo: 'approved') // CRITICAL FIX: Only show approved services
+                .where('isActive', isEqualTo: true)
+                .where('isDeleted', isEqualTo: false)
                 .snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
@@ -57,13 +58,13 @@ class _CategoryTechniciansScreenState extends State<CategoryTechniciansScreen> {
               }
 
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                return Center(
+                return const Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.location_off, size: 48, color: Colors.grey),
-                      const SizedBox(height: 12),
-                      const Padding(
+                      Icon(Icons.location_off, size: 48, color: Colors.grey),
+                      SizedBox(height: 12),
+                      Padding(
                         padding: EdgeInsets.symmetric(horizontal: 24),
                         child: Text(
                           'No technicians available in your district yet',

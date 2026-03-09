@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -485,9 +484,9 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          // IMPROVED: "Good morning," → medium weight
+                                          // FIX #4: Dynamic greeting based on time
                                           Text(
-                                            'Good morning,',
+                                            '${getGreeting()},',
                                             style: GoogleFonts.plusJakartaSans(
                                               fontSize: 20,
                                               fontWeight: FontWeight.w500, // Medium weight
@@ -511,10 +510,10 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                           const SizedBox(height: 8),
-                                          // IMPROVED: "Currently Offline" → smaller subtitle with status color
+                                          // FIX #4: Status message based on online status and time
                                           Text(
                                             tech.isOnline 
-                                                ? _getGreetingMessage() 
+                                                ? 'Ready for jobs' 
                                                 : 'Currently Offline',
                                             style: GoogleFonts.plusJakartaSans(
                                               fontSize: 14,
@@ -1204,15 +1203,16 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
     return 0.0;
   }
 
-  /// Get time-based greeting message
-  String _getGreetingMessage() {
+  /// FIX #4: Get dynamic greeting based on time of day
+  String getGreeting() {
     final hour = DateTime.now().hour;
+    
     if (hour < 12) {
-      return 'Good morning! Ready for jobs';
+      return "Good Morning";
     } else if (hour < 17) {
-      return 'Good afternoon! Ready for jobs';
+      return "Good Afternoon";
     } else {
-      return 'Good evening! Ready for jobs';
+      return "Good Evening";
     }
   }
 

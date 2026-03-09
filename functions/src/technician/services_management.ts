@@ -13,8 +13,43 @@ import { onCall } from "firebase-functions/v2/https";
 import { CallableRequest } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import * as https from "firebase-functions/v2/https";
+import { sanitizeString } from '../shared/security';
 
 const db = admin.firestore();
+
+// Total onboarding steps: basic, professional, kyc, portfolio
+const TOTAL_ONBOARDING_STEPS = 4;
+
+// Helper function to calculate profile completion from stepsCompleted
+// NORMALIZED: Only count required steps: personalDetails, serviceCategories, portfolio, verification
+function calculateProfileCompletion(technician: any): number {
+  // SECURITY: Always calculate dynamically, never trust stored values
+  
+  const stepsCompleted = technician.stepsCompleted || {};
+  let completedRequiredSteps = 0;
+  const totalRequiredSteps = 4; // personalDetails, serviceCategories, portfolio, verification
+  
+  // Check required steps only - NORMALIZED FIELD NAMES
+  if (stepsCompleted.personalDetails === true) {
+    completedRequiredSteps++;
+  }
+  
+  if (stepsCompleted.serviceCategories === true) {
+    completedRequiredSteps++;
+  }
+  
+  if (stepsCompleted.portfolio === true) {
+    completedRequiredSteps++;
+  }
+  
+  if (stepsCompleted.verification === true) {
+    completedRequiredSteps++;
+  }
+  
+  const completion = Math.round((completedRequiredSteps / totalRequiredSteps) * 100);
+  console.log(`[PROFILE COMPLETION] Calculated: ${completion}% (${completedRequiredSteps}/${totalRequiredSteps})`);
+  return completion;
+}
 
 interface ServiceInput {
   name: string;
@@ -70,8 +105,13 @@ export const addTechnicianService = onCall(
     const technicianId = request.auth.uid;
     const { name, price, imageUrl, category, description, urgentBooking, nightService } = request.data;
 
+    // SECURITY FIX: Sanitize inputs
+    const sanitizedName = sanitizeString(name || '', 200);
+    const sanitizedCategory = sanitizeString(category || '', 100);
+    const sanitizedDescription = sanitizeString(description || '', 1000);
+
     // Validation
-    if (!name?.trim() || name.trim().length < 3) {
+    if (!sanitizedName || sanitizedName.length < 3) {
       throw new https.HttpsError("invalid-argument", "Service name must be at least 3 characters");
     }
     if (!price || price <= 0) {
@@ -80,18 +120,50 @@ export const addTechnicianService = onCall(
     if (!imageUrl?.trim()) {
       throw new https.HttpsError("invalid-argument", "Image is required");
     }
-    if (!category?.trim()) {
+    if (!sanitizedCategory) {
       throw new https.HttpsError("invalid-argument", "Category is required");
     }
 
-    // CRITICAL: Fetch technician profile to get district
+    // CRITICAL: Fetch technician profile to get district AND state AND validate approval
     const techDoc = await db.collection('technicians').doc(technicianId).get();
     if (!techDoc.exists) {
       throw new https.HttpsError("not-found", "Technician profile not found");
     }
 
     const techData = techDoc.data()!;
+    
+    // APPROVAL VALIDATION: Check profile completion and approval status
+    const profileCompletion = calculateProfileCompletion(techData);
+    
+    console.log(`[TECH STATUS] ${techData.status}`);
+    console.log(`[PROFILE COMPLETION] ${profileCompletion}`);
+    console.log(`[SERVICE ALLOWED] ${techData.status === 'approved'}`);
+    
+    if (profileCompletion < 100) {
+      throw new https.HttpsError(
+        "failed-precondition",
+        "Please complete your profile to 100% before listing services."
+      );
+    }
+    
+    // Use consistent approval check: status == "approved" ONLY
+    const isApproved = techData.status === "approved";
+    
+    if (!isApproved) {
+      if (techData.profileRejected) {
+        throw new https.HttpsError(
+          "failed-precondition",
+          "Your profile was rejected. Please update your information and resubmit."
+        );
+      }
+      throw new https.HttpsError(
+        "failed-precondition",
+        "Complete profile and wait for admin approval."
+      );
+    }
+    
     const district = techData.district || techData.districtNormalized;
+    const state = techData.state || techData.stateNormalized;
 
     if (!district) {
       throw new https.HttpsError(
@@ -99,21 +171,33 @@ export const addTechnicianService = onCall(
         "Your profile must have a district set. Please update your profile."
       );
     }
+    
+    if (!state) {
+      throw new https.HttpsError(
+        "failed-precondition",
+        "Your profile must have a state set. Please update your profile."
+      );
+    }
 
-    const serviceId = db.collection(`technicians/${technicianId}/services`).doc().id;
+    const serviceId = db.collection('technician_services').doc().id;
     const now = admin.firestore.Timestamp.now();
 
+    // CRITICAL FIX: Services must start as PENDING for admin approval
     const serviceData: any = {
       id: serviceId,
-      name: name.trim(),
+      name: sanitizedName,
       price,
       imageUrl: imageUrl.trim(),
-      category: category.trim(),
-      description: description?.trim() || "",
+      category: sanitizedCategory,
+      description: sanitizedDescription,
       district: district, // SERVER-INJECTED
-      averageRating: 0, // DEFAULT
-      totalReviews: 0, // DEFAULT
-      isActive: true,
+      state: state, // SERVER-INJECTED (FIX #3)
+      averageRating: techData.averageRating || 0, // FROM TECHNICIAN
+      totalReviews: techData.totalReviews || 0, // FROM TECHNICIAN
+      technicianName: techData.fullName || techData.name || 'Unknown',
+      technicianPhoto: techData.profilePhoto || techData.photoUrl || '',
+      status: 'pending', // CRITICAL: Requires admin approval
+      isActive: false, // CRITICAL: Inactive until approved
       isDeleted: false,
       technicianId,
       createdAt: now,
@@ -150,9 +234,13 @@ export const addTechnicianService = onCall(
       };
     }
 
-    await db.doc(`technicians/${technicianId}/services/${serviceId}`).set(serviceData);
+    await db.collection('technician_services').doc(serviceId).set(serviceData);
 
-    console.log(`[SERVICE_ADD] Service ${serviceId} created for technician ${technicianId} in district ${district}`);
+    // ENHANCED DEBUG LOGGING
+    console.log(`[SERVICE_ADD] ✅ Service ${serviceId} created for technician ${technicianId}`);
+    console.log(`[SERVICE_ADD] 📍 Location: ${district}, ${state}`);
+    console.log(`[SERVICE_ADD] 📊 Status: ${serviceData.status}, isActive: ${serviceData.isActive}`);
+    console.log(`[SERVICE_ADD] 📝 Document written to: technician_services/${serviceId}`);
 
     return {
       success: true,
@@ -181,21 +269,28 @@ export const updateTechnicianService = onCall(
       throw new https.HttpsError("invalid-argument", "Service ID is required");
     }
 
-    const serviceRef = db.doc(`technicians/${technicianId}/services/${serviceId}`);
+    const serviceRef = db.collection('technician_services').doc(serviceId);
     const serviceDoc = await serviceRef.get();
 
     if (!serviceDoc.exists) {
       throw new https.HttpsError("not-found", "Service not found");
     }
 
+    // Security check - only owner can update
+    const serviceData = serviceDoc.data()!;
+    if (serviceData.technicianId !== technicianId) {
+      throw new https.HttpsError("permission-denied", "You can only update your own services");
+    }
+
     // Validation
     const updateData: any = { updatedAt: admin.firestore.Timestamp.now() };
 
     if (updates.name !== undefined) {
-      if (!updates.name.trim() || updates.name.trim().length < 3) {
+      const sanitizedName = sanitizeString(updates.name, 200);
+      if (!sanitizedName || sanitizedName.length < 3) {
         throw new https.HttpsError("invalid-argument", "Service name must be at least 3 characters");
       }
-      updateData.name = updates.name.trim();
+      updateData.name = sanitizedName;
     }
 
     if (updates.price !== undefined) {
@@ -213,14 +308,15 @@ export const updateTechnicianService = onCall(
     }
 
     if (updates.category !== undefined) {
-      if (!updates.category.trim()) {
+      const sanitizedCategory = sanitizeString(updates.category, 100);
+      if (!sanitizedCategory) {
         throw new https.HttpsError("invalid-argument", "Category cannot be empty");
       }
-      updateData.category = updates.category.trim();
+      updateData.category = sanitizedCategory;
     }
 
     if (updates.description !== undefined) {
-      updateData.description = updates.description.trim();
+      updateData.description = sanitizeString(updates.description, 1000);
     }
 
     // Urgent Booking Feature updates
@@ -276,14 +372,20 @@ export const toggleTechnicianServiceStatus = onCall(
       throw new https.HttpsError("invalid-argument", "Service ID is required");
     }
 
-    const serviceRef = db.doc(`technicians/${technicianId}/services/${serviceId}`);
+    const serviceRef = db.collection('technician_services').doc(serviceId);
     const serviceDoc = await serviceRef.get();
 
     if (!serviceDoc.exists) {
       throw new https.HttpsError("not-found", "Service not found");
     }
 
-    const currentStatus = serviceDoc.data()?.isActive ?? true;
+    // Security check - only owner can toggle
+    const serviceData = serviceDoc.data()!;
+    if (serviceData.technicianId !== technicianId) {
+      throw new https.HttpsError("permission-denied", "You can only toggle your own services");
+    }
+
+    const currentStatus = serviceData.isActive ?? true;
     const newStatus = !currentStatus;
 
     await serviceRef.update({
@@ -320,11 +422,17 @@ export const deleteTechnicianService = onCall(
       throw new https.HttpsError("invalid-argument", "Service ID is required");
     }
 
-    const serviceRef = db.doc(`technicians/${technicianId}/services/${serviceId}`);
+    const serviceRef = db.collection('technician_services').doc(serviceId);
     const serviceDoc = await serviceRef.get();
 
     if (!serviceDoc.exists) {
       throw new https.HttpsError("not-found", "Service not found");
+    }
+
+    // Security check - only owner can delete
+    const serviceData = serviceDoc.data()!;
+    if (serviceData.technicianId !== technicianId) {
+      throw new https.HttpsError("permission-denied", "You can only delete your own services");
     }
 
     await serviceRef.update({

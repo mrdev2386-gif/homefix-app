@@ -7,6 +7,7 @@ import '../utils/app_logger.dart';
 
 class FirebaseInit {
   static bool _initialized = false;
+  static bool _appCheckActivated = false;
 
   static Future<void> init() async {
     if (_initialized) return;
@@ -18,7 +19,26 @@ class FirebaseInit {
       );
       AppLogger.firebase('Core initialized');
 
-      // ✅ CRITICAL: Disable reCAPTCHA in debug mode to avoid token issues
+      // ✅ Step 2: Activate App Check IMMEDIATELY after Firebase init
+      if (!_appCheckActivated) {
+        try {
+          await FirebaseAppCheck.instance.activate(
+            androidProvider: AndroidProvider.debug,
+          );
+          _appCheckActivated = true;
+          AppLogger.firebase('App Check activated with DEBUG provider');
+
+          // Force debug token logging in debug mode
+          if (!kReleaseMode) {
+            await _extractDebugToken();
+          }
+        } catch (e) {
+          AppLogger.error('FIREBASE', 'App Check activation failed', data: e);
+          // Continue even if App Check fails
+        }
+      }
+
+      // ✅ Step 3: Disable reCAPTCHA in debug mode
       if (!kReleaseMode) {
         await FirebaseAuth.instance.setSettings(
           appVerificationDisabledForTesting: true,
@@ -26,33 +46,11 @@ class FirebaseInit {
         AppLogger.firebase('reCAPTCHA disabled for testing');
       }
 
-      // ✅ Step 2: Select provider safely
-      final provider = kReleaseMode
-          ? AndroidProvider.playIntegrity
-          : AndroidProvider.debug;
-
-      AppLogger.firebase('Activating App Check with provider: ${kReleaseMode ? "playIntegrity" : "debug"}');
-
-      // ✅ Step 3: Activate App Check with safe error handling
-      // Note: ProviderInstaller warnings are non-critical and safe to ignore
-      // They indicate optional security providers are not available
-      await FirebaseAppCheck.instance.activate(
-        androidProvider: provider,
-      );
-      AppLogger.firebase('App Check activated successfully');
-
-      // ✅ Step 4: Extract debug token (DEBUG ONLY - NEVER IN RELEASE)
-      if (!kReleaseMode) {
-        await _extractDebugToken();
-      }
-
       _initialized = true;
       AppLogger.firebase('Firebase initialization complete');
     } catch (e, st) {
-      // Log the error but continue - non-critical failures should not crash app
       AppLogger.error('FIREBASE', 'Init failed', data: e, stackTrace: st);
-      _initialized = true; // Mark as initialized anyway to prevent repeated attempts
-      // Don't rethrow to allow app to continue with degraded functionality
+      _initialized = true;
     }
   }
 

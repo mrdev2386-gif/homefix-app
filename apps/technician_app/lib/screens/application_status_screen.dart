@@ -124,7 +124,7 @@ class ApplicationStatusScreen extends StatelessWidget {
         : isPending 
             ? const Color(0xFF6366F1)  // Indigo for pending
             : const Color(0xFFEF4444); // Red for rejected/suspended
-    return Container(
+    return SizedBox(
       width: 160,
       height: 160,
       child: Stack(

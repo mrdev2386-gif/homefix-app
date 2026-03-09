@@ -1,5 +1,6 @@
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,6 +8,7 @@ import '../home/home_screen.dart';
 import '../bookings/presentation/booking_history_screen.dart';
 import '../services/presentation/request_screen.dart';
 import '../profile/profile_screen.dart';
+import '../auth/screens/complete_location_screen.dart';
 import 'package:customer_app/core/services/auth_service.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
 
@@ -35,6 +37,7 @@ class _MainWrapperScreenState extends State<MainWrapperScreen> {
   }
 
   void _navigateToHomeTab() {
+    if (!mounted) return;
     setState(() => _currentIndex = 0);
   }
 
@@ -43,23 +46,62 @@ class _MainWrapperScreenState extends State<MainWrapperScreen> {
       final authService = Provider.of<AuthService>(context, listen: false);
       final user = authService.currentUser;
       if (user == null) {
+        if (!mounted) return;
         setState(() => _isCheckingProfile = false);
         return;
       }
 
       final doc = await FirebaseFirestore.instance.collection('customers').doc(user.uid).get();
+      if (!mounted) return;
+      
       if (!doc.exists) {
         _forceProfileCompletion();
         return;
       }
 
       final data = doc.data();
-      if (data?['profileCompleted'] != true || data?['district'] == null) {
+      
+      // CRITICAL: Check for primaryAddressId (required for service queries)
+      final primaryAddressId = data?['primaryAddressId'];
+      
+      if (primaryAddressId == null || primaryAddressId.toString().isEmpty) {
+        // No primary address - force location completion
         _forceProfileCompletion();
-      } else {
-        setState(() => _isCheckingProfile = false);
+        return;
       }
+      
+      // Verify address document exists and has state/district
+      final addressDoc = await FirebaseFirestore.instance
+          .collection('customers')
+          .doc(user.uid)
+          .collection('addresses')
+          .doc(primaryAddressId)
+          .get();
+      
+      if (!mounted) return;
+      
+      if (!addressDoc.exists) {
+        // Address document missing - force location completion
+        _forceProfileCompletion();
+        return;
+      }
+      
+      final addressData = addressDoc.data();
+      final state = addressData?['state'];
+      final district = addressData?['district'];
+      
+      if (state == null || district == null || state.toString().isEmpty || district.toString().isEmpty) {
+        // Address missing state/district - force location completion
+        _forceProfileCompletion();
+        return;
+      }
+      
+      // All location data present - allow access
+      if (!mounted) return;
+      setState(() => _isCheckingProfile = false);
     } catch (e) {
+      debugPrint('Error checking profile completion: $e');
+      if (!mounted) return;
       setState(() => _isCheckingProfile = false);
     }
   }
@@ -69,7 +111,7 @@ class _MainWrapperScreenState extends State<MainWrapperScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const _DistrictSelectionScreenContent()),
+        MaterialPageRoute(builder: (_) => const CompleteLocationScreen()),
         (route) => false,
       );
     });
@@ -126,7 +168,7 @@ class _MainWrapperScreenState extends State<MainWrapperScreen> {
     final isSelected = _currentIndex == index;
     return InkWell(
       onTap: () {
-        if (!isSelected) {
+        if (!isSelected && mounted) {
           HapticFeedback.mediumImpact();
           setState(() => _currentIndex = index);
         }
@@ -156,134 +198,6 @@ class _MainWrapperScreenState extends State<MainWrapperScreen> {
                 fontSize: 11,
                 fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
                 color: isSelected ? AppTheme.primaryColor : AppTheme.subtitleColor,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DistrictSelectionScreenContent extends StatefulWidget {
-  const _DistrictSelectionScreenContent();
-
-  @override
-  State<_DistrictSelectionScreenContent> createState() => _DistrictSelectionScreenContentState();
-}
-
-class _DistrictSelectionScreenContentState extends State<_DistrictSelectionScreenContent> {
-  String? _selectedDistrict;
-  bool _isLoading = false;
-  final TextEditingController _searchController = TextEditingController();
-  
-  final List<String> _districts = [
-    'Ahmedabad', 'Bangalore', 'Bhopal', 'Chennai', 'Coimbatore', 'Delhi', 'Gurgaon',
-    'Hyderabad', 'Indore', 'Jaipur', 'Kolkata', 'Lucknow', 'Mumbai', 'Nagpur',
-    'Patna', 'Pune', 'Ranchi', 'Surat', 'Thane', 'Vadodara', 'Visakhapatnam'
-  ];
-
-  List<String> get _filteredDistricts {
-    final query = _searchController.text.toLowerCase();
-    if (query.isEmpty) return _districts;
-    return _districts.where((d) => d.toLowerCase().contains(query)).toList();
-  }
-
-  Future<void> _saveDistrict() async {
-    if (_selectedDistrict == null) return;
-    setState(() => _isLoading = true);
-    try {
-      final authService = Provider.of<AuthService>(context, listen: false);
-      final user = authService.currentUser;
-      if (user == null) return;
-      
-      final normalizedDistrict = _selectedDistrict!.trim().toLowerCase();
-      
-      await FirebaseFirestore.instance.collection('customers').doc(user.uid).update({
-        'district': normalizedDistrict,
-        'profileCompleted': true,
-      });
-      
-      if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const MainWrapperScreen()),
-        (route) => false,
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 20),
-                  Text('Select Your District', 
-                    style: GoogleFonts.outfit(fontSize: 32, fontWeight: FontWeight.w900, color: AppTheme.textColor)),
-                  const SizedBox(height: 8),
-                  Text('Which city do you need services in?', 
-                    style: GoogleFonts.outfit(fontSize: 16, color: AppTheme.subtitleColor)),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: TextField(
-                controller: _searchController,
-                onChanged: (_) => setState(() {}),
-                decoration: AppTheme.inputDecoration(
-                  hintText: 'Search city...',
-                  prefixIcon: const Icon(Icons.search_rounded),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                itemCount: _filteredDistricts.length,
-                itemBuilder: (context, index) {
-                  final d = _filteredDistricts[index];
-                  final isSelected = _selectedDistrict == d;
-                  return GestureDetector(
-                    onTap: () => setState(() => _selectedDistrict = d),
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                      decoration: BoxDecoration(
-                        color: isSelected ? AppTheme.primaryColor.withOpacity(0.05) : Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: isSelected ? AppTheme.primaryColor : Colors.grey.shade100, width: 2),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(d, style: GoogleFonts.outfit(fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600, fontSize: 16)),
-                          if (isSelected) const Icon(Icons.check_circle_rounded, color: AppTheme.primaryColor, size: 20),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(32),
-              child: ElevatedButton(
-                onPressed: _selectedDistrict == null || _isLoading ? null : _saveDistrict,
-                child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('CONTINUE'),
               ),
             ),
           ],

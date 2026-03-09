@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import 'package:customer_app/core/services/location_service.dart';
 import 'package:customer_app/core/services/functions_service.dart';
+import 'package:customer_app/core/services/category_service.dart';
 import 'package:customer_app/core/widgets/location_selector.dart';
 
 class DistrictSelectionScreen extends StatefulWidget {
@@ -34,12 +36,22 @@ class _DistrictSelectionScreenState extends State<DistrictSelectionScreen> {
       await _locationService.saveLocation(selectedState!, selectedDistrict!);
 
       // Update Firestore via Cloud Function
+      // This will now create an address and set primaryAddressId
       await _functionsService.updateUserProfile({
         'state': selectedState,
         'district': selectedDistrict,
       });
 
       if (mounted) {
+        // Clear location cache to force refresh
+        try {
+          final categoryService = Provider.of<CategoryService>(context, listen: false);
+          categoryService.clearLocationCache();
+        } catch (e) {
+          // Provider might not be available in all contexts
+          debugPrint('Could not clear location cache: $e');
+        }
+        
         Navigator.of(context).pushNamedAndRemoveUntil(
           '/home',
           (route) => false,
@@ -100,6 +112,7 @@ class _DistrictSelectionScreenState extends State<DistrictSelectionScreen> {
                 const SizedBox(height: 40),
                 LocationSelector(
                   onLocationChanged: (state, district) {
+                    if (!mounted) return;
                     setState(() {
                       selectedState = state;
                       selectedDistrict = district;

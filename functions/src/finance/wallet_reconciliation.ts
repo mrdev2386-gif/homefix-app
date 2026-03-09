@@ -11,6 +11,7 @@
  * - Generates audit report for finance team
  */
 
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 
@@ -25,7 +26,7 @@ async function getRazorpay() {
 
     if (!razorpayKeyId || !razorpayKeySecret) {
         console.warn('Razorpay credentials not configured - skipping external reconciliation');
-        return null;
+        
     }
 
     const Razorpay = (await import('razorpay')).default;
@@ -39,10 +40,14 @@ async function getRazorpay() {
  * Scheduled reconciliation function
  * Runs daily at 3 AM UTC
  */
-export const runWalletReconciliation = functions.pubsub
-    .schedule('0 3 * * *')
-    .timeZone('UTC')
-    .onRun(async (context) => {
+export const runWalletReconciliation = onSchedule(
+    {
+        schedule: '0 3 * * *',
+        timeZone: 'UTC',
+        memory: '256MiB',
+        timeoutSeconds: 540
+    },
+    async (event) => {
         console.log('[RECONCILIATION] Starting wallet reconciliation...');
 
         const results = {
@@ -190,8 +195,6 @@ export const runWalletReconciliation = functions.pubsub
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
         }
-
-        return null;
     });
 
 /**

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:customer_app/core/theme/app_theme.dart';
 
 /// Premium shimmer loading widget for booking cards
 class BookingCardShimmer extends StatefulWidget {

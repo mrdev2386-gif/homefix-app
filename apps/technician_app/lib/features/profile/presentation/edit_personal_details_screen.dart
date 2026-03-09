@@ -55,6 +55,7 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
       _nameController.text = technician.name;
       _emailController.text = technician.email ?? user?.email ?? '';
       _originalEmail = technician.email ?? user?.email;
+      _selectedState = technician.state;
       _selectedDistrict = technician.district;
       _experienceController.text = technician.experienceYears?.toString() ?? '';
       _bioController.text = technician.bio ?? '';
@@ -99,7 +100,11 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
 
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('User not authenticated');
+      if (user == null) {
+        if (!mounted) return;
+        _showErrorSnackbar('User not authenticated');
+        return;
+      }
 
       // Step 1: Attach email to Firebase user (for phone-auth users)
       if (user.email != email) {
@@ -107,7 +112,7 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
       }
 
       // Step 2: Send verification email
-      if (!user.emailVerified) {
+      if (user != null && !user.emailVerified) {
         await user.sendEmailVerification();
       }
 
@@ -123,12 +128,15 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
           duration: const Duration(seconds: 5),
         ),
       );
-    } on FirebaseAuthException catch (e) {
-      if (!mounted) return;
-      _showErrorSnackbar(_getErrorMessage(e.code));
     } catch (e) {
       if (!mounted) return;
-      _showErrorSnackbar('Failed to send verification: ${e.toString()}');
+      // Don't block app - just show warning
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Verification email failed: ${e.toString()}'),
+          backgroundColor: Colors.orange,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isVerifyingEmail = false);
     }
@@ -180,10 +188,16 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
 
     try {
       await FirebaseAuth.instance.currentUser?.reload();
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('User not authenticated');
+      final refreshedUser = FirebaseAuth.instance.currentUser;
+      
+      if (refreshedUser == null) {
+        if (!mounted || silent) return;
+        _showErrorSnackbar('User not authenticated');
+        return;
+      }
 
-      final isVerified = user.emailVerified;
+      final isVerified = refreshedUser.emailVerified;
+      print("Email verified: ${refreshedUser.emailVerified}");
 
       if (mounted) {
         setState(() {
@@ -193,10 +207,15 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
 
       // Update Firestore when email becomes verified
       if (isVerified) {
-        await FirebaseFirestore.instance
-            .collection('technicians')
-            .doc(user.uid)
-            .update({'emailVerified': true});
+        try {
+          await FirebaseFirestore.instance
+              .collection('technicians')
+              .doc(refreshedUser.uid)
+              .update({'emailVerified': true});
+        } catch (e) {
+          // Don't block on Firestore update failure
+          print('Failed to update emailVerified in Firestore: $e');
+        }
       }
 
       if (!mounted) return;
@@ -220,10 +239,11 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
       }
     } catch (e) {
       if (!mounted || silent) return;
+      // Don't block app - just show warning
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error: ${_getErrorMessage(e.toString())}'),
-          backgroundColor: Colors.red,
+          content: Text('Verification check failed: ${e.toString()}'),
+          backgroundColor: Colors.orange,
         ),
       );
     } finally {
@@ -254,19 +274,35 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
 
     try {
       final email = _emailController.text.trim();
-      await _functionsService.updateTechnicianPersonalDetails(
+      
+      debugPrint('[ProfileEdit] Saving profile data...');
+      debugPrint('[ProfileEdit] fullName: ${_nameController.text.trim()}');
+      debugPrint('[ProfileEdit] state: $_selectedState');
+      debugPrint('[ProfileEdit] district: $_selectedDistrict');
+      debugPrint('[ProfileEdit] experienceYears: ${int.tryParse(_experienceController.text)}');
+      debugPrint('[ProfileEdit] alternatePhone: ${_alternatePhone?.trim()}');
+      
+      // Call Cloud Function and await completion
+      final result = await _functionsService.updateTechnicianPersonalDetails(
         fullName: _nameController.text.trim(),
         email: email.isEmpty ? null : email,
-        city: _cityController.text.trim(),
-        experience: int.tryParse(_experienceController.text),
+        city: _cityController.text.trim().isEmpty ? null : _cityController.text.trim(),
+        state: _selectedState,
+        district: _selectedDistrict,
+        experienceYears: int.tryParse(_experienceController.text),
         gender: _selectedGender,
-        bio: _bioController.text.trim(),
+        bio: _bioController.text.trim().isEmpty ? null : _bioController.text.trim(),
         alternatePhone: _alternatePhone?.trim(),
       );
 
+      debugPrint('[ProfileEdit] Cloud Function result: $result');
+
       if (!mounted) return;
 
-      await context.read<TechnicianProvider>().refreshTechnicianData();
+      debugPrint('[ProfileEdit] Forcing provider refresh...');
+      // Force refresh technician data from server
+      await context.read<TechnicianProvider>().refreshTechnician();
+      debugPrint('[ProfileEdit] Provider refresh complete');
 
       if (!mounted) return;
 
@@ -278,6 +314,7 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
       );
       Navigator.pop(context);
     } catch (e) {
+      debugPrint('[ProfileEdit] Error saving profile: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

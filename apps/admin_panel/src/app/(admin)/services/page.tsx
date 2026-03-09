@@ -2,39 +2,42 @@
 
 import { useState, useEffect } from 'react';
 import { PageHeader, DataTable, StatusBadge, Column, ConfirmDialog, StatCard, Modal } from '@/components/ui';
-import { Eye, CheckCircle, XCircle, Ban, Trash2, Package, Clock, AlertTriangle, Search, X, Check, Ban as BanIcon } from 'lucide-react';
-import { db, functions } from '@/lib/firebase';
-import { collection, query, getDocs, orderBy } from 'firebase/firestore';
+import { Eye, CheckCircle, XCircle, Ban, Trash2, Package, Clock, Search, X, Check, Ban as BanIcon, ChevronDown } from 'lucide-react';
+import { db, functions, app } from '@/lib/firebase';
+import { collection, query, getDocs, orderBy, where, Timestamp, limit, startAfter, DocumentSnapshot, doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 
-type ModerationStatus = 'pending' | 'active' | 'rejected' | 'disabled';
+// FIXED: Use standard status values for production-ready moderation
+type ModerationStatus = 'pending' | 'approved' | 'rejected' | 'disabled';
 
 interface TechnicianService {
   id: string;
   technicianId: string;
   technicianName?: string;
   technicianPhone?: string;
-  technicianRating?: number;
-  serviceId: string;
-  serviceName?: string;
-  subServiceId: string;
-  subServiceName?: string;
-  categoryId: string;
-  categoryName?: string;
   title: string;
-  description?: string;
   price: number;
-  imageUrl?: string;
-  city?: string;
-  district?: string;
   status: ModerationStatus;
   createdAt: any;
+  description?: string;
+  categoryName?: string;
+  serviceName?: string;
+  subServiceName?: string;
+  imageUrl?: string;
+  duration?: number;
+  categoryId?: string;
+  serviceId?: string;
+  subServiceId?: string;
 }
 
 export default function TechnicianServicesPage() {
   const [services, setServices] = useState<TechnicianService[]>([]);
   const [filteredServices, setFilteredServices] = useState<TechnicianService[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [lastVisible, setLastVisible] = useState<DocumentSnapshot | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const PAGE_SIZE = 50;
   const [selectedService, setSelectedService] = useState<TechnicianService | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({ show: false, message: '', type: 'success' });
@@ -48,21 +51,21 @@ export default function TechnicianServicesPage() {
     variant?: 'default' | 'danger';
   }>({ isOpen: false, title: '', message: '', action: '', serviceId: '', onConfirm: () => {} });
   
-  // Filters
   const [statusFilter, setStatusFilter] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [searchTitle, setSearchTitle] = useState('');
-  const [searchTechnician, setSearchTechnician] = useState('');
 
   useEffect(() => {
     fetchServices();
   }, []);
 
   useEffect(() => {
-    applyFilters();
-  }, [services, statusFilter, categoryFilter, searchTitle, searchTechnician]);
+    // Refetch when status filter changes (reset pagination)
+    if (statusFilter) {
+      fetchServices(statusFilter, false);
+    } else {
+      fetchServices(undefined, false);
+    }
+  }, [statusFilter]);
 
-  // Toast notification
   useEffect(() => {
     if (toast.show) {
       const timer = setTimeout(() => setToast({ ...toast, show: false }), 3000);
@@ -74,92 +77,198 @@ export default function TechnicianServicesPage() {
     setToast({ show: true, message, type });
   };
 
-  const fetchServices = async () => {
+  const fetchServices = async (statusFilter?: string, loadMore = false) => {
     try {
-      setLoading(true);
+      if (loadMore) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+        setServices([]);
+        setLastVisible(null);
+        setHasMore(true);
+      }
       
-      // Fetch from technician_services collection
-      const servicesQuery = query(
-        collection(db, 'technician_services'),
-        orderBy('createdAt', 'desc')
-      );
+      console.log("Fetching services from technician_services collection...");
+      console.log("Status filter:", statusFilter || 'all');
+      console.log("Load more:", loadMore);
+      
+      // PRODUCTION-READY: Paginated query with cursor-based pagination
+      let servicesQuery;
+      
+      if (statusFilter) {
+        servicesQuery = query(
+          collection(db, "technician_services"),
+          where("status", "==", statusFilter),
+          orderBy("createdAt", "desc"),
+          limit(PAGE_SIZE),
+          ...(loadMore && lastVisible ? [startAfter(lastVisible)] : [])
+        );
+      } else {
+        servicesQuery = query(
+          collection(db, "technician_services"),
+          orderBy("createdAt", "desc"),
+          limit(PAGE_SIZE),
+          ...(loadMore && lastVisible ? [startAfter(lastVisible)] : [])
+        );
+      }
+      
       const snapshot = await getDocs(servicesQuery);
+      console.log("Fetched services:", snapshot.size);
       
-      console.log('Fetched services count:', snapshot.docs.length);
+      // Update pagination state
+      if (snapshot.docs.length > 0) {
+        setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+        setHasMore(snapshot.docs.length === PAGE_SIZE);
+      } else {
+        setHasMore(false);
+      }
       
-      // Fetch related data
-      const techniciansSnap = await getDocs(collection(db, 'technicians'));
-      const categoriesSnap = await getDocs(collection(db, 'categories'));
-      const servicesSnap = await getDocs(collection(db, 'services'));
+      if (snapshot.empty) {
+        console.warn("No services found in technician_services collection");
+        showToast('No technician services found', 'error');
+        setServices([]);
+        return;
+      }
+
+      // Resolve related documents for each service
+      const servicesData: TechnicianService[] = [];
       
-      const techniciansMap = new Map(techniciansSnap.docs.map(d => [d.id, d.data()]));
-      const categoriesMap = new Map(categoriesSnap.docs.map(d => [d.id, d.data()]));
-      const servicesMap = new Map(servicesSnap.docs.map(d => [d.id, d.data()]));
-      
-      const servicesData = snapshot.docs.map(doc => {
-        const data = doc.data();
-        console.log('Service data:', data);
+      for (const serviceDoc of snapshot.docs) {
+        const serviceData = serviceDoc.data();
         
-        const technician = techniciansMap.get(data.technicianId);
-        const category = categoriesMap.get(data.categoryId);
-        const service = servicesMap.get(data.serviceId);
-        
-        // Find sub-service from service's subServices array
-        let subServiceName = data.subServiceId;
-        if (service?.subServices) {
-          const subService = service.subServices.find((s: any) => s.id === data.subServiceId);
-          if (subService) subServiceName = subService.name;
+        console.log(`Resolving service ${serviceDoc.id}:`, {
+          technicianId: serviceData.technicianId || 'missing',
+          categoryId: serviceData.categoryId || 'missing',
+          serviceId: serviceData.serviceId || 'missing'
+        });
+
+        // Resolve technician document
+        let technicianName = 'Unknown Technician';
+        let technicianPhone = 'N/A';
+        if (serviceData.technicianId) {
+          try {
+            const technicianDoc = await getDoc(doc(db, 'technicians', serviceData.technicianId));
+            if (technicianDoc.exists()) {
+              const techData = technicianDoc.data();
+              technicianName = techData.name || 'Unknown Technician';
+              technicianPhone = techData.phone || 'N/A';
+            }
+          } catch (error) {
+            console.warn(`Failed to resolve technician ${serviceData.technicianId}:`, error);
+          }
         }
-        
-        return { 
-          id: doc.id,
-          technicianId: data.technicianId,
-          technicianName: technician?.name || data.technicianName,
-          technicianPhone: technician?.phone || data.technicianPhone,
-          technicianRating: technician?.rating || data.technicianRating,
-          serviceId: data.serviceId,
-          serviceName: service?.name || data.serviceName,
-          subServiceId: data.subServiceId,
-          subServiceName: subServiceName || data.subServiceName,
-          categoryId: data.categoryId,
-          categoryName: category?.name || data.categoryName,
-          title: data.title,
-          description: data.description,
-          price: data.price,
-          imageUrl: data.imageUrl,
-          city: data.city,
-          district: data.district,
-          status: data.status || 'pending',
-          createdAt: data.createdAt
+
+        // Resolve category document
+        let categoryName = 'Unknown Category';
+        if (serviceData.categoryId) {
+          try {
+            const categoryDoc = await getDoc(doc(db, 'categories', serviceData.categoryId));
+            if (categoryDoc.exists()) {
+              const catData = categoryDoc.data();
+              categoryName = catData.name || 'Unknown Category';
+            }
+          } catch (error) {
+            console.warn(`Failed to resolve category ${serviceData.categoryId}:`, error);
+          }
+        }
+
+        // Resolve service document
+        let serviceName = 'Unknown Service';
+        if (serviceData.serviceId) {
+          try {
+            const masterServiceDoc = await getDoc(doc(db, 'services', serviceData.serviceId));
+            if (masterServiceDoc.exists()) {
+              const svcData = masterServiceDoc.data();
+              serviceName = svcData.name || 'Unknown Service';
+            }
+          } catch (error) {
+            console.warn(`Failed to resolve service ${serviceData.serviceId}:`, error);
+          }
+        }
+
+        // Construct resolved service object
+        const resolvedService: TechnicianService = {
+          id: serviceDoc.id,
+          title: serviceData.title || 'Untitled Service',
+          description: serviceData.description || null,
+          price: serviceData.price || 0,
+          status: serviceData.status || 'pending',
+          createdAt: serviceData.createdAt || Timestamp.now(),
+          
+          technicianId: serviceData.technicianId || 'unknown',
+          technicianName,
+          technicianPhone,
+          
+          categoryId: serviceData.categoryId || null,
+          categoryName,
+          
+          serviceId: serviceData.serviceId || null,
+          serviceName,
+          
+          subServiceId: serviceData.subServiceId || null,
+          subServiceName: serviceData.subServiceName || null,
+          
+          imageUrl: serviceData.imageUrl || null,
+          duration: serviceData.durationMinutes || serviceData.duration || null
         };
-      }) as TechnicianService[];
+        
+        servicesData.push(resolvedService);
+      }
       
-      console.log('Processed services:', servicesData);
-      setServices(servicesData);
+      console.log("Services loaded:", servicesData.length);
+      console.log("Services by status:", {
+        pending: servicesData.filter(s => s.status === 'pending').length,
+        approved: servicesData.filter(s => s.status === 'approved').length,
+        rejected: servicesData.filter(s => s.status === 'rejected').length,
+        disabled: servicesData.filter(s => s.status === 'disabled').length,
+        total: servicesData.length
+      });
+      
+      if (loadMore) {
+        setServices(prev => [...prev, ...servicesData]);
+      } else {
+        setServices(servicesData);
+      }
+      
     } catch (error: any) {
-      console.error('Error fetching technician services:', error);
-      showToast('Failed to load services. Please try again.', 'error');
+      console.error('Error fetching services:', error);
+      
+      if (error.code === 'failed-precondition' && error.message.includes('index')) {
+        console.error("❌ FIRESTORE INDEX REQUIRED:");
+        console.error("Collection: technician_services");
+        console.error("Fields: status (ASC), createdAt (DESC)");
+        console.error("Create index at: https://console.firebase.google.com/project/homefix-aa42d/firestore/indexes");
+        showToast('Database index required for technician_services collection', 'error');
+      } else if (error.code === 'permission-denied') {
+        console.error("❌ PERMISSION DENIED - Check Firestore Security Rules:");
+        console.error("Required rule: match /technician_services/{serviceId} { allow read: if true; }");
+        showToast('Permission denied. Check Firestore security rules.', 'error');
+      } else {
+        showToast('Failed to load services: ' + error.message, 'error');
+      }
     } finally {
-      setLoading(false);
+      if (loadMore) {
+        setLoadingMore(false);
+      } else {
+        setLoading(false);
+      }
+    }
+  };
+
+  const loadMoreServices = () => {
+    if (!loadingMore && hasMore) {
+      fetchServices(statusFilter, true);
     }
   };
 
   const applyFilters = () => {
     let filtered = [...services];
-
+    
     if (statusFilter) {
       filtered = filtered.filter(s => s.status === statusFilter);
     }
-    if (categoryFilter) {
-      filtered = filtered.filter(s => s.categoryId === categoryFilter);
-    }
-    if (searchTitle) {
-      filtered = filtered.filter(s => s.title?.toLowerCase().includes(searchTitle.toLowerCase()));
-    }
-    if (searchTechnician) {
-      filtered = filtered.filter(s => s.technicianName?.toLowerCase().includes(searchTechnician.toLowerCase()));
-    }
-
+    
+    console.log(`Filtered services: ${filtered.length} (from ${services.length})`);
     setFilteredServices(filtered);
   };
 
@@ -170,17 +279,11 @@ export default function TechnicianServicesPage() {
       disable: 'Disable Service',
       delete: 'Delete Service'
     };
-    const messages: Record<string, string> = {
-      approve: `Are you sure you want to approve "${serviceTitle}"? It will become visible to customers.`,
-      reject: `Are you sure you want to reject "${serviceTitle}"?`,
-      disable: `Are you sure you want to disable "${serviceTitle}"? It will no longer be visible to customers.`,
-      delete: `Are you sure you want to delete "${serviceTitle}"? This action cannot be undone.`
-    };
     
     setConfirmDialog({
       isOpen: true,
       title: titles[action] || 'Confirm Action',
-      message: messages[action] || 'Are you sure?',
+      message: `Are you sure you want to ${action} "${serviceTitle}"?`,
       action,
       serviceId,
       onConfirm: () => executeAction(action, serviceId),
@@ -190,130 +293,89 @@ export default function TechnicianServicesPage() {
 
   const executeAction = async (action: string, serviceId: string) => {
     try {
-      const service = services.find(s => s.id === serviceId);
-      if (!service || !service.technicianId) {
-        showToast('Service not found or missing technician ID', 'error');
-        return;
-      }
+      console.log(`Executing action '${action}' on service:`, serviceId);
 
-      // Use Cloud Functions instead of direct Firestore writes
       if (action === 'approve') {
-        const approveService = httpsCallable(functions, 'approveService');
-        await approveService({ serviceId });
-        showToast('Service approved successfully! It is now visible in customer app.');
+        const approveService = httpsCallable(functions, 'admin_approveService');
+        await approveService({ serviceId, status: 'approved' });
+        showToast('Service approved successfully!');
       } else if (action === 'reject') {
-        const rejectService = httpsCallable(functions, 'rejectService');
-        await rejectService({ serviceId });
+        const rejectService = httpsCallable(functions, 'admin_rejectService');
+        await rejectService({ serviceId, status: 'rejected' });
         showToast('Service rejected');
       } else if (action === 'disable') {
-        const disableService = httpsCallable(functions, 'disableService');
-        await disableService({ serviceId });
-        showToast('Service disabled successfully');
-      } else if (action === 'delete') {
-        // Note: Delete should also use Cloud Function in production
-        showToast('Delete functionality requires Cloud Function implementation', 'error');
-        return;
+        const disableService = httpsCallable(functions, 'admin_disableService');
+        await disableService({ serviceId, status: 'disabled' });
+        showToast('Service disabled');
       }
       
       setConfirmDialog({ ...confirmDialog, isOpen: false });
-      await fetchServices();
+      await fetchServices(statusFilter, false);
     } catch (error: any) {
       console.error('Error executing action:', error);
       showToast(error.message || 'Failed to execute action', 'error');
     }
   };
 
-  const handleViewDetails = (service: TechnicianService) => {
+  const handleViewDetails = async (service: TechnicianService) => {
+    // Service is already fully resolved, just set it
     setSelectedService(service);
     setShowDetailsModal(true);
   };
 
-  const getStatusVariant = (status: ModerationStatus): 'success' | 'warning' | 'error' | 'info' | 'default' | 'purple' => {
+  const getStatusVariant = (status: ModerationStatus): 'success' | 'warning' | 'error' | 'default' => {
     switch (status) {
-      case 'active': return 'success';
+      case 'approved': return 'success';
       case 'rejected': return 'default';
       case 'disabled': return 'error';
       default: return 'warning';
     }
   };
 
+  const getStatusLabel = (status: ModerationStatus): string => {
+    switch (status) {
+      case 'pending': return 'Pending';
+      case 'approved': return 'Approved';
+      case 'rejected': return 'Rejected';
+      case 'disabled': return 'Disabled';
+      default: return status;
+    }
+  };
+
   const stats = {
     total: services.length,
     pending: services.filter(s => s.status === 'pending').length,
-    active: services.filter(s => s.status === 'active').length,
-    disabled: services.filter(s => s.status === 'disabled').length,
-  };d').length,
+    approved: services.filter(s => s.status === 'approved').length,
+    rejected: services.filter(s => s.status === 'rejected').length,
     disabled: services.filter(s => s.status === 'disabled').length,
   };
 
-  const uniqueCategories = Array.from(new Set(services.map(s => s.categoryId).filter(Boolean)));
-
   const formatDate = (timestamp: any) => {
     if (!timestamp) return '-';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    return date.toLocaleDateString();
+    try {
+      const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+      return date.toLocaleDateString();
+    } catch (error) {
+      return '-';
+    }
   };
 
   const columns: Column[] = [
     {
-      key: 'image',
-      label: 'Image',
-      render: (item: TechnicianService) => (
-        <div className="w-12 h-12 rounded-lg overflow-hidden bg-[#1F2937]">
-          {item.imageUrl ? (
-            <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-[#6B7280]">
-              <Package size={20} />
-            </div>
-          )}
-        </div>
-      )
-    },
-    {
       key: 'title',
       label: 'Service Title',
-      sortable: true,
       render: (item: TechnicianService) => (
         <div>
           <p className="text-sm font-medium text-[#E5E7EB]">{item.title}</p>
-          <p className="text-xs text-[#6B7280]">{item.subServiceName}</p>
+          <p className="text-xs text-[#6B7280]">{item.serviceName}</p>
         </div>
-      )
-    },
-    {
-      key: 'category',
-      label: 'Category',
-      render: (item: TechnicianService) => (
-        <span className="text-sm text-[#9CA3AF]">{item.categoryName}</span>
-      )
-    },
-    {
-      key: 'service',
-      label: 'Sub Service',
-      render: (item: TechnicianService) => (
-        <span className="text-sm text-[#9CA3AF]">{item.serviceName}</span>
       )
     },
     {
       key: 'technician',
       label: 'Technician',
       render: (item: TechnicianService) => (
-        <div>
-          <p className="text-sm font-medium text-[#E5E7EB]">{item.technicianName}</p>
-          {item.technicianRating && (
-            <p className="text-xs text-[#6B7280]">⭐ {item.technicianRating.toFixed(1)}</p>
-          )}
-        </div>
-      )
-    },
-    {
-      key: 'location',
-      label: 'City / District',
-      render: (item: TechnicianService) => (
-        <span className="text-sm text-[#9CA3AF]">
-          {item.city || item.district || '-'}
-        </span>
+        <p className="text-sm font-medium text-[#E5E7EB]">{item.technicianName}</p>
       )
     },
     {
@@ -335,7 +397,7 @@ export default function TechnicianServicesPage() {
       label: 'Status',
       render: (item: TechnicianService) => (
         <StatusBadge 
-          status={item.status.charAt(0).toUpperCase() + item.status.slice(1)} 
+          status={getStatusLabel(item.status)} 
           variant={getStatusVariant(item.status)}
         />
       )
@@ -371,7 +433,7 @@ export default function TechnicianServicesPage() {
               </button>
             </>
           )}
-          {item.status === 'active' && (
+          {item.status === 'approved' && (
             <button 
               onClick={() => handleAction('disable', item.id, item.title)}
               className="px-3 py-1 text-xs bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
@@ -389,12 +451,6 @@ export default function TechnicianServicesPage() {
               Enable
             </button>
           )}
-          <button 
-            onClick={() => handleAction('delete', item.id, item.title)}
-            className="px-3 py-1 text-xs bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-          >
-            <Trash2 size={14} className="inline mr-1" />
-          </button>
         </div>
       )
     },
@@ -408,53 +464,16 @@ export default function TechnicianServicesPage() {
       />
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
         <StatCard title="Total Listings" value={stats.total} icon={Package} color="purple" />
         <StatCard title="Pending Approval" value={stats.pending} icon={Clock} color="orange" />
-        <StatCard title="Active Listings" value={stats.active} icon={CheckCircle} color="green" />
+        <StatCard title="Approved Listings" value={stats.approved} icon={CheckCircle} color="green" />
+        <StatCard title="Rejected" value={stats.rejected} icon={XCircle} color="gray" />
         <StatCard title="Disabled Listings" value={stats.disabled} icon={BanIcon} color="red" />
       </div>
 
       {/* Filters */}
       <div className="admin-card p-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#6B7280]" size={18} />
-            <input
-              type="text"
-              placeholder="Search by service title..."
-              value={searchTitle}
-              onChange={(e) => setSearchTitle(e.target.value)}
-              className="input-field w-full pl-10 pr-4"
-            />
-            {searchTitle && (
-              <button
-                onClick={() => setSearchTitle('')}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#6B7280] hover:text-[#E5E7EB]"
-              >
-                <X size={18} />
-              </button>
-            )}
-          </div>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#6B7280]" size={18} />
-            <input
-              type="text"
-              placeholder="Search by technician name..."
-              value={searchTechnician}
-              onChange={(e) => setSearchTechnician(e.target.value)}
-              className="input-field w-full pl-10 pr-4"
-            />
-            {searchTechnician && (
-              <button
-                onClick={() => setSearchTechnician('')}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#6B7280] hover:text-[#E5E7EB]"
-              >
-                <X size={18} />
-              </button>
-            )}
-          </div>
-        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <select
             value={statusFilter}
@@ -463,44 +482,59 @@ export default function TechnicianServicesPage() {
           >
             <option value="">All Statuses</option>
             <option value="pending">Pending</option>
-            <option value="active">Active</option>
+            <option value="approved">Approved</option>
             <option value="rejected">Rejected</option>
             <option value="disabled">Disabled</option>
           </select>
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="input-field"
-          >
-            <option value="">All Categories</option>
-            {uniqueCategories.map(cat => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
-          </select>
+          {statusFilter && (
+            <button
+              onClick={() => setStatusFilter('')}
+              className="px-4 py-2 bg-[#1F2937] text-[#E5E7EB] rounded-lg hover:bg-[#374151] transition-colors"
+            >
+              Clear Filter
+            </button>
+          )}
         </div>
-        {(statusFilter || categoryFilter || searchTitle || searchTechnician) && (
-          <button
-            onClick={() => {
-              setStatusFilter('');
-              setCategoryFilter('');
-              setSearchTitle('');
-              setSearchTechnician('');
-            }}
-            className="mt-4 px-4 py-2 bg-[#1F2937] text-[#E5E7EB] rounded-lg hover:bg-[#374151] transition-colors"
-          >
-            Clear Filters
-          </button>
-        )}
       </div>
 
       {/* Services Table */}
       <div className="admin-card p-6">
         <DataTable
           columns={columns}
-          data={filteredServices}
+          data={services}
           loading={loading}
           emptyMessage="No service listings found"
         />
+        
+        {/* Load More Button */}
+        {hasMore && services.length > 0 && (
+          <div className="flex justify-center mt-6">
+            <button
+              onClick={loadMoreServices}
+              disabled={loadingMore}
+              className="px-6 py-3 bg-[#1F2937] text-[#E5E7EB] rounded-lg hover:bg-[#374151] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {loadingMore ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#E5E7EB]"></div>
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <ChevronDown size={16} />
+                  Load More Services
+                </>
+              )}
+            </button>
+          </div>
+        )}
+        
+        {/* Pagination Info */}
+        {services.length > 0 && (
+          <div className="text-center mt-4 text-sm text-[#6B7280]">
+            Showing {services.length} services{hasMore ? ' (more available)' : ' (all loaded)'}
+          </div>
+        )}
       </div>
 
       {/* Service Details Modal */}
@@ -509,90 +543,95 @@ export default function TechnicianServicesPage() {
           isOpen={showDetailsModal}
           onClose={() => setShowDetailsModal(false)}
           title="Service Details"
-          size="lg"
+          size="xl"
         >
           <div className="space-y-6">
             {/* Service Image */}
             {selectedService.imageUrl && (
-              <div className="w-full h-48 rounded-lg overflow-hidden bg-[#1F2937]">
-                <img src={selectedService.imageUrl} alt={selectedService.title} className="w-full h-full object-cover" />
+              <div className="flex justify-center">
+                <img 
+                  src={selectedService.imageUrl} 
+                  alt={selectedService.title}
+                  className="w-32 h-32 object-cover rounded-lg border border-[#374151]"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
               </div>
             )}
-
-            {/* Service Info */}
-            <div className="grid grid-cols-2 gap-4">
+            
+            {/* Service Information Grid */}
+            <div className="grid grid-cols-2 gap-6">
               <div>
-                <p className="text-sm text-[#6B7280]">Service Title</p>
+                <p className="text-sm text-[#6B7280] mb-1">Service Title</p>
                 <p className="text-base font-medium text-[#E5E7EB]">{selectedService.title}</p>
               </div>
               <div>
-                <p className="text-sm text-[#6B7280]">Price</p>
+                <p className="text-sm text-[#6B7280] mb-1">Price</p>
                 <p className="text-base font-medium text-[#E5E7EB]">₹{selectedService.price}</p>
               </div>
+              
               <div>
-                <p className="text-sm text-[#6B7280]">Category</p>
+                <p className="text-sm text-[#6B7280] mb-1">Category</p>
                 <p className="text-base font-medium text-[#E5E7EB]">{selectedService.categoryName}</p>
               </div>
               <div>
-                <p className="text-sm text-[#6B7280]">Service</p>
+                <p className="text-sm text-[#6B7280] mb-1">Service</p>
                 <p className="text-base font-medium text-[#E5E7EB]">{selectedService.serviceName}</p>
               </div>
+              
+              {selectedService.subServiceName && (
+                <div>
+                  <p className="text-sm text-[#6B7280] mb-1">Sub Service</p>
+                  <p className="text-base font-medium text-[#E5E7EB]">{selectedService.subServiceName}</p>
+                </div>
+              )}
+              
+              {selectedService.duration && (
+                <div>
+                  <p className="text-sm text-[#6B7280] mb-1">Duration</p>
+                  <p className="text-base font-medium text-[#E5E7EB]">{selectedService.duration} minutes</p>
+                </div>
+              )}
+              
               <div>
-                <p className="text-sm text-[#6B7280]">Sub Service</p>
-                <p className="text-base font-medium text-[#E5E7EB]">{selectedService.subServiceName}</p>
-              </div>
-              <div>
-                <p className="text-sm text-[#6B7280]">Status</p>
+                <p className="text-sm text-[#6B7280] mb-1">Status</p>
                 <StatusBadge 
-                  status={selectedService.status.charAt(0).toUpperCase() + selectedService.status.slice(1)} 
+                  status={getStatusLabel(selectedService.status)} 
                   variant={getStatusVariant(selectedService.status)}
                 />
+              </div>
+              <div>
+                <p className="text-sm text-[#6B7280] mb-1">Created Date</p>
+                <p className="text-base font-medium text-[#E5E7EB]">{formatDate(selectedService.createdAt)}</p>
+              </div>
+            </div>
+            
+            {/* Technician Information */}
+            <div className="border-t border-[#374151] pt-4">
+              <h4 className="text-lg font-medium text-[#E5E7EB] mb-3">Technician Information</h4>
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <p className="text-sm text-[#6B7280] mb-1">Technician Name</p>
+                  <p className="text-base font-medium text-[#E5E7EB]">{selectedService.technicianName}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-[#6B7280] mb-1">Technician Phone</p>
+                  <p className="text-base font-medium text-[#E5E7EB]">{selectedService.technicianPhone}</p>
+                </div>
               </div>
             </div>
 
             {/* Description */}
             {selectedService.description && (
-              <div>
+              <div className="border-t border-[#374151] pt-4">
                 <p className="text-sm text-[#6B7280] mb-2">Description</p>
-                <p className="text-base text-[#E5E7EB] bg-[#1F2937] p-4 rounded-lg">{selectedService.description}</p>
+                <p className="text-base text-[#E5E7EB] bg-[#1F2937] p-4 rounded-lg leading-relaxed">{selectedService.description}</p>
               </div>
             )}
 
-            {/* Technician Info */}
-            <div className="border-t border-[#1F2937] pt-4">
-              <h4 className="text-sm font-semibold text-[#E5E7EB] mb-3">Technician Information</h4>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-[#6B7280]">Name</p>
-                  <p className="text-base font-medium text-[#E5E7EB]">{selectedService.technicianName}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-[#6B7280]">Phone</p>
-                  <p className="text-base font-medium text-[#E5E7EB]">{selectedService.technicianPhone || '-'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-[#6B7280]">Rating</p>
-                  <p className="text-base font-medium text-[#E5E7EB]">
-                    {selectedService.technicianRating ? `⭐ ${selectedService.technicianRating.toFixed(1)}` : '-'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-[#6B7280]">Location</p>
-                  <p className="text-base font-medium text-[#E5E7EB]">{selectedService.city || selectedService.district || '-'}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Created Date */}
-            <div className="border-t border-[#1F2937] pt-4">
-              <p className="text-sm text-[#6B7280]">Created Date</p>
-              <p className="text-base font-medium text-[#E5E7EB]">
-                {formatDate(selectedService.createdAt)}
-              </p>
-            </div>
-
             {/* Action Buttons */}
-            <div className="flex gap-3 border-t border-[#1F2937] pt-4">
+            <div className="flex gap-3 border-t border-[#374151] pt-4">
               {selectedService.status === 'pending' && (
                 <>
                   <button
@@ -603,7 +642,7 @@ export default function TechnicianServicesPage() {
                     className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                   >
                     <CheckCircle size={16} className="inline mr-2" />
-                    Approve Listing
+                    Approve
                   </button>
                   <button
                     onClick={() => {
@@ -613,11 +652,11 @@ export default function TechnicianServicesPage() {
                     className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
                   >
                     <XCircle size={16} className="inline mr-2" />
-                    Reject Listing
+                    Reject
                   </button>
                 </>
               )}
-              {selectedService.status === 'active' && (
+              {selectedService.status === 'approved' && (
                 <button
                   onClick={() => {
                     setShowDetailsModal(false);
@@ -626,7 +665,7 @@ export default function TechnicianServicesPage() {
                   className="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
                 >
                   <Ban size={16} className="inline mr-2" />
-                  Disable Listing
+                  Disable
                 </button>
               )}
               {selectedService.status === 'disabled' && (
@@ -638,19 +677,9 @@ export default function TechnicianServicesPage() {
                   className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                 >
                   <Check size={16} className="inline mr-2" />
-                  Enable Listing
+                  Enable
                 </button>
               )}
-              <button
-                onClick={() => {
-                  setShowDetailsModal(false);
-                  handleAction('delete', selectedService.id, selectedService.title);
-                }}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-              >
-                <Trash2 size={16} className="inline mr-2" />
-                Delete
-              </button>
             </div>
           </div>
         </Modal>

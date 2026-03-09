@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import 'package:customer_app/core/services/location_service.dart';
+import 'package:customer_app/core/services/functions_service.dart';
+import 'package:customer_app/core/services/category_service.dart';
 import 'package:customer_app/core/widgets/location_selector.dart';
 
 class EditLocationScreen extends StatefulWidget {
   final String? currentState;
   final String? currentDistrict;
 
-  const EditLocationScreen({
+  const EditLocationScreen({super.key, 
     this.currentState,
     this.currentDistrict,
   });
@@ -18,6 +22,7 @@ class EditLocationScreen extends StatefulWidget {
 
 class _EditLocationScreenState extends State<EditLocationScreen> {
   final LocationService _locationService = LocationService();
+  final FunctionsService _functionsService = FunctionsService();
   late String? selectedState;
   late String? selectedDistrict;
   bool _isLoading = false;
@@ -41,8 +46,21 @@ class _EditLocationScreenState extends State<EditLocationScreen> {
 
     try {
       await _locationService.saveLocation(selectedState!, selectedDistrict!);
+      await _functionsService.updateUserProfile({
+        'state': selectedState,
+        'district': selectedDistrict,
+      });
 
       if (mounted) {
+        // Clear location cache to force refresh
+        try {
+          final categoryService = Provider.of<CategoryService>(context, listen: false);
+          categoryService.clearLocationCache();
+          debugPrint('✅ Location cache cleared after update');
+        } catch (e) {
+          debugPrint('Could not clear location cache: $e');
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Location updated successfully'),

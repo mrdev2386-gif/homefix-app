@@ -60,7 +60,7 @@ class _FeaturedServicesCarouselState extends State<FeaturedServicesCarousel> {
                   letterSpacing: -0.3,
                 ),
               ),
-              Icon(
+              const Icon(
                 Icons.verified_rounded,
                 color: AppTheme.primaryColor,
                 size: 20,

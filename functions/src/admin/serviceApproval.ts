@@ -1,8 +1,7 @@
 /**
- * Admin Service Approval Functions
+ * Admin Service Management Cloud Functions
  * 
- * Callable functions for admin to approve/reject technician services
- * Only admins can call these functions
+ * Handles approval, rejection, and status management of technician services
  */
 
 import { onCall } from "firebase-functions/v2/https";
@@ -13,170 +12,181 @@ import * as https from "firebase-functions/v2/https";
 const db = admin.firestore();
 
 /**
- * Check if user is admin
+ * Approve a technician service
+ * Changes status from 'pending' to 'active'
  */
-async function isAdmin(uid: string): Promise<boolean> {
-  try {
-    const adminDoc = await db.collection('admins').doc(uid).get();
-    return adminDoc.exists;
-  } catch (error) {
-    console.error('[ADMIN_SERVICE] Error checking admin status:', error);
-    return false;
-  }
-}
+export const approveService = onCall(
+    {
+        region: "us-central1",
+        cpu: 1,
+        memory: "256MiB",
+        timeoutSeconds: 30,
+        maxInstances: 5
+    },
+    async (request: CallableRequest<{ serviceId: string }>) => {
+        if (!request.auth) {
+            throw new https.HttpsError("unauthenticated", "Admin authentication required");
+        }
 
-/**
- * Approve Technician Service
- * Sets service to active and visible to customers
- */
-export const approveTechnicianService = onCall(
-  { region: "us-central1", memory: "256MiB", timeoutSeconds: 30 },
-  async (request: CallableRequest<{ serviceId: string; technicianId: string }>) => {
-    if (!request.auth) {
-      throw new https.HttpsError("unauthenticated", "Authentication required");
+        const { serviceId } = request.data;
+        if (!serviceId) {
+            throw new https.HttpsError("invalid-argument", "Service ID is required");
+        }
+
+        try {
+            const serviceRef = db.collection('technician_services').doc(serviceId);
+            const serviceDoc = await serviceRef.get();
+
+            if (!serviceDoc.exists) {
+                throw new https.HttpsError("not-found", "Service not found");
+            }
+
+            const serviceData = serviceDoc.data()!;
+            
+            if (serviceData.status !== 'pending') {
+                throw new https.HttpsError("failed-precondition", 
+                    `Service is not pending approval. Current status: ${serviceData.status}`);
+            }
+
+            await serviceRef.update({
+                status: 'active',
+                isPublished: true,
+                technicianApproved: true,
+                approvedAt: admin.firestore.Timestamp.now(),
+                approvedBy: request.auth.uid,
+                updatedAt: admin.firestore.Timestamp.now()
+            });
+
+            console.log(`Service ${serviceId} approved by admin ${request.auth.uid}`);
+
+            return {
+                success: true,
+                message: 'Service approved successfully',
+                serviceId,
+                newStatus: 'active'
+            };
+
+        } catch (error: any) {
+            console.error('Error approving service:', error);
+            throw new https.HttpsError("internal", error.message || "Failed to approve service");
+        }
     }
-
-    // Check if user is admin
-    const adminStatus = await isAdmin(request.auth.uid);
-    if (!adminStatus) {
-      throw new https.HttpsError("permission-denied", "Admin access required");
-    }
-
-    const { serviceId, technicianId } = request.data;
-
-    if (!serviceId || !technicianId) {
-      throw new https.HttpsError("invalid-argument", "Service ID and Technician ID required");
-    }
-
-    try {
-      const serviceRef = db.doc(`technicians/${technicianId}/technician_services/${serviceId}`);
-      const serviceDoc = await serviceRef.get();
-
-      if (!serviceDoc.exists) {
-        throw new https.HttpsError("not-found", "Service not found");
-      }
-
-      // Update service to approved state
-      await serviceRef.update({
-        isPublished: true,
-        technicianApproved: true,
-        status: 'active',
-        updatedAt: admin.firestore.Timestamp.now(),
-        approvedAt: admin.firestore.Timestamp.now(),
-        approvedBy: request.auth.uid,
-      });
-
-      console.log(`[ADMIN_SERVICE] Service ${serviceId} approved by ${request.auth.uid}`);
-
-      return {
-        success: true,
-        message: 'Service approved successfully',
-      };
-    } catch (error) {
-      console.error('[ADMIN_SERVICE] Error approving service:', error);
-      throw new https.HttpsError("internal", "Failed to approve service");
-    }
-  }
 );
 
 /**
- * Reject Technician Service
- * Marks service as rejected
+ * Reject a technician service
+ * Changes status from 'pending' to 'rejected'
  */
-export const rejectTechnicianService = onCall(
-  { region: "us-central1", memory: "256MiB", timeoutSeconds: 30 },
-  async (request: CallableRequest<{ serviceId: string; technicianId: string; reason?: string }>) => {
-    if (!request.auth) {
-      throw new https.HttpsError("unauthenticated", "Authentication required");
+export const rejectService = onCall(
+    {
+        region: "us-central1",
+        cpu: 1,
+        memory: "256MiB",
+        timeoutSeconds: 30,
+        maxInstances: 5
+    },
+    async (request: CallableRequest<{ serviceId: string; reason?: string }>) => {
+        if (!request.auth) {
+            throw new https.HttpsError("unauthenticated", "Admin authentication required");
+        }
+
+        const { serviceId, reason } = request.data;
+        if (!serviceId) {
+            throw new https.HttpsError("invalid-argument", "Service ID is required");
+        }
+
+        try {
+            const serviceRef = db.collection('technician_services').doc(serviceId);
+            const serviceDoc = await serviceRef.get();
+
+            if (!serviceDoc.exists) {
+                throw new https.HttpsError("not-found", "Service not found");
+            }
+
+            const serviceData = serviceDoc.data()!;
+            
+            if (serviceData.status !== 'pending') {
+                throw new https.HttpsError("failed-precondition", 
+                    `Service is not pending approval. Current status: ${serviceData.status}`);
+            }
+
+            await serviceRef.update({
+                status: 'rejected',
+                isPublished: false,
+                technicianApproved: false,
+                rejectedAt: admin.firestore.Timestamp.now(),
+                rejectedBy: request.auth.uid,
+                rejectionReason: reason || 'No reason provided',
+                updatedAt: admin.firestore.Timestamp.now()
+            });
+
+            console.log(`Service ${serviceId} rejected by admin ${request.auth.uid}`);
+
+            return {
+                success: true,
+                message: 'Service rejected',
+                serviceId,
+                newStatus: 'rejected'
+            };
+
+        } catch (error: any) {
+            console.error('Error rejecting service:', error);
+            throw new https.HttpsError("internal", error.message || "Failed to reject service");
+        }
     }
-
-    // Check if user is admin
-    const adminStatus = await isAdmin(request.auth.uid);
-    if (!adminStatus) {
-      throw new https.HttpsError("permission-denied", "Admin access required");
-    }
-
-    const { serviceId, technicianId, reason } = request.data;
-
-    if (!serviceId || !technicianId) {
-      throw new https.HttpsError("invalid-argument", "Service ID and Technician ID required");
-    }
-
-    try {
-      const serviceRef = db.doc(`technicians/${technicianId}/technician_services/${serviceId}`);
-      const serviceDoc = await serviceRef.get();
-
-      if (!serviceDoc.exists) {
-        throw new https.HttpsError("not-found", "Service not found");
-      }
-
-      // Update service to rejected state
-      await serviceRef.update({
-        isPublished: false,
-        status: 'rejected',
-        updatedAt: admin.firestore.Timestamp.now(),
-        rejectedAt: admin.firestore.Timestamp.now(),
-        rejectedBy: request.auth.uid,
-        rejectionReason: reason || null,
-      });
-
-      console.log(`[ADMIN_SERVICE] Service ${serviceId} rejected by ${request.auth.uid}`);
-
-      return {
-        success: true,
-        message: 'Service rejected successfully',
-      };
-    } catch (error) {
-      console.error('[ADMIN_SERVICE] Error rejecting service:', error);
-      throw new https.HttpsError("internal", "Failed to reject service");
-    }
-  }
 );
 
 /**
- * Get Pending Services for Admin Review
- * Returns all services pending admin approval
+ * Disable an active service
+ * Changes status from 'active' to 'disabled'
  */
-export const getPendingServices = onCall(
-  { region: "us-central1", memory: "256MiB", timeoutSeconds: 30 },
-  async (request: CallableRequest) => {
-    if (!request.auth) {
-      throw new https.HttpsError("unauthenticated", "Authentication required");
+export const disableService = onCall(
+    {
+        region: "us-central1",
+        cpu: 1,
+        memory: "256MiB",
+        timeoutSeconds: 30,
+        maxInstances: 5
+    },
+    async (request: CallableRequest<{ serviceId: string; reason?: string }>) => {
+        if (!request.auth) {
+            throw new https.HttpsError("unauthenticated", "Admin authentication required");
+        }
+
+        const { serviceId, reason } = request.data;
+        if (!serviceId) {
+            throw new https.HttpsError("invalid-argument", "Service ID is required");
+        }
+
+        try {
+            const serviceRef = db.collection('technician_services').doc(serviceId);
+            const serviceDoc = await serviceRef.get();
+
+            if (!serviceDoc.exists) {
+                throw new https.HttpsError("not-found", "Service not found");
+            }
+
+            await serviceRef.update({
+                status: 'disabled',
+                isPublished: false,
+                disabledAt: admin.firestore.Timestamp.now(),
+                disabledBy: request.auth.uid,
+                disableReason: reason || 'Disabled by admin',
+                updatedAt: admin.firestore.Timestamp.now()
+            });
+
+            console.log(`Service ${serviceId} disabled by admin ${request.auth.uid}`);
+
+            return {
+                success: true,
+                message: 'Service disabled',
+                serviceId,
+                newStatus: 'disabled'
+            };
+
+        } catch (error: any) {
+            console.error('Error disabling service:', error);
+            throw new https.HttpsError("internal", error.message || "Failed to disable service");
+        }
     }
-
-    // Check if user is admin
-    const adminStatus = await isAdmin(request.auth.uid);
-    if (!adminStatus) {
-      throw new https.HttpsError("permission-denied", "Admin access required");
-    }
-
-    try {
-      const snapshot = await db
-        .collectionGroup('technician_services')
-        .where('status', '==', 'pending_admin_approval')
-        .orderBy('createdAt', 'desc')
-        .get();
-
-      const services = snapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          createdAt: data.createdAt?.toDate?.()?.toISOString(),
-          updatedAt: data.updatedAt?.toDate?.()?.toISOString(),
-        };
-      });
-
-      console.log(`[ADMIN_SERVICE] Retrieved ${services.length} pending services`);
-
-      return {
-        success: true,
-        services: services,
-        count: services.length,
-      };
-    } catch (error) {
-      console.error('[ADMIN_SERVICE] Error fetching pending services:', error);
-      throw new https.HttpsError("internal", "Failed to fetch pending services");
-    }
-  }
 );

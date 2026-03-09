@@ -21,7 +21,7 @@ class _HomeBannerCarouselState extends State<HomeBannerCarousel> {
       builder: (context, snapshot) {
         // Handle loading state
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return SizedBox(height: 200, child: Center(child: CircularProgressIndicator()));
+          return const SizedBox(height: 200, child: Center(child: CircularProgressIndicator()));
         }
         
         // Handle error state - don't crash, show defaults

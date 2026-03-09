@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
 import '../../services/presentation/service_details_screen.dart';
 import '../../services/presentation/services_categories_screen.dart';
 import 'package:customer_app/core/models/service.dart';
-import 'package:customer_app/core/models/category.dart';
 import '../../../core/widgets/safe_network_image.dart';
 import 'package:customer_app/core/services/category_service.dart';
 import '../../../core/widgets/service_result_builder.dart';
@@ -120,28 +117,34 @@ class _HorizontalServiceSlider extends StatelessWidget {
   Widget build(BuildContext context) {
     final CategoryService categoryService = CategoryService();
     
-    final Stream<ServiceResult<List<HomeService>>> resultStream;
+    final Stream<List<HomeService>> resultStream;
     if (viewAllCategory == 'trending' || viewAllCategory == 'new') {
-      resultStream = categoryService.getRecentlyAddedServicesResult(limit: 20);
+      resultStream = categoryService.getRecentlyAddedServices(limit: 20);
     } else {
       final String categoryId = viewAllCategory ?? 'cleaning';
-      resultStream = categoryService.getServicesByCategoryResult(categoryId);
+      resultStream = categoryService.getServicesByCategory(categoryId);
     }
 
-    return ServiceResultBuilder<List<HomeService>>(
+    return StreamBuilder<List<HomeService>>(
       stream: resultStream,
-      loadingWidget: SizedBox(
-        height: 180,
-        child: ListView.builder(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          itemCount: 4,
-          itemBuilder: (context, index) => _buildShimmerCard(),
-        ),
-      ),
-      errorWidget: _buildErrorState(),
-      emptyWidget: _buildEmptyState(),
-      builder: (context, services) {
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return SizedBox(
+            height: 180,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              itemCount: 4,
+              itemBuilder: (context, index) => _buildShimmerCard(),
+            ),
+          );
+        }
+        
+        if (snapshot.hasError) {
+          return _buildErrorState();
+        }
+        
+        final services = snapshot.data ?? [];
         final filteredServices = services.where((s) {
           return serviceFilter(s.category.toLowerCase());
         }).take(maxItems).toList();

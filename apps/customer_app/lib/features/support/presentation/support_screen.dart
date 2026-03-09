@@ -81,7 +81,7 @@ class SupportScreen extends StatelessWidget {
             SupportOptionCard(
               icon: Icons.phone,
               title: 'Call Us',
-              subtitle: 'Talk to our support team',
+              subtitle: '9508322397',
               color: const Color(0xFF10B981),
               onTap: () => _makePhoneCall(context),
             ),
@@ -90,7 +90,7 @@ class SupportScreen extends StatelessWidget {
             SupportOptionCard(
               icon: Icons.chat,
               title: 'WhatsApp',
-              subtitle: 'Chat with us on WhatsApp',
+              subtitle: '9508322397',
               color: const Color(0xFF25D366),
               onTap: () => _openWhatsApp(context),
             ),
@@ -99,7 +99,7 @@ class SupportScreen extends StatelessWidget {
             SupportOptionCard(
               icon: Icons.email,
               title: 'Email Us',
-              subtitle: 'Send us an email',
+              subtitle: 'help@homefix.com',
               color: const Color(0xFF6366F1),
               onTap: () => _sendEmail(context),
             ),
@@ -115,95 +115,15 @@ class SupportScreen extends StatelessWidget {
                 MaterialPageRoute(builder: (context) => const FaqsScreen()),
               ),
             ),
-            const SizedBox(height: 24),
 
-            // Quick Tips
-            Text(
-              'Quick Tips',
-              style: GoogleFonts.outfit(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            _buildTipCard(
-              Icons.lightbulb_outline,
-              'Check FAQs First',
-              'Most questions are answered in our comprehensive FAQ section.',
-            ),
-            const SizedBox(height: 12),
-            _buildTipCard(
-              Icons.schedule,
-              'Response Time',
-              'We typically respond to emails within 24 hours on business days.',
-            ),
-            const SizedBox(height: 12),
-            _buildTipCard(
-              Icons.phone_in_talk,
-              'Urgent Issues',
-              'For urgent matters, please call us directly for immediate assistance.',
-            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTipCard(IconData icon, String title, String description) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF6366F1).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: const Color(0xFF6366F1), size: 24),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.outfit(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  description,
-                  style: GoogleFonts.outfit(
-                    fontSize: 13,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _makePhoneCall(BuildContext context) async {
-    final Uri phoneUri = Uri(scheme: 'tel', path: '+911234567890');
+    final Uri phoneUri = Uri(scheme: 'tel', path: '9508322397');
     if (await canLaunchUrl(phoneUri)) {
       await launchUrl(phoneUri);
     } else {
@@ -216,7 +136,7 @@ class SupportScreen extends StatelessWidget {
   }
 
   Future<void> _openWhatsApp(BuildContext context) async {
-    final Uri whatsappUri = Uri.parse('https://wa.me/911234567890?text=Hi, I need help with HomeFix');
+    final Uri whatsappUri = Uri.parse('https://wa.me/919508322397');
     if (await canLaunchUrl(whatsappUri)) {
       await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
     } else {
@@ -231,7 +151,7 @@ class SupportScreen extends StatelessWidget {
   Future<void> _sendEmail(BuildContext context) async {
     final Uri emailUri = Uri(
       scheme: 'mailto',
-      path: 'support@homefix.com',
+      path: 'help@homefix.com',
       query: 'subject=Support Request&body=Hi HomeFix Team,',
     );
     if (await canLaunchUrl(emailUri)) {

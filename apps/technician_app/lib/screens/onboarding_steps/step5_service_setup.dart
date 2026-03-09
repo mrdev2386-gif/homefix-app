@@ -21,16 +21,6 @@ class _Step5ServiceSetupState extends State<Step5ServiceSetup> {
   late TextEditingController _maxDistanceController;
   late TextEditingController _descriptionController;
   bool _emergencyService = false;
-  List<String> _selectedServices = [];
-
-  final List<Map<String, String>> _serviceOptions = [
-    {'id': 'installation', 'name': 'Installation', 'icon': '🔧'},
-    {'id': 'repair', 'name': 'Repair', 'icon': '🔨'},
-    {'id': 'maintenance', 'name': 'Maintenance', 'icon': '🛠️'},
-    {'id': 'inspection', 'name': 'Inspection', 'icon': '🔍'},
-    {'id': 'consultation', 'name': 'Consultation', 'icon': '💬'},
-    {'id': 'emergency', 'name': 'Emergency Service', 'icon': '🚨'},
-  ];
 
   @override
   void initState() {
@@ -48,8 +38,6 @@ class _Step5ServiceSetupState extends State<Step5ServiceSetup> {
       text: widget.formData['serviceDescription'] ?? '',
     );
     _emergencyService = widget.formData['emergencyService'] ?? false;
-    _selectedServices =
-        List<String>.from(widget.formData['offeredServices'] ?? []);
   }
 
   @override
@@ -87,8 +75,6 @@ class _Step5ServiceSetupState extends State<Step5ServiceSetup> {
             ),
           ),
           const SizedBox(height: 32),
-          _buildServicesSelector(),
-          const SizedBox(height: 24),
           _buildPricingFields(),
           const SizedBox(height: 24),
           _buildDistanceField(),
@@ -99,80 +85,6 @@ class _Step5ServiceSetupState extends State<Step5ServiceSetup> {
           const SizedBox(height: 32),
         ],
       ),
-    );
-  }
-
-  Widget _buildServicesSelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Services Offered',
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: const Color(0xFF0F172A),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: _serviceOptions.map((service) {
-            final isSelected = _selectedServices.contains(service['id']);
-            return GestureDetector(
-              onTap: () {
-                setState(() {
-                  if (isSelected) {
-                    _selectedServices.remove(service['id']);
-                  } else {
-                    _selectedServices.add(service['id']!);
-                  }
-                });
-                widget.onDataChanged('offeredServices', _selectedServices);
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? const Color(0xFF6366F1)
-                      : Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isSelected
-                        ? const Color(0xFF6366F1)
-                        : const Color(0xFFE2E8F0),
-                    width: 2,
-                  ),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      service['icon']!,
-                      style: const TextStyle(fontSize: 24),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      service['name']!,
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: isSelected
-                            ? Colors.white
-                            : const Color(0xFF0F172A),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-      ],
     );
   }
 

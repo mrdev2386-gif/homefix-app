@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 import '../models/address.dart';
 import '../models/payment_method.dart';
-import '../models/wallet_transaction.dart';
 
 class UserService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -50,16 +49,6 @@ class UserService {
   // WALLET
   Stream<double> getWalletBalance(String uid) {
     return _db.collection('customers').doc(uid).snapshots().map((doc) => (doc.data()?['walletBalance'] ?? 0.0).toDouble());
-  }
-
-  Stream<List<WalletTransaction>> getWalletTransactions(String uid) {
-    return _db
-        .collection('customers')
-        .doc(uid)
-        .collection('wallet_transactions')
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) => WalletTransaction.fromFirestore(doc)).toList());
   }
 
   // ADDRESSES

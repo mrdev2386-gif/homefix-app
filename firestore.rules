@@ -1,63 +1,392 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Custom Requests Collection
-    match /custom_requests/{requestId} {
-      // Customer can read own requests
-      allow read: if request.auth.uid == resource.data.customerId;
-      
-      // Technician can read assigned requests
-      allow read: if request.auth.uid == resource.data.technicianId;
-      
-      // Admin can read all requests
-      allow read: if request.auth.token.admin == true;
-      
-      // No direct writes - only via Cloud Functions
+    
+    // ==========================================
+    // HELPER FUNCTIONS
+    // ==========================================
+    
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if user is admin
+    function isAdmin() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    
+    // Check if user owns the document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Check if field is being modified
+    function isFieldModified(field) {
+      return field in request.resource.data.diff(resource.data).affectedKeys();
+    }
+    
+    // Check if any protected field is being modified
+    function isProtectedFieldModified(protectedFields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedFields);
+    }
+    
+    // ==========================================
+    // ADMINS COLLECTION
+    // ==========================================
+    
+    match /admins/{adminId} {
+      // Only admins can read admin collection
+      allow read: if isAdmin();
+      // No one can write to admins collection (managed by super admin)
       allow write: if false;
     }
-
-    // Bookings Collection
-    match /bookings/{bookingId} {
-      // Customer can read own bookings
-      allow read: if request.auth.uid == resource.data.customerId;
+    
+    // ==========================================
+    // TECHNICIANS COLLECTION
+    // ==========================================
+    
+    match /technicians/{technicianId} {
+      // Protected fields that only admins can modify
+      function protectedTechnicianFields() {
+        return [
+          'verificationStatus',
+          'profileCompletion',
+          'approvedAt',
+          'approvedBy',
+          'rejectionReason',
+          'isApproved',
+          'isKycComplete',
+          'kycSubmittedAt',
+          'isSuspended',
+          'suspendedAt',
+          'suspendedBy',
+          'suspensionReason',
+          'avgRating',
+          'totalRatings',
+          'totalJobs',
+          'walletBalance'
+        ];
+      }
       
-      // Technician can read assigned bookings
-      allow read: if request.auth.uid == resource.data.technicianId;
+      // Technicians can read their own document
+      allow read: if isOwner(technicianId) || isAdmin();
       
-      // No direct writes - only via Cloud Functions
-      allow write: if false;
+      // Technicians can create their own document (during signup)
+      allow create: if isOwner(technicianId);
+      
+      // Technicians can update their own document (but not protected fields)
+      allow update: if isOwner(technicianId) 
+        && !isProtectedFieldModified(protectedTechnicianFields())
+        // Prevent self-approval attack
+        && !(request.resource.data.verificationStatus == 'approved');
+      
+      // Only admins can update protected fields
+      allow update: if isAdmin();
+      
+      // No one can delete technician documents
+      allow delete: if false;
     }
-
-    // Users Collection
-    match /users/{uid} {
-      allow read, write: if request.auth.uid == uid;
+    
+    // ==========================================
+    // TECHNICIAN SERVICES COLLECTION
+    // ==========================================
+    
+    match /technician_services/{serviceId} {
+      // Protected fields that only admins can modify
+      function protectedServiceFields() {
+        return [
+          'status',
+          'approvedAt',
+          'approvedBy',
+          'rejectedAt',
+          'rejectedBy',
+          'rejectionReason',
+          'moderationNotes'
+        ];
+      }
       
-      // Addresses Subcollection
+      // Anyone can read approved services
+      allow read: if resource.data.status == 'approved' || isAdmin();
+      
+      // Technicians can read their own services
+      allow read: if isAuthenticated() && resource.data.technicianId == request.auth.uid;
+      
+      // Technicians can create services (status defaults to 'pending')
+      allow create: if isAuthenticated() 
+        && request.resource.data.technicianId == request.auth.uid
+        && request.resource.data.status == 'pending';
+      
+      // Technicians can update their own services (but not protected fields)
+      allow update: if isAuthenticated() 
+        && resource.data.technicianId == request.auth.uid
+        && !isProtectedFieldModified(protectedServiceFields())
+        // Prevent self-approval
+        && !(request.resource.data.status == 'approved');
+      
+      // Only admins can approve/reject services
+      allow update: if isAdmin();
+      
+      // Technicians can delete their own pending/rejected services
+      allow delete: if isAuthenticated() 
+        && resource.data.technicianId == request.auth.uid
+        && resource.data.status in ['pending', 'rejected'];
+      
+      // Admins can delete any service
+      allow delete: if isAdmin();
+    }
+    
+    // ==========================================
+    // CUSTOMERS COLLECTION
+    // ==========================================
+    
+    match /customers/{customerId} {
+      // Protected fields that only admins or Cloud Functions can modify
+      function protectedCustomerFields() {
+        return [
+          'walletBalance',
+          'referralCode',
+          'referralRewardClaimed',
+          'isSuspended',
+          'suspendedAt',
+          'suspensionReason'
+        ];
+      }
+      
+      // Customers can read their own document
+      allow read: if isOwner(customerId) || isAdmin();
+      
+      // Customers can create their own document
+      allow create: if isOwner(customerId);
+      
+      // Customers can update their own document (but not protected fields)
+      allow update: if isOwner(customerId) 
+        && !isProtectedFieldModified(protectedCustomerFields());
+      
+      // Admins can update any field
+      allow update: if isAdmin();
+      
+      // No one can delete customer documents
+      allow delete: if false;
+      
+      // Subcollections
       match /addresses/{addressId} {
-        allow read, write: if request.auth.uid == uid;
+        allow read, write: if isOwner(customerId);
+      }
+      
+      match /payment_methods/{methodId} {
+        allow read, write: if isOwner(customerId);
+      }
+      
+      match /wallet_transactions/{transactionId} {
+        // Read-only for customers
+        allow read: if isOwner(customerId);
+        // Only Cloud Functions can write
+        allow write: if false;
       }
     }
-
-    // Technicians Collection
-    match /technicians/{uid} {
+    
+    // ==========================================
+    // BOOKINGS COLLECTION
+    // ==========================================
+    
+    match /bookings/{bookingId} {
+      // Protected fields that only Cloud Functions can modify
+      function protectedBookingFields() {
+        return [
+          'status',
+          'paymentStatus',
+          'adminApproval',
+          'finalAmount',
+          'refundAmount',
+          'cancelledBy',
+          'cancellationReason',
+          'completedAt',
+          'startedAt'
+        ];
+      }
+      
+      // Customers can read their own bookings
+      allow read: if isAuthenticated() 
+        && (resource.data.customerId == request.auth.uid 
+            || resource.data.assignedTechnicianId == request.auth.uid
+            || isAdmin());
+      
+      // Customers can create bookings
+      allow create: if isAuthenticated() 
+        && request.resource.data.customerId == request.auth.uid
+        && request.resource.data.status == 'pending';
+      
+      // NO ONE can update booking status directly (must use Cloud Functions)
+      // This prevents manipulation of booking lifecycle
+      allow update: if false;
+      
+      // Admins can read all bookings
+      allow read: if isAdmin();
+      
+      // No one can delete bookings
+      allow delete: if false;
+    }
+    
+    // ==========================================
+    // SERVICES COLLECTION (Service Catalog)
+    // ==========================================
+    
+    match /services/{serviceId} {
+      // Anyone can read services
       allow read: if true;
-      allow write: if request.auth.uid == uid;
+      
+      // Only admins can write to service catalog
+      allow write: if isAdmin();
+    }
+    
+    // ==========================================
+    // CATEGORIES COLLECTION
+    // ==========================================
+    
+    match /categories/{categoryId} {
+      // Anyone can read categories
+      allow read: if true;
+      
+      // Only admins can write categories
+      allow write: if isAdmin();
+    }
+    
+    // ==========================================
+    // REVIEWS COLLECTION
+    // ==========================================
+    
+    match /reviews/{reviewId} {
+      // Anyone can read reviews
+      allow read: if true;
+      
+      // Customers can create reviews for their completed bookings
+      allow create: if isAuthenticated() 
+        && request.resource.data.customerId == request.auth.uid;
+      
+      // Reviews are immutable after creation
+      allow update, delete: if false;
+    }
+    
+    // ==========================================
+    // COUPONS COLLECTION
+    // ==========================================
+    
+    match /coupons/{couponId} {
+      // Anyone can read active coupons
+      allow read: if resource.data.isActive == true;
+      
+      // Only admins can manage coupons
+      allow write: if isAdmin();
+    }
+    
+    // ==========================================
+    // NOTIFICATIONS COLLECTION
+    // ==========================================
+    
+    match /notifications/{notificationId} {
+      // Users can read their own notifications
+      allow read: if isAuthenticated() 
+        && resource.data.userId == request.auth.uid;
+      
+      // Users can mark their own notifications as read
+      allow update: if isAuthenticated() 
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
+      
+      // Only Cloud Functions can create notifications
+      allow create, delete: if false;
+    }
+    
+    // ==========================================
+    // SUPPORT TICKETS COLLECTION
+    // ==========================================
+    
+    match /support_tickets/{ticketId} {
+      // Users can read their own tickets
+      allow read: if isAuthenticated() 
+        && resource.data.userId == request.auth.uid;
+      
+      // Users can create tickets
+      allow create: if isAuthenticated() 
+        && request.resource.data.userId == request.auth.uid;
+      
+      // Only admins can update tickets
+      allow update: if isAdmin();
+      
+      // No one can delete tickets
+      allow delete: if false;
+    }
+    
+    // ==========================================
+    // REFERRALS COLLECTION
+    // ==========================================
+    
+    match /referrals/{referralId} {
+      // Users can read their own referrals
+      allow read: if isAuthenticated() 
+        && (resource.data.referrerId == request.auth.uid 
+            || resource.data.referredUserId == request.auth.uid);
+      
+      // Only Cloud Functions can manage referrals
+      allow write: if false;
+    }
+    
+    // ==========================================
+    // DISPUTES COLLECTION
+    // ==========================================
+    
+    match /disputes/{disputeId} {
+      // Users can read disputes they're involved in
+      allow read: if isAuthenticated() 
+        && (resource.data.customerId == request.auth.uid 
+            || resource.data.technicianId == request.auth.uid
+            || isAdmin());
+      
+      // Users can create disputes
+      allow create: if isAuthenticated() 
+        && (request.resource.data.customerId == request.auth.uid 
+            || request.resource.data.technicianId == request.auth.uid);
+      
+      // Only admins can update disputes
+      allow update: if isAdmin();
+      
+      // No one can delete disputes
+      allow delete: if false;
+    }
+    
+    // ==========================================
+    // CUSTOM SERVICE REQUESTS COLLECTION
+    // ==========================================
+    
+    match /custom_service_requests/{requestId} {
+      // Customers can read their own requests
+      allow read: if isAuthenticated() 
+        && resource.data.customerId == request.auth.uid;
+      
+      // Technicians can read requests in their area
+      allow read: if isAuthenticated();
+      
+      // Customers can create requests
+      allow create: if isAuthenticated() 
+        && request.resource.data.customerId == request.auth.uid;
+      
+      // Only Cloud Functions can update request status
+      allow update: if false;
+      
+      // Customers can delete their pending requests
+      allow delete: if isAuthenticated() 
+        && resource.data.customerId == request.auth.uid
+        && resource.data.status == 'pending';
+    }
+    
+    // ==========================================
+    // DEFAULT DENY ALL
+    // ==========================================
+    
+    // Deny all other access unless explicitly allowed above
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
-
-/*
-REQUIRED FIRESTORE INDEXES:
-
-1. Collection: custom_requests
-   Fields: status (Ascending), createdAt (Descending)
-   
-2. Collection: custom_requests
-   Fields: customerId (Ascending), createdAt (Descending)
-   
-3. Collection: custom_requests
-   Fields: technicianId (Ascending), status (Ascending)
-
-Create these indexes in Firebase Console:
-- Firestore Database > Indexes > Create Index
-*/

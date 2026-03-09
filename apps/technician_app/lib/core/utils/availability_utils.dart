@@ -2,6 +2,7 @@
 /// 
 /// Handles availability checking for customer-side technician filtering
 /// Based on working hours and emergency service settings
+library;
 
 class AvailabilityUtils {
   /// Check if technician is available at the selected booking time

@@ -11,7 +11,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   final TextEditingController _nameController = TextEditingController();
   int _currentStep = 0;
-  bool _isLoading = false;
+  final bool _isLoading = false;
 
   @override
   void dispose() {
@@ -19,7 +19,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _nameController.dispose();
   }
 
-.dispose();
+.@override
+  dispose();
     super  void _nextStep() {
     if (_currentStep < 1) {
       _pageController.nextPage(

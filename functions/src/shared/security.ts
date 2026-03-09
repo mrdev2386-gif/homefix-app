@@ -56,6 +56,45 @@ export function decrypt(text: string): string {
     return decrypted.toString();
 }
 
+// --- INPUT SANITIZATION ---
+
+/**
+ * Sanitize string input to prevent XSS
+ */
+export function sanitizeString(input: string, maxLength: number = 500): string {
+    if (!input) return '';
+    
+    return input
+        .trim()
+        .replace(/[<>]/g, '') // Remove HTML tags
+        .replace(/[^\w\s\-.,!?@#$%&*()]/g, '') // Remove special chars except common punctuation
+        .substring(0, maxLength);
+}
+
+/**
+ * Sanitize Aadhaar number (digits only)
+ */
+export function sanitizeAadhaar(aadhaar: string): string {
+    if (!aadhaar) return '';
+    return aadhaar.replace(/[^0-9]/g, '').substring(0, 12);
+}
+
+/**
+ * Sanitize email
+ */
+export function sanitizeEmail(email: string): string {
+    if (!email) return '';
+    return email.trim().toLowerCase().substring(0, 100);
+}
+
+/**
+ * Sanitize phone number (digits only)
+ */
+export function sanitizePhone(phone: string): string {
+    if (!phone) return '';
+    return phone.replace(/[^0-9+]/g, '').substring(0, 15);
+}
+
 // --- AUTH HELPERS ---
 
 export function assertAuthenticated(context: functions.https.CallableContext) {

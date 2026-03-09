@@ -621,3 +621,36 @@ export async function notifyTechnicianBookingCancelled(
     priority: 'high',
   });
 }
+
+// ==========================================
+// LEGACY TOKEN-BASED NOTIFICATION (for backward compatibility)
+// ==========================================
+
+export async function sendNotificationToToken(params: {
+  token: string;
+  title: string;
+  body: string;
+  data?: { [key: string]: string };
+}): Promise<void> {
+  const message: admin.messaging.Message = {
+    notification: {
+      title: params.title,
+      body: params.body,
+    },
+    token: params.token,
+    data: params.data || {},
+    android: {
+      priority: 'high',
+      notification: {
+        channelId: 'high_importance_channel',
+        clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+      },
+    },
+  };
+  
+  try {
+    await admin.messaging().send(message);
+  } catch (error: any) {
+    console.error('[NOTIFICATION] Failed to send to token:', error.code);
+  }
+}

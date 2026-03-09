@@ -86,7 +86,7 @@ class OnboardingService {
 
   /// Create a new technician draft profile after phone OTP verification
   /// Uses Cloud Function for secure server-side creation
-  Future<void> createTechnicianDraft({
+  Future<Map<String, dynamic>?> createTechnicianDraft({
     required String phone,
   }) async {
     final uid = _auth.currentUser?.uid;
@@ -100,6 +100,7 @@ class OnboardingService {
     });
 
     debugPrint('[OnboardingService] Created draft profile via Cloud Function: $result');
+    return result;
   }
 
   /// Update the current onboarding step
@@ -244,11 +245,10 @@ class OnboardingService {
     final updateData = <String, dynamic>{
       'onboardingStep': stepName,
       'stepsCompleted': {
-        'basic': step >= 0,
-        'professional': step >= 1,
-        'kyc': step >= 2,
-        'bank': step >= 3,
-        'services': step >= 4,
+        'personalDetails': step >= 0,
+        'serviceCategories': step >= 1,
+        'portfolio': step >= 2,
+        'verification': step >= 3,
       },
     };
     updateData.addAll(data);
@@ -274,13 +274,13 @@ class OnboardingService {
   }
 
   String _getStepName(int step) {
-    const steps = ['basic', 'professional', 'kyc', 'bank', 'services'];
+    const steps = ['basic', 'professional', 'kyc', 'portfolio', 'services'];
     if (step < 0 || step >= steps.length) return 'basic';
     return steps[step];
   }
 
   String? _getStepKey(int step) {
-    const keys = ['basic', 'professional', 'kyc', 'bank', 'services'];
+    const keys = ['basic', 'professional', 'kyc', 'portfolio', 'services'];
     return step >= 0 && step < keys.length ? keys[step] : null;
   }
 
@@ -292,6 +292,7 @@ class OnboardingService {
   }
 
   /// Submit the complete KYC application with server verification
+  /// CRITICAL FIX: Sets profileCompletion to 100 and onboardingStep to 'submitted'
   Future<void> submitApplication() async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) {
@@ -310,6 +311,8 @@ class OnboardingService {
       debugPrint('[OnboardingService] Calling submitTechnicianKyc Cloud Function...');
       final result = await _callFunction('submitTechnicianKyc', {
         'onboardingCompleted': true,
+        'profileCompletion': 100,  // CRITICAL FIX: Set to 100
+        'onboardingStep': 'submitted',  // CRITICAL FIX: Mark as submitted
         'status': 'pending',
         'submittedAt': DateTime.now().toIso8601String(),
       });

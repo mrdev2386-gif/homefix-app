@@ -388,10 +388,70 @@ export const updateUserProfile = functions.https.onCall(async (data: any, contex
     updateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
 
     try {
+        // CRITICAL FIX: Create address with state/district if provided during signup
+        if (updateData.state && updateData.district) {
+            const addressesRef = userRef.collection('addresses');
+            
+            // Check if user already has a primary address
+            const existingAddresses = await addressesRef.get();
+            
+            if (existingAddresses.empty) {
+                // Create first address with state/district
+                const addressId = addressesRef.doc().id;
+                await addressesRef.doc(addressId).set({
+                    id: addressId,
+                    label: 'Home',
+                    state: updateData.state,
+                    district: updateData.district,
+                    fullAddress: `${updateData.district}, ${updateData.state}`,
+                    city: updateData.district,
+                    isDefault: true,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+                
+                // Set primaryAddressId on customer document
+                updateData.primaryAddressId = addressId;
+                
+                console.log(`[updateUserProfile] ✅ Created address ${addressId} with location for uid: ${uid}`);
+            } else {
+                // Update existing addresses with state/district if missing
+                const batch = db.batch();
+                let primaryAddressId = updateData.primaryAddressId;
+                
+                for (const doc of existingAddresses.docs) {
+                    const addressData = doc.data();
+                    if (!addressData.state || !addressData.district) {
+                        batch.update(doc.ref, {
+                            state: updateData.state,
+                            district: updateData.district,
+                        });
+                        console.log(`[updateUserProfile] ✅ Updated address ${doc.id} with location`);
+                    }
+                    
+                    // Set first address as primary if not set
+                    if (!primaryAddressId && addressData.isDefault) {
+                        primaryAddressId = doc.id;
+                    }
+                }
+                
+                // If still no primary, set first address as primary
+                if (!primaryAddressId && existingAddresses.docs.length > 0) {
+                    primaryAddressId = existingAddresses.docs[0].id;
+                    batch.update(existingAddresses.docs[0].ref, { isDefault: true });
+                }
+                
+                if (primaryAddressId) {
+                    updateData.primaryAddressId = primaryAddressId;
+                }
+                
+                await batch.commit();
+            }
+        }
+        
         await userRef.set(updateData, { merge: true });
-        console.log(`[updateUserProfile] Success for uid: ${uid}`);
+        console.log(`[updateUserProfile] ✅ Success for uid: ${uid}`);
     } catch (error) {
-        console.error(`[updateUserProfile] Firestore error for uid: ${uid}:`, error);
+        console.error(`[updateUserProfile] ❌ Firestore error for uid: ${uid}:`, error);
         throw new functions.https.HttpsError('internal', 'Failed to update profile');
     }
 

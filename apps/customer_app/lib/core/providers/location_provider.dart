@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/address.dart';
 import '../services/address_service.dart';
+import '../services/category_service.dart';
 
 /// District-based LocationProvider (GPS-less for production simplicity)
 class LocationProvider extends ChangeNotifier {
-  final AddressService _addressService = AddressService();
+  final CategoryService _categoryService = CategoryService();
+  late final AddressService _addressService = AddressService(_categoryService);
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   
   String _currentAddress = 'Select your location';
@@ -38,7 +40,7 @@ class LocationProvider extends ChangeNotifier {
       
       final userDoc = await _db.collection('customers').doc(_userId).get();
       if (userDoc.exists) {
-        final data = userDoc.data() as Map<String, dynamic>?;
+        final data = userDoc.data();
         _selectedDistrict = data?['districtNormalized'] ?? data?['district']?.toString();
         
         if (_selectedDistrict != null && _selectedDistrict!.isNotEmpty) {

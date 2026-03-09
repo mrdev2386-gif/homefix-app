@@ -238,7 +238,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.location_on_rounded, color: AppTheme.primaryColor, size: 16),
+                const Icon(Icons.location_on_rounded, color: AppTheme.primaryColor, size: 16),
                 const SizedBox(width: 6),
                 Flexible(
                   child: Text(
@@ -253,7 +253,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                   ),
                 ),
                 const SizedBox(width: 4),
-                Icon(Icons.keyboard_arrow_down, color: AppTheme.subtitleColor, size: 18),
+                const Icon(Icons.keyboard_arrow_down, color: AppTheme.subtitleColor, size: 18),
               ],
             ),
           ),

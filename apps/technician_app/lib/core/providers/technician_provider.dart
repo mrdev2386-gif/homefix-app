@@ -38,12 +38,21 @@ class TechnicianProvider extends ChangeNotifier {
   
   bool _isOnboardingComplete = false;
   bool get isOnboardingComplete => _isOnboardingComplete;
-  
+
   bool _isApproved = false;
   bool get isApproved => _isApproved;
+  bool get profileApproved => _isApproved;
 
-  bool _isAdminApproved = false;
-  bool get isAdminApproved => _isAdminApproved;
+  bool _profileApprovalRequested = false;
+  bool get profileApprovalRequested => _profileApprovalRequested;
+
+  bool _profileRejected = false;
+  bool get profileRejected => _profileRejected;
+
+  set isApproved(bool value) {
+    _isApproved = value;
+    notifyListeners();
+  }
 
   StreamSubscription<Technician?>? _techSubscription;
 
@@ -60,7 +69,8 @@ class TechnicianProvider extends ChangeNotifier {
         _currentOnboardingStep = OnboardingStep.phone;
         _isOnboardingComplete = false;
         _isApproved = false;
-        _isAdminApproved = false;
+        _profileApprovalRequested = false;
+        _profileRejected = false;
         notifyListeners();
       }
     });
@@ -79,9 +89,12 @@ class TechnicianProvider extends ChangeNotifier {
       if (tech != null) {
         AppLogger.provider('Technician data loaded', data: {
           'uid': tech.uid,
+          'status': tech.status,
           'isKycComplete': tech.isKycComplete,
-          'isApproved': tech.isApproved,
+          'profileCompletion': tech.getProfileCompletion(), // Always use dynamic calculation
+          'canCreateServices': tech.status == "approved" && tech.getProfileCompletion() == 100,
           'step': tech.currentOnboardingStep,
+          'stepsCompleted': tech.stepsCompleted,
         });
         
         // ISSUE 1 FIX: Auto-sync email from FirebaseAuth if empty in Firestore
@@ -101,41 +114,12 @@ class TechnicianProvider extends ChangeNotifier {
         }
       }
       
-      // ISSUE 3 FIX: Enhanced shallow equality guard to prevent rebuild loops
-      // Only notify if data actually changed
-      final previousTech = _technician;
-      if (previousTech != null && tech != null) {
-        // Check if key fields changed
-        final hasChanged = 
-          previousTech.isKycComplete != tech.isKycComplete ||
-          previousTech.isApproved != tech.isApproved ||
-          previousTech.adminApproved != tech.adminApproved ||
-          previousTech.currentOnboardingStep != tech.currentOnboardingStep ||
-          previousTech.status != tech.status ||
-          previousTech.name != tech.name ||
-          previousTech.email != tech.email ||
-          previousTech.phone != tech.phone ||
-          previousTech.profilePhotoUrl != tech.profilePhotoUrl ||
-          previousTech.bankName != tech.bankName ||
-          previousTech.accountNumber != tech.accountNumber ||
-          previousTech.ifscCode != tech.ifscCode ||
-          previousTech.bankStatus != tech.bankStatus;
-        
-        if (!hasChanged) {
-          // Data unchanged, skip notification to prevent rebuild storm
-          _technician = tech;
-          _isLoading = false;
-          return;
-        }
-      }
-      
       _technician = tech;
       
       // Update onboarding state from technician data
       if (tech != null) {
         AppLogger.provider('Approval status updated', data: {
-          'isApproved': tech.isApproved,
-          'adminApproved': tech.adminApproved,
+          'profileApproved': tech.profileApproved,
           'status': tech.status,
         });
         
@@ -149,8 +133,15 @@ class TechnicianProvider extends ChangeNotifier {
         
         _currentOnboardingStep = step;
         _isOnboardingComplete = tech.isKycComplete;
-        _isApproved = tech.isApproved;
-        _isAdminApproved = tech.adminApproved; // Track admin approval for service management
+        _isApproved = tech.status == "approved";
+        _profileApprovalRequested = tech.profileApprovalRequested;
+        _profileRejected = tech.profileRejected;
+        
+        // Check if profile completion reached 100% and trigger admin review
+        final completion = tech.getProfileCompletion();
+        if (completion == 100 && !tech.profileApprovalRequested && tech.status != "approved" && !tech.profileRejected) {
+          await _requestAdminVerification(tech.uid);
+        }
       }
       
       _isLoading = false;
@@ -194,10 +185,6 @@ class TechnicianProvider extends ChangeNotifier {
 
   Future<void> updateOnlineStatus(bool isOnline) async {
     if (_technician == null) return;
-    
-    if (isOnline && !_auth.currentUser!.emailVerified) {
-        throw Exception("Please verify your email address first.");
-    }
 
     try {
       await _techService.updateOnlineStatus(_technician!.uid, isOnline);
@@ -210,12 +197,60 @@ class TechnicianProvider extends ChangeNotifier {
 
   /// Create technician draft after OTP verification
   Future<void> createOnboardingDraft({required String phone}) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) {
+      throw Exception('User not authenticated');
+    }
+
+    // Check if technician document already exists and onboarding is completed
+    final techDoc = await FirebaseFirestore.instance
+        .collection('technicians')
+        .doc(uid)
+        .get();
+
+    if (techDoc.exists) {
+      final data = techDoc.data() as Map<String, dynamic>;
+      final onboardingCompleted = data['onboardingCompleted'] == true;
+      final status = data['status'];
+
+      // If technician already finished onboarding, do NOT create draft again
+      if (onboardingCompleted || status == 'approved') {
+        debugPrint('[Provider] Onboarding already completed. Skipping draft creation.');
+        return;
+      }
+    }
+
     _isLoading = true;
     notifyListeners();
     
     try {
-      await _onboardingService.createTechnicianDraft(phone: phone);
-      _currentOnboardingStep = OnboardingStep.basicDetails;
+      final result = await _onboardingService.createTechnicianDraft(phone: phone);
+      
+      // Check if technician already exists
+      if (result != null && result is Map<String, dynamic>) {
+        if (result['existing'] == true) {
+          // Load existing technician state
+          final step = result['step'] ?? 'basicDetails';
+          final status = result['status'] ?? 'pending';
+          
+          print('[Provider] Technician already exists, step: $step, status: $status');
+          
+          // Route based on existing state
+          if (status == 'approved') {
+            // Already approved - no need for onboarding
+            return;
+          } else {
+            // Set current step from existing data
+            _currentOnboardingStep = OnboardingStepExtension.fromString(step);
+          }
+        } else {
+          // New technician - start with basic details
+          _currentOnboardingStep = OnboardingStep.basicDetails;
+        }
+      } else {
+        // Fallback for null result - start with basic details
+        _currentOnboardingStep = OnboardingStep.basicDetails;
+      }
     } catch (e) {
       debugPrint("Error creating onboarding draft: $e");
       rethrow;
@@ -581,12 +616,41 @@ class TechnicianProvider extends ChangeNotifier {
         _technician = tech;
         _currentOnboardingStep = tech.currentOnboardingStep;
         _isOnboardingComplete = tech.isKycComplete;
-        _isApproved = tech.isApproved;
-        _isAdminApproved = tech.adminApproved;
+        _isApproved = tech.profileApproved;
+        _profileApprovalRequested = tech.profileApprovalRequested;
+        _profileRejected = tech.profileRejected;
         notifyListeners();
       }
     } catch (e) {
       debugPrint("Error refreshing technician data: $e");
+    }
+  }
+
+  /// Force refresh technician data from server (not cache)
+  Future<void> refreshTechnician() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+    
+    try {
+      debugPrint('[TechnicianProvider] Force refreshing from server...');
+      final doc = await FirebaseFirestore.instance
+          .collection('technicians')
+          .doc(uid)
+          .get(const GetOptions(source: Source.server));
+      
+      if (doc.exists && !_isDisposed) {
+        final tech = Technician.fromFirestore(doc);
+        debugPrint('[TechnicianProvider] Server data fetched: ${tech.fullName}, state: ${tech.state}, district: ${tech.district}');
+        
+        _technician = tech;
+        _currentOnboardingStep = tech.currentOnboardingStep;
+        _isOnboardingComplete = tech.isKycComplete;
+        
+        debugPrint('[TechnicianProvider] Provider updated, notifying listeners');
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint("[TechnicianProvider] Error force refreshing technician: $e");
     }
   }
 
@@ -631,6 +695,57 @@ class TechnicianProvider extends ChangeNotifier {
   }
 
   bool _isDisposed = false;
+
+  /// Request admin verification when profile reaches 100%
+  Future<void> _requestAdminVerification(String uid) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('technicians')
+          .doc(uid)
+          .update({
+        'profileApprovalRequested': true,
+        'profileApproved': false,
+        'profileRejected': false,
+        'reviewRequestedAt': FieldValue.serverTimestamp(),
+      });
+      debugPrint('[Provider] Admin verification requested for $uid');
+    } catch (e) {
+      debugPrint('[Provider] Failed to request admin verification: $e');
+    }
+  }
+  
+
+
+  /// Check if technician can create services
+  bool canCreateServices() {
+    if (_technician == null) return false;
+    final completion = _technician!.getProfileCompletion();
+    final approved = _technician!.status == "approved";
+    
+    return completion == 100 && approved;
+  }
+
+  /// Get service creation block message
+  String getServiceBlockMessage() {
+    if (_technician == null) return 'Profile not loaded';
+    
+    final completion = _technician!.getProfileCompletion();
+    final approved = _technician!.status == "approved";
+    
+    if (completion < 100) {
+      return 'Please complete your profile to 100% before listing services.';
+    }
+    
+    if (_technician!.profileRejected) {
+      return 'Your profile was rejected. Please update your information and resubmit.';
+    }
+    
+    if (!approved) {
+      return 'Your profile is under admin review. You can list services after approval.';
+    }
+    
+    return 'You can now create services';
+  }
 
   @override
   void dispose() {

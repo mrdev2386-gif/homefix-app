@@ -82,8 +82,8 @@ class RecentServicesSection extends StatelessWidget {
         // Horizontal Scroll
         SizedBox(
           height: 180,
-          child: StreamBuilder<ServiceResult<List<HomeService>>>(
-            stream: CategoryService().getRecentlyAddedServicesResult(limit: limit),
+          child: StreamBuilder<List<HomeService>>(
+            stream: CategoryService().getRecentlyAddedServices(limit: limit),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return _buildLoadingShimmer();
@@ -93,12 +93,12 @@ class RecentServicesSection extends StatelessWidget {
                 return _buildErrorState();
               }
               
-              final result = snapshot.data;
-              if (result == null || result.isEmpty) {
+              final services = snapshot.data ?? [];
+              if (services.isEmpty) {
                 return _buildEmptyState();
               }
               
-              return _buildHorizontalList(result.data!);
+              return _buildHorizontalList(services);
             },
           ),
         ),

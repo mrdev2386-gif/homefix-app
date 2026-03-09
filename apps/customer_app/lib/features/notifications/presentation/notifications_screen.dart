@@ -113,8 +113,7 @@ class _CustomerNotificationsScreenState extends State<CustomerNotificationsScree
         userId,
         limit: _pageSize,
         startAfter: lastNotification != null 
-            ? await NotificationsService.getNotification(lastNotification.id) 
-                as DocumentSnapshot
+            ? await NotificationsService.getNotification(lastNotification.id)
                 : null,
       );
 

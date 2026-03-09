@@ -82,21 +82,9 @@ class CategoryCard extends StatelessWidget {
   }
 
   Widget _buildIcon() {
-    // AUDIT: Use model's standardized imageUrl (which has multi-field fallback)
-    final String imageUrl = category.imageUrl ?? '';
-
-    if (imageUrl.startsWith('http')) {
-      return SafeNetworkImage(
-        imageUrl: imageUrl,
-        width: 40,
-        height: 40,
-        fit: BoxFit.contain,
-      );
-    }
-    
-    // Fallback icon - local placeholder
+    // Use icon instead of imageUrl since Category model doesn't have imageUrl
     return Icon(
-      Icons.construction_rounded,
+      category.icon,
       size: 40,
       color: Colors.blue[700],
     );

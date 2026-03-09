@@ -129,6 +129,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           debugPrint('[Login] Auto-verification completed');
         },
         verificationFailed: (e) {
+          debugPrint('[Login] ❌ Verification failed: ${e.code} - ${e.message}');
           if (mounted) {
             setState(() => _isSendingOtp = false);
             String errorMessage = 'Verification failed';
@@ -137,10 +138,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               errorMessage = 'Invalid phone number. Please check and try again.';
             } else if (e.code == 'quota-exceeded') {
               errorMessage = 'Too many attempts. Please try again later.';
-            } else if (e.code == 'app-not-verified') {
-              errorMessage = 'App verification failed. Please try again.';
+            } else if (e.code == 'app-not-verified' || e.code == 'app-not-authorized') {
+              errorMessage = 'App verification failed. Please update the app and try again.';
+              debugPrint('[Login] 🔧 App Check issue - Check Firebase Console');
             } else if (e.code == 'network-request-failed') {
               errorMessage = 'Network error. Please check your connection.';
+            } else if (e.message?.contains('Play Integrity') ?? false) {
+              errorMessage = 'Device verification failed. Please try again.';
+              debugPrint('[Login] 🔧 Play Integrity issue detected');
             } else {
               errorMessage = e.message ?? 'Verification failed. Please try again.';
             }
@@ -150,6 +155,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 content: Text(errorMessage),
                 backgroundColor: Colors.red.shade600,
                 behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 5),
               ),
             );
           }
@@ -196,12 +202,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             Container(
               height: 320,
               width: double.infinity,
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    const Color(0xFF6366F1),
-                    const Color(0xFF8B5CF6),
-                    const Color(0xFFA855F7),
+                    Color(0xFF6366F1),
+                    Color(0xFF8B5CF6),
+                    Color(0xFFA855F7),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -596,20 +602,20 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               color: Colors.grey,
                               fontSize: 12,
                             ),
-                            children: [
-                              const TextSpan(text: 'By continuing, you agree to our '),
+                            children: const [
+                              TextSpan(text: 'By continuing, you agree to our '),
                               TextSpan(
                                 text: 'Terms of Service',
                                 style: TextStyle(
-                                  color: const Color(0xFF6366F1),
+                                  color: Color(0xFF6366F1),
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              const TextSpan(text: ' and '),
+                              TextSpan(text: ' and '),
                               TextSpan(
                                 text: 'Privacy Policy',
                                 style: TextStyle(
-                                  color: const Color(0xFF6366F1),
+                                  color: Color(0xFF6366F1),
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),

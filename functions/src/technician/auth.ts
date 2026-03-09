@@ -47,7 +47,7 @@ export const createTechnicianOnAuthCreate = functions.auth
                 
                 // Security & role (backend-only fields)
                 role: 'technician',
-                status: 'active',
+                status: 'pending',
                 
                 // Audit fields
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),

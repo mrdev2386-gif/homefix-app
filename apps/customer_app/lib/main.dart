@@ -15,6 +15,7 @@ import 'package:customer_app/core/services/functions_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/notifications_service.dart';
 import 'core/services/push_notification_service.dart';
+import 'core/services/category_service.dart';
 import 'core/providers/cart_provider.dart';
 import 'core/providers/favorites_provider.dart';
 import 'core/providers/auth_provider.dart';
@@ -64,7 +65,14 @@ class HomeFixApp extends StatelessWidget {
         Provider<FirestoreService>(create: (_) => FirestoreService()),
         Provider<FunctionsService>(create: (_) => FunctionsService()),
         Provider<StorageService>(create: (_) => StorageService()),
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider<CategoryService>(create: (_) => CategoryService()),
+        ChangeNotifierProxyProvider<CategoryService, AuthProvider>(
+          create: (_) => AuthProvider(),
+          update: (_, categoryService, authProvider) {
+            authProvider!.setCategoryService(categoryService);
+            return authProvider;
+          },
+        ),
         ChangeNotifierProvider(create: (_) => CategoryProvider()),
         ChangeNotifierProxyProvider<AuthProvider, FavoritesProvider>(
           create: (_) => FavoritesProvider(),

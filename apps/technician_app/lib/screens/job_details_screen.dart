@@ -40,7 +40,6 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
   String _formatScheduledAt() {
     try {
       final scheduledAt = widget.booking.scheduledAt;
-      if (scheduledAt == null) return '—';
       // Display in local device timezone with 12-hour format
       return DateFormat('EEEE, dd MMM yyyy').format(scheduledAt.toLocal());
     } catch (e) {

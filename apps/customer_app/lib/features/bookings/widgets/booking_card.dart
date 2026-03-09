@@ -16,15 +16,16 @@ class BookingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 12,
-            offset: const Offset(0, 2),
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -32,7 +33,7 @@ class BookingCard extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -40,7 +41,7 @@ class BookingCard extends StatelessWidget {
               // TOP SECTION: Gradient Header with Service Name + Status
               // ═══════════════════════════════════════════════════════════
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [_getStatusColor(booking.status).withOpacity(0.08), Colors.white],
@@ -48,8 +49,8 @@ class BookingCard extends StatelessWidget {
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(16),
-                    topRight: Radius.circular(16),
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
                   ),
                 ),
                 child: Row(
@@ -108,7 +109,7 @@ class BookingCard extends StatelessWidget {
               // MIDDLE SECTION: Details
               // ═══════════════════════════════════════════════════════════
               Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -142,22 +143,22 @@ class BookingCard extends StatelessWidget {
                       maxLines: 2,
                     ),
 
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     
                     // Divider
                     Container(
                       height: 1,
-                      decoration: BoxDecoration(
+                      decoration: const BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
                             Colors.transparent,
-                            const Color(0xFFE5E7EB),
+                            Color(0xFFE5E7EB),
                             Colors.transparent,
                           ],
                         ),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
 
                     // ═══════════════════════════════════════════════════════════
                     // BOTTOM ROW: Price + View Details Button
@@ -431,10 +432,10 @@ class BookingCard extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (icon != null) ...[
-            Icon(icon, size: 13, color: textColor),
-            const SizedBox(width: 5),
-          ],
+          ...[
+          Icon(icon, size: 13, color: textColor),
+          const SizedBox(width: 5),
+        ],
           Text(
             displayText,
             style: GoogleFonts.outfit(

@@ -1,5 +1,6 @@
 /// Image URL utilities for HomeFix technician app.
 /// Provides safe sanitization of image URLs read from Firestore.
+library;
 
 const String _kPlaceholderUrl =
     'https://via.placeholder.com/400x300.png?text=HomeFix';

@@ -1,9 +1,10 @@
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 class FunctionsService {
-  // Use region-safe instance for us-central1 to avoid NOT_FOUND errors
-  final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
+  final FirebaseFunctions _functions =
+      FirebaseFunctions.instanceFor(region: 'us-central1');
 
   /// Technician: Get inbox of pending custom requests
   Future<Map<String, dynamic>> getTechnicianInbox({int limit = 20, String? startAfter}) async {
@@ -50,10 +51,13 @@ class FunctionsService {
     try {
       HttpsCallable callable = _functions.httpsCallable('toggleOnlineStatus');
       await callable.call({'isOnline': isOnline});
-      debugPrint('[Functions] online status updated: $isOnline');
+      debugPrint('[Functions] Online status updated: $isOnline');
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[Functions] Online status error: ${e.code} - ${e.message}');
+      // Silently fail - app should continue working
     } catch (e) {
-      debugPrint('[Functions] online status failed: $e');
-      // App must not depend on function success - silently fail
+      debugPrint('[Functions] Online status unexpected error: $e');
+      // Silently fail - app should continue working
     }
   }
 
@@ -107,6 +111,7 @@ class FunctionsService {
   // ============================================
 
   /// Add a new technician service via Cloud Function
+  /// SECURITY: Validates technician approval before service creation
   Future<Map<String, dynamic>> addService({
     required String name,
     required double price,
@@ -120,23 +125,24 @@ class FunctionsService {
     Map<String, dynamic>? nightService,
   }) async {
     try {
-      debugPrint('[DEBUG] FunctionsService.addService called with categoryId: $category');
+      debugPrint('[SERVICE CREATE] Writing to technician_services collection');
+      debugPrint('[SERVICE CREATE] categoryId: $category');
+      
       HttpsCallable callable = _functions.httpsCallable('addTechnicianService');
       final Map<String, dynamic> data = {
         'name': name,
+        'category': category,
         'price': price,
         'imageUrl': imageUrl,
-        'category': category,
-        if (description != null) 'description': description,
-        if (originalPrice != null) 'originalPrice': originalPrice,
-        if (offerPrice != null) 'offerPrice': offerPrice,
-        if (discountPercent != null) 'discountPercent': discountPercent,
-        if (urgentBooking != null) 'urgentBooking': urgentBooking,
-        if (nightService != null) 'nightService': nightService,
+        'description': description ?? 'Professional service provided by experienced technician',
       };
+      
+      debugPrint('[SERVICE CREATE] Calling Cloud Function with data: $data');
       final result = await callable.call(data);
+      debugPrint('[SERVICE CREATE] SUCCESS - Service written to technician_services');
       return Map<String, dynamic>.from(result.data);
     } catch (e) {
+      debugPrint('[SERVICE CREATE] ERROR: $e');
       rethrow;
     }
   }
@@ -157,7 +163,7 @@ class FunctionsService {
     Map<String, dynamic>? nightService,
   }) async {
     try {
-      HttpsCallable callable = _functions.httpsCallable('updateTechnicianServiceNew');
+      HttpsCallable callable = _functions.httpsCallable('updateTechnicianService');
       final Map<String, dynamic> data = {'serviceId': serviceId};
       
       if (name != null) data['name'] = name;
@@ -182,7 +188,7 @@ class FunctionsService {
   /// Toggle technician service active status via Cloud Function
   Future<Map<String, dynamic>> toggleServiceStatus(String serviceId) async {
     try {
-      HttpsCallable callable = _functions.httpsCallable('toggleTechnicianServiceStatusNew');
+      HttpsCallable callable = _functions.httpsCallable('toggleTechnicianServiceStatus');
       final result = await callable.call({'serviceId': serviceId});
       return Map<String, dynamic>.from(result.data);
     } catch (e) {
@@ -193,7 +199,7 @@ class FunctionsService {
   /// Delete (soft delete) a technician service via Cloud Function
   Future<Map<String, dynamic>> deleteService(String serviceId) async {
     try {
-      HttpsCallable callable = _functions.httpsCallable('deleteTechnicianServiceNew');
+      HttpsCallable callable = _functions.httpsCallable('deleteTechnicianService');
       final result = await callable.call({'serviceId': serviceId});
       return Map<String, dynamic>.from(result.data);
     } catch (e) {
@@ -202,35 +208,86 @@ class FunctionsService {
   }
 
   /// Update technician personal details via Cloud Function
-  /// Only allows updating: fullName, email, city, experience, gender, bio, alternatePhone
+  /// Only allows updating: fullName, email, city, experienceYears, gender, bio, alternatePhone, state, district
+  /// Supports partial updates - only non-null fields are updated
   Future<Map<String, dynamic>> updateTechnicianPersonalDetails({
-    required String fullName,
+    String? fullName,
     String? email,
     String? city,
-    int? experience,
+    String? state,
+    String? district,
+    int? experienceYears,
     String? gender,
     String? bio,
     String? alternatePhone,
   }) async {
     try {
-      debugPrint('[FunctionsService] Calling updateTechnicianPersonalDetails');
-      HttpsCallable callable = _functions.httpsCallable('updateTechnicianPersonalDetails');
-      final result = await callable.call({
-        'fullName': fullName,
-        if (email != null) 'email': email,
-        if (city != null) 'city': city,
-        if (experience != null) 'experience': experience,
-        if (gender != null) 'gender': gender,
-        if (bio != null) 'bio': bio,
-        if (alternatePhone != null) 'alternatePhone': alternatePhone,
-      });
-      debugPrint('[FunctionsService] updateTechnicianPersonalDetails success');
+      // 1. Ensure Firebase user exists before calling the function
+      final user = FirebaseAuth.instance.currentUser;
+      
+      if (user == null) {
+        throw Exception('User not logged in');
+      }
+      
+      print('[FunctionsService] UID: ${user.uid}');
+      
+      // 2. Force refresh the Firebase ID token before calling the function
+      await user.getIdToken(true);
+      print('[FunctionsService] Token refreshed successfully');
+      
+      final Map<String, dynamic> updates = {};
+      
+      if (fullName != null) updates['fullName'] = fullName;
+      if (email != null) updates['email'] = email;
+      if (city != null) updates['city'] = city;
+      if (state != null) updates['state'] = state;
+      if (district != null) updates['district'] = district;
+      if (experienceYears != null) updates['experienceYears'] = experienceYears;
+      if (gender != null) updates['gender'] = gender;
+      if (bio != null) updates['bio'] = bio;
+      if (alternatePhone != null) updates['alternatePhone'] = alternatePhone;
+      
+      print('[FunctionsService] Sending updates: $updates');
+      
+      if (updates.isEmpty) {
+        return {'success': true, 'message': 'No updates provided'};
+      }
+      
+      // 3. Call the Cloud Function only after token refresh
+      final callable = _functions.httpsCallable('updateTechnicianPersonalDetails');
+      
+      final result = await callable.call(updates);
+      
+      debugPrint('[FunctionsService] updateTechnicianPersonalDetails success: ${result.data}');
       return Map<String, dynamic>.from(result.data);
     } on FirebaseFunctionsException catch (e) {
       debugPrint('[FunctionsService] updateTechnicianPersonalDetails error: ${e.code} - ${e.message}');
       rethrow;
     } catch (e) {
       debugPrint('[FunctionsService] updateTechnicianPersonalDetails unexpected error: $e');
+      rethrow;
+    }
+  }
+
+  /// Update email and require verification
+  /// Only enforces verification when email is actually being changed
+  Future<void> updateEmail(String newEmail) async {
+    final user = FirebaseAuth.instance.currentUser;
+    
+    if (user == null) {
+      throw Exception('User not authenticated');
+    }
+
+    try {
+      await user.updateEmail(newEmail);
+      
+      if (user != null && !user.emailVerified) {
+        await user.sendEmailVerification();
+      }
+      
+      print('Verification email sent');
+    } catch (e) {
+      debugPrint('[FunctionsService] updateEmail error: $e');
       rethrow;
     }
   }

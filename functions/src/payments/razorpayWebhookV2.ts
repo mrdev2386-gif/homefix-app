@@ -387,7 +387,12 @@ async function processBookingPayment(
         return;
     }
 
-    const booking = bookingDoc.data()!;
+    const bookingData = bookingDoc.data();
+    if (!bookingData) {
+        console.error(`${LOG_PREFIX} booking_data_missing - Booking ${bookingDoc.id} has no data`);
+        return;
+    }
+    const booking = bookingData;
 
     if (booking.payment?.status === "paid") {
         console.log(`${LOG_PREFIX} duplicate_ignored - Booking already paid: ${orderData.bookingId}`);
@@ -402,7 +407,16 @@ async function processBookingPayment(
         
         if (orderDoc.exists && orderDoc.data()?.status === "paid") {
             console.log(`${LOG_PREFIX} duplicate_ignored - Order already paid in transaction: ${razorpayOrderId}`);
-            return;
+            throw new Error("IDEMPOTENCY_CHECK_FAILED");
+        }
+
+        // Mark order as paid FIRST to prevent race conditions
+        if (orderDoc.exists) {
+            transaction.update(orderRef, {
+                status: "paid",
+                paymentId,
+                paidAt: admin.firestore.FieldValue.serverTimestamp()
+            });
         }
 
         transaction.update(bookingRef, {
@@ -418,14 +432,6 @@ async function processBookingPayment(
             "payout.gst": booking.pricing.gst,
             "payout.technicianAmount": booking.pricing.subtotal - booking.pricing.platformFee
         });
-
-        if (orderDoc.exists) {
-            transaction.update(orderRef, {
-                status: "paid",
-                paymentId,
-                paidAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-        }
     });
 
     if (orderData.technicianId) {
@@ -469,7 +475,16 @@ async function processTechnicianWalletCredit(
         
         if (orderDoc.exists && orderDoc.data()?.status === "paid") {
             console.log(`${LOG_PREFIX} duplicate_ignored - Order already paid in transaction: ${orderId}`);
-            return;
+            throw new Error("IDEMPOTENCY_CHECK_FAILED");
+        }
+
+        // Mark order as paid FIRST to prevent race conditions
+        if (orderDoc.exists) {
+            transaction.update(orderRef, {
+                status: "paid",
+                paymentId,
+                paidAt: admin.firestore.FieldValue.serverTimestamp()
+            });
         }
 
         const walletRef = db.collection("technician_wallets").doc(technicianId);
@@ -509,14 +524,6 @@ async function processTechnicianWalletCredit(
             description: "Wallet credit via Razorpay",
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
-
-        if (orderDoc.exists) {
-            transaction.update(orderRef, {
-                status: "paid",
-                paymentId,
-                paidAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-        }
     });
 
     await db.collection("payment_logs").add({

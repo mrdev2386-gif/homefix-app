@@ -13,6 +13,9 @@ class HomeService {
   final String imageUrl;
   final String description;
   final double basePrice;
+  final double? originalPrice;  // NEW: For strikethrough display
+  final double? offerPrice;     // NEW: For offer display
+  final bool urgentBookingEnabled; // NEW: For urgent badge
   final bool isActive;
   final String category;
   final String categoryName;
@@ -47,6 +50,9 @@ class HomeService {
     this.imageUrl = AppConstants.fallbackServiceImage,
     this.description = '',
     required this.basePrice,
+    this.originalPrice,
+    this.offerPrice,
+    this.urgentBookingEnabled = false,
     required this.isActive,
     required this.category,
     required this.categoryName,
@@ -133,6 +139,23 @@ class HomeService {
       price = double.tryParse(priceData) ?? 0.0;
     }
 
+    // NEW: Parse originalPrice and offerPrice
+    double? originalPrice;
+    final dynamic originalPriceData = data['originalPrice'];
+    if (originalPriceData is num) {
+      originalPrice = originalPriceData.toDouble();
+    } else if (originalPriceData is String) {
+      originalPrice = double.tryParse(originalPriceData);
+    }
+
+    double? offerPrice;
+    final dynamic offerPriceData = data['offerPrice'];
+    if (offerPriceData is num) {
+      offerPrice = offerPriceData.toDouble();
+    } else if (offerPriceData is String) {
+      offerPrice = double.tryParse(offerPriceData);
+    }
+
     final bool isActive = data['isActive'] ?? true;
     final String finalCategory = categoryId.toString();
     final String finalCategoryName = (data['categoryName'] ?? data['category'] ?? 'General').toString();
@@ -198,6 +221,9 @@ class HomeService {
       imageUrl: imageUrl,
       description: (data['description'] ?? '').toString(),
       basePrice: price,
+      originalPrice: originalPrice,
+      offerPrice: offerPrice,
+      urgentBookingEnabled: data['urgentBookingEnabled'] ?? false,
       isActive: isActive,
       category: finalCategory,
       categoryName: finalCategoryName,
@@ -210,7 +236,7 @@ class HomeService {
       duration: duration,
       createdAt: createdAt,
       isPublished: data['isPublished'] ?? true,
-      status: data['status'] == 'active' || data['isActive'] == true,
+      status: data['status'] == 'approved' || data['status'] == 'active' || data['isActive'] == true,
       technicianApproved: data['technicianApproved'] ?? true,
       technicianId: technicianId,
       technicianName: data['technicianName']?.toString(),
