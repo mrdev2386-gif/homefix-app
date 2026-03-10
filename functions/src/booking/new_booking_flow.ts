@@ -160,9 +160,10 @@ export const createBookingRequest = functions.https.onCall(
         }
 
         // 5.5. ENFORCE PRICE INTEGRITY (Harden)
-        const expectedPrice = serviceData.price || serviceData.basePrice || 0;
-        if (Math.abs(expectedPrice - price) > 0.01) {
-            console.error(`[createBookingRequest] PRICE_FRAUD_PREVENTION: Data price ${price} does not match server price ${expectedPrice}`);
+        const expectedBasePrice = serviceData.price || serviceData.basePrice || 0;
+        // The price comes from the frontend cart which includes quantity and 5% tax
+        if (price < expectedBasePrice) {
+            console.error(`[createBookingRequest] PRICE_FRAUD_PREVENTION: Data price ${price} is less than base price ${expectedBasePrice}`);
             throw new functions.https.HttpsError('failed-precondition', 'Pricing has changed. Please refresh and try again.');
         }
 
@@ -234,8 +235,8 @@ export const createBookingRequest = functions.https.onCall(
                     price: price,
                     finalAmount: price,
                     finalPriceSnapshot: price, // AUDIT: Required field for audit trail
-                    discountAmount: 0,
-                    originalPrice: price,
+                    discountAmount: (serviceData.basePrice && serviceData.offerPrice && serviceData.basePrice > serviceData.offerPrice) ? (serviceData.basePrice - serviceData.offerPrice) : 0,
+                    originalPrice: serviceData.basePrice || price,
                     couponCode: data.couponCode || null,
 
                     // Schedule
@@ -291,6 +292,22 @@ export const createBookingRequest = functions.https.onCall(
             } catch (notifyError) {
                 console.error('[createBookingRequest] Admin notification failed:', notifyError);
                 // Don't fail booking creation if notification fails
+            }
+
+            // 10. Send notification to Technician
+            try {
+                if (technicianId) {
+                    await notify.sendUserNotification({
+                        userId: technicianId,
+                        userType: 'technician',
+                        title: 'Booking Received',
+                        body: `You have received a new booking from ${context.auth!.token?.name || 'Customer'} for ${serviceData.name || 'Service'}`,
+                        type: 'new_instant_booking',
+                        data: { bookingId }
+                    });
+                }
+            } catch (notifyError) {
+                console.error('[createBookingRequest] Tech notification failed:', notifyError);
             }
 
             return {

@@ -184,12 +184,12 @@ export const razorpayWebhookV2 = onRequest(
 async function handlePaymentCapturedV2(payload: any) {
     // STEP 5: Additional null safety for handlePaymentCapturedV2
     const payment = payload?.payment?.entity;
-    
+
     if (!payment) {
         console.error(`${LOG_PREFIX} handlePaymentCapturedV2 - No payment entity in payload`);
         return;
     }
-    
+
     const orderId = payment?.order_id;
     const paymentId = payment?.id;
     const razorpayAmount = (payment?.amount ?? 0) / 100;
@@ -290,7 +290,7 @@ async function handlePaymentCapturedV2(payload: any) {
         // STEP 5: Technician Existence & Wallet Guard
         const techRef = db.collection("technicians").doc(orderData.technicianId);
         const techDoc = await techRef.get();
-        
+
         if (!techDoc.exists) {
             console.warn(`${LOG_PREFIX} technician_missing - Technician ID: ${orderData.technicianId}`);
             await db.collection("payment_logs").add({
@@ -303,7 +303,7 @@ async function handlePaymentCapturedV2(payload: any) {
             // Technician not found - cannot credit wallet, but not fraud
             return;
         }
-        
+
         const techData = techDoc.data();
         if (techData?.status === "suspended" || techData?.status === "deactivated") {
             console.warn(`${LOG_PREFIX} technician_rejected - Status: ${techData.status}, ID: ${orderData.technicianId}`);
@@ -318,7 +318,7 @@ async function handlePaymentCapturedV2(payload: any) {
             });
             return;
         }
-        
+
         await processTechnicianWalletCredit(
             { orderId, technicianId: orderData.technicianId, amount: orderData.amount },
             paymentId,
@@ -334,7 +334,7 @@ async function handlePaymentCapturedV2(payload: any) {
  */
 async function handleLegacyBookingPayment(orderId: string, paymentId: string, amount: number, payload: any) {
     const payment = payload?.payment?.entity;
-    
+
     const idempotencyRef = db.collection("payment_idempotency").doc(paymentId);
     const existingIdempotency = await idempotencyRef.get();
     if (existingIdempotency.exists) {
@@ -404,7 +404,7 @@ async function processBookingPayment(
         // Re-read order to check status inside transaction
         const orderRef = db.collection("razorpayOrders").doc(razorpayOrderId);
         const orderDoc = await transaction.get(orderRef);
-        
+
         if (orderDoc.exists && orderDoc.data()?.status === "paid") {
             console.log(`${LOG_PREFIX} duplicate_ignored - Order already paid in transaction: ${razorpayOrderId}`);
             throw new Error("IDEMPOTENCY_CHECK_FAILED");
@@ -419,19 +419,25 @@ async function processBookingPayment(
             });
         }
 
-        transaction.update(bookingRef, {
+        const updateData: any = {
             "payment.status": "paid",
             "payment.razorpayPaymentId": paymentId,
             "payment.amountPaid": amount,
             "payment.paymentMethod": payment.method,
             "payment.paidAt": admin.firestore.FieldValue.serverTimestamp(),
             "status": "completed",
+            "paymentStatus": "paid",
             "payout.status": "pending",
-            "payout.totalAmount": booking.pricing.total,
-            "payout.platformFee": booking.pricing.platformFee,
-            "payout.gst": booking.pricing.gst,
-            "payout.technicianAmount": booking.pricing.subtotal - booking.pricing.platformFee
-        });
+            "payout.totalAmount": booking.pricing?.total || booking.finalAmount || booking.price || amount,
+        };
+
+        if (booking.pricing) {
+            updateData["payout.platformFee"] = booking.pricing.platformFee;
+            updateData["payout.gst"] = booking.pricing.gst;
+            updateData["payout.technicianAmount"] = booking.pricing.subtotal - booking.pricing.platformFee;
+        }
+
+        transaction.update(bookingRef, updateData);
     });
 
     if (orderData.technicianId) {
@@ -472,7 +478,7 @@ async function processTechnicianWalletCredit(
         // Re-read order inside transaction for idempotency
         const orderRef = db.collection("razorpayOrders").doc(orderId);
         const orderDoc = await transaction.get(orderRef);
-        
+
         if (orderDoc.exists && orderDoc.data()?.status === "paid") {
             console.log(`${LOG_PREFIX} duplicate_ignored - Order already paid in transaction: ${orderId}`);
             throw new Error("IDEMPOTENCY_CHECK_FAILED");

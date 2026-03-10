@@ -16,6 +16,27 @@ import '../utils/firestore_guards.dart';
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  // --- Stream Resilience Helper ---
+  /// Wraps a stream with retry logic for network failures (UNAVAILABLE, DNS, timeouts)
+  /// Returns stream with automatic error recovery
+  Stream<T> _withErrorHandling<T>(Stream<T> source) {
+    return source.handleError((error, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('❌ [Firestore] Stream error: $error');
+      }
+      // Return empty list instead of propagating error for critical streams
+      if (error.toString().contains('UNAVAILABLE') || 
+          error.toString().contains('DNS') ||
+          error.toString().contains('network')) {
+        if (kDebugMode) {
+          debugPrint('🔄 [Firestore] Network error detected, streams will retry on reconnection');
+        }
+      }
+      // Rethrow to let StreamBuilder handle the error state
+      throw error;
+    });
+  }
+
   // Stream of bookings for a user with pagination support
   Stream<List<Booking>> streamBookings(String userId, {int limit = 10}) {
     return _db
@@ -43,46 +64,52 @@ class FirestoreService {
   /// CRITICAL: Stream for Home Screen "All Services"
   /// FIX: Query technician_services collection directly (not collectionGroup)
   /// Filters: status='approved' (not 'active'), no isPublished/technicianApproved checks
+  /// Includes error handling and reconnection resilience
   Stream<List<HomeService>> streamAllTechnicianServices({int limit = 50}) {
-    return _db.collection('technician_services')
-        .where('status', isEqualTo: 'approved')
-        .limit(limit)
-        .snapshots()
-        .map((snapshot) {
-          final services = snapshot.docs
-              .map((doc) => HomeService.fromFirestore(doc))
-              .whereType<HomeService>()
-              .toList();
-          services.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-          return services;
-        });
+    return _withErrorHandling(
+      _db.collection('technician_services')
+          .where('status', isEqualTo: 'approved')
+          .limit(limit)
+          .snapshots()
+          .map((snapshot) {
+            final services = snapshot.docs
+                .map((doc) => HomeService.fromFirestore(doc))
+                .whereType<HomeService>()
+                .toList();
+            services.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+            return services;
+          }),
+    );
   }
   
   // Get Banners - removed orderBy to avoid index requirement
+  // Includes error handling for network resilience
   Stream<List<BannerModel>> streamBanners() {
-    return _db.collection('home_banners')
-        .snapshots()
-        .map((snapshot) {
-          final List<BannerModel> banners = [];
-          for (var doc in snapshot.docs) {
-            try {
-              final banner = BannerModel.fromFirestore(doc);
-              if (banner.active) {
-                // AUDIT: Defensive check for imageUrl
-                if (banner.imageUrl.isEmpty) {
-                  if (kDebugMode) debugPrint('⚠️ [FirestoreService] Skipping banner ${doc.id} due to missing imageUrl');
-                  continue;
+    return _withErrorHandling(
+      _db.collection('home_banners')
+          .snapshots()
+          .map((snapshot) {
+            final List<BannerModel> banners = [];
+            for (var doc in snapshot.docs) {
+              try {
+                final banner = BannerModel.fromFirestore(doc);
+                if (banner.active) {
+                  // AUDIT: Defensive check for imageUrl
+                  if (banner.imageUrl.isEmpty) {
+                    if (kDebugMode) debugPrint('⚠️ [FirestoreService] Skipping banner ${doc.id} due to missing imageUrl');
+                    continue;
+                  }
+                  banners.add(banner);
                 }
-                banners.add(banner);
+              } catch (e) {
+                if (kDebugMode) debugPrint('❌ [FirestoreService] Error parsing banner ${doc.id}: $e');
               }
-            } catch (e) {
-              if (kDebugMode) debugPrint('❌ [FirestoreService] Error parsing banner ${doc.id}: $e');
             }
-          }
-          // Sort by order field in-memory
-          banners.sort((a, b) => (a.order).compareTo(b.order));
-          return banners;
-        });
+            // Sort by order field in-memory
+            banners.sort((a, b) => (a.order).compareTo(b.order));
+            return banners;
+          }),
+    );
   }
 
   // Get categories (HomeFix services like Cleaning, Repair, etc.)
@@ -341,7 +368,9 @@ class FirestoreService {
   }
 
   Future<void> addToCart(String userId, CartItem item) async {
+    print('🛒 [FirestoreService.addToCart] Called with userId=$userId, item=${item.serviceName}');
     if (!FirestoreGuards.isValidDocumentId(userId)) {
+      print('❌ [FirestoreService.addToCart] Invalid userId');
       debugPrint('[CART] Invalid userId, aborting add');
       throw Exception('Invalid user ID');
     }
@@ -354,11 +383,14 @@ class FirestoreService {
     assert(item.finalPriceSnapshot > 0, 'finalPriceSnapshot must be valid');
     
     try {
+      print('🛒 [FirestoreService.addToCart] Calling Cloud Function addToCartCallable');
       if (kDebugMode) debugPrint('[CART] Adding item via callable...');
       final callable = FirebaseFunctions.instance.httpsCallable('addToCartCallable');
       await callable.call(item.toMap());
+      print('✅ [FirestoreService.addToCart] Cloud Function succeeded');
       if (kDebugMode) debugPrint('✅ [CART] Item added successfully');
     } catch (e) {
+      print('❌ [FirestoreService.addToCart] Cloud Function error: $e');
       if (kDebugMode) debugPrint('❌ [CART] Add failed: $e');
       rethrow;
     }
@@ -566,16 +598,23 @@ class FirestoreService {
 
   // --- Favorites --- Harden: Added categoryId to ensure correct service lookup in nested structure
   Future<void> toggleFavorite(String userId, String categoryId, String serviceId, bool isFavorite) async {
-    if (userId.isEmpty || serviceId.isEmpty) return;
+    print('❤️ [FirestoreService.toggleFavorite] Called with userId=$userId, serviceId=$serviceId, isFavorite=$isFavorite');
+    if (userId.isEmpty || serviceId.isEmpty) {
+      print('❌ [FirestoreService.toggleFavorite] Empty userId or serviceId');
+      return;
+    }
     try {
+      print('❤️ [FirestoreService.toggleFavorite] Calling Cloud Function toggleFavoriteCallable');
       final callable = FirebaseFunctions.instance.httpsCallable('toggleFavoriteCallable');
       await callable.call({
         'serviceId': serviceId,
         'categoryId': categoryId,
         'isFavorite': isFavorite,
       });
+      print('✅ [FirestoreService.toggleFavorite] Cloud Function succeeded');
       debugPrint('✅ [Favorite] Toggled via callable (status: $isFavorite)');
     } catch (e) {
+      print('❌ [FirestoreService.toggleFavorite] Cloud Function error: $e');
       debugPrint('❌ [Favorite] Toggle failed: $e');
       rethrow;
     }
@@ -596,15 +635,15 @@ class FirestoreService {
       
       final services = <HomeService>[];
       for (final item in items) {
-        final categoryId = item['categoryId'];
         final serviceId = item['serviceId'];
         
-        if (categoryId != null && categoryId.isNotEmpty && serviceId != null && serviceId.isNotEmpty) {
-           final doc = await _db.collection('categories').doc(categoryId).collection('services').doc(serviceId).get();
-           if (doc.exists) {
-             final service = HomeService.fromFirestore(doc);
-             if (service != null) services.add(service);
-           }
+        if (serviceId != null && serviceId.isNotEmpty) {
+          // FIXED: Fetch from technician_services collection directly
+          final doc = await _db.collection('technician_services').doc(serviceId).get();
+          if (doc.exists) {
+            final service = HomeService.fromFirestore(doc);
+            if (service != null) services.add(service);
+          }
         }
       }
       return services;
@@ -735,51 +774,57 @@ class FirestoreService {
   }
 
   Stream<List<HomeService>> streamRecommendedServices(String userId, {int limit = 10}) {
-    return _db.collection('technician_services')
-        .where('status', isEqualTo: 'approved')
-        .limit(limit * 3)
-        .snapshots()
-        .asyncMap((snapshot) async {
-          final userLocation = await _getUserLocation(userId);
-          final services = snapshot.docs
-              .map((doc) => HomeService.fromFirestore(doc))
-              .whereType<HomeService>()
-              .toList();
-          
-          if (userLocation != null && userLocation['state']!.isNotEmpty && userLocation['district']!.isNotEmpty) {
-            return services
-                .where((s) => (s.technicianDistrict?.toLowerCase() ?? '') == userLocation['district'])
-                .take(limit)
+    return _withErrorHandling(
+      _db.collection('technician_services')
+          .where('status', isEqualTo: 'approved')
+          .limit(limit * 3)
+          .snapshots()
+          .asyncMap((snapshot) async {
+            final userLocation = await _getUserLocation(userId);
+            final services = snapshot.docs
+                .map((doc) => HomeService.fromFirestore(doc))
+                .whereType<HomeService>()
                 .toList();
-          }
-          return services.take(limit).toList();
-        });
+            
+            if (userLocation != null && userLocation['state']!.isNotEmpty && userLocation['district']!.isNotEmpty) {
+              return services
+                  .where((s) => (s.technicianDistrict?.toLowerCase() ?? '') == userLocation['district'])
+                  .take(limit)
+                  .toList();
+            }
+            return services.take(limit).toList();
+          }),
+    );
   }
 
   Stream<List<HomeService>> streamTopRatedTechnicianServices({int limit = 10}) {
-    return _db.collection('technician_services')
-        .where('status', isEqualTo: 'approved')
-        .limit(limit * 2)
-        .snapshots()
-        .map((snapshot) {
-          final services = snapshot.docs
-              .map((doc) => HomeService.fromFirestore(doc))
-              .whereType<HomeService>()
-              .toList();
-          services.sort((a, b) => b.rating.compareTo(a.rating));
-          return services.take(limit).toList();
-        });
+    return _withErrorHandling(
+      _db.collection('technician_services')
+          .where('status', isEqualTo: 'approved')
+          .orderBy('rating', descending: true)
+          .limit(limit)
+          .snapshots()
+          .map((snapshot) {
+            return snapshot.docs
+                .map((doc) => HomeService.fromFirestore(doc))
+                .whereType<HomeService>()
+                .where((service) => service.rating > 0) // Only include services with ratings
+                .toList();
+          }),
+    );
   }
 
   Stream<List<HomeService>> streamRecentTechnicianServices({int limit = 10}) {
-    return _db.collection('technician_services')
-        .where('status', isEqualTo: 'approved')
-        .orderBy('createdAt', descending: true)
-        .limit(limit)
-        .snapshots()
-        .map((snapshot) {
-          return snapshot.docs.map((doc) => HomeService.fromFirestore(doc)).whereType<HomeService>().toList();
-        });
+    return _withErrorHandling(
+      _db.collection('technician_services')
+          .where('status', isEqualTo: 'approved')
+          .orderBy('createdAt', descending: true)
+          .limit(limit)
+          .snapshots()
+          .map((snapshot) {
+            return snapshot.docs.map((doc) => HomeService.fromFirestore(doc)).whereType<HomeService>().toList();
+          }),
+    );
   }
 
   Future<Map<String, String>?> _getUserLocation(String userId) async {

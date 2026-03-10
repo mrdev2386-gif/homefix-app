@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:customer_app/core/services/firestore_service.dart';
 import 'package:customer_app/core/services/auth_service.dart';
 import 'package:customer_app/core/models/service.dart';
-import '../../dashboard/widgets/premium_service_card.dart';
+import '../../dashboard/widgets/unified_service_card.dart';
 
 class FavoriteServicesScreen extends StatelessWidget {
   const FavoriteServicesScreen({super.key});
@@ -63,7 +63,7 @@ class FavoriteServicesScreen extends StatelessWidget {
             ),
             itemCount: services.length,
             itemBuilder: (context, index) {
-              return PremiumServiceCard(service: services[index]);
+              return UniversalServiceCard(service: services[index], isGrid: true);
             },
           );
         },

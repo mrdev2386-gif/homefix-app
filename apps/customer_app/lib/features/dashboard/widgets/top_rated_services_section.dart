@@ -80,9 +80,9 @@ class TopRatedServicesSection extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         
-        // Horizontal Scroll
+        // Horizontal Scroll with PageView
         SizedBox(
-          height: 200,
+          height: 280,
           child: StreamBuilder<ServiceResult<List<HomeService>>>(
             stream: CategoryService().getTopRatedServicesResult(limit: limit),
             builder: (context, snapshot) {
@@ -108,14 +108,19 @@ class TopRatedServicesSection extends StatelessWidget {
   }
 
   Widget _buildHorizontalList(List<HomeService> services) {
-    return ListView.builder(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      physics: const BouncingScrollPhysics(),
-      itemCount: services.length,
-      itemBuilder: (context, index) {
-        return _PremiumRatedCard(service: services[index]);
-      },
+    return SizedBox(
+      height: 280,
+      child: PageView.builder(
+        controller: PageController(viewportFraction: 0.45), // Show 2.2 cards
+        physics: const BouncingScrollPhysics(),
+        itemCount: services.length,
+        itemBuilder: (context, index) {
+          return Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: _PremiumRatedCard(service: services[index]),
+          );
+        },
+      ),
     );
   }
 
@@ -212,7 +217,7 @@ class _PremiumRatedCardState extends State<_PremiumRatedCard> {
         }
       },
       child: Container(
-        width: 150,
+        width: double.infinity, // Use full available width
         margin: const EdgeInsets.only(right: 12),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -231,12 +236,12 @@ class _PremiumRatedCardState extends State<_PremiumRatedCard> {
             // Image with Rating Badge
             Stack(
               children: [
-                // Image - use SizedBox with fixed dimensions, no double.infinity
+                // Image - use SizedBox with responsive dimensions
                 ClipRRect(
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                   child: SizedBox(
-                    width: 150,
-                    height: 100,
+                    width: double.infinity,
+                    height: 140,
                     child: SafeNetworkImage(
                       imageUrl: widget.service.imageUrl,
                       fit: BoxFit.cover,

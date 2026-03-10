@@ -57,9 +57,14 @@ class FavoritesProvider with ChangeNotifier {
   
   /// Toggle favorite with optimistic UI update and haptic feedback
   Future<void> toggleFavorite(String serviceId, String categoryId) async {
-    if (_userId == null) return;
+    print('❤️ [FavoritesProvider.toggleFavorite] Called for serviceId=$serviceId, categoryId=$categoryId');
+    if (_userId == null) {
+      print('❌ [FavoritesProvider.toggleFavorite] userId is null!');
+      return;
+    }
     
     final wasFavorite = _favoriteServices.containsKey(serviceId);
+    print('❤️ [FavoritesProvider.toggleFavorite] wasFavorite=$wasFavorite');
     
     // Optimistic update
     if (wasFavorite) {
@@ -67,13 +72,17 @@ class FavoritesProvider with ChangeNotifier {
     } else {
       _favoriteServices[serviceId] = categoryId;
     }
+    print('❤️ [FavoritesProvider.toggleFavorite] Optimistic UI updated, notifying listeners');
     notifyListeners();
     
     HapticFeedback.lightImpact();
     
     try {
+      print('❤️ [FavoritesProvider.toggleFavorite] Calling firestore_service.toggleFavorite()');
       await _firestoreService.toggleFavorite(_userId!, categoryId, serviceId, !wasFavorite);
+      print('✅ [FavoritesProvider.toggleFavorite] Success');
     } catch (error) {
+      print('❌ [FavoritesProvider.toggleFavorite] Error: $error');
       debugPrint('Error toggling favorite: $error');
       // Revert on failure
       if (wasFavorite) {

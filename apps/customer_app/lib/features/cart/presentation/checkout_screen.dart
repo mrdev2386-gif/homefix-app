@@ -66,6 +66,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _finishBooking() async {
+    print("BOOKING CONFIRM BUTTON CLICKED");
+    
     // ── Duplicate-submit guard ──────────────────────────────────────────────
     if (_submitLock || _isProcessing) {
       debugPrint('⚠️ [Checkout] Submit already in progress – ignoring duplicate tap');
@@ -697,84 +699,271 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildSummaryCard('Service Details', [
-            ...checkout.items.map((item) => Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          // Service Details Card
+          _buildModernCard(
+            'Service Details',
+            Icons.build_rounded,
+            AppTheme.primaryColor,
+            Column(
               children: [
-                Expanded(child: Text('${item.serviceName} x${item.quantity}', style: GoogleFonts.outfit())),
-                Text('₹${item.totalPrice.toStringAsFixed(0)}', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-              ],
-            )),
-          ]),
-          const SizedBox(height: 16),
-          _buildSummaryCard('Location', [
-            Row(
-              children: [
-                const Icon(Icons.location_on, size: 16, color: AppTheme.primaryColor),
-                const SizedBox(width: 8),
-                Expanded(child: Text(checkout.selectedAddress?.fullAddress ?? '', style: GoogleFonts.outfit(fontSize: 13))),
+                ...checkout.items.map((item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          width: 50,
+                          height: 50,
+                          color: Colors.grey[200],
+                          child: item.serviceImage.isNotEmpty
+                              ? Image.network(item.serviceImage, fit: BoxFit.cover)
+                              : Icon(Icons.build, color: Colors.grey[400]),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.serviceName,
+                              style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 14),
+                            ),
+                            if (item.subServiceName != null)
+                              Text(
+                                item.subServiceName!,
+                                style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 12),
+                              ),
+                            Text(
+                              'Qty: ${item.quantity}',
+                              style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        '₹${item.totalPrice.toStringAsFixed(0)}',
+                        style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 16, color: AppTheme.primaryColor),
+                      ),
+                    ],
+                  ),
+                )),
               ],
             ),
-          ]),
+          ),
           const SizedBox(height: 16),
-          _buildSummaryCard('Schedule', [
+          
+          // Schedule Card
+          _buildModernCard(
+            'Schedule',
+            Icons.schedule_rounded,
+            Colors.orange,
             Row(
               children: [
-                const Icon(Icons.access_time_filled, size: 16, color: AppTheme.primaryColor),
-                const SizedBox(width: 8),
-                Text(
-                  checkout.selectedDate != null 
-                    ? '${DateFormat('EEE, d MMM').format(checkout.selectedDate!)} at ${checkout.selectedTimeSlot}'
-                    : '',
-                  style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.bold),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.calendar_today, color: Colors.orange, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        checkout.selectedDate != null 
+                            ? DateFormat('EEEE, d MMMM yyyy').format(checkout.selectedDate!)
+                            : 'Date not selected',
+                        style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 14),
+                      ),
+                      Text(
+                        checkout.selectedTimeSlot ?? 'Time not selected',
+                        style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 13),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-          ]),
+          ),
+          const SizedBox(height: 16),
+          
+          // Location Card
+          _buildModernCard(
+            'Service Location',
+            Icons.location_on_rounded,
+            Colors.green,
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.home, color: Colors.green, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        checkout.selectedAddress?.label ?? 'Address',
+                        style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 14),
+                      ),
+                      Text(
+                        checkout.selectedAddress?.fullAddress ?? 'No address selected',
+                        style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 13),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.map, color: Colors.blue, size: 16),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 24),
-          _buildPriceBreakdown(checkout),
+          
+          // Price Breakdown Card
+          _buildPriceBreakdownCard(checkout),
         ],
       ),
     );
   }
 
-  Widget _buildSummaryCard(String title, List<Widget> children) {
+  Widget _buildModernCard(String title, IconData icon, Color iconColor, Widget child) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 14, color: Colors.grey)),
-          const SizedBox(height: 12),
-          ...children,
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: iconColor, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: GoogleFonts.outfit(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                  color: AppTheme.textColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          child,
         ],
       ),
     );
   }
 
-  Widget _buildPriceBreakdown(CheckoutProvider checkout) {
+  Widget _buildPriceBreakdownCard(CheckoutProvider checkout) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.receipt_long, color: AppTheme.primaryColor, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Price Breakdown',
+                style: GoogleFonts.outfit(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                  color: AppTheme.textColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
           _priceRow('Subtotal', checkout.subtotal),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           _priceRow('Taxes & Fee (5%)', checkout.taxes),
-          const Divider(height: 24),
+          const SizedBox(height: 16),
+          Container(
+            height: 1,
+            color: Colors.grey[200],
+          ),
+          const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Total Amount', style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 18)),
-              Text('₹${checkout.grandTotal.toStringAsFixed(0)}', style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 22, color: AppTheme.primaryColor)),
+              Text(
+                'Total Amount',
+                style: GoogleFonts.outfit(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                  color: AppTheme.textColor,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '₹${checkout.grandTotal.toStringAsFixed(0)}',
+                  style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 20,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+              ),
             ],
           ),
         ],
@@ -786,8 +975,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: GoogleFonts.outfit(color: Colors.grey)),
-        Text('₹${val.toStringAsFixed(2)}', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+        Text(
+          label,
+          style: GoogleFonts.outfit(
+            color: Colors.grey[600],
+            fontSize: 14,
+          ),
+        ),
+        Text(
+          '₹${val.toStringAsFixed(0)}',
+          style: GoogleFonts.outfit(
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
+            color: AppTheme.textColor,
+          ),
+        ),
       ],
     );
   }
@@ -800,36 +1002,101 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (_currentStep == 2) canContinue = true;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 40),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
       decoration: BoxDecoration(
         color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -2))],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Step ${_currentStep + 1} of 3', style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey)),
-              Text(_steps[_currentStep], style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 18)),
-            ],
-          ),
-          SizedBox(
-            width: 160,
-            height: 50,
-            child: ElevatedButton(
-              onPressed: canContinue && !_isProcessing && !_submitLock ? _nextStep : null,
-              style: ElevatedButton.styleFrom(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              ),
-              child: _isProcessing 
-                ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : Text(_currentStep == 2 ? 'Place Booking' : 'Continue'),
-            ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
           ),
         ],
+      ),
+      child: SafeArea(
+        child: Row(
+          children: [
+            // Step info
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Step ${_currentStep + 1} of 3',
+                    style: GoogleFonts.outfit(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _steps[_currentStep],
+                    style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 18,
+                      color: AppTheme.textColor,
+                    ),
+                  ),
+                  if (_currentStep == 2)
+                    Text(
+                      '₹${checkout.grandTotal.toStringAsFixed(0)}',
+                      style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                        color: AppTheme.primaryColor,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            // Action button
+            SizedBox(
+              width: 160,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: canContinue && !_isProcessing && !_submitLock ? _nextStep : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  disabledBackgroundColor: Colors.grey[300],
+                ),
+                child: _isProcessing 
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (_currentStep == 2)
+                          const Icon(Icons.check_circle_outline, size: 18)
+                        else
+                          const Icon(Icons.arrow_forward, size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          _currentStep == 2 ? 'Confirm Booking' : 'Continue',
+                          style: GoogleFonts.outfit(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

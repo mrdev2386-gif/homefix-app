@@ -156,6 +156,17 @@ class HomeService {
       offerPrice = double.tryParse(offerPriceData);
     }
 
+    // DEBUG: Log price information for verification
+    if (kDebugMode) {
+      final hasDiscount = offerPrice != null && offerPrice > 0 && offerPrice < price;
+      if (hasDiscount) {
+        final discountPercent = ((price - offerPrice!) / price * 100).toInt();
+        debugPrint('💰 [SERVICE_PRICES] id=$id | basePrice=$price | offerPrice=$offerPrice | discount=$discountPercent%');
+      } else if (price > 0) {
+        debugPrint('💰 [SERVICE_PRICES] id=$id | price=$price (no offer)');
+      }
+    }
+
     final bool isActive = data['isActive'] ?? true;
     final String finalCategory = categoryId.toString();
     final String finalCategoryName = (data['categoryName'] ?? data['category'] ?? 'General').toString();

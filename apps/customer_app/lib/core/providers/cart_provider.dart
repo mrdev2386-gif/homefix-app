@@ -62,10 +62,17 @@ class CartProvider with ChangeNotifier {
   }
 
   Future<void> addItem(CartItem item) async {
-    if (_userId == null) return;
+    print('🛒 [CartProvider.addItem] Called with item: ${item.serviceName}');
+    if (_userId == null) {
+      print('❌ [CartProvider.addItem] userId is null!');
+      return;
+    }
     try {
+      print('🛒 [CartProvider.addItem] Calling firestore_service.addToCart()');
       await _firestoreService.addToCart(_userId!, item);
+      print('✅ [CartProvider.addItem] Success');
     } catch (e) {
+      print('❌ [CartProvider.addItem] Error: $e');
       if (kDebugMode) debugPrint('❌ [CartProvider] addItem failed: $e');
       rethrow;
     }

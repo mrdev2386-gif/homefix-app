@@ -525,6 +525,8 @@ export interface TechnicianServiceData {
     description: string;
     tags?: string[];
     price: number;
+    basePrice?: number;  // FIXED: For strikethrough display
+    offerPrice?: number; // FIXED: For discount display
     durationMinutes: number;
     imageUrl: string;
 }
@@ -707,6 +709,8 @@ export const createTechnicianService = onCall(
 
             // Pricing & Duration
             price: data.price,
+            basePrice: data.basePrice || data.price,  // FIXED: Store basePrice separately
+            offerPrice: data.offerPrice || null,      // FIXED: Store offerPrice if provided
             durationMinutes: data.durationMinutes,
 
             // Media

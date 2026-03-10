@@ -723,55 +723,18 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildRecommendedSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 28, 16, 16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Recommendation',
-                style: GoogleFonts.outfit(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textColor,
-                ),
-              ),
-              Text(
-                'View All',
-                style: GoogleFonts.outfit(
-                  color: AppTheme.primaryColor,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const RecommendedServicesSection(),
-      ],
+    // RecommendedServicesSection already displays its own title "Recommended For You"
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 12),
+      child: RecommendedServicesSection(),
     );
   }
 
   Widget _buildTopRatedSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 28, 16, 16),
-          child: Text(
-            'Top Rated',
-            style: GoogleFonts.outfit(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.textColor,
-            ),
-          ),
-        ),
-        const TopRatedRealServicesSection(),
-      ],
+    // TopRatedRealServicesSection already displays its own title "Top Rated Services"
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 12),
+      child: TopRatedRealServicesSection(),
     );
   }
 

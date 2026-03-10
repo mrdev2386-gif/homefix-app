@@ -132,7 +132,10 @@ class FunctionsService {
       final Map<String, dynamic> data = {
         'name': name,
         'category': category,
+        'categoryId': category,
         'price': price,
+        'basePrice': originalPrice ?? price,
+        'offerPrice': offerPrice ?? price,
         'imageUrl': imageUrl,
         'description': description ?? 'Professional service provided by experienced technician',
       };

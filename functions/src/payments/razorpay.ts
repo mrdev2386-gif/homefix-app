@@ -82,7 +82,7 @@ async function createRazorpayOrderDoc(
     }
 ): Promise<RazorpayOrderData> {
     const orderRef = db.collection('razorpayOrders').doc(orderId);
-    
+
     const orderData: RazorpayOrderData = {
         orderId,
         amount,
@@ -238,7 +238,7 @@ export const createPaymentOrder = functions.https.onCall(async (data, context) =
         throw new functions.https.HttpsError('not-found', 'Booking not found');
     }
 
-    const booking = bookingDoc.data() as Booking;
+    const booking: any = bookingDoc.data();
 
     // Validation 1: User must be booking owner
     if (booking.customerId !== userId) {
@@ -254,33 +254,29 @@ export const createPaymentOrder = functions.https.onCall(async (data, context) =
         );
     }
 
-    // Validation 3: Pricing must be locked
-    if (!booking.pricing.pricingLockedAt) {
-        throw new functions.https.HttpsError(
-            'failed-precondition',
-            'Pricing is not locked. Customer approval required first.'
-        );
-    }
-
-    // Validation 4: Check if already paid
-    if (booking.payment && booking.payment.status === 'paid') {
+    // Validation 3: Check if already paid
+    const isPaid = (booking.payment && booking.payment.status === 'paid') || booking.paymentStatus === 'paid';
+    if (isPaid) {
         throw new functions.https.HttpsError('already-exists', 'This booking has already been paid');
     }
 
     // Validation 5: Check if order already exists and is still valid
-    if (booking.payment?.razorpayOrderId) {
+    const existingOrderId = booking.payment?.razorpayOrderId || booking.razorpayOrderId;
+    const bookingTotal = booking.pricing?.total || booking.finalAmount || booking.price;
+
+    if (existingOrderId) {
         // Order already exists, return it
         return {
             success: true,
-            orderId: booking.payment.razorpayOrderId,
-            amount: booking.pricing.total,
+            orderId: existingOrderId,
+            amount: bookingTotal,
             currency: 'INR',
             bookingNumber: booking.bookingNumber
         };
     }
 
     // Get amount from LOCKED pricing (NEVER trust client)
-    const amount = Math.round(booking.pricing.total * 100); // Razorpay expects paise
+    const amount = Math.round(bookingTotal * 100); // Razorpay expects paise
 
     if (amount <= 0) {
         throw new functions.https.HttpsError('invalid-argument', 'Invalid payment amount');
@@ -306,7 +302,7 @@ export const createPaymentOrder = functions.https.onCall(async (data, context) =
         });
 
         // Store order in razorpayOrders collection as SOURCE OF TRUTH
-        await createRazorpayOrderDoc(order.id, booking.pricing.total, {
+        await createRazorpayOrderDoc(order.id, bookingTotal, {
             bookingId,
             technicianId: booking.technicianId
         });
@@ -318,14 +314,16 @@ export const createPaymentOrder = functions.https.onCall(async (data, context) =
             'payment.status': 'processing',
             'payment.currency': 'INR',
             'payment.receipt': booking.bookingNumber,
-            'payment.retryCount': admin.firestore.FieldValue.increment(1)
+            'payment.retryCount': admin.firestore.FieldValue.increment(1),
+            'razorpayOrderId': order.id,
+            'paymentStatus': 'processing'
         });
 
         // Log the order creation
         await db.collection('payment_logs').add({
             bookingId,
             orderId: order.id,
-            amount: booking.pricing.total,
+            amount: bookingTotal,
             currency: 'INR',
             action: 'order_created',
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -335,7 +333,7 @@ export const createPaymentOrder = functions.https.onCall(async (data, context) =
         return {
             success: true,
             orderId: order.id,
-            amount: booking.pricing.total,
+            amount: bookingTotal,
             currency: 'INR',
             bookingNumber: booking.bookingNumber,
             customerName: booking.customerName,
@@ -656,7 +654,7 @@ export const verifyPayment = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('not-found', 'Booking not found');
     }
 
-    const booking = bookingDoc.data() as Booking;
+    const booking: any = bookingDoc.data();
 
     // Verify user is booking owner
     if (booking.customerId !== userId) {
@@ -664,7 +662,8 @@ export const verifyPayment = functions.https.onCall(async (data, context) => {
     }
 
     // Verify order ID matches
-    if (booking.payment?.razorpayOrderId !== razorpayOrderId) {
+    const existingOrderId = booking.payment?.razorpayOrderId || booking.razorpayOrderId;
+    if (existingOrderId !== razorpayOrderId) {
         throw new functions.https.HttpsError('invalid-argument', 'Order ID mismatch');
     }
 
@@ -680,9 +679,12 @@ export const verifyPayment = functions.https.onCall(async (data, context) => {
     }
 
     // Check if already processed
-    if (booking.payment.status === 'paid') {
+    const isPaid = (booking.payment && booking.payment.status === 'paid') || booking.paymentStatus === 'paid';
+    if (isPaid) {
         return { success: true, message: 'Payment already processed' };
     }
+
+    const bookingTotal = booking.pricing?.total || booking.finalAmount || booking.price;
 
     // Fetch payment details from Razorpay to get amount
     try {
@@ -692,15 +694,15 @@ export const verifyPayment = functions.https.onCall(async (data, context) => {
         const amount = (payment.amount as number) / 100; // Convert paise to rupees
 
         // Verify amount
-        if (Math.abs(amount - booking.pricing.total) > 0.01) {
+        if (Math.abs(amount - bookingTotal) > 0.01) {
             throw new functions.https.HttpsError('invalid-argument', 'Amount mismatch');
         }
 
         // Update booking
-        const isNewFlow = booking.status === 'awaiting_payment';
+        const isNewFlow = booking.status === 'awaiting_payment' || booking.status === 'pending_admin' || booking.status === 'pending';
         const newStatus = isNewFlow ? 'confirmed' : 'completed';
 
-        await bookingRef.update({
+        const updateData: any = {
             'payment.status': 'paid',
             'payment.razorpayPaymentId': razorpayPaymentId,
             'payment.razorpaySignature': razorpaySignature,
@@ -709,14 +711,20 @@ export const verifyPayment = functions.https.onCall(async (data, context) => {
             'payment.paidAt': admin.firestore.FieldValue.serverTimestamp(),
             'status': newStatus,
             'updatedAt': admin.firestore.FieldValue.serverTimestamp(),
+            'paymentStatus': 'paid',
 
             // Initialize payout
             'payout.status': 'pending',
-            'payout.totalAmount': booking.pricing.total,
-            'payout.platformFee': booking.pricing.platformFee,
-            'payout.gst': booking.pricing.gst,
-            'payout.technicianAmount': booking.pricing.subtotal - booking.pricing.platformFee
-        });
+            'payout.totalAmount': bookingTotal,
+        };
+
+        if (booking.pricing) {
+            updateData['payout.platformFee'] = booking.pricing.platformFee;
+            updateData['payout.gst'] = booking.pricing.gst;
+            updateData['payout.technicianAmount'] = booking.pricing.subtotal - booking.pricing.platformFee;
+        }
+
+        await bookingRef.update(updateData);
 
         // Log verification
         await db.collection('payment_logs').add({

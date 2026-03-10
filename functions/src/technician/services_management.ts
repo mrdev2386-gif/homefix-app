@@ -24,28 +24,28 @@ const TOTAL_ONBOARDING_STEPS = 4;
 // NORMALIZED: Only count required steps: personalDetails, serviceCategories, portfolio, verification
 function calculateProfileCompletion(technician: any): number {
   // SECURITY: Always calculate dynamically, never trust stored values
-  
+
   const stepsCompleted = technician.stepsCompleted || {};
   let completedRequiredSteps = 0;
   const totalRequiredSteps = 4; // personalDetails, serviceCategories, portfolio, verification
-  
+
   // Check required steps only - NORMALIZED FIELD NAMES
   if (stepsCompleted.personalDetails === true) {
     completedRequiredSteps++;
   }
-  
+
   if (stepsCompleted.serviceCategories === true) {
     completedRequiredSteps++;
   }
-  
+
   if (stepsCompleted.portfolio === true) {
     completedRequiredSteps++;
   }
-  
+
   if (stepsCompleted.verification === true) {
     completedRequiredSteps++;
   }
-  
+
   const completion = Math.round((completedRequiredSteps / totalRequiredSteps) * 100);
   console.log(`[PROFILE COMPLETION] Calculated: ${completion}% (${completedRequiredSteps}/${totalRequiredSteps})`);
   return completion;
@@ -54,6 +54,8 @@ function calculateProfileCompletion(technician: any): number {
 interface ServiceInput {
   name: string;
   price: number;
+  basePrice?: number;
+  offerPrice?: number;
   imageUrl: string;
   category: string;
   description?: string;
@@ -103,7 +105,7 @@ export const addTechnicianService = onCall(
     }
 
     const technicianId = request.auth.uid;
-    const { name, price, imageUrl, category, description, urgentBooking, nightService } = request.data;
+    const { name, price, basePrice, offerPrice, imageUrl, category, description, urgentBooking, nightService } = request.data;
 
     // SECURITY FIX: Sanitize inputs
     const sanitizedName = sanitizeString(name || '', 200);
@@ -131,24 +133,24 @@ export const addTechnicianService = onCall(
     }
 
     const techData = techDoc.data()!;
-    
+
     // APPROVAL VALIDATION: Check profile completion and approval status
     const profileCompletion = calculateProfileCompletion(techData);
-    
+
     console.log(`[TECH STATUS] ${techData.status}`);
     console.log(`[PROFILE COMPLETION] ${profileCompletion}`);
     console.log(`[SERVICE ALLOWED] ${techData.status === 'approved'}`);
-    
+
     if (profileCompletion < 100) {
       throw new https.HttpsError(
         "failed-precondition",
         "Please complete your profile to 100% before listing services."
       );
     }
-    
+
     // Use consistent approval check: status == "approved" ONLY
     const isApproved = techData.status === "approved";
-    
+
     if (!isApproved) {
       if (techData.profileRejected) {
         throw new https.HttpsError(
@@ -161,7 +163,7 @@ export const addTechnicianService = onCall(
         "Complete profile and wait for admin approval."
       );
     }
-    
+
     const district = techData.district || techData.districtNormalized;
     const state = techData.state || techData.stateNormalized;
 
@@ -171,7 +173,7 @@ export const addTechnicianService = onCall(
         "Your profile must have a district set. Please update your profile."
       );
     }
-    
+
     if (!state) {
       throw new https.HttpsError(
         "failed-precondition",
@@ -187,6 +189,9 @@ export const addTechnicianService = onCall(
       id: serviceId,
       name: sanitizedName,
       price,
+      basePrice: basePrice ?? price,
+      offerPrice: offerPrice ?? price,
+      categoryId: sanitizedCategory,
       imageUrl: imageUrl.trim(),
       category: sanitizedCategory,
       description: sanitizedDescription,

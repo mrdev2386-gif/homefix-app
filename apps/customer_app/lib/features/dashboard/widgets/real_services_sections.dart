@@ -7,7 +7,11 @@ import 'package:customer_app/core/theme/app_theme.dart';
 import 'package:customer_app/core/models/service.dart';
 import 'package:customer_app/core/services/auth_service.dart';
 import 'package:customer_app/core/services/firestore_service.dart';
+import 'package:customer_app/core/providers/cart_provider.dart';
+import 'package:customer_app/core/providers/favorites_provider.dart';
+import 'package:customer_app/core/models/cart_item.dart';
 import '../../../core/widgets/safe_network_image.dart';
+import 'unified_service_card.dart';
 import '../../services/presentation/service_details_screen.dart';
 
 // --- Shared Section Widget Builder ---
@@ -120,14 +124,14 @@ class _BaseServicesSection extends StatelessWidget {
 
   Widget _buildHorizontalList(List<HomeService> services) {
     return SizedBox(
-      height: 230,
+      height: 270,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         physics: const BouncingScrollPhysics(),
         itemCount: services.length,
         itemBuilder: (context, index) {
-          return _PremiumServiceCard(service: services[index]);
+          return UniversalServiceCard(service: services[index]);
         },
       ),
     );
@@ -148,7 +152,7 @@ class _BaseServicesSection extends StatelessWidget {
         ),
         itemCount: services.length,
         itemBuilder: (context, index) {
-          return _PremiumServiceCard(service: services[index], isGrid: true);
+          return UniversalServiceCard(service: services[index], isGrid: true);
         },
       ),
     );
@@ -269,12 +273,121 @@ class TopRatedRealServicesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _BaseServicesSection(
-      title: 'Top Rated Services',
-      titleIcon: Icons.star_rounded,
-      iconGradient: const [Color(0xFFFF9800), Color(0xFFFF5722)],
-      limit: 10,
-      streamProvider: (fs, limit) => fs.streamTopRatedTechnicianServices(limit: limit),
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    return StreamBuilder<List<HomeService>>(
+      stream: firestoreService.streamTopRatedTechnicianServices(limit: 20),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFF9800), Color(0xFFFF5722)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.star_rounded, color: Colors.white, size: 16),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Top Rated Services',
+                      style: GoogleFonts.outfit(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.textColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 280,
+                child: PageView.builder(
+                  controller: PageController(viewportFraction: 0.45), // Show 2.2 cards
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: 4,
+                  itemBuilder: (context, index) {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: Shimmer.fromColors(
+                        baseColor: Colors.grey[200]!,
+                        highlightColor: Colors.white,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        }
+        if (snapshot.hasError) return const SizedBox.shrink();
+        final services = snapshot.data ?? [];
+        if (services.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFFF9800), Color(0xFFFF5722)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.star_rounded, color: Colors.white, size: 16),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Top Rated Services',
+                    style: GoogleFonts.outfit(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.textColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 280,
+              child: PageView.builder(
+                controller: PageController(viewportFraction: 0.45), // Show 2.2 cards
+                physics: const BouncingScrollPhysics(),
+                itemCount: services.length,
+                itemBuilder: (context, index) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: UniversalServiceCard(service: services[index]),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -289,6 +402,7 @@ class RecentlyAddedServicesSection extends StatelessWidget {
       titleIcon: Icons.new_releases_rounded,
       iconGradient: const [Color(0xFF4CAF50), Color(0xFF8BC34A)],
       limit: 10,
+      isGrid: true,
       streamProvider: (fs, limit) => fs.streamRecentTechnicianServices(limit: limit),
     );
   }
@@ -301,260 +415,14 @@ class RecommendedServicesSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthService>(context, listen: false);
     final userId = auth.currentUser?.uid;
-
     if (userId == null) return const SizedBox.shrink();
-
     return _BaseServicesSection(
       title: 'Recommended For You',
       titleIcon: Icons.auto_awesome_rounded,
       iconGradient: const [Color(0xFF9C27B0), Color(0xFFE91E63)],
       limit: 10,
+      isGrid: true,
       streamProvider: (fs, limit) => fs.streamRecommendedServices(userId, limit: limit),
-    );
-  }
-}
-
-// --- Card Widget ---
-
-class _PremiumServiceCard extends StatefulWidget {
-  final HomeService service;
-  final bool isGrid;
-
-  const _PremiumServiceCard({required this.service, this.isGrid = false});
-
-  @override
-  State<_PremiumServiceCard> createState() => _PremiumServiceCardState();
-}
-
-class _PremiumServiceCardState extends State<_PremiumServiceCard> {
-  bool _isNavigating = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final service = widget.service;
-
-    return GestureDetector(
-      onTap: () async {
-        if (_isNavigating) return;
-        _isNavigating = true;
-        HapticFeedback.lightImpact();
-
-        try {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ServiceDetailsScreen(
-                serviceId: service.id,
-                categoryId: service.category,
-                serviceName: service.title,
-                serviceData: service,
-              ),
-            ),
-          );
-        } finally {
-          if (mounted) _isNavigating = false;
-        }
-      },
-      child: Container(
-        width: widget.isGrid ? null : 180,
-        margin: widget.isGrid ? EdgeInsets.zero : const EdgeInsets.only(right: 16, bottom: 8),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
-            ),
-          ],
-          border: Border.all(color: Colors.grey.shade100),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Image Section
-            Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                  child: AspectRatio(
-                    aspectRatio: widget.isGrid ? 1.2 : 1.3,
-                    child: SafeNetworkImage(
-                      imageUrl: service.imageUrl,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
-                // Rating Badge
-                Positioned(
-                  top: 10,
-                  left: 10,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.7),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.star_rounded, color: Color(0xFFFFB800), size: 14),
-                        const SizedBox(width: 2),
-                        Text(
-                          service.rating.toStringAsFixed(1),
-                          style: GoogleFonts.outfit(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                // Price Tag Overlay
-                Positioned(
-                  bottom: 10,
-                  right: 10,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Urgent Badge
-                      if (service.urgentBookingEnabled)
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.orange,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.flash_on, color: Colors.white, size: 12),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Urgent',
-                                style: GoogleFonts.outfit(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      // Price Display
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryColor,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppTheme.primaryColor.withOpacity(0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 4),
-                            )
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Original Price (strikethrough if offer exists)
-                            if (service.originalPrice != null && service.originalPrice! > 0)
-                              Text(
-                                '₹${service.originalPrice!.toStringAsFixed(0)}',
-                                style: GoogleFonts.outfit(
-                                  color: Colors.white.withOpacity(0.7),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  decoration: TextDecoration.lineThrough,
-                                ),
-                              ),
-                            // Offer Price or Base Price
-                            Text(
-                              '₹${(service.offerPrice ?? service.basePrice).toStringAsFixed(0)}',
-                              style: GoogleFonts.outfit(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            
-            // Info Section
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      service.title,
-                      style: GoogleFonts.outfit(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: AppTheme.textColor,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(Icons.person_pin_rounded, size: 12, color: AppTheme.primaryColor),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            service.technicianName ?? 'Verified Pro',
-                            style: GoogleFonts.outfit(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.subtitleColor,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (service.technicianDistrict != null) ...[
-                      const Spacer(),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          service.technicianDistrict!.toUpperCase(),
-                          style: GoogleFonts.outfit(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.blue[700],
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

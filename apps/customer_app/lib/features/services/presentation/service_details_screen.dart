@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:customer_app/core/models/sub_service.dart';
 import 'package:customer_app/core/models/service.dart';
 import 'package:customer_app/core/models/cart_item.dart';
@@ -15,10 +16,6 @@ import 'package:customer_app/features/cart/presentation/cart_screen.dart';
 
 class ServiceDetailsScreen extends StatefulWidget {
   final String serviceId;
-  /// The Firestore document ID of the parent category.
-  /// MUST be the actual Firestore doc ID (e.g. "abc123"), NOT a display name.
-  /// This is used to build the exact path:
-  ///   categories/{categoryId}/services/{serviceId}/subServices
   final String categoryId;
   final String? serviceName;
   final HomeService? serviceData;
@@ -42,7 +39,7 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
   bool _isAddingToCart = false;
   List<SubService> _subServices = [];
   bool _isSubServicesLoading = true;
-  SubService? _selectedSubService; // Only subServices are bookable
+  SubService? _selectedSubService;
   final CategoryService _categoryService = CategoryService();
 
   @override
@@ -66,53 +63,55 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
       return;
     }
     
-    final service = await _categoryService.getServiceById(widget.serviceId);
-    if (mounted) {
-      setState(() {
-        _service = service;
-        _isLoading = false;
-      });
+    try {
+      // Try to get service from technician_services collection directly
+      final doc = await FirebaseFirestore.instance
+          .collection('technician_services')
+          .doc(widget.serviceId)
+          .get();
+      
+      if (doc.exists) {
+        final service = HomeService.fromFirestore(doc);
+        if (mounted) {
+          setState(() {
+            _service = service;
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+      
+      // Fallback to category service
+      final service = await _categoryService.getServiceById(widget.serviceId);
+      if (mounted) {
+        setState(() {
+          _service = service;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching service: $e');
+      if (mounted) {
+        setState(() {
+          _service = null;
+          _isLoading = false;
+        });
+      }
     }
   }
 
   Future<void> _fetchSubServices() async {
     if (!mounted) return;
 
-    // ✅ ALWAYS use widget.categoryId — the Firestore doc ID passed from the
-    // parent screen. Never use service.category which may be a display name.
     final categoryId = widget.categoryId;
     final serviceId = widget.serviceId;
 
-    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    debugPrint('🔍 [ServiceDetails] _fetchSubServices() STARTED');
-    debugPrint('   serviceId   = "$serviceId"');
-    debugPrint('   categoryId  = "$categoryId"  ← from widget.categoryId (Firestore doc ID)');
-    debugPrint('   Firestore path: categories/$categoryId/services/$serviceId/subServices');
-
     if (categoryId.isEmpty || serviceId.isEmpty) {
-      debugPrint('❌ [ServiceDetails] ABORT — categoryId or serviceId is EMPTY');
-      debugPrint('   categoryId empty: ${categoryId.isEmpty}');
-      debugPrint('   serviceId  empty: ${serviceId.isEmpty}');
       setState(() => _isSubServicesLoading = false);
       return;
     }
-    debugPrint('✅ [ServiceDetails] IDs valid — starting stream');
-    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    // FIX: Use asBroadcastStream() to allow multiple listeners and prevent
-    // "Stream has already been listened to" assertion error
     _categoryService.getSubServices(categoryId, serviceId).asBroadcastStream().listen((homeServices) {
-      debugPrint('📦 [ServiceDetails] SubServices stream event received');
-      debugPrint('   subServices.length = ${homeServices.length}');
-      if (homeServices.isEmpty) {
-        debugPrint('   ⚠️ EMPTY subServices — no docs at:');
-        debugPrint('      categories/$categoryId/services/$serviceId/subServices');
-        debugPrint('      Check: isActive=true exists, data is seeded');
-      } else {
-        for (var i = 0; i < homeServices.length && i < 5; i++) {
-          debugPrint('   [${i+1}] id="${homeServices[i].id}" name="${homeServices[i].title}" price=${homeServices[i].basePrice}');
-        }
-      }
       if (!mounted) return;
       setState(() {
         _subServices = homeServices.map((hs) => SubService(
@@ -126,13 +125,6 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
         _isSubServicesLoading = false;
       });
     }, onError: (e) {
-      debugPrint('❌ [ServiceDetails] SubServices stream ERROR: $e');
-      debugPrint('   type: ${e.runtimeType}');
-      if (e.toString().contains('FAILED_PRECONDITION')) {
-        debugPrint('   ROOT CAUSE: Missing Firestore composite index for isActive+order in subServices');
-      } else if (e.toString().contains('PERMISSION_DENIED')) {
-        debugPrint('   ROOT CAUSE: Firestore security rules blocking subServices read');
-      }
       if (mounted) {
         setState(() => _isSubServicesLoading = false);
       }
@@ -140,14 +132,22 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
   }
 
   Future<void> _fetchTechnicianCount() async {
-    if (!mounted) return;
+    if (!mounted || _service == null) return;
     try {
-      final snapshot = await FirebaseFirestore.instance
+      // Get technicians in same district offering this service
+      final userLocation = await _getUserLocation();
+      
+      Query query = FirebaseFirestore.instance
           .collection('technicians')
           .where('status', isEqualTo: 'approved')
-          .where('isAvailable', isEqualTo: true)
-          .where('services', arrayContains: widget.serviceId)
-          .get();
+          .where('isAvailable', isEqualTo: true);
+      
+      // Filter by district if available
+      if (userLocation != null && userLocation['district'] != null) {
+        query = query.where('district', isEqualTo: userLocation['district']);
+      }
+      
+      final snapshot = await query.get();
       
       if (mounted) {
         setState(() {
@@ -156,6 +156,29 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
       }
     } catch (e) {
       debugPrint('Error fetching technician count: $e');
+    }
+  }
+  
+  Future<Map<String, String>?> _getUserLocation() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return null;
+      
+      final userDoc = await FirebaseFirestore.instance
+          .collection('customers')
+          .doc(user.uid)
+          .get();
+      
+      if (!userDoc.exists) return null;
+      
+      final data = userDoc.data();
+      return {
+        'state': (data?['state'] ?? '').toString().toLowerCase(),
+        'district': (data?['district'] ?? '').toString().toLowerCase(),
+      };
+    } catch (e) {
+      debugPrint('Error getting user location: $e');
+      return null;
     }
   }
 
@@ -196,7 +219,9 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Get premium ${service.title.toLowerCase()} service at your convenience. Our selected and background-checked professionals ensure top-quality results and a worry-free experience.',
+                    service.description.isNotEmpty 
+                        ? service.description
+                        : 'Get premium ${service.title.toLowerCase()} service at your convenience. Our selected and background-checked professionals ensure top-quality results and a worry-free experience.',
                     style: GoogleFonts.outfit(color: AppTheme.subtitleColor, height: 1.6, fontSize: 15),
                   ),
                   const SizedBox(height: 32),
@@ -205,7 +230,6 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
             ),
           ),
           
-          // Sub-services Header
           if (_subServices.isNotEmpty)
             SliverToBoxAdapter(
               child: Padding(
@@ -217,7 +241,6 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
               ),
             ),
             
-          // Sub-services List (PERFORMANCE OPTIMIZED: Using SliverList instead of shrinkWrap ListView)
           if (_isSubServicesLoading)
             const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator())))
           else if (_subServices.isNotEmpty)
@@ -230,30 +253,6 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
                     return _buildSubServiceItem(sub);
                   },
                   childCount: _subServices.length,
-                ),
-              ),
-            )
-          else
-            SliverToBoxAdapter(
-              child: Container(
-                // Fixed height container to prevent layout issues
-                height: 180,
-                padding: const EdgeInsets.all(40.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.pending_actions_rounded, color: Colors.grey[300], size: 48),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Options coming soon',
-                      style: GoogleFonts.outfit(color: Colors.grey[600], fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Check back later for available choices',
-                      style: GoogleFonts.outfit(color: Colors.grey[400], fontSize: 13),
-                    ),
-                  ],
                 ),
               ),
             ),
@@ -475,9 +474,9 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildStatItem(Icons.verified_rounded, 'Verified', 'Safe Experts', Colors.blue),
-          _buildStatItem(Icons.groups_rounded, '$_techCount Available', 'Live Experts', Colors.purple),
-          _buildStatItem(Icons.payments_rounded, 'Flexible', 'Pay Later', Colors.green),
+          _buildStatItem(Icons.verified_rounded, 'Verified', service.technicianName ?? 'Safe Expert', Colors.blue),
+          _buildStatItem(Icons.groups_rounded, '$_techCount Available', 'In Your Area', Colors.purple),
+          _buildStatItem(Icons.star_rounded, service.rating > 0 ? service.rating.toStringAsFixed(1) : 'New', '${service.reviewCount} Reviews', Colors.orange),
         ],
       ),
     );
@@ -540,8 +539,49 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
           style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.textColor),
         ),
         const SizedBox(height: 16),
-        _buildReviewItem('Sarah J.', 'Excellent service, highly professional and punctual.'),
-        _buildReviewItem('Michael R.', 'Very thorough cleaning. Worth every penny!'),
+        if (service.reviewCount > 0) ...[
+          // Show real review count and rating
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey[50],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.star_rounded, color: Colors.orange, size: 24),
+                const SizedBox(width: 8),
+                Text(
+                  '${service.rating.toStringAsFixed(1)} out of 5',
+                  style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '(${service.reviewCount} reviews)',
+                  style: GoogleFonts.outfit(color: Colors.grey[600]),
+                ),
+              ],
+            ),
+          ),
+        ] else ...[
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey[50],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.star_border_rounded, color: Colors.grey[400], size: 24),
+                const SizedBox(width: 8),
+                Text(
+                  'No reviews yet',
+                  style: GoogleFonts.outfit(color: Colors.grey[600]),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -550,7 +590,8 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
     final hasSubServices = _subServices.isNotEmpty;
     final canBook = !hasSubServices || _selectedSubService != null;
     final displayPrice = _selectedSubService?.price ?? (service.offerPrice ?? service.basePrice);
-    final originalPrice = service.originalPrice;
+    final originalPrice = service.basePrice;
+    final hasOffer = service.offerPrice != null && service.offerPrice! > 0 && service.offerPrice! < service.basePrice;
     final priceLabel = _selectedSubService != null 
         ? _selectedSubService!.name 
         : (hasSubServices ? 'Select an option below' : 'Starting at');
@@ -579,7 +620,7 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
                 ),
                 Row(
                   children: [
-                    if (originalPrice != null && originalPrice > 0)
+                    if (hasOffer && !hasSubServices)
                       Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: Text(
@@ -596,6 +637,25 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
                       '₹${displayPrice.toStringAsFixed(0)}',
                       style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.textColor),
                     ),
+                    if (hasOffer && !hasSubServices)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.green,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '${((originalPrice - service.offerPrice!) / originalPrice * 100).round()}% OFF',
+                            style: GoogleFonts.outfit(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ],
@@ -646,10 +706,11 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
   }
 
   Future<void> _handleAddToCart(BuildContext context, HomeService service) async {
+    print('🛒 [ADD TO CART] Button tapped for: ${service.title}');
     if (_isAddingToCart || !mounted) return;
     
-    // Enforce subService selection - only subServices are bookable
     if (_subServices.isNotEmpty && _selectedSubService == null) {
+      print('⚠️ [ADD TO CART] Sub-services exist but none selected');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please select an option to proceed'),
@@ -663,15 +724,17 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
     setState(() {
       _isAddingToCart = true;
     });
+    print('🛒 [ADD TO CART] State set to loading');
 
     try {
+      print('🛒 [ADD TO CART] Getting CartProvider');
       final cart = Provider.of<CartProvider>(context, listen: false);
       
-      // Use subService if selected, otherwise use service directly (fallback for services without subServices)
-      final itemPrice = _selectedSubService?.price ?? service.basePrice;
+      final itemPrice = _selectedSubService?.price ?? (service.offerPrice ?? service.basePrice);
       final itemName = _selectedSubService?.name ?? service.title;
+      final finalPrice = itemPrice; // Use the actual price that will be charged
+      print('🛒 [ADD TO CART] Item: $itemName, Price: $itemPrice, FinalPrice: $finalPrice');
       
-      // FIX: Replace asserts with runtime guards — asserts crash before try/catch can handle
       if (service.category.isEmpty || service.categoryName.isEmpty || service.technicianId == null || service.technicianId!.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -687,6 +750,7 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
         return;
       }
 
+      print('🛒 [ADD TO CART] Creating CartItem and calling addItem()');
       await cart.addItem(CartItem(
         id: '',
         categoryId: service.category,
@@ -698,31 +762,41 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
         serviceImage: _selectedSubService?.imageUrl ?? service.imageUrl,
         price: itemPrice,
         quantity: 1,
-        totalPrice: itemPrice,
+        totalPrice: finalPrice,
         technicianId: service.technicianId,
-        finalPriceSnapshot: itemPrice,
+        finalPriceSnapshot: finalPrice, // Store the final price that will be charged
       ));
+      print('✅ [ADD TO CART] Item added successfully');
       
+      print('✅ [ADD TO CART] Showing success dialog');
       HapticFeedback.mediumImpact();
-      
       if (!mounted) return;
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$itemName added to cart'),
-          backgroundColor: AppTheme.successColor,
-          behavior: SnackBarBehavior.floating,
-          action: SnackBarAction(
-            label: 'VIEW CART',
-            textColor: Colors.white,
-            onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const CartScreen()));
-            },
-          ),
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text('Added to Cart', style: GoogleFonts.outfit(fontWeight: FontWeight.w800)),
+          content: Text('$itemName added successfully', style: GoogleFonts.outfit()),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Continue', style: GoogleFonts.outfit(color: AppTheme.primaryColor)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const CartScreen()));
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor),
+              child: Text('Go to Cart', style: GoogleFonts.outfit(color: Colors.white)),
+            ),
+          ],
         ),
       );
       
     } catch (e) {
+      print('❌ [ADD TO CART] Error: $e');
       debugPrint('Error adding to cart: $e');
     } finally {
       if (mounted) {
@@ -789,8 +863,19 @@ class _FavoriteActionButtonState extends State<_FavoriteActionButton>
   }
 
   void _handleTap() {
+    print('❤️ [LIKE BUTTON] Tapped for service: ${widget.service.title}');
     _animationController.forward().then((_) => _animationController.reverse());
+    print('❤️ [LIKE BUTTON] Calling toggleFavorite()');
     context.read<FavoritesProvider>().toggleFavorite(widget.service.id, widget.service.category);
+    final isFav = context.read<FavoritesProvider>().isFavorite(widget.service.id);
+    print('❤️ [LIKE BUTTON] After toggle, isFavorite: $isFav');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(isFav ? 'Added to favorites' : 'Removed from favorites'),
+        duration: const Duration(milliseconds: 1500),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
