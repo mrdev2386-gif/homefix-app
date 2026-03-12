@@ -56,6 +56,6 @@ class CheckoutProvider with ChangeNotifier {
   }
 
   double get subtotal => _items.fold(0, (sum, item) => sum + item.totalPrice);
-  double get taxes => subtotal * 0.05; // 5% GST
-  double get grandTotal => subtotal + taxes;
+  double get taxes => 0.0; // No taxes
+  double get grandTotal => subtotal; // Price = Service price only
 }

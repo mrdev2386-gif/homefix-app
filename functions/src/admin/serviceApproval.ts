@@ -4,10 +4,10 @@
  * Handles approval, rejection, and status management of technician services
  */
 
-import { onCall } from "firebase-functions/v2/https";
-import { CallableRequest } from "firebase-functions/v2/https";
+import * as functions from "firebase-functions";
+
 import * as admin from "firebase-admin";
-import * as https from "firebase-functions/v2/https";
+
 
 const db = admin.firestore();
 
@@ -15,22 +15,15 @@ const db = admin.firestore();
  * Approve a technician service
  * Changes status from 'pending' to 'active'
  */
-export const approveService = onCall(
-    {
-        region: "us-central1",
-        cpu: 1,
-        memory: "256MiB",
-        timeoutSeconds: 30,
-        maxInstances: 5
-    },
-    async (request: CallableRequest<{ serviceId: string }>) => {
-        if (!request.auth) {
-            throw new https.HttpsError("unauthenticated", "Admin authentication required");
+export const approveService = functions.https.onCall(
+    async (request, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError("unauthenticated", "Admin authentication required");
         }
 
         const { serviceId } = request.data;
         if (!serviceId) {
-            throw new https.HttpsError("invalid-argument", "Service ID is required");
+            throw new functions.https.HttpsError("invalid-argument", "Service ID is required");
         }
 
         try {
@@ -38,13 +31,13 @@ export const approveService = onCall(
             const serviceDoc = await serviceRef.get();
 
             if (!serviceDoc.exists) {
-                throw new https.HttpsError("not-found", "Service not found");
+                throw new functions.https.HttpsError("not-found", "Service not found");
             }
 
             const serviceData = serviceDoc.data()!;
             
             if (serviceData.status !== 'pending') {
-                throw new https.HttpsError("failed-precondition", 
+                throw new functions.https.HttpsError("failed-precondition", 
                     `Service is not pending approval. Current status: ${serviceData.status}`);
             }
 
@@ -53,11 +46,11 @@ export const approveService = onCall(
                 isPublished: true,
                 technicianApproved: true,
                 approvedAt: admin.firestore.Timestamp.now(),
-                approvedBy: request.auth.uid,
+                approvedBy: context.auth.uid,
                 updatedAt: admin.firestore.Timestamp.now()
             });
 
-            console.log(`Service ${serviceId} approved by admin ${request.auth.uid}`);
+            console.log(`Service ${serviceId} approved by admin ${context.auth.uid}`);
 
             return {
                 success: true,
@@ -68,7 +61,7 @@ export const approveService = onCall(
 
         } catch (error: any) {
             console.error('Error approving service:', error);
-            throw new https.HttpsError("internal", error.message || "Failed to approve service");
+            throw new functions.https.HttpsError("internal", error.message || "Failed to approve service");
         }
     }
 );
@@ -77,22 +70,15 @@ export const approveService = onCall(
  * Reject a technician service
  * Changes status from 'pending' to 'rejected'
  */
-export const rejectService = onCall(
-    {
-        region: "us-central1",
-        cpu: 1,
-        memory: "256MiB",
-        timeoutSeconds: 30,
-        maxInstances: 5
-    },
-    async (request: CallableRequest<{ serviceId: string; reason?: string }>) => {
-        if (!request.auth) {
-            throw new https.HttpsError("unauthenticated", "Admin authentication required");
+export const rejectService = functions.https.onCall(
+    async (request, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError("unauthenticated", "Admin authentication required");
         }
 
         const { serviceId, reason } = request.data;
         if (!serviceId) {
-            throw new https.HttpsError("invalid-argument", "Service ID is required");
+            throw new functions.https.HttpsError("invalid-argument", "Service ID is required");
         }
 
         try {
@@ -100,13 +86,13 @@ export const rejectService = onCall(
             const serviceDoc = await serviceRef.get();
 
             if (!serviceDoc.exists) {
-                throw new https.HttpsError("not-found", "Service not found");
+                throw new functions.https.HttpsError("not-found", "Service not found");
             }
 
             const serviceData = serviceDoc.data()!;
             
             if (serviceData.status !== 'pending') {
-                throw new https.HttpsError("failed-precondition", 
+                throw new functions.https.HttpsError("failed-precondition", 
                     `Service is not pending approval. Current status: ${serviceData.status}`);
             }
 
@@ -115,12 +101,12 @@ export const rejectService = onCall(
                 isPublished: false,
                 technicianApproved: false,
                 rejectedAt: admin.firestore.Timestamp.now(),
-                rejectedBy: request.auth.uid,
+                rejectedBy: context.auth.uid,
                 rejectionReason: reason || 'No reason provided',
                 updatedAt: admin.firestore.Timestamp.now()
             });
 
-            console.log(`Service ${serviceId} rejected by admin ${request.auth.uid}`);
+            console.log(`Service ${serviceId} rejected by admin ${context.auth.uid}`);
 
             return {
                 success: true,
@@ -131,7 +117,7 @@ export const rejectService = onCall(
 
         } catch (error: any) {
             console.error('Error rejecting service:', error);
-            throw new https.HttpsError("internal", error.message || "Failed to reject service");
+            throw new functions.https.HttpsError("internal", error.message || "Failed to reject service");
         }
     }
 );
@@ -140,22 +126,15 @@ export const rejectService = onCall(
  * Disable an active service
  * Changes status from 'active' to 'disabled'
  */
-export const disableService = onCall(
-    {
-        region: "us-central1",
-        cpu: 1,
-        memory: "256MiB",
-        timeoutSeconds: 30,
-        maxInstances: 5
-    },
-    async (request: CallableRequest<{ serviceId: string; reason?: string }>) => {
-        if (!request.auth) {
-            throw new https.HttpsError("unauthenticated", "Admin authentication required");
+export const disableService = functions.https.onCall(
+    async (request, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError("unauthenticated", "Admin authentication required");
         }
 
         const { serviceId, reason } = request.data;
         if (!serviceId) {
-            throw new https.HttpsError("invalid-argument", "Service ID is required");
+            throw new functions.https.HttpsError("invalid-argument", "Service ID is required");
         }
 
         try {
@@ -163,19 +142,19 @@ export const disableService = onCall(
             const serviceDoc = await serviceRef.get();
 
             if (!serviceDoc.exists) {
-                throw new https.HttpsError("not-found", "Service not found");
+                throw new functions.https.HttpsError("not-found", "Service not found");
             }
 
             await serviceRef.update({
                 status: 'disabled',
                 isPublished: false,
                 disabledAt: admin.firestore.Timestamp.now(),
-                disabledBy: request.auth.uid,
+                disabledBy: context.auth.uid,
                 disableReason: reason || 'Disabled by admin',
                 updatedAt: admin.firestore.Timestamp.now()
             });
 
-            console.log(`Service ${serviceId} disabled by admin ${request.auth.uid}`);
+            console.log(`Service ${serviceId} disabled by admin ${context.auth.uid}`);
 
             return {
                 success: true,
@@ -186,7 +165,7 @@ export const disableService = onCall(
 
         } catch (error: any) {
             console.error('Error disabling service:', error);
-            throw new https.HttpsError("internal", error.message || "Failed to disable service");
+            throw new functions.https.HttpsError("internal", error.message || "Failed to disable service");
         }
     }
 );

@@ -1,7 +1,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../constants/app_constants.dart';
 
-class SafeNetworkImage extends StatelessWidget {
+class SafeNetworkImage extends StatefulWidget {
   final String? imageUrl;
   final double? width;
   final double? height;
@@ -29,6 +30,29 @@ class SafeNetworkImage extends StatelessWidget {
     this.usePlaceholder = true,
     this.fallbackUrl,
   });
+
+  @override
+  State<SafeNetworkImage> createState() => _SafeNetworkImageState();
+}
+
+class _SafeNetworkImageState extends State<SafeNetworkImage> {
+  late String _currentUrl;
+  bool _primaryFailed = false;
+  
+  @override
+  void initState() {
+    super.initState();
+    _currentUrl = _getValidUrl() ?? AppConstants.fallbackServiceImage;
+  }
+
+  @override
+  void didUpdateWidget(SafeNetworkImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl != widget.imageUrl) {
+      _primaryFailed = false;
+      _currentUrl = _getValidUrl() ?? AppConstants.fallbackServiceImage;
+    }
+  }
   
   double _safeDimension(double? value, {double fallback = 100}) {
     if (value == null) return fallback;
@@ -46,10 +70,10 @@ class SafeNetworkImage extends StatelessWidget {
     if (!url.startsWith('http://') && !url.startsWith('https://')) return false;
     try {
       Uri.parse(url);
+      return true;
     } catch (e) {
       return false;
     }
-    return true;
   }
   
   double _sanitizeDimension(double? value, {double fallback = 100}) {
@@ -59,22 +83,33 @@ class SafeNetworkImage extends StatelessWidget {
     return value;
   }
 
+  String? _getValidUrl() {
+    if (_isValidUrl(widget.imageUrl)) {
+      return widget.imageUrl;
+    }
+    if (_isValidUrl(widget.fallbackUrl)) {
+      return widget.fallbackUrl;
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (!_isValidUrl(imageUrl)) {
+    // If no valid URL found, show fallback widget
+    if (!_isValidUrl(_currentUrl)) {
       return _buildFallback();
     }
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final safeWidth = _sanitizeDimension(
-          (width != null)
-              ? width
+          (widget.width != null)
+              ? widget.width
               : (constraints.maxWidth.isFinite ? constraints.maxWidth : null),
         );
         final safeHeight = _sanitizeDimension(
-          (height != null)
-              ? height
+          (widget.height != null)
+              ? widget.height
               : (constraints.maxHeight.isFinite ? constraints.maxHeight : null),
         );
         return _buildImage(safeWidth, safeHeight);
@@ -84,13 +119,25 @@ class SafeNetworkImage extends StatelessWidget {
 
   Widget _buildImage(double safeWidth, double safeHeight) {
     Widget imageWidget = CachedNetworkImage(
-      imageUrl: imageUrl!,
+      imageUrl: _currentUrl,
       width: safeWidth,
       height: safeHeight,
-      fit: fit,
-      placeholder: (context, url) => placeholder ?? _buildPlaceholder(safeWidth, safeHeight),
+      fit: widget.fit,
+      placeholder: (context, url) => 
+          widget.placeholder ?? _buildPlaceholder(safeWidth, safeHeight),
       errorWidget: (context, url, error) {
-        return errorWidget ?? _buildFallback(safeWidth, safeHeight);
+        // If primary URL failed and we have fallback, try fallback
+        if (!_primaryFailed && _isValidUrl(widget.fallbackUrl)) {
+          _primaryFailed = true;
+          _currentUrl = widget.fallbackUrl!;
+          // Rebuild with fallback URL
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) setState(() {});
+          });
+          return _buildPlaceholder(safeWidth, safeHeight);
+        }
+        
+        return widget.errorWidget ?? _buildFallback(safeWidth, safeHeight);
       },
       fadeInDuration: const Duration(milliseconds: 300),
       fadeOutDuration: const Duration(milliseconds: 100),
@@ -98,18 +145,18 @@ class SafeNetworkImage extends StatelessWidget {
       maxHeightDiskCache: 1000,
     );
     
-    if (borderRadius != null) {
+    if (widget.borderRadius != null) {
       imageWidget = ClipRRect(
-        borderRadius: borderRadius!,
+        borderRadius: widget.borderRadius!,
         child: imageWidget,
       );
     }
 
-    if (backgroundColor != null) {
+    if (widget.backgroundColor != null) {
       imageWidget = Container(
         width: safeWidth,
         height: safeHeight,
-        color: backgroundColor,
+        color: widget.backgroundColor,
         child: imageWidget,
       );
     }
@@ -118,15 +165,15 @@ class SafeNetworkImage extends StatelessWidget {
   }
   
   Widget _buildPlaceholder([double? safeWidth, double? safeHeight]) {
-    final w = safeWidth ?? _safeDimension(width);
-    final h = safeHeight ?? _safeDimension(height);
+    final w = safeWidth ?? _safeDimension(widget.width);
+    final h = safeHeight ?? _safeDimension(widget.height);
     
     return Container(
       width: w,
       height: h,
       decoration: BoxDecoration(
         color: Colors.grey[200],
-        borderRadius: borderRadius,
+        borderRadius: widget.borderRadius,
       ),
       child: Center(
         child: SizedBox(
@@ -142,15 +189,15 @@ class SafeNetworkImage extends StatelessWidget {
   }
   
   Widget _buildFallback([double? safeWidth, double? safeHeight]) {
-    final w = safeWidth ?? _safeDimension(width);
-    final h = safeHeight ?? _safeDimension(height);
+    final w = safeWidth ?? _safeDimension(widget.width);
+    final h = safeHeight ?? _safeDimension(widget.height);
     
     return Container(
       width: w,
       height: h,
       decoration: BoxDecoration(
-        color: backgroundColor ?? Colors.grey[200],
-        borderRadius: borderRadius,
+        color: widget.backgroundColor ?? Colors.grey[200],
+        borderRadius: widget.borderRadius,
       ),
       child: Center(
         child: Icon(

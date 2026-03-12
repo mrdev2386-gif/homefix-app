@@ -27,7 +27,7 @@ class WalletService {
     }
 
     final doc = await _firestore
-        .collection('technician_wallets')
+        .collection('wallets')
         .doc(technicianId)
         .get();
 
@@ -191,7 +191,7 @@ class WalletService {
     }
 
     return _firestore
-        .collection('technician_wallets')
+        .collection('wallets')
         .doc(technicianId)
         .snapshots()
         .map((doc) => TechnicianWallet.fromFirestore(doc));
@@ -205,9 +205,8 @@ class WalletService {
     }
 
     return _firestore
-        .collection('technician_wallets')
-        .doc(technicianId)
-        .collection('transactions')
+        .collection('walletTransactions')
+        .where('userId', isEqualTo: technicianId)
         .orderBy('createdAt', descending: true)
         .limit(limit)
         .snapshots()

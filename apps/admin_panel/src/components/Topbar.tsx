@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Bell, Menu, User, LogOut, Settings as SettingsIcon } from 'lucide-react';
+import { Bell, Menu, User, LogOut, Settings as SettingsIcon, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from './AuthProvider';
 
 export default function Topbar({ 
   onToggleSidebar, 
@@ -12,7 +13,9 @@ export default function Topbar({
   pageTitle: string;
 }) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const router = useRouter();
+  const { signOut, user } = useAuth();
 
   return (
     <header className="h-16 bg-[#0F172A] border-b border-[#1F2937] flex items-center justify-between px-6 sticky top-0 z-10">
@@ -65,14 +68,25 @@ export default function Topbar({
                   Settings
                 </button>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     setShowProfileMenu(false);
-                    router.push('/login');
+                    setIsLoggingOut(true);
+                    try {
+                      await signOut();
+                    } catch (error) {
+                      console.error('Logout error:', error);
+                      setIsLoggingOut(false);
+                    }
                   }}
-                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-400 hover:bg-[#1F2937] transition-colors"
+                  disabled={isLoggingOut}
+                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-400 hover:bg-[#1F2937] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <LogOut size={16} />
-                  Logout
+                  {isLoggingOut ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <LogOut size={16} />
+                  )}
+                  {isLoggingOut ? 'Logging out...' : 'Logout'}
                 </button>
               </div>
             </>

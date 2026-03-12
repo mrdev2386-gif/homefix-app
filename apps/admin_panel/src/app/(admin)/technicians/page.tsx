@@ -107,9 +107,12 @@ export default function TechniciansPage() {
       message: 'Are you sure you want to suspend this technician? They will not be able to receive new bookings.',
       variant: 'danger',
       requireInput: true,
-      onConfirm: async () => {
+      inputLabel: 'Suspension Reason',
+      inputPlaceholder: 'Please provide the reason for suspension...',
+      onConfirm: async (inputValue?: string) => {
         try {
-          await adminApi.suspendTechnician(techId, 'Suspended by admin');
+          const reason = inputValue || 'Suspended by admin';
+          await adminApi.suspendTechnician(techId, reason);
           await fetchTechnicians();
           setConfirmDialog({ ...confirmDialog, isOpen: false });
         } catch (error) {

@@ -24,7 +24,8 @@ export const sendPushNotification = functions.https.onCall(async (data, context)
     } else {
         // Topic broadcast - for now we don't create 10k Firestore records for topics
         // unless we use a "global_notifications" collection the app checks.
-        await admin.messaging().sendToTopic(target, {
+        await admin.messaging().send({
+            topic: target,
             notification: { title, body },
             data: { type: 'admin_broadcast' }
         });

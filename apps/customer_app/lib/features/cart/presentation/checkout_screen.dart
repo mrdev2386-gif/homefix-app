@@ -27,6 +27,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   int _currentStep = 0;
   bool _isProcessing = false;
   bool _submitLock = false; // Duplicate-submit guard
+  String _paymentMode = 'after_work'; // Pay After Work by default
 
   final List<String> _steps = ['Address', 'Schedule', 'Summary'];
 
@@ -144,6 +145,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           address: checkout.selectedAddress!.toMap(),
           price: checkout.grandTotal,
           subcategoryId: firstItem.subServiceId,
+          paymentMode: _paymentMode,
         );
 
         debugPrint('✅ [Checkout] New booking request created: $result');
@@ -840,6 +842,77 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           
           // Price Breakdown Card
           _buildPriceBreakdownCard(checkout),
+          const SizedBox(height: 24),
+          
+          // Payment Options Card
+          _buildPaymentOptionsCard(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentOptionsCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.purple.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.account_balance_wallet, color: Colors.purple, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Payment Mode (Wallet Only)',
+                style: GoogleFonts.outfit(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                  color: AppTheme.textColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          RadioListTile<String>(
+            title: Text('Pay Before Work', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+            subtitle: Text('Amount deducted from wallet instantly', style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey[600])),
+            value: 'before_work',
+            groupValue: _paymentMode,
+            onChanged: (val) {
+              if (val != null) setState(() => _paymentMode = val);
+            },
+            activeColor: AppTheme.primaryColor,
+            contentPadding: EdgeInsets.zero,
+          ),
+          RadioListTile<String>(
+            title: Text('Pay After Work', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+            subtitle: Text('Generate QR for technician when completed', style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey[600])),
+            value: 'after_work',
+            groupValue: _paymentMode,
+            onChanged: (val) {
+              if (val != null) setState(() => _paymentMode = val);
+            },
+            activeColor: AppTheme.primaryColor,
+            contentPadding: EdgeInsets.zero,
+          ),
         ],
       ),
     );
@@ -930,8 +1003,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           ),
           const SizedBox(height: 20),
           _priceRow('Subtotal', checkout.subtotal),
-          const SizedBox(height: 12),
-          _priceRow('Taxes & Fee (5%)', checkout.taxes),
           const SizedBox(height: 16),
           Container(
             height: 1,
@@ -971,26 +1042,39 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
+
+
   Widget _priceRow(String label, double val) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: GoogleFonts.outfit(
-            color: Colors.grey[600],
-            fontSize: 14,
+    return SizedBox(
+      width: double.infinity,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.outfit(
+                color: Colors.grey[600],
+                fontSize: 14,
+              ),
+            ),
           ),
-        ),
-        Text(
-          '₹${val.toStringAsFixed(0)}',
-          style: GoogleFonts.outfit(
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
-            color: AppTheme.textColor,
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              '₹${val.toStringAsFixed(0)}',
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.outfit(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                color: AppTheme.textColor,
+              ),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1002,7 +1086,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (_currentStep == 2) canContinue = true;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
@@ -1015,44 +1099,34 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       ),
       child: SafeArea(
         child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // Step info
             Expanded(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Step ${_currentStep + 1} of 3',
+                    'Total Price',
                     style: GoogleFonts.outfit(
                       fontSize: 12,
                       color: Colors.grey[600],
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 4),
                   Text(
-                    _steps[_currentStep],
+                    '₹${checkout.grandTotal.toStringAsFixed(0)}',
                     style: GoogleFonts.outfit(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 18,
-                      color: AppTheme.textColor,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 20,
+                      color: AppTheme.primaryColor,
                     ),
                   ),
-                  if (_currentStep == 2)
-                    Text(
-                      '₹${checkout.grandTotal.toStringAsFixed(0)}',
-                      style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                        color: AppTheme.primaryColor,
-                      ),
-                    ),
                 ],
               ),
             ),
             const SizedBox(width: 16),
-            // Action button
             SizedBox(
               width: 160,
               height: 56,
@@ -1067,7 +1141,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ),
                   disabledBackgroundColor: Colors.grey[300],
                 ),
-                child: _isProcessing 
+                child: _isProcessing
                   ? const SizedBox(
                       height: 20,
                       width: 20,
@@ -1084,11 +1158,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         else
                           const Icon(Icons.arrow_forward, size: 18),
                         const SizedBox(width: 8),
-                        Text(
-                          _currentStep == 2 ? 'Confirm Booking' : 'Continue',
-                          style: GoogleFonts.outfit(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14,
+                        Flexible(
+                          child: Text(
+                            _currentStep == 2 ? 'Confirm' : 'Continue',
+                            style: GoogleFonts.outfit(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],

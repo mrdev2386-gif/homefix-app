@@ -1,19 +1,17 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:shimmer/shimmer.dart';
-import 'package:customer_app/core/services/user_service.dart'; // Added UserService import
+import 'dart:io';
+
 import 'package:customer_app/core/theme/app_theme.dart';
-import 'package:customer_app/core/services/category_service.dart';
-import 'package:customer_app/core/services/functions_service.dart';
-import 'package:customer_app/core/services/auth_service.dart';
+import 'package:customer_app/core/services/firestore_service.dart';
 import 'package:customer_app/core/services/storage_service.dart';
-import 'package:customer_app/core/models/category.dart';
-import 'package:customer_app/core/models/service.dart';
+import 'package:customer_app/core/services/auth_service.dart';
 import 'package:customer_app/core/models/address.dart';
+import '../../profile/presentation/saved_addresses_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class CustomRequestScreen extends StatefulWidget {
   const CustomRequestScreen({super.key});
@@ -22,956 +20,995 @@ class CustomRequestScreen extends StatefulWidget {
   State<CustomRequestScreen> createState() => _CustomRequestScreenState();
 }
 
-class _CustomRequestScreenState extends State<CustomRequestScreen> with SingleTickerProviderStateMixin {
-  int _currentStep = 1; // 1: Category, 2: Subcategory, 3: Form
-  Category? _selectedCategory;
-  HomeService? _selectedSubCategory;
-  
-  // Step 3 Form Data
+class _CustomRequestScreenState extends State<CustomRequestScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
-  DateTime? _preferredDate;
-  TimeOfDay? _preferredTime;
-  Address? _selectedAddress;
-  final List<File> _images = [];
-  bool _isSubmitting = false;
-  double _uploadProgress = 0.0;
-
-  final CategoryService _categoryService = CategoryService();
-  final StorageService _storageService = StorageService();
-  final ImagePicker _picker = ImagePicker();
+  final _customCategoryController = TextEditingController();
+  final _customSubCategoryController = TextEditingController();
+  final _imagePicker = ImagePicker();
   
-  late AnimationController _animationController;
+  String? _selectedCategory;
+  String? _selectedSubCategory;
+  String? _selectedPriority;
+  String? _selectedTimeSlot;
+  Address? _selectedAddress;
+  DateTime? _preferredDate;
+  List<File> _selectedImages = [];
+  bool _isSubmitting = false;
+  
+  List<Map<String, dynamic>> _categories = [];
+  List<Map<String, dynamic>> _subCategories = [];
+  bool _isLoadingCategories = true;
+  bool _isLoadingSubCategories = false;
+
+  final List<String> _priorities = [
+    'Low',
+    'Medium', 
+    'High',
+    'Urgent'
+  ];
+
+  final List<String> _timeSlots = [
+    '9:00 AM - 12:00 PM',
+    '12:00 PM - 3:00 PM',
+    '3:00 PM - 6:00 PM',
+    '6:00 PM - 9:00 PM',
+    'Flexible'
+  ];
 
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
-    _animationController.forward();
+    _loadCategories();
   }
 
   @override
   void dispose() {
+    _titleController.dispose();
     _descriptionController.dispose();
-    _animationController.dispose();
+    _customCategoryController.dispose();
+    _customSubCategoryController.dispose();
     super.dispose();
   }
 
-  void _nextStep() {
-    if (_currentStep < 3) {
+  Future<void> _loadCategories() async {
+    try {
+      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+      final categories = await firestoreService.getCategories();
+      
+      // Add custom option
+      categories.add({'id': 'custom', 'name': 'Custom', 'icon': 'edit'});
+      
       setState(() {
-        _currentStep++;
-        _animationController.reset();
-        _animationController.forward();
+        _categories = categories;
+        _isLoadingCategories = false;
       });
+    } catch (e) {
+      setState(() => _isLoadingCategories = false);
+      print('Error loading categories: $e');
     }
   }
 
-  void _prevStep() {
-    if (_currentStep > 1) {
+  Future<void> _loadSubCategories(String categoryId) async {
+    if (categoryId == 'custom') {
       setState(() {
-        _currentStep--;
-        _animationController.reset();
-        _animationController.forward();
+        _subCategories = [{'id': 'custom', 'name': 'Custom'}];
+        _isLoadingSubCategories = false;
       });
+      return;
+    }
+    
+    setState(() => _isLoadingSubCategories = true);
+    try {
+      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+      final subCategories = await firestoreService.fetchSubCategories(categoryId);
+      
+      // Add custom option
+      subCategories.add({'id': 'custom', 'name': 'Custom'});
+      
+      setState(() {
+        _subCategories = subCategories;
+        _selectedSubCategory = null;
+        _isLoadingSubCategories = false;
+      });
+    } catch (e) {
+      setState(() => _isLoadingSubCategories = false);
+      print('Error loading subcategories: $e');
     }
   }
 
-  Future<void> _pickImage(ImageSource source) async {
-    if (_images.length >= 3) return;
-    final XFile? image = await _picker.pickImage(
-      source: source,
+  Future<void> _pickImages() async {
+    if (_selectedImages.length >= 3) {
+      _showError('Maximum 3 images allowed');
+      return;
+    }
+    
+    final images = await _imagePicker.pickMultiImage(
       imageQuality: 70,
       maxWidth: 1200,
     );
-    if (image != null) {
-      setState(() => _images.add(File(image.path)));
+    
+    if (images.isNotEmpty) {
+      final remainingSlots = 3 - _selectedImages.length;
+      final imagesToAdd = images.take(remainingSlots).map((img) => File(img.path)).toList();
+      setState(() {
+        _selectedImages.addAll(imagesToAdd);
+      });
+    }
+  }
+
+  void _removeImage(int index) {
+    setState(() {
+      _selectedImages.removeAt(index);
+    });
+  }
+
+  Future<void> _selectAddress() async {
+    final address = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const SavedAddressesScreen(isSelectionMode: true),
+      ),
+    );
+    if (address != null && mounted) {
+      setState(() => _selectedAddress = address as Address);
     }
   }
 
   Future<void> _submitRequest() async {
-    // PRE-SUBMIT VALIDATION
     if (!_formKey.currentState!.validate()) return;
-    if (_selectedAddress == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select an address')),
-      );
-      return;
-    }
     if (_selectedCategory == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a category')),
-      );
+      _showError('Please select a category');
       return;
     }
-    if (_selectedSubCategory == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a sub-category')),
-      );
+    if (_selectedAddress == null) {
+      _showError('Please select an address');
       return;
     }
-    
-    // Validate description minimum length
-    if (_descriptionController.text.trim().length < 10) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please provide more details (at least 10 characters)')),
-      );
-      return;
-    }
-    
-    setState(() {
-      _isSubmitting = true;
-      _uploadProgress = 0.1; // Start progress
-    });
+
+    setState(() => _isSubmitting = true);
 
     try {
-      final functionsService = Provider.of<FunctionsService>(context, listen: false);
-      final userId = Provider.of<AuthService>(context, listen: false).currentUser?.uid;
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final userId = authService.currentUser?.uid;
       
       if (userId == null) throw Exception('User not authenticated');
 
-      // 1. Upload Images to Firebase Storage (Production Hardened)
       List<String> imageUrls = [];
-      if (_images.isNotEmpty) {
-        setState(() => _uploadProgress = 0.3);
-        imageUrls = await _storageService.uploadMultipleFiles(
-          files: _images,
-          path: 'custom_requests/$userId/${DateTime.now().millisecondsSinceEpoch}',
-        );
-        setState(() => _uploadProgress = 0.7);
-      }
-
-      final String? dateStr = _preferredDate != null 
-          ? DateFormat('yyyy-MM-dd').format(_preferredDate!)
-          : null;
-      final String? timeStr = _preferredTime != null
-          ? '${_preferredTime!.hour.toString().padLeft(2, '0')}:${_preferredTime!.minute.toString().padLeft(2, '0')}'
-          : null;
-
-      final requestData = {
-        'categoryId': _selectedCategory!.id,
-        'categoryName': _selectedCategory!.name, // Added categoryName
-        'subCategoryId': _selectedSubCategory!.id,
-        'description': _descriptionController.text.trim(), // Use trimmed description
-        'preferredDate': dateStr != null ? '$dateStr $timeStr' : null,
-        'addressId': _selectedAddress!.id,
-        'districtNormalized': _selectedAddress!.city.toLowerCase().trim(), // Use city as district
-        'userId': userId, // Explicit userId
-        'images': imageUrls,
-        'idempotencyKey': DateTime.now().millisecondsSinceEpoch.toString(),
-      };
-
-      setState(() => _uploadProgress = 0.9);
-      final result = await functionsService.createCustomServiceRequest(requestData);
-
-      if (mounted) {
-        if (result['success'] == true) {
-          _showSuccessDialog();
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(result['message'] ?? 'Failed to submit request')),
+      if (_selectedImages.isNotEmpty) {
+        final storageService = StorageService();
+        final requestId = DateTime.now().millisecondsSinceEpoch.toString();
+        
+        for (int i = 0; i < _selectedImages.length; i++) {
+          final urls = await storageService.uploadMultipleFiles(
+            files: [_selectedImages[i]],
+            path: 'custom_requests/$requestId/images/image_${i + 1}',
           );
+          if (urls.isNotEmpty) {
+            imageUrls.add(urls.first);
+          }
         }
       }
+
+      final category = _selectedCategory == 'custom' 
+          ? _customCategoryController.text.trim()
+          : _selectedCategory!;
+      
+      final subCategory = _selectedSubCategory == 'custom'
+          ? _customSubCategoryController.text.trim()
+          : _selectedSubCategory;
+
+      final firestoreService = FirestoreService();
+      await firestoreService.createCustomRequest({
+        'customerId': userId,
+        'title': _titleController.text.trim(),
+        'category': category,
+        'subCategory': subCategory,
+        'description': _descriptionController.text.trim(),
+        'images': imageUrls,
+        'address': _selectedAddress!.toMap(),
+        'district': _selectedAddress!.district,
+        'state': _selectedAddress!.state,
+        'latitude': _selectedAddress!.latitude,
+        'longitude': _selectedAddress!.longitude,
+        'preferredDate': _preferredDate?.toIso8601String(),
+        'preferredTime': _selectedTimeSlot,
+        'priority': _selectedPriority ?? 'Medium',
+        'status': 'open',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      print('[CUSTOM_REQUEST] Request submitted successfully');
+
+      if (!mounted) return;
+      _showSuccess();
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Submission failed: ${e.toString()}')),
-        );
-      }
+      print('[CUSTOM_REQUEST] Error: $e');
+      if (mounted) _showError('Failed to submit: ${e.toString()}');
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
-  void _showSuccessDialog() {
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _showSuccess() {
     showDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (context) => FadeTransition(
-        opacity: _animationController,
-        child: AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppTheme.successColor.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.check_rounded, color: AppTheme.successColor, size: 48),
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                shape: BoxShape.circle,
               ),
-              const SizedBox(height: 24),
-              Text('Request Sent!', 
-                style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 24, color: AppTheme.textColor)),
-              const SizedBox(height: 12),
-              Text(
-                'Our team will review your requirement and assign the best technician shortly.',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.outfit(color: AppTheme.subtitleColor, fontSize: 15),
+              child: const Icon(Icons.check_circle, color: Colors.green, size: 48),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Request Sent!',
+              style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 20),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Our team will review your request and contact you soon.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 14),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _resetForm();
+                },
+                child: const Text('Continue'),
               ),
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    setState(() {
-                      _currentStep = 1;
-                      _selectedCategory = null;
-                      _selectedSubCategory = null;
-                      _descriptionController.clear();
-                      _images.clear();
-                      _preferredDate = null;
-                      _preferredTime = null;
-                    });
-                  },
-                  child: const Text('Back to Dashboard'),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  void _resetForm() {
+    _titleController.clear();
+    _descriptionController.clear();
+    _customCategoryController.clear();
+    _customSubCategoryController.clear();
+    setState(() {
+      _selectedCategory = null;
+      _selectedSubCategory = null;
+      _selectedPriority = null;
+      _selectedTimeSlot = null;
+      _selectedAddress = null;
+      _preferredDate = null;
+      _selectedImages.clear();
+      _subCategories.clear();
+    });
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'open':
+        return Colors.blue;
+      case 'assigned':
+        return Colors.orange;
+      case 'accepted':
+        return Colors.green;
+      case 'in_progress':
+        return Colors.purple;
+      case 'completed':
+        return Colors.teal;
+      case 'cancelled':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
-      appBar: _buildAppBar(),
-      body: Stack(
-        children: [
-          Column(
-            children: [
-              _buildStepper(),
-              Expanded(
-                child: _buildCurrentStep(),
-              ),
+      appBar: AppBar(
+        title: Text(
+          'Custom Service Request',
+          style: GoogleFonts.outfit(fontWeight: FontWeight.w800),
+        ),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        foregroundColor: AppTheme.textColor,
+      ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Color(0xFFF6F8FF),
+              Color(0xFFEFF2FF)
             ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
           ),
-          if (_isSubmitting) _buildLoadingOverlay(),
-        ],
-      ),
-      bottomNavigationBar: _buildBottomCTA(),
-    );
-  }
-
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      title: Text('Custom Request', 
-        style: GoogleFonts.outfit(fontWeight: FontWeight.w800, color: AppTheme.textColor)),
-      centerTitle: true,
-      backgroundColor: AppTheme.backgroundColor,
-      elevation: 0,
-      leading: _currentStep > 1 
-        ? IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-            onPressed: _prevStep,
-          )
-        : null,
-    );
-  }
-
-  Widget _buildLoadingOverlay() {
-    return Container(
-      color: Colors.white.withOpacity(0.9),
-      width: double.infinity,
-      height: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 40),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const CircularProgressIndicator(strokeWidth: 3),
-          const SizedBox(height: 24),
-          Text('Processing Securely...', 
-            style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 18)),
-          const SizedBox(height: 12),
-          LinearProgressIndicator(
-            value: _uploadProgress,
-            backgroundColor: Colors.grey[200],
-            borderRadius: BorderRadius.circular(10),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildTitle(),
+                const SizedBox(height: 24),
+                _buildForm(),
+                const SizedBox(height: 32),
+                _buildMyRequestsSection(),
+              ],
+            ),
           ),
-          const SizedBox(height: 8),
-          Text('${(_uploadProgress * 100).toInt()}%', 
-            style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 12, color: AppTheme.primaryColor)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStepper() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
-      child: Row(
-        children: [
-          _stepNode(1, _currentStep >= 1),
-          _stepLine(_currentStep >= 2),
-          _stepNode(2, _currentStep >= 2),
-          _stepLine(_currentStep >= 3),
-          _stepNode(3, _currentStep >= 3),
-        ],
-      ),
-    );
-  }
-
-  Widget _stepNode(int step, bool active) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      width: 32,
-      height: 32,
-      decoration: BoxDecoration(
-        color: active ? AppTheme.primaryColor : Colors.white,
-        shape: BoxShape.circle,
-        border: active ? null : Border.all(color: Colors.grey.shade300, width: 2),
-        boxShadow: active ? [
-          BoxShadow(
-            color: AppTheme.primaryColor.withOpacity(0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          )
-        ] : null,
-      ),
-      child: Center(
-        child: Text('$step', 
-          style: TextStyle(
-            color: active ? Colors.white : Colors.grey.shade400,
-            fontWeight: FontWeight.w900,
-            fontSize: 14,
-          )),
-      ),
-    );
-  }
-
-  Widget _stepLine(bool active) {
-    return Expanded(
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        height: 2,
-        margin: const EdgeInsets.symmetric(horizontal: 8),
-        decoration: BoxDecoration(
-          color: active ? AppTheme.primaryColor : Colors.grey.shade200,
-          borderRadius: BorderRadius.circular(2),
         ),
       ),
     );
   }
 
-  Widget _buildCurrentStep() {
-    switch (_currentStep) {
-      case 1: return _buildCategoryStep();
-      case 2: return _buildSubCategoryStep();
-      case 3: return _buildFormStep();
-      default: return const SizedBox.shrink();
-    }
-  }
-
-  Widget _buildCategoryStep() {
-    return StreamBuilder<List<Category>>(
-      stream: _categoryService.getActiveCategories(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return _buildCategorySkeleton();
-        }
-        
-        // FIX: Handle error state — prevents blank screen
-        if (snapshot.hasError) {
-          debugPrint('❌ [CustomRequest] Category stream error: ${snapshot.error}');
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.error_outline_rounded, size: 48, color: Colors.red[300]),
-                  const SizedBox(height: 16),
-                  Text('Failed to load categories',
-                    style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 16)),
-                  const SizedBox(height: 8),
-                  Text('Please check your connection and try again.',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.outfit(color: Colors.grey)),
-                  const SizedBox(height: 24),
-                  TextButton.icon(
-                    onPressed: () => setState(() {}),
-                    icon: const Icon(Icons.refresh_rounded),
-                    label: const Text('Retry'),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-        
-        final categories = snapshot.data ?? [];
-        
-        // FIX: Handle empty state — prevents blank screen
-        if (categories.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.category_outlined, size: 48, color: Colors.grey[300]),
-                  const SizedBox(height: 16),
-                  Text('No categories available',
-                    style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 16)),
-                  const SizedBox(height: 8),
-                  Text('Categories will appear here once added by admin.',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.outfit(color: Colors.grey)),
-                ],
-              ),
-            ),
-          );
-        }
-        
-        return GridView.builder(
-          padding: const EdgeInsets.all(24),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 16,
-            mainAxisSpacing: 16,
-            childAspectRatio: 1.0,
-          ),
-          itemCount: categories.length,
-          itemBuilder: (context, index) {
-            final cat = categories[index];
-            final bool isSelected = _selectedCategory?.id == cat.id;
-            
-            return _buildCategoryCard(cat, isSelected);
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildCategoryCard(Category cat, bool isSelected) {
-    return InkWell(
-      onTap: () {
-        setState(() => _selectedCategory = cat);
-        _nextStep();
-      },
-      borderRadius: BorderRadius.circular(24),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primaryColor.withOpacity(0.05) : Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: isSelected ? AppTheme.primaryColor : Colors.grey.shade100,
-            width: 2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            )
-          ],
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppTheme.accentColor,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Icon(
-                cat.icon,
-                size: 40,
-                color: Colors.grey,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(cat.name, 
-              style: GoogleFonts.outfit(
-                fontWeight: FontWeight.w800,
-                fontSize: 15,
-                color: isSelected ? AppTheme.primaryColor : AppTheme.textColor,
-              )),
-          ],
-        ),
+  Widget _buildTitle() {
+    return Text(
+      'Request Custom Service',
+      style: GoogleFonts.outfit(
+        fontSize: 28,
+        fontWeight: FontWeight.w900,
+        color: AppTheme.textColor,
       ),
     );
   }
 
-  Widget _buildSubCategoryStep() {
-    if (_selectedCategory == null) return const SizedBox.shrink();
-
-    return StreamBuilder<List<HomeService>>(
-      stream: _categoryService.getServicesByCategory(_selectedCategory!.id),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return _buildListSkeleton();
-        }
-        
-        // FIX: Handle error state — prevents blank screen
-        if (snapshot.hasError) {
-          debugPrint('❌ [CustomRequest] SubCategory stream error: ${snapshot.error}');
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.error_outline_rounded, size: 48, color: Colors.red[300]),
-                  const SizedBox(height: 16),
-                  Text('Failed to load services',
-                    style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 16)),
-                  const SizedBox(height: 8),
-                  Text('Please check your connection and try again.',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.outfit(color: Colors.grey)),
-                  const SizedBox(height: 24),
-                  TextButton.icon(
-                    onPressed: () => setState(() {}),
-                    icon: const Icon(Icons.refresh_rounded),
-                    label: const Text('Retry'),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-        
-        List<HomeService> services = snapshot.data ?? [];
-        // Unique ID for "Other"
-        if (!services.any((s) => s.id == 'custom_sub_service')) {
-          services.add(HomeService(
-            id: 'custom_sub_service',
-            key: 'custom_sub_service',
-            title: 'Other / Not Listed',
-            imageAssetPath: '',
-            imageUrl: '',
-            basePrice: 0,
-            isActive: true,
-            category: _selectedCategory!.id,
-            categoryName: _selectedCategory!.name,
-            isTopService: false,
-            order: 9999,
-            createdAt: DateTime.now(),
-          ));
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(24),
-          itemCount: services.length,
-          itemBuilder: (context, index) {
-            final service = services[index];
-            final bool isSelected = _selectedSubCategory?.id == service.id;
-            final bool isOther = service.id == 'custom_sub_service';
-            
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: InkWell(
-                onTap: () {
-                  setState(() => _selectedSubCategory = service);
-                  if (!isOther) {
-                    _nextStep();
-                  } else {
-                    _nextStep(); // Still next step for "Other"
-                  }
-                },
-                borderRadius: BorderRadius.circular(16),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-                  decoration: BoxDecoration(
-                    color: isSelected ? AppTheme.primaryColor.withOpacity(0.05) : (isOther ? Colors.orange.withOpacity(0.03) : Colors.white),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isSelected ? AppTheme.primaryColor : (isOther ? Colors.orange.withOpacity(0.2) : Colors.grey.shade100),
-                      width: 1.5,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(isOther ? Icons.auto_awesome : Icons.check_circle_outline, 
-                        color: isSelected ? AppTheme.primaryColor : (isOther ? Colors.orange : Colors.grey[400]),
-                        size: 20),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Text(service.title, 
-                          style: GoogleFonts.outfit(
-                            fontSize: 16,
-                            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                            color: isSelected ? AppTheme.primaryColor : (isOther ? Colors.orange[800] : AppTheme.textColor),
-                          )),
-                      ),
-                      Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey[300]),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildFormStep() {
+  Widget _buildForm() {
     return Form(
       key: _formKey,
-      child: ListView(
-        padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildSummaryCard(),
-          const SizedBox(height: 32),
-          
-          _fieldLabel('What needs to be fixed?'),
-          const SizedBox(height: 12),
+          // Service Title
+          _buildFieldLabel('Service Title', Icons.title),
+          const SizedBox(height: 8),
+          TextFormField(
+            controller: _titleController,
+            decoration: _buildInputDecoration('e.g., Fix leaking tap'),
+            validator: (val) => val?.isEmpty ?? true ? 'Title is required' : null,
+          ),
+          const SizedBox(height: 20),
+
+          // Category
+          _buildFieldLabel('Category', Icons.category),
+          const SizedBox(height: 8),
+          _isLoadingCategories
+              ? const CircularProgressIndicator()
+              : DropdownButtonFormField<String>(
+                  value: _selectedCategory,
+                  decoration: _buildInputDecoration('Select category'),
+                  items: _categories.map((cat) => DropdownMenuItem<String>(
+                    value: cat['id'] as String, 
+                    child: Text(cat['name'] as String, style: GoogleFonts.outfit()),
+                  )).toList(),
+                  onChanged: (val) {
+                    setState(() {
+                      _selectedCategory = val;
+                      _selectedSubCategory = null;
+                      _subCategories.clear();
+                    });
+                    if (val != null) {
+                      _loadSubCategories(val);
+                    }
+                  },
+                  validator: (val) => val == null ? 'Please select a category' : null,
+                ),
+          const SizedBox(height: 20),
+
+          // Custom Category Input
+          if (_selectedCategory == 'custom') ...[
+            _buildFieldLabel('Custom Category', Icons.edit),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: _customCategoryController,
+              decoration: _buildInputDecoration('Enter custom category'),
+              validator: (val) => val?.isEmpty ?? true ? 'Custom category is required' : null,
+            ),
+            const SizedBox(height: 20),
+          ],
+
+          // Subcategory
+          if (_selectedCategory != null && _selectedCategory != 'custom') ...[
+            _buildFieldLabel('Subcategory', Icons.subdirectory_arrow_right),
+            const SizedBox(height: 8),
+            _isLoadingSubCategories
+                ? const CircularProgressIndicator()
+                : DropdownButtonFormField<String>(
+                    value: _selectedSubCategory,
+                    decoration: _buildInputDecoration('Select subcategory'),
+                    items: _subCategories.map((subCat) => DropdownMenuItem<String>(
+                      value: subCat['id'] as String,
+                      child: Text(subCat['name'] as String, style: GoogleFonts.outfit()),
+                    )).toList(),
+                    onChanged: (val) => setState(() => _selectedSubCategory = val),
+                  ),
+            const SizedBox(height: 20),
+          ],
+
+          // Custom Subcategory Input
+          if (_selectedSubCategory == 'custom') ...[
+            _buildFieldLabel('Custom Subcategory', Icons.edit),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: _customSubCategoryController,
+              decoration: _buildInputDecoration('Enter custom subcategory'),
+              validator: (val) => val?.isEmpty ?? true ? 'Custom subcategory is required' : null,
+            ),
+            const SizedBox(height: 20),
+          ],
+
+          // Description
+          _buildFieldLabel('Problem Description', Icons.description),
+          const SizedBox(height: 8),
           TextFormField(
             controller: _descriptionController,
             maxLines: 4,
-            decoration: AppTheme.inputDecoration(
-              hintText: 'Detail your problem (e.g. leaking tap, short circuit...)',
-              prefixIcon: const Icon(Icons.edit_note_rounded),
+            decoration: _buildInputDecoration('Describe the issue in detail...'),
+            validator: (val) => (val?.isEmpty ?? true) || (val?.length ?? 0) < 10
+                ? 'Please provide at least 10 characters'
+                : null,
+          ),
+          const SizedBox(height: 20),
+
+          // Image Upload (Max 3)
+          _buildFieldLabel('Photos (Max 3)', Icons.photo_camera),
+          const SizedBox(height: 8),
+          _buildImageUploader(),
+          const SizedBox(height: 20),
+
+          // Preferred Date
+          _buildFieldLabel('Preferred Date (Optional)', Icons.calendar_today),
+          const SizedBox(height: 8),
+          _buildDatePicker(),
+          const SizedBox(height: 20),
+
+          // Time Slot
+          _buildFieldLabel('Preferred Time (Optional)', Icons.access_time),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            value: _selectedTimeSlot,
+            decoration: _buildInputDecoration('Select time slot'),
+            items: _timeSlots.map((slot) => DropdownMenuItem(
+              value: slot,
+              child: Text(slot, style: GoogleFonts.outfit()),
+            )).toList(),
+            onChanged: (val) => setState(() => _selectedTimeSlot = val),
+          ),
+          const SizedBox(height: 20),
+
+          // Priority
+          _buildFieldLabel('Priority', Icons.priority_high),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            value: _selectedPriority,
+            decoration: _buildInputDecoration('Select priority'),
+            items: _priorities.map((priority) => DropdownMenuItem(
+              value: priority,
+              child: Row(
+                children: [
+                  Icon(
+                    _getPriorityIcon(priority),
+                    color: _getPriorityColor(priority),
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(priority, style: GoogleFonts.outfit()),
+                ],
+              ),
+            )).toList(),
+            onChanged: (val) => setState(() => _selectedPriority = val),
+          ),
+          const SizedBox(height: 20),
+
+          // Service Location
+          _buildFieldLabel('Service Location', Icons.location_on),
+          const SizedBox(height: 8),
+          _buildAddressSelector(),
+          const SizedBox(height: 32),
+
+          // Submit Button
+          SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: ElevatedButton.icon(
+              onPressed: _isSubmitting ? null : _submitRequest,
+              icon: _isSubmitting
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Icon(Icons.send, size: 20),
+              label: Text(
+                'Submit Request',
+                style: GoogleFonts.outfit(
+                  fontWeight: FontWeight.w700, 
+                  fontSize: 16
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
             ),
-            validator: (val) => (val == null || val.length < 10) ? 'Provide more details (min 10 chars)' : null,
           ),
-          const SizedBox(height: 32),
-
-          _fieldLabel('Execution Preference'),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(child: _datePickerTile()),
-              const SizedBox(width: 12),
-              Expanded(child: _timePickerTile()),
-            ],
-          ),
-          const SizedBox(height: 32),
-
-          _fieldLabel('Service Location'),
-          const SizedBox(height: 12),
-          _addressSelectorTile(),
-          const SizedBox(height: 32),
-
-          _fieldLabel('Evidence / Photos (Recommended)'),
-          const SizedBox(height: 12),
-          _imageGrid(),
-          
-          const SizedBox(height: 120), // Space for sticky bottom
         ],
       ),
     );
   }
 
-  Widget _buildSummaryCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [AppTheme.primaryColor.withOpacity(0.1), AppTheme.accentColor],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-            child: const Icon(Icons.bolt_rounded, color: AppTheme.primaryColor),
+  Widget _buildMyRequestsSection() {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final userId = authService.currentUser?.uid;
+
+    if (userId == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'My Requests',
+          style: GoogleFonts.outfit(
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+            color: AppTheme.textColor,
           ),
-          const SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(_selectedCategory?.name ?? "Custom", style: GoogleFonts.outfit(fontWeight: FontWeight.w900, color: AppTheme.textColor)),
-              Text(_selectedSubCategory?.title ?? "Service", style: GoogleFonts.outfit(color: AppTheme.subtitleColor, fontSize: 13, fontWeight: FontWeight.bold)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _fieldLabel(String text) {
-    return Text(text, style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 16, color: AppTheme.textColor));
-  }
-
-  Widget _datePickerTile() {
-    return _pickerBase(
-      label: _preferredDate == null ? 'Today / Select Date' : DateFormat('MMM dd').format(_preferredDate!),
-      icon: Icons.calendar_today_rounded,
-      onTap: () async {
-        final d = await showDatePicker(
-          context: context,
-          initialDate: DateTime.now().add(const Duration(minutes: 5)),
-          firstDate: DateTime.now(),
-          lastDate: DateTime.now().add(const Duration(days: 90)),
-          builder: (context, child) => Theme(
-            data: Theme.of(context).copyWith(
-              colorScheme: const ColorScheme.light(primary: AppTheme.primaryColor),
-            ),
-            child: child!,
-          ),
-        );
-        if (d != null) setState(() => _preferredDate = d);
-      },
-    );
-  }
-
-  Widget _timePickerTile() {
-    return _pickerBase(
-      label: _preferredTime == null ? 'ASAP / Select Time' : _preferredTime!.format(context),
-      icon: Icons.access_time_rounded,
-      onTap: () async {
-        final t = await showTimePicker(context: context, initialTime: TimeOfDay.now());
-        if (t != null) setState(() => _preferredTime = t);
-      },
-    );
-  }
-
-  Widget _addressSelectorTile() {
-    return _pickerBase(
-      label: _selectedAddress?.fullAddress ?? 'Pick a Saved Address',
-      icon: Icons.location_on_rounded,
-      isLarge: true,
-      onTap: _showAddressBottomSheet,
-    );
-  }
-
-  Widget _pickerBase({required String label, required IconData icon, required VoidCallback onTap, bool isLarge = false}) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.shade200),
         ),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: AppTheme.primaryColor),
-            const SizedBox(width: 12),
-            Expanded(child: Text(label, style: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 14), overflow: TextOverflow.ellipsis)),
-            const Icon(Icons.expand_more_rounded, size: 16, color: Colors.grey),
-          ],
-        ),
-      ),
-    );
-  }
+        const SizedBox(height: 16),
+        StreamBuilder<List<Map<String, dynamic>>>(
+          stream: FirestoreService().streamCustomRequests(userId),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: CircularProgressIndicator(),
+                ),
+              );
+            }
 
-  void _showAddressBottomSheet() {
-    final userId = context.read<AuthService>().currentUser?.uid;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Select Address', style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 20)),
-                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded)),
-              ],
-            ),
-            const SizedBox(height: 20),
-            StreamBuilder<List<Address>>(
-              stream: UserService().getAddresses(userId!),
-              builder: (context, snap) {
-                if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                final addresses = snap.data!;
-                if (addresses.isEmpty) return const Center(child: Text('No addresses found in your profile.'));
-                
-                return Column(
-                  children: addresses.map((addr) => ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    onTap: () {
-                      setState(() => _selectedAddress = addr);
-                      Navigator.pop(context);
-                    },
-                    leading: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(color: AppTheme.accentColor, borderRadius: BorderRadius.circular(10)),
-                      child: const Icon(Icons.place_rounded, color: AppTheme.primaryColor, size: 20),
-                    ),
-                    title: Text(addr.name, style: GoogleFonts.outfit(fontWeight: FontWeight.w700)),
-                    subtitle: Text(addr.fullAddress, style: GoogleFonts.outfit(fontSize: 12)),
-                    trailing: _selectedAddress?.id == addr.id ? const Icon(Icons.check_circle_rounded, color: AppTheme.successColor) : null,
-                  )).toList(),
-                );
+            if (snapshot.hasError) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    children: [
+                      Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Error loading requests',
+                        style: GoogleFonts.outfit(color: Colors.red[600]),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            final requests = snapshot.data ?? [];
+
+            if (requests.isEmpty) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    children: [
+                      Icon(Icons.inbox_outlined, size: 64, color: Colors.grey[300]),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No requests yet',
+                        style: GoogleFonts.outfit(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Create your first request above',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.outfit(
+                          fontSize: 14,
+                          color: Colors.grey[500],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            return ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: requests.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final request = requests[index];
+                return _buildRequestCard(request);
               },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _imageGrid() {
-    return Row(
-      children: [
-        if (_images.isEmpty) 
-          Expanded(child: _imagePlaceholder())
-        else
-          ..._images.asMap().entries.map((e) => _imageTile(e.key, e.value)),
-        if (_images.isNotEmpty && _images.length < 3)
-          Padding(
-            padding: const EdgeInsets.only(left: 12),
-            child: _smallImageAdd(),
-          ),
-      ],
-    );
-  }
-
-  Widget _imagePlaceholder() {
-    return InkWell(
-      onTap: _showImgSheet,
-      child: Container(
-        height: 100,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2), style: BorderStyle.solid),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.add_a_photo_rounded, color: AppTheme.primaryColor),
-            const SizedBox(height: 8),
-            Text('Tap to add photos', style: GoogleFonts.outfit(color: AppTheme.primaryColor, fontWeight: FontWeight.w700, fontSize: 13)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _imageTile(int index, File file) {
-    return Stack(
-      children: [
-        Container(
-          width: 80,
-          height: 80,
-          margin: const EdgeInsets.only(right: 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            image: DecorationImage(image: FileImage(file), fit: BoxFit.cover),
-            border: Border.all(color: Colors.grey.shade200),
-          ),
-        ),
-        Positioned(
-          top: 4,
-          right: 16,
-          child: InkWell(
-            onTap: () => setState(() => _images.removeAt(index)),
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-              child: const Icon(Icons.close_rounded, size: 12, color: Colors.red),
-            ),
-          ),
+            );
+          },
         ),
       ],
     );
   }
 
-  Widget _smallImageAdd() {
-    return InkWell(
-      onTap: _showImgSheet,
-      child: Container(
-        width: 80,
-        height: 80,
-        decoration: BoxDecoration(
-          color: AppTheme.accentColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.primaryColor.withOpacity(0.1)),
-        ),
-        child: const Icon(Icons.add_rounded, color: AppTheme.primaryColor),
-      ),
-    );
-  }
-
-  void _showImgSheet() {
-    showModalBottomSheet(context: context, builder: (c) => SafeArea(
-      child: Wrap(children: [
-        ListTile(leading: const Icon(Icons.camera_alt_rounded), title: const Text('Camera'), onTap: () { Navigator.pop(c); _pickImage(ImageSource.camera); }),
-        ListTile(leading: const Icon(Icons.photo_library_rounded), title: const Text('Gallery'), onTap: () { Navigator.pop(c); _pickImage(ImageSource.gallery); }),
-      ]),
-    ));
-  }
-
-  Widget _buildBottomCTA() {
-    bool canGoNext = (_currentStep == 1 && _selectedCategory != null) || 
-                    (_currentStep == 2 && _selectedSubCategory != null);
+  Widget _buildRequestCard(Map<String, dynamic> request) {
+    final status = request['status'] ?? 'open';
+    final statusColor = _getStatusColor(status);
     
-    if (_currentStep == 3) {
-      return Container(
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, -5))],
-        ),
-        child: ElevatedButton(
-          onPressed: _isSubmitting ? null : _submitRequest,
-          child: Text(_isSubmitting ? 'SECURE SUBMITTING...' : 'CONFIRM & SUBMIT'),
-        ),
-      );
+    DateTime createdAt;
+    try {
+      if (request['createdAt'] is Timestamp) {
+        createdAt = (request['createdAt'] as Timestamp).toDate();
+      } else if (request['createdAt'] is String) {
+        createdAt = DateTime.parse(request['createdAt']);
+      } else {
+        createdAt = DateTime.now();
+      }
+    } catch (e) {
+      createdAt = DateTime.now();
     }
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
-      decoration: BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: Colors.grey.shade100))),
-      child: ElevatedButton(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: canGoNext ? AppTheme.primaryColor : Colors.grey.shade300,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  request['title'] ?? 'Untitled Request',
+                  style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                    color: AppTheme.textColor,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  status.toUpperCase(),
+                  style: GoogleFonts.outfit(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: statusColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            request['category'] ?? 'N/A',
+            style: GoogleFonts.outfit(
+              fontSize: 12,
+              color: AppTheme.primaryColor,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            DateFormat('MMM dd, yyyy').format(createdAt),
+            style: GoogleFonts.outfit(
+              fontSize: 12,
+              color: Colors.grey[600],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper methods
+  Widget _buildFieldLabel(String label, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: AppTheme.primaryColor),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: GoogleFonts.outfit(
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
+            color: AppTheme.textColor,
+          ),
         ),
-        onPressed: canGoNext ? _nextStep : null,
-        child: const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+      ],
+    );
+  }
+
+  InputDecoration _buildInputDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: GoogleFonts.outfit(color: Colors.grey[500]),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.grey[300]!),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.grey[300]!),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      filled: true,
+      fillColor: Colors.white,
+    );
+  }
+
+  Widget _buildImageUploader() {
+    return Column(
+      children: [
+        Row(
+          children: List.generate(3, (index) {
+            if (index < _selectedImages.length) {
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: index < 2 ? 8 : 0),
+                  child: Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.file(
+                          _selectedImages[index],
+                          height: 100,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: GestureDetector(
+                          onTap: () => _removeImage(index),
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.close, size: 16, color: Colors.red),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            } else {
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: index < 2 ? 8 : 0),
+                  child: GestureDetector(
+                    onTap: _selectedImages.length < 3 ? _pickImages : null,
+                    child: Container(
+                      height: 100,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _selectedImages.length < 3 ? Colors.grey[300]! : Colors.grey[200]!,
+                          style: BorderStyle.solid,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.add_photo_alternate,
+                            size: 24,
+                            color: _selectedImages.length < 3 ? Colors.grey[400] : Colors.grey[300],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Add',
+                            style: GoogleFonts.outfit(
+                              fontSize: 10,
+                              color: _selectedImages.length < 3 ? Colors.grey[600] : Colors.grey[400],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
+          }),
+        ),
+        if (_selectedImages.length > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              '${_selectedImages.length}/3 images selected',
+              style: GoogleFonts.outfit(
+                fontSize: 12,
+                color: Colors.grey[600],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildDatePicker() {
+    return GestureDetector(
+      onTap: () async {
+        final date = await showDatePicker(
+          context: context,
+          initialDate: DateTime.now().add(const Duration(days: 1)),
+          firstDate: DateTime.now(),
+          lastDate: DateTime.now().add(const Duration(days: 90)),
+        );
+        if (date != null) setState(() => _preferredDate = date);
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey[300]!),
+        ),
+        child: Row(
           children: [
-            Text('CONTINUE'),
-            SizedBox(width: 8),
-            Icon(Icons.arrow_forward_rounded, size: 18),
+            Icon(
+              Icons.calendar_today,
+              color: _preferredDate != null ? AppTheme.primaryColor : Colors.grey[500],
+            ),
+            const SizedBox(width: 12),
+            Text(
+              _preferredDate != null
+                  ? DateFormat('MMM dd, yyyy').format(_preferredDate!)
+                  : 'Select preferred date',
+              style: GoogleFonts.outfit(
+                color: _preferredDate != null ? AppTheme.textColor : Colors.grey[600],
+                fontWeight: _preferredDate != null ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildCategorySkeleton() {
-    return GridView.builder(
-      padding: const EdgeInsets.all(24),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 16, mainAxisSpacing: 16),
-      itemCount: 6,
-      itemBuilder: (_, __) => Shimmer.fromColors(
-        baseColor: Colors.grey[200]!,
-        highlightColor: Colors.white,
-        child: Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24))),
+  Widget _buildAddressSelector() {
+    return GestureDetector(
+      onTap: _selectAddress,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: _selectedAddress != null ? AppTheme.primaryColor : Colors.grey[300]!,
+            width: _selectedAddress != null ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.location_on,
+              color: _selectedAddress != null ? AppTheme.primaryColor : Colors.grey[500],
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _selectedAddress?.label ?? 'Select service location',
+                    style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w600,
+                      color: _selectedAddress != null ? AppTheme.textColor : Colors.grey[600],
+                    ),
+                  ),
+                  if (_selectedAddress != null)
+                    Text(
+                      _selectedAddress!.fullAddress,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.outfit(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.arrow_forward_ios,
+              size: 16,
+              color: Colors.grey[400],
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildListSkeleton() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(24),
-      itemCount: 8,
-      itemBuilder: (_, __) => Shimmer.fromColors(
-        baseColor: Colors.grey[200]!,
-        highlightColor: Colors.white,
-        child: Container(margin: const EdgeInsets.only(bottom: 12), height: 60, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16))),
-      ),
-    );
+  IconData _getPriorityIcon(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'low':
+        return Icons.keyboard_arrow_down;
+      case 'medium':
+        return Icons.remove;
+      case 'high':
+        return Icons.keyboard_arrow_up;
+      case 'urgent':
+        return Icons.priority_high;
+      default:
+        return Icons.remove;
+    }
+  }
+
+  Color _getPriorityColor(String priority) {
+    switch (priority.toLowerCase()) {
+      case 'low':
+        return Colors.green;
+      case 'medium':
+        return Colors.orange;
+      case 'high':
+        return Colors.red;
+      case 'urgent':
+        return Colors.red[800]!;
+      default:
+        return Colors.grey;
+    }
   }
 }

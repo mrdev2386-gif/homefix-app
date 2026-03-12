@@ -15,7 +15,16 @@ import {
   XCircle
 } from 'lucide-react';
 import { db } from '@/lib/firebase';
-import { collection, query, where, orderBy, limit, getDocs, Timestamp } from 'firebase/firestore';
+import { 
+  collection, 
+  query, 
+  where, 
+  orderBy, 
+  limit, 
+  getDocs, 
+  getCountFromServer,
+  Timestamp 
+} from 'firebase/firestore';
 import { adminApi } from '@/lib/admin-api';
 
 export default function DashboardPage() {
@@ -45,74 +54,79 @@ export default function DashboardPage() {
     try {
       setLoading(true);
 
-      // Fetch all collections in parallel
+      // Fetch counts using count queries for efficiency
       const [
-        bookingsSnap, 
-        customReqSnap, 
-        techSnap, 
-        customersSnap,
-        techAppsSnap,
-        reviewsSnap
+        totalBookingsSnap,
+        pendingBookingsSnap,
+        customRequestsSnap,
+        pendingCustomRequestsSnap,
+        techApplicationsSnap,
+        activeTechniciansSnap,
+        totalCustomersSnap,
+        completedBookingsSnap,
       ] = await Promise.all([
-        getDocs(collection(db, 'bookings')),
-        getDocs(query(collection(db, 'custom_requests'), where('status', '==', 'pending'))),
-        getDocs(query(collection(db, 'technicians'), where('status', '==', 'approved'))),
-        getDocs(collection(db, 'customers')),
-        getDocs(query(collection(db, 'technicianApplications'), where('status', '==', 'pending'))),
-        getDocs(query(collection(db, 'reviews'), orderBy('createdAt', 'desc'), limit(5)))
+        getCountFromServer(collection(db, 'bookings')),
+        getCountFromServer(query(collection(db, 'bookings'), where('status', '==', 'pending_admin'))),
+        getCountFromServer(collection(db, 'custom_requests')),
+        getCountFromServer(query(collection(db, 'custom_requests'), where('status', '==', 'pending'))),
+        getCountFromServer(query(collection(db, 'technicianApplications'), where('status', '==', 'pending'))),
+        getCountFromServer(query(collection(db, 'technicians'), where('status', '==', 'approved'))),
+        getCountFromServer(collection(db, 'customers')),
+        getCountFromServer(query(collection(db, 'bookings'), where('status', '==', 'completed'))),
       ]);
 
-      // Calculate completed bookings
-      const bookingsArray = bookingsSnap.docs;
-      const completedBookings = bookingsArray.filter(doc => doc.data().status === 'completed').length;
-
-      // Fetch recent bookings
-      const recentBookingsQuery = query(
-        collection(db, 'bookings'),
-        orderBy('createdAt', 'desc'),
-        limit(5)
-      );
-      const recentBookingsSnap = await getDocs(recentBookingsQuery);
-      const recentBookingsData = recentBookingsSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-
-      // Fetch recent technicians
-      const recentTechQuery = query(
-        collection(db, 'technicians'),
-        orderBy('createdAt', 'desc'),
-        limit(5)
-      );
-      const recentTechSnap = await getDocs(recentTechQuery);
-      const recentTechData = recentTechSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-
-      // Fetch reviews
-      const reviewsData = reviewsSnap.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      // Fetch limited lists for display
+      const [
+        pendingBookingsListSnap,
+        recentBookingsSnap,
+        recentTechSnap,
+        reviewsSnap
+      ] = await Promise.all([
+        // Pending bookings (limited to 5)
+        getDocs(query(
+          collection(db, 'bookings'),
+          where('status', '==', 'pending_admin'),
+          orderBy('createdAt', 'desc'),
+          limit(5)
+        )),
+        // Recent bookings (limited to 5)
+        getDocs(query(
+          collection(db, 'bookings'),
+          orderBy('createdAt', 'desc'),
+          limit(5)
+        )),
+        // Recent technicians (limited to 5)
+        getDocs(query(
+          collection(db, 'technicians'),
+          where('status', '==', 'approved'),
+          orderBy('createdAt', 'desc'),
+          limit(5)
+        )),
+        // Recent reviews (limited to 5)
+        getDocs(query(
+          collection(db, 'reviews'),
+          orderBy('createdAt', 'desc'),
+          limit(5)
+        )),
+      ]);
 
       setStats({
-        totalBookings: bookingsSnap.size,
-        pendingBookings: bookingsArray.filter(doc => doc.data().status === 'pending_admin').length,
-        customRequests: customReqSnap.size,
-        pendingCustomRequests: customReqSnap.size,
-        techApplications: techAppsSnap.size,
-        activeTechnicians: techSnap.size,
-        totalCustomers: customersSnap.size,
-        completedBookings,
-        todayRevenue: 12450,
-        monthlyRevenue: 245678,
+        totalBookings: totalBookingsSnap.data().count,
+        pendingBookings: pendingBookingsSnap.data().count,
+        customRequests: customRequestsSnap.data().count,
+        pendingCustomRequests: pendingCustomRequestsSnap.data().count,
+        techApplications: techApplicationsSnap.data().count,
+        activeTechnicians: activeTechniciansSnap.data().count,
+        totalCustomers: totalCustomersSnap.data().count,
+        completedBookings: completedBookingsSnap.data().count,
+        todayRevenue: 12450, // TODO: replace with actual revenue query
+        monthlyRevenue: 245678, // TODO: replace with actual revenue query
       });
 
-      setPendingBookings(bookingsSnap.docs.filter(doc => doc.data().status === 'pending_admin').map(doc => ({ id: doc.id, ...doc.data() })).slice(0, 5));
-      setRecentBookings(recentBookingsData);
-      setRecentTechnicians(recentTechData);
-      setRecentReviews(reviewsData);
+      setPendingBookings(pendingBookingsListSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setRecentBookings(recentBookingsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setRecentTechnicians(recentTechSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setRecentReviews(reviewsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -124,7 +138,7 @@ export default function DashboardPage() {
   const handleApproveBooking = async (bookingId: string) => {
     try {
       await adminApi.approveBookingRequest(bookingId);
-      fetchDashboardData();
+      await fetchDashboardData();
     } catch (error) {
       console.error('Error approving booking:', error);
     }
@@ -133,7 +147,7 @@ export default function DashboardPage() {
   const handleRejectBooking = async (bookingId: string) => {
     try {
       await adminApi.rejectBookingRequest(bookingId, 'Rejected by admin');
-      fetchDashboardData();
+      await fetchDashboardData();
     } catch (error) {
       console.error('Error rejecting booking:', error);
     }
@@ -142,7 +156,7 @@ export default function DashboardPage() {
   const handleApproveTechnician = async (techId: string) => {
     try {
       await adminApi.approveTechnicianApp(techId);
-      fetchDashboardData();
+      await fetchDashboardData();
     } catch (error) {
       console.error('Error approving technician:', error);
     }
@@ -151,7 +165,7 @@ export default function DashboardPage() {
   const handleRejectTechnician = async (techId: string) => {
     try {
       await adminApi.rejectTechnicianApp(techId, 'Application rejected');
-      fetchDashboardData();
+      await fetchDashboardData();
     } catch (error) {
       console.error('Error rejecting technician:', error);
     }

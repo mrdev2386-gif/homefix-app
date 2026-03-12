@@ -12,9 +12,11 @@ const db = admin.firestore();
  * 
  * IDEMPOTENT: Safe to call multiple times - won't overwrite existing documents
  */
-export const createTechnicianOnAuthCreate = functions.auth
-    .user()
-    .onCreate(async (user: admin.auth.UserRecord) => {
+export const createTechnicianOnAuthCreate = functions.auth.user().onCreate(async (user) => {
+        if (!user || !user.uid) {
+            console.error('[TECH_AUTH_TRIGGER] User object missing from event');
+            return;
+        }
         try {
             const uid = user.uid;
             const phone = user.phoneNumber || '';

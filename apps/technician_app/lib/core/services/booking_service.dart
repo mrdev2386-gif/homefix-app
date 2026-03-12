@@ -9,11 +9,11 @@ class BookingService {
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
   /// NEW FLOW: Get pending bookings that need technician response
-  /// Status: technician_pending - admin approved, waiting for technician
+  /// Status: admin_approved - admin approved, waiting for technician
   Stream<List<Booking>> getPendingBookings(String techId) {
     return _db.collection('bookings')
         .where('technicianId', isEqualTo: techId)
-        .where('status', isEqualTo: 'technician_pending')
+        .where('status', isEqualTo: 'admin_approved')
         .limit(20)
         .snapshots()
         .map((snapshot) {
@@ -174,6 +174,26 @@ class BookingService {
       'bookingId': bookingId,
       'status': status,
     });
+  }
+
+  Future<Map<String, dynamic>> markWorkCompleted(String bookingId) async {
+    final result = await _functions.httpsCallable('markWorkCompleted').call({
+      'bookingId': bookingId,
+    });
+    return Map<String, dynamic>.from(result.data);
+  }
+
+  Future<Map<String, dynamic>> confirmQRPayment({
+    required String bookingId,
+    required String customerId,
+    required double amount,
+  }) async {
+    final result = await _functions.httpsCallable('confirmQRPayment').call({
+      'bookingId': bookingId,
+      'customerId': customerId,
+      'amount': amount,
+    });
+    return Map<String, dynamic>.from(result.data);
   }
 
   Future<void> claimBooking(String bookingId) async {

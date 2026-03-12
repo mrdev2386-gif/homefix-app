@@ -1,31 +1,3 @@
-/**
- * ================================================
- * BOOKING NOTIFICATION TRIGGERS
- * ================================================
- * 
- * Sends push notifications when booking status changes:
- * 
- * adminApproved
- *   → Customer: "Your booking has been approved"
- *   → Technician: "New job assigned to you"
- * 
- * technicianAccepted
- *   → Customer: "Technician has accepted your booking"
- * 
- * technicianArrived
- *   → Customer: "Technician has arrived"
- * 
- * workStarted
- *   → Customer: "Service has started"
- * 
- * completed
- *   → Customer: "Service completed - please rate"
- *   → Technician: "Job completed"
- * 
- * cancelled
- *   → Customer + Technician (with reason)
- */
-
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { sendUserNotification } from '../shared/notification_helper';
@@ -107,6 +79,28 @@ export const onBookingStatusChange = functions.firestore
       // Set by: Customer, Technician, or System
       if (newStatus === 'cancelled' && previousStatus !== 'cancelled') {
         await handleCancelled(customerId, technicianId, bookingId, after);
+      }
+
+      // ================================================
+      // STATUS: paid_escrow (Pay Before Work)
+      // ================================================
+      if (newStatus === 'paid_escrow' || after.paymentStatus === 'paid_escrow') {
+        // Notify admin about paid booking
+      }
+
+      // ================================================
+      // STATUS: awaiting_customer_payment (Pay After Work)
+      // ================================================
+      if (newStatus === 'awaiting_customer_payment') {
+        await sendUserNotification({
+          userId: customerId,
+          userType: 'customer',
+          title: '🛠️ Service Finished!',
+          body: 'Technician has finished work. Please show your QR code to complete payment.',
+          type: 'job_completed',
+          data: { bookingId, screen: 'payment_qr' },
+          priority: 'high'
+        });
       }
 
       console.log(`[BOOKING NOTIFICATION] Notifications sent for booking: ${bookingId}`);

@@ -1,192 +1,382 @@
-# Production Verification Checklist
+# Verification Checklist - Stream Fixes
 
-## ✅ Pre-Flight Check
+## Pre-Testing Setup
 
-### Files Modified
-- [x] `lib/core/firebase/firebase_init.dart` - Function renamed to `initializeFirebase()`
-- [x] `lib/main.dart` - Updated to call `initializeFirebase()`
-- [x] `lib/features/home/home_screen.dart` - Categories & banner already correct
-- [x] `assets/images/ac_repair.svg` - Deleted (as requested)
-
-### Files Created
-- [x] `assets/images/CREATE_AC_IMAGE.md` - PNG creation instructions
-- [x] `PRODUCTION_READY.md` - Complete documentation
-- [x] `QUICK_TEST.md` - Updated test guide
-- [x] `VERIFICATION_CHECKLIST.md` - This file
+- [ ] All code changes applied to firestore_service.dart
+- [ ] All code changes applied to category_service.dart
+- [ ] No syntax errors in modified files
+- [ ] App builds successfully
+- [ ] No compilation warnings
 
 ---
 
-## 🧪 Test Procedure
+## Part 1: Stream Safety Tests
 
-### Step 1: Build & Run
-```powershell
-cd C:\Users\yash\projects\homefix\apps\customer_app
-flutter clean
-flutter pub get
-flutter run
+### Test 1.1: Home Screen Loads
+```
+Steps:
+1. Launch app
+2. Login with test account
+3. Wait for home screen to load
+
+Expected:
+✓ All sections load (Popular, Recommended, Top Rated, Recently Added, Near You)
+✓ No "Stream already listened to" errors in logs
+✓ No crashes or freezes
+✓ All images display (or show fallback)
+
+Result: [ ] PASS [ ] FAIL
 ```
 
-### Step 2: Check Console Output
-Look for this exact output:
+### Test 1.2: Multiple Sections Load Simultaneously
 ```
-==================================================
- FIREBASE APP CHECK - DEBUG MODE
-==================================================
-🔥 APP CHECK DEBUG TOKEN:
-[token-string-here]
+Steps:
+1. Open home screen
+2. Observe all sections loading at same time
+
+Expected:
+✓ No stream conflicts
+✓ All sections populate with data
+✓ No "Stream already listened to" errors
+
+Result: [ ] PASS [ ] FAIL
 ```
 
-**Expected:** Token is displayed (not NULL)
-**If NULL:** Check Firebase project configuration
+### Test 1.3: Service List Screen
+```
+Steps:
+1. Tap "Services" or "View All"
+2. Wait for services to load
 
-### Step 3: Verify Home Screen
+Expected:
+✓ Services load without crashes
+✓ No "Stream already listened to" errors
+✓ Services display correctly
+✓ Fallback images show for missing imageUrl
 
-#### Categories Section
-- [ ] See "Categories" header
-- [ ] See 2 rows of category cards
-- [ ] Each row has 6 categories
-- [ ] Can scroll horizontally
-- [ ] Only ~2.5 categories visible at once
-- [ ] Total 12 categories displayed
-
-#### Category Card Design
-- [ ] White background
-- [ ] Rounded corners
-- [ ] Orange gradient icon (44x44)
-- [ ] Icon is white (24px)
-- [ ] Category name below icon
-- [ ] Text is centered, bold, 12px
-- [ ] Subtle shadow effect
-
-#### Banners
-- [ ] Seasonal banners section visible
-- [ ] 4 banners: AC Service, Referral, Electrician, Cooler
-- [ ] Banners load from network
-- [ ] If network fails, shows gradient (no crash)
-
-### Step 4: Test FCM Token
-1. Login to app
-2. Check console for:
-   ```
-   [NotificationsService] Token saved
-   ```
-3. Logout
-4. Check console for:
-   ```
-   ⚠️ Cannot save FCM token — user not authenticated
-   ```
-
-### Step 5: Test Navigation
-- [ ] Tap category card → navigates to services
-- [ ] Tap banner → navigates to services
-- [ ] Tap "See All" → navigates to all services
+Result: [ ] PASS [ ] FAIL
+```
 
 ---
 
-## 🐛 Common Issues & Fixes
+## Part 2: Missing Data Handling Tests
 
-### Issue: App Check token is NULL
-**Fix:**
-1. Check `firebase_app_check` version in pubspec.yaml
-2. Ensure Firebase project has App Check enabled
-3. Try: `flutter clean && flutter pub get`
+### Test 2.1: Missing CategoryId
+```
+Steps:
+1. Open service list
+2. Check logs for categoryId warnings
 
-### Issue: Categories not showing 2 rows
-**Fix:**
-1. Hot restart (not hot reload)
-2. Check if categories exist in Firestore
-3. Verify `take(12)` limit is applied
+Expected:
+✓ Services display correctly
+✓ Warning logs show: "categoryId missing for doc: $id"
+✓ No crashes
+✓ Services not dropped from display
 
-### Issue: Banner images not loading
-**Fix:**
-1. Check internet connection
-2. Verify fallback chain works (should show gradient)
-3. Create PNG: `assets/images/ac_repair.png`
+Result: [ ] PASS [ ] FAIL
+```
 
-### Issue: FCM token saves when not logged in
-**Fix:**
-1. Check `notifications_service.dart` has auth guard
-2. Verify `FirebaseAuth.instance.currentUser` is checked
+### Test 2.2: Missing Images
+```
+Steps:
+1. Open home screen or service list
+2. Look for broken image icons
 
----
+Expected:
+✓ No broken image icons
+✓ Fallback images display
+✓ All images load or show placeholder
+✓ No console errors about images
 
-## 📊 Performance Checks
+Result: [ ] PASS [ ] FAIL
+```
 
-### App Startup
-- [ ] Splash screen shows
-- [ ] No crashes during initialization
-- [ ] App Check token generated within 2 seconds
-- [ ] Home screen loads within 3 seconds
+### Test 2.3: Fallback Image URL
+```
+Steps:
+1. Check app logs
+2. Verify fallback image URL is used
 
-### UI Smoothness
-- [ ] Category scroll is smooth (60fps)
-- [ ] Banner scroll is smooth
-- [ ] No jank when loading images
-- [ ] Transitions are fluid
+Expected:
+✓ Fallback URL: https://firebasestorage.googleapis.com/v0/b/homefix-860e3.appspot.com/o/placeholders%2Fservice_placeholder.png?alt=media
+✓ Fallback images load correctly
+✓ No 404 errors
 
-### Memory
-- [ ] No memory leaks
-- [ ] Image cache working (50MB limit)
-- [ ] Subscriptions properly disposed
-
----
-
-## 🚀 Production Deployment Checklist
-
-### Before Deploy
-- [ ] All tests pass
-- [ ] No console errors
-- [ ] App Check token working
-- [ ] FCM notifications working
-- [ ] Categories display correctly
-- [ ] Images load with fallbacks
-
-### Firebase Console
-- [ ] Add App Check debug token to whitelist
-- [ ] Verify Firestore rules deployed
-- [ ] Check Cloud Functions deployed
-- [ ] Enable FCM in project settings
-
-### App Store / Play Store
-- [ ] Update version number
-- [ ] Create release build
-- [ ] Test release build
-- [ ] Upload to stores
+Result: [ ] PASS [ ] FAIL
+```
 
 ---
 
-## ✅ Sign-Off
+## Part 3: Functionality Tests
 
-### Developer Checklist
-- [ ] All code changes reviewed
-- [ ] No hardcoded values
-- [ ] Error handling in place
-- [ ] Logging appropriate
-- [ ] Documentation updated
+### Test 3.1: Search Works
+```
+Steps:
+1. Open service list
+2. Type in search box
+3. Verify results filter
 
-### QA Checklist
-- [ ] Manual testing complete
-- [ ] All features working
-- [ ] No crashes
-- [ ] Performance acceptable
-- [ ] UI matches design
+Expected:
+✓ Search filters services
+✓ No crashes
+✓ Results display correctly
 
-### Ready for Production
-- [ ] All checks passed
-- [ ] Stakeholder approval
-- [ ] Deployment plan ready
+Result: [ ] PASS [ ] FAIL
+```
+
+### Test 3.2: Category Filter Works
+```
+Steps:
+1. Open service list
+2. Tap different categories
+3. Verify services filter
+
+Expected:
+✓ Services filter by category
+✓ No crashes
+✓ Results display correctly
+
+Result: [ ] PASS [ ] FAIL
+```
+
+### Test 3.3: Custom Requests Still Works
+```
+Steps:
+1. Tap "Custom Booking"
+2. Fill form and submit
+
+Expected:
+✓ Form loads
+✓ Submission works
+✓ No stream conflicts
+✓ No crashes
+
+Result: [ ] PASS [ ] FAIL
+```
+
+### Test 3.4: Navigation Works
+```
+Steps:
+1. Navigate between screens
+2. Go back and forth multiple times
+3. Tap different sections
+
+Expected:
+✓ No crashes
+✓ No "Stream already listened to" errors
+✓ Smooth navigation
+
+Result: [ ] PASS [ ] FAIL
+```
 
 ---
 
-## 📞 Support
+## Part 4: Log Verification Tests
 
-If issues persist:
-1. Check `PRODUCTION_READY.md` for detailed fixes
-2. Review `QUICK_TEST.md` for test commands
-3. See `assets/images/CREATE_AC_IMAGE.md` for image guide
+### Test 4.1: Check for Expected Logs
+```
+Expected logs (GOOD):
+✓ ✅ [FirestoreService] Stream initialized
+✓ ✅ [CategoryService] Categories loaded
+✓ ⚠️ [HomeService] categoryId missing for doc: $id
+✓ ⚠️ [HomeService Model] No image found for $id. Using fallback.
+
+Result: [ ] PASS [ ] FAIL
+```
+
+### Test 4.2: Check for Unexpected Errors
+```
+Unexpected logs (BAD - should NOT see):
+✗ ❌ Bad state: Stream has already been listened to.
+✗ ❌ [Firestore] Stream error: PERMISSION_DENIED
+✗ ❌ [Firestore] Stream error: FAILED_PRECONDITION
+✗ ❌ Unhandled exception
+
+Result: [ ] PASS [ ] FAIL
+```
 
 ---
 
-**Status:** ✅ All fixes applied and verified
-**Date:** 2024
-**Version:** 1.0.0
+## Part 5: Performance Tests
+
+### Test 5.1: App Responsiveness
+```
+Steps:
+1. Open app
+2. Rapidly tap between screens
+3. Rapidly scroll through lists
+4. Monitor for lag or freezes
+
+Expected:
+✓ App remains responsive
+✓ No lag or stuttering
+✓ No memory leaks
+✓ No crashes
+
+Result: [ ] PASS [ ] FAIL
+```
+
+### Test 5.2: Memory Usage
+```
+Steps:
+1. Open app
+2. Navigate through multiple screens
+3. Check memory usage in Android Studio
+
+Expected:
+✓ Memory usage stable
+✓ No memory leaks
+✓ No excessive memory growth
+
+Result: [ ] PASS [ ] FAIL
+```
+
+---
+
+## Part 6: Edge Cases
+
+### Test 6.1: No Services Available
+```
+Steps:
+1. Filter to category with no services
+2. Verify empty state
+
+Expected:
+✓ Empty state displays
+✓ No crashes
+✓ User-friendly message
+
+Result: [ ] PASS [ ] FAIL
+```
+
+### Test 6.2: Network Disconnected
+```
+Steps:
+1. Turn off network
+2. Try to load services
+3. Turn network back on
+
+Expected:
+✓ Graceful error handling
+✓ No crashes
+✓ Retry works when network restored
+
+Result: [ ] PASS [ ] FAIL
+```
+
+### Test 6.3: Slow Network
+```
+Steps:
+1. Simulate slow network (2G)
+2. Load services
+3. Verify loading states
+
+Expected:
+✓ Loading indicators show
+✓ No crashes
+✓ Data loads eventually
+
+Result: [ ] PASS [ ] FAIL
+```
+
+---
+
+## Part 7: Security Tests
+
+### Test 7.1: Firebase App Check
+```
+Steps:
+1. Check app initialization logs
+2. Verify App Check token generated
+
+Expected:
+✓ App Check initialized
+✓ Debug token generated (dev mode)
+✓ Play Integrity active (production)
+
+Result: [ ] PASS [ ] FAIL
+```
+
+### Test 7.2: Firestore Security Rules
+```
+Steps:
+1. Verify user can read services
+2. Verify user cannot write services
+3. Check security rule enforcement
+
+Expected:
+✓ Read access allowed
+✓ Write access denied
+✓ Rules enforced correctly
+
+Result: [ ] PASS [ ] FAIL
+```
+
+---
+
+## Summary
+
+### Total Tests: 20
+- [ ] Tests Passed: ___/20
+- [ ] Tests Failed: ___/20
+- [ ] Pass Rate: ___%
+
+### Overall Status
+- [ ] ALL TESTS PASSED ✅
+- [ ] SOME TESTS FAILED ⚠️
+- [ ] CRITICAL FAILURES ❌
+
+---
+
+## Issues Found
+
+### Critical Issues (Blocks Release)
+```
+1. ___________________________________
+2. ___________________________________
+3. ___________________________________
+```
+
+### High Priority Issues (Should Fix)
+```
+1. ___________________________________
+2. ___________________________________
+3. ___________________________________
+```
+
+### Low Priority Issues (Nice to Have)
+```
+1. ___________________________________
+2. ___________________________________
+3. ___________________________________
+```
+
+---
+
+## Sign-Off
+
+**Tested By:** ___________________
+**Date:** ___________________
+**Status:** [ ] APPROVED [ ] REJECTED
+
+**Comments:**
+```
+_________________________________
+_________________________________
+_________________________________
+```
+
+---
+
+## Next Steps
+
+- [ ] Fix any critical issues
+- [ ] Re-test failed tests
+- [ ] Get approval from team lead
+- [ ] Deploy to production
+- [ ] Monitor logs in production
+
+---
+
+**Checklist Version:** 1.0
+**Last Updated:** 2024

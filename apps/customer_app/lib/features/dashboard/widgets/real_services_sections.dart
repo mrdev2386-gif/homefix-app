@@ -25,6 +25,7 @@ class _BaseServicesSection extends StatelessWidget {
   final int limit;
   final bool isGrid;
   final StreamBuilderFunction streamProvider;
+  final Set<String>? displayedServiceIds;
 
   const _BaseServicesSection({
     required this.title,
@@ -33,6 +34,7 @@ class _BaseServicesSection extends StatelessWidget {
     required this.limit,
     this.isGrid = false,
     required this.streamProvider,
+    this.displayedServiceIds,
   });
 
   @override
@@ -57,9 +59,22 @@ class _BaseServicesSection extends StatelessWidget {
           return _buildHeaderWithChild(_buildErrorState(snapshot.error.toString()));
         }
 
-        final services = snapshot.data ?? [];
+        var services = snapshot.data ?? [];
+        
+        // Filter out already displayed services to prevent duplicates
+        if (displayedServiceIds != null) {
+          services = services.where((s) => !displayedServiceIds!.contains(s.id)).toList();
+        }
+        
         if (services.isEmpty) {
           return const SizedBox.shrink(); // Hide entire section if empty
+        }
+        
+        // Track displayed services
+        if (displayedServiceIds != null) {
+          for (final service in services) {
+            displayedServiceIds!.add(service.id);
+          }
         }
 
         return Column(
@@ -124,7 +139,7 @@ class _BaseServicesSection extends StatelessWidget {
 
   Widget _buildHorizontalList(List<HomeService> services) {
     return SizedBox(
-      height: 270,
+      height: 200,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -253,7 +268,9 @@ class _BaseServicesSection extends StatelessWidget {
 // --- Specific Sections ---
 
 class AllServicesSection extends StatelessWidget {
-  const AllServicesSection({super.key});
+  final Set<String>? displayedServiceIds;
+  
+  const AllServicesSection({super.key, this.displayedServiceIds});
 
   @override
   Widget build(BuildContext context) {
@@ -263,13 +280,16 @@ class AllServicesSection extends StatelessWidget {
       iconGradient: const [Color(0xFF6366F1), Color(0xFF8B5CF6)],
       limit: 50,
       isGrid: true,
+      displayedServiceIds: displayedServiceIds,
       streamProvider: (fs, limit) => fs.streamAllTechnicianServices(limit: limit),
     );
   }
 }
 
 class TopRatedRealServicesSection extends StatelessWidget {
-  const TopRatedRealServicesSection({super.key});
+  final Set<String>? displayedServiceIds;
+  
+  const TopRatedRealServicesSection({super.key, this.displayedServiceIds});
 
   @override
   Widget build(BuildContext context) {
@@ -337,8 +357,21 @@ class TopRatedRealServicesSection extends StatelessWidget {
           );
         }
         if (snapshot.hasError) return const SizedBox.shrink();
-        final services = snapshot.data ?? [];
+        var services = snapshot.data ?? [];
+        
+        // Filter out already displayed services
+        if (displayedServiceIds != null) {
+          services = services.where((s) => !displayedServiceIds!.contains(s.id)).toList();
+        }
+        
         if (services.isEmpty) return const SizedBox.shrink();
+        
+        // Track displayed services
+        if (displayedServiceIds != null) {
+          for (final service in services) {
+            displayedServiceIds!.add(service.id);
+          }
+        }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -393,7 +426,9 @@ class TopRatedRealServicesSection extends StatelessWidget {
 }
 
 class RecentlyAddedServicesSection extends StatelessWidget {
-  const RecentlyAddedServicesSection({super.key});
+  final Set<String>? displayedServiceIds;
+  
+  const RecentlyAddedServicesSection({super.key, this.displayedServiceIds});
 
   @override
   Widget build(BuildContext context) {
@@ -403,13 +438,16 @@ class RecentlyAddedServicesSection extends StatelessWidget {
       iconGradient: const [Color(0xFF4CAF50), Color(0xFF8BC34A)],
       limit: 10,
       isGrid: true,
+      displayedServiceIds: displayedServiceIds,
       streamProvider: (fs, limit) => fs.streamRecentTechnicianServices(limit: limit),
     );
   }
 }
 
 class RecommendedServicesSection extends StatelessWidget {
-  const RecommendedServicesSection({super.key});
+  final Set<String>? displayedServiceIds;
+  
+  const RecommendedServicesSection({super.key, this.displayedServiceIds});
 
   @override
   Widget build(BuildContext context) {
@@ -419,9 +457,10 @@ class RecommendedServicesSection extends StatelessWidget {
     return _BaseServicesSection(
       title: 'Recommended For You',
       titleIcon: Icons.auto_awesome_rounded,
-      iconGradient: const [Color(0xFF9C27B0), Color(0xFFE91E63)],
+      iconGradient: const [Color(0xFF10B981), Color(0xFF059669)],
       limit: 10,
-      isGrid: true,
+      isGrid: false,
+      displayedServiceIds: displayedServiceIds,
       streamProvider: (fs, limit) => fs.streamRecommendedServices(userId, limit: limit),
     );
   }

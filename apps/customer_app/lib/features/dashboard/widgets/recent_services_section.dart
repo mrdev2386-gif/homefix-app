@@ -10,13 +10,15 @@ import '../../../core/models/service_result.dart';
 import '../../services/presentation/service_details_screen.dart';
 
 /// Recent Services Section - shows services ordered by createdAt
-class RecentServicesSection extends StatelessWidget {
+class RecentlyAddedServicesSection extends StatelessWidget {
+  final Set<String> displayedServiceIds;
   final int limit;
   final bool showViewAll;
   final VoidCallback? onViewAllTap;
 
-  const RecentServicesSection({
+  const RecentlyAddedServicesSection({
     super.key,
+    required this.displayedServiceIds,
     this.limit = 10,
     this.showViewAll = true,
     this.onViewAllTap,
@@ -79,7 +81,7 @@ class RecentServicesSection extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         
-        // Horizontal Scroll
+        // Horizontal Scroll - FIX #3: Enforce limit to 10 services
         SizedBox(
           height: 180,
           child: StreamBuilder<List<HomeService>>(
@@ -98,7 +100,17 @@ class RecentServicesSection extends StatelessWidget {
                 return _buildEmptyState();
               }
               
-              return _buildHorizontalList(services);
+              // Filter out already displayed services to avoid duplicates
+              final filteredServices = services
+                  .where((s) => !displayedServiceIds.contains(s.id))
+                  .take(limit)
+                  .toList();
+              
+              if (filteredServices.isEmpty) {
+                return _buildEmptyState();
+              }
+              
+              return _buildHorizontalList(filteredServices);
             },
           ),
         ),
@@ -200,7 +212,7 @@ class _RecentServiceCardState extends State<_RecentServiceCard> {
               builder: (_) => ServiceDetailsScreen(
                 serviceId: widget.service.id,
                 categoryId: widget.service.category,
-                serviceName: widget.service.name,
+                serviceName: widget.service.title,
                 serviceData: widget.service,
               ),
             ),
@@ -229,7 +241,7 @@ class _RecentServiceCardState extends State<_RecentServiceCard> {
             ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
               child: SafeNetworkImage(
-                imageUrl: widget.service.imageUrl,
+                imageUrl: widget.service.imageUrl ?? '',
                 width: 140,
                 height: 100,
                 fit: BoxFit.cover,
@@ -241,15 +253,17 @@ class _RecentServiceCardState extends State<_RecentServiceCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      widget.service.name,
-                      style: GoogleFonts.outfit(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.textColor,
+                    Flexible(
+                      child: Text(
+                        widget.service.title,
+                        style: GoogleFonts.outfit(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.textColor,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
                     ),
                     const Spacer(),
                     Text(

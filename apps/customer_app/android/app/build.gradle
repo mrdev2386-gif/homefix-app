@@ -38,20 +38,13 @@ android {
                 storePassword = keystoreProperties['storePassword']
                 keyAlias = keystoreProperties['keyAlias']
                 keyPassword = keystoreProperties['keyPassword']
-            } else {
-                // Fallback for CI/CD or dev without keys
-                storeFile = file("debug.keystore") // Placeholder
-                storePassword = "android"
-                keyAlias = "androiddebugkey"
-                keyPassword = "android"
             }
         }
     }
 
     buildTypes {
         release {
-            signingConfig signingConfigs.release
-            // Add ProGuard/R8
+            signingConfig signingConfigs.release.storeFile != null ? signingConfigs.release : signingConfigs.debug
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

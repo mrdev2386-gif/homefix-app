@@ -4,7 +4,7 @@ import '../../../core/models/technician.dart';
 import 'package:customer_app/core/models/service.dart';
 import '../../../core/widgets/safe_network_image.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
-import '../../booking/presentation/slot_selection_screen.dart';
+
 import 'package:google_fonts/google_fonts.dart';
 
 class TechnicianListScreen extends StatelessWidget {
@@ -239,21 +239,9 @@ class TechnicianListScreen extends StatelessWidget {
               Expanded(
                 child: ElevatedButton(
                   onPressed: () {
-                    if (service != null) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => SlotSelectionScreen(
-                            service: service!,
-                            preSelectedTechId: tech.id,
-                          ),
-                        ),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Please select a service first'))
-                      );
-                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Booking feature coming soon'))
+                    );
                   },
                   style: ElevatedButton.styleFrom(minimumSize: const Size(0, 48)),
                   child: const Text('Book Expert'),

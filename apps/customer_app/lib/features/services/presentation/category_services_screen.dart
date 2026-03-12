@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:customer_app/core/models/category.dart';
 import 'package:customer_app/core/models/service.dart';
 import 'package:customer_app/core/models/sub_service.dart';
@@ -35,7 +36,10 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
   final MatchingService _matchingService = MatchingService();
   bool _isLoading = true;
   List<HomeService> _services = [];
+  List<HomeService> _filteredServices = [];
   StreamSubscription? _servicesSubscription;
+  String _selectedFilter = 'all';
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -50,12 +54,8 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
   }
 
   void _fetchServices() {
-    setState(() => _isLoading = true); // Keep this line to show loading on refresh
-    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    debugPrint('🔍 [CategoryServicesScreen] Starting fetch...');
-    debugPrint('   category.id = ${widget.category.id}');
-    debugPrint('   category.name = ${widget.category.name}');
-    debugPrint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    setState(() => _isLoading = true);
+    debugPrint('🔍 [CategoryServicesScreen] Fetching services for: ${widget.category.name}');
 
     _servicesSubscription?.cancel();
     _servicesSubscription = _categoryService
@@ -63,18 +63,16 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
         .listen(
       (result) {
         final services = result.data ?? [];
-        debugPrint('📦 [CategoryServicesScreen] Stream event received');
-        debugPrint('   services.length = ${services.length}');
-        
         if (mounted) {
           setState(() {
-            _services = services;
+            _services = services.take(20).toList();
+            _applyFilters();
             _isLoading = false;
           });
         }
       },
       onError: (error) {
-        debugPrint('❌ [CategoryServicesScreen] Stream ERROR: $error');
+        debugPrint('❌ Error: $error');
         if (mounted) {
           setState(() => _isLoading = false);
         }
@@ -82,19 +80,45 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
     );
   }
 
+  void _applyFilters() {
+    List<HomeService> filtered = List.from(_services);
+
+    // Apply search filter
+    if (_searchQuery.isNotEmpty) {
+      filtered = filtered
+          .where((s) => s.title.toLowerCase().contains(_searchQuery.toLowerCase()))
+          .toList();
+    }
+
+    // Apply sort filter
+    switch (_selectedFilter) {
+      case 'toprated':
+        filtered.sort((a, b) => b.rating.compareTo(a.rating));
+        break;
+      case 'lowestprice':
+        filtered.sort((a, b) => a.basePrice.compareTo(b.basePrice));
+        break;
+      case 'fastest':
+        filtered.sort((a, b) => (a.estimatedTime ?? 0).compareTo(b.estimatedTime ?? 0));
+        break;
+      case 'recent':
+        filtered.sort((a, b) => (b.createdAt ?? DateTime.now()).compareTo(a.createdAt ?? DateTime.now()));
+        break;
+      default:
+        break;
+    }
+
+    setState(() => _filteredServices = filtered);
+  }
+
   Future<void> _handleServiceTap(HomeService service) async {
     if (!mounted) return;
-
-    // ✅ Pass widget.category.id (the Firestore doc ID) explicitly.
-    // This is the ONLY safe source — it comes directly from the Category object
-    // that was navigated to this screen, which holds the real Firestore doc ID.
-    // Never rely on service.category which may be a display name.
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => ServiceDetailsScreen(
           serviceId: service.id,
-          categoryId: widget.category.id, // ✅ Firestore doc ID — guaranteed correct
+          categoryId: widget.category.id,
           serviceName: service.title,
           serviceData: service,
         ),
@@ -103,7 +127,6 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
   }
 
   Future<void> _matchTechnicians(String serviceId, String? subServiceId) async {
-    // Use the new loading overlay with timeout
     bool isTimedOut = false;
     
     await showGeneralDialog(
@@ -123,7 +146,6 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
     );
     
     if (isTimedOut) {
-      // Show timeout popup
       if (!mounted) return;
       NoTechniciansPopup.show(
         context: context,
@@ -136,20 +158,15 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
       return;
     }
     
-    // Check if already navigated away
     if (!mounted) return;
     
-    // 1. Get location from LocationProvider (SOLE SOURCE OF TRUTH)
     final locationProvider = Provider.of<LocationProvider>(context, listen: false);
     double? latitude = locationProvider.selectedAddress?.latitude;
     double? longitude = locationProvider.selectedAddress?.longitude;
 
-    // 2. Fallback to 0.0 if no specific coordinates (we should ideally have district-based matching)
-    // For now, we use existing matching service logic which requires lat/lng
     latitude ??= 0.0;
     longitude ??= 0.0;
 
-    // 3. Get matching result
     final response = await _matchingService.matchTechnicians(
       serviceId: serviceId,
       subServiceId: subServiceId,
@@ -160,7 +177,6 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
     if (!mounted) return;
     
     if (response.available && response.topTechnicians != null) {
-      // Navigate to technician selection
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -172,7 +188,6 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
         ),
       );
     } else {
-      // Show no technicians popup
       NoTechniciansPopup.show(
         context: context,
         onRetry: () => _matchTechnicians(serviceId, subServiceId),
@@ -184,98 +199,233 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
     }
   }
 
-  void _showLoadingDialog() {
-    showGeneralDialog(
-      context: context,
-      barrierDismissible: false,
-      barrierLabel: '',
-      transitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (context, anim, secondaryAnim) {
-        return Center(
-          child: Container(
-            padding: const EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const CircularProgressIndicator(
-                  color: AppTheme.primaryColor,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Finding professionals...',
-                  style: GoogleFonts.outfit(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          widget.category.name,
-          style: GoogleFonts.outfit(
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-            color: AppTheme.textColor,
+      backgroundColor: AppTheme.backgroundColor,
+      body: CustomScrollView(
+        slivers: [
+          // Gradient Header
+          SliverAppBar(
+            expandedHeight: 180,
+            pinned: true,
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            leading: Container(
+              margin: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+                onPressed: () => Navigator.pop(context),
+                color: AppTheme.textColor,
+              ),
+            ),
+            flexibleSpace: FlexibleSpaceBar(
+              background: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppTheme.primaryColor.withOpacity(0.9),
+                      AppTheme.secondaryColor.withOpacity(0.8),
+                    ],
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 60, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Text(
+                        widget.category.name,
+                        style: GoogleFonts.outfit(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Choose a service near you',
+                        style: GoogleFonts.outfit(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white.withOpacity(0.9),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
-        ),
-      ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          _fetchServices();
-        },
-        child: _isLoading
-            ? _buildShimmerLoading()
-            : _services.isEmpty
-                ? _buildEmptyState()
-                : ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _services.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final service = _services[index];
-                    return _ServiceCard(
+
+          // Search Bar
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+              child: TextField(
+                onChanged: (value) {
+                  setState(() => _searchQuery = value);
+                  _applyFilters();
+                },
+                decoration: InputDecoration(
+                  hintText: 'Search services...',
+                  prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.subtitleColor),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () {
+                            setState(() => _searchQuery = '');
+                            _applyFilters();
+                          },
+                        )
+                      : null,
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: Colors.grey.shade200),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: Colors.grey.shade200),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                ),
+              ),
+            ),
+          ),
+
+          // Filter Chips
+          SliverToBoxAdapter(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  _FilterChip(
+                    label: 'All',
+                    isSelected: _selectedFilter == 'all',
+                    onTap: () {
+                      setState(() => _selectedFilter = 'all');
+                      _applyFilters();
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  _FilterChip(
+                    label: 'Top Rated',
+                    isSelected: _selectedFilter == 'toprated',
+                    onTap: () {
+                      setState(() => _selectedFilter = 'toprated');
+                      _applyFilters();
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  _FilterChip(
+                    label: 'Lowest Price',
+                    isSelected: _selectedFilter == 'lowestprice',
+                    onTap: () {
+                      setState(() => _selectedFilter = 'lowestprice');
+                      _applyFilters();
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  _FilterChip(
+                    label: 'Fastest',
+                    isSelected: _selectedFilter == 'fastest',
+                    onTap: () {
+                      setState(() => _selectedFilter = 'fastest');
+                      _applyFilters();
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  _FilterChip(
+                    label: 'Recently Added',
+                    isSelected: _selectedFilter == 'recent',
+                    onTap: () {
+                      setState(() => _selectedFilter = 'recent');
+                      _applyFilters();
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SliverToBoxAdapter(child: SizedBox(height: 12)),
+
+          // Services Grid
+          if (_isLoading)
+            SliverToBoxAdapter(
+              child: _buildShimmerLoading(),
+            )
+          else if (_filteredServices.isEmpty)
+            SliverToBoxAdapter(
+              child: _buildEmptyState(),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverGrid(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  childAspectRatio: 0.72,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final service = _filteredServices[index];
+                    return _ServiceGridCard(
                       service: service,
                       onTap: () => _handleServiceTap(service),
                     );
                   },
+                  childCount: _filteredServices.length,
                 ),
+              ),
+            ),
+
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        ],
       ),
     );
   }
 
   Widget _buildShimmerLoading() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: 5,
+    return GridView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 0.72,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+      ),
+      itemCount: 6,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       itemBuilder: (_, __) => Shimmer.fromColors(
         baseColor: Colors.grey[200]!,
         highlightColor: Colors.grey[100]!,
         child: Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          height: 120,
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
@@ -287,266 +437,281 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
 
   Widget _buildEmptyState() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.search_off_rounded,
-            size: 64,
-            color: Colors.grey[300],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No services found in this category',
-            style: GoogleFonts.outfit(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey[500],
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.search_off_rounded,
+                size: 48,
+                color: AppTheme.primaryColor,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+            Text(
+              'No services found',
+              style: GoogleFonts.outfit(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textColor,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _searchQuery.isNotEmpty
+                  ? 'Try adjusting your search'
+                  : 'No services available in this category yet',
+              style: GoogleFonts.outfit(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: AppTheme.subtitleColor,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _ServiceCard extends StatefulWidget {
-  final HomeService service;
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool isSelected;
   final VoidCallback onTap;
 
-  const _ServiceCard({required this.service, required this.onTap});
-
-  @override
-  State<_ServiceCard> createState() => _ServiceCardState();
-}
-
-class _ServiceCardState extends State<_ServiceCard> {
-  SubService? _selectedSubService;
-  bool _isExpanded = false;
+  const _FilterChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final service = widget.service;
-    final hasSubServices = service.subServices.isNotEmpty;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-        border: Border.all(color: Colors.grey.shade100),
-      ),
-      child: Column(
-        children: [
-          InkWell(
-            onTap: () {
-              if (hasSubServices) {
-                setState(() => _isExpanded = !_isExpanded);
-              } else {
-                widget.onTap();
-              }
-            },
-            borderRadius: BorderRadius.vertical(
-              top: const Radius.circular(20),
-              bottom: Radius.circular(_isExpanded ? 0 : 20),
+        splashColor: AppTheme.primaryColor.withOpacity(0.1),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? AppTheme.primaryColor : Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isSelected ? AppTheme.primaryColor : Colors.grey.shade200,
+              width: 1.5,
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: AppTheme.primaryColor.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Text(
+            label,
+            style: GoogleFonts.outfit(
+              fontSize: 13,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+              color: isSelected ? Colors.white : AppTheme.subtitleColor,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ServiceGridCard extends StatelessWidget {
+  final HomeService service;
+  final VoidCallback onTap;
+
+  const _ServiceGridCard({
+    required this.service,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+          border: Border.all(color: Colors.grey.shade100),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Image with overlay
+            Expanded(
+              flex: 3,
+              child: Stack(
                 children: [
-                  // Service Image
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: SafeNetworkImage(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(16),
+                    ),
+                    child: CachedNetworkImage(
                       imageUrl: service.imageUrl,
-                      width: 90,
-                      height: 90,
+                      width: double.infinity,
                       fit: BoxFit.cover,
+                      placeholder: (context, url) => Container(
+                        color: Colors.grey[200],
+                        child: const Center(
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation(AppTheme.primaryColor),
+                          ),
+                        ),
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        color: Colors.grey[200],
+                        child: Icon(
+                          Icons.image_not_supported_rounded,
+                          color: Colors.grey[400],
+                        ),
+                      ),
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  
-                  // Info
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                service.title,
-                                style: GoogleFonts.outfit(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppTheme.textColor,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            if (service.technicianDistrict != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  service.technicianDistrict!,
-                                  style: GoogleFonts.outfit(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.blue[700],
-                                  ),
-                                ),
-                              ),
+                  // Gradient overlay
+                  Positioned.fill(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withOpacity(0.15),
                           ],
                         ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            const Icon(Icons.person_pin_rounded, size: 14, color: AppTheme.primaryColor),
-                            const SizedBox(width: 4),
-                            Text(
-                              service.technicianName ?? 'Verified Professional',
-                              style: GoogleFonts.outfit(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: AppTheme.subtitleColor,
-                              ),
-                            ),
-                          ],
+                      ),
+                    ),
+                  ),
+                  // Favorite button
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: _SmallFavoriteButton(service: service),
+                  ),
+                  // Discount badge
+                  if (service.discount != null && service.discount! > 0)
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.errorColor,
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            const Icon(Icons.star_rounded, size: 16, color: Colors.amber),
-                            const SizedBox(width: 2),
-                            Text(
-                              service.rating.toString(),
-                              style: GoogleFonts.outfit(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                color: AppTheme.textColor,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Starting from',
-                              style: GoogleFonts.outfit(
-                                fontSize: 12,
-                                color: AppTheme.subtitleColor,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '₹${service.basePrice.toStringAsFixed(0)}',
+                        child: Text(
+                          '${service.discount}% OFF',
                           style: GoogleFonts.outfit(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                            color: AppTheme.primaryColor,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            // Content
+            Expanded(
+              flex: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Title
+                    Text(
+                      service.title,
+                      style: GoogleFonts.outfit(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textColor,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 6),
+                    // Rating
+                    Row(
+                      children: [
+                        const Icon(Icons.star_rounded, size: 14, color: Colors.amber),
+                        const SizedBox(width: 2),
+                        Text(
+                          service.rating.toStringAsFixed(1),
+                          style: GoogleFonts.outfit(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.textColor,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '(${service.reviewCount ?? 0})',
+                          style: GoogleFonts.outfit(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: AppTheme.subtitleColor,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          
-          if (hasSubServices && _isExpanded)
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Divider(),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Select a variant',
-                    style: GoogleFonts.outfit(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: AppTheme.textColor,
+                    const Spacer(),
+                    // Price
+                    Row(
+                      children: [
+                        Text(
+                          '₹${service.basePrice.toStringAsFixed(0)}',
+                          style: GoogleFonts.outfit(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ),
+                        if (service.discount != null && service.discount! > 0) ...[
+                          const SizedBox(width: 4),
+                          Text(
+                            '₹${(service.basePrice * (1 + service.discount! / 100)).toStringAsFixed(0)}',
+                            style: GoogleFonts.outfit(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.subtitleColor,
+                              decoration: TextDecoration.lineThrough,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  ...service.subServices.map((sub) => _buildSubServiceTile(sub)),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _selectedSubService == null ? null : () {
-                        // Handle request with sub-service
-                        widget.onTap(); 
-                      },
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: Text(
-                        'Request Now',
-                        style: GoogleFonts.outfit(fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSubServiceTile(SubService sub) {
-    final isSelected = _selectedSubService?.id == sub.id;
-    return InkWell(
-      onTap: () => setState(() => _selectedSubService = sub),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primaryColor.withOpacity(0.05) : Colors.grey[50],
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? AppTheme.primaryColor : Colors.transparent,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              isSelected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
-              color: isSelected ? AppTheme.primaryColor : Colors.grey[400],
-              size: 20,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                sub.name,
-                style: GoogleFonts.outfit(
-                  fontSize: 14,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  ],
                 ),
-              ),
-            ),
-            Text(
-              '₹${sub.price.toStringAsFixed(0)}',
-              style: GoogleFonts.outfit(
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                color: isSelected ? AppTheme.primaryColor : AppTheme.textColor,
               ),
             ),
           ],
@@ -556,7 +721,6 @@ class _ServiceCardState extends State<_ServiceCard> {
   }
 }
 
-/// Compact favorite button for list cards
 class _SmallFavoriteButton extends StatelessWidget {
   final HomeService service;
 
@@ -576,12 +740,12 @@ class _SmallFavoriteButton extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.9),
+            color: Colors.white.withOpacity(0.95),
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 4,
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 6,
                 offset: const Offset(0, 2),
               ),
             ],

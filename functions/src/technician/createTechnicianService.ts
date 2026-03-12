@@ -7,10 +7,8 @@
  * Collection: technician_services/{serviceId}
  */
 
-import { onCall } from "firebase-functions/v2/https";
-import { CallableRequest } from "firebase-functions/v2/https";
+import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import * as https from "firebase-functions/v2/https";
 
 const db = admin.firestore();
 
@@ -122,17 +120,17 @@ function generateSearchKeywords(
 async function validateServiceInput(data: any): Promise<{ valid: boolean; error?: string }> {
     // STEP 3: REQUIRED FIELDS VALIDATION
     if (!data.title || typeof data.title !== 'string') {
-        throw new https.HttpsError("invalid-argument", "Missing required field: title");
+        throw new functions.https.HttpsError("invalid-argument", "Missing required field: title");
     }
     
     if (data.price === undefined || data.price === null || typeof data.price !== 'number') {
-        throw new https.HttpsError("invalid-argument", "Missing required field: price");
+        throw new functions.https.HttpsError("invalid-argument", "Missing required field: price");
     }
     
     // technicianId is validated from auth context
     
     if (!data.subServiceId || typeof data.subServiceId !== 'string') {
-        throw new https.HttpsError("invalid-argument", "Missing required field: subServiceId");
+        throw new functions.https.HttpsError("invalid-argument", "Missing required field: subServiceId");
     }
 
     // Required fields check
@@ -537,30 +535,22 @@ export interface TechnicianServiceData {
  * This is the secure entry point for creating technician services.
  * All validation happens server-side.
  */
-export const createTechnicianService = onCall(
-    {
-        region: "us-central1",
-        cpu: 1,
-        memory: "256MiB",
-        timeoutSeconds: 60,
-        maxInstances: 5
-    },
-    async (request: CallableRequest<TechnicianServiceData>) => {
+export const createTechnicianService = functions.https.onCall(
+    async (data: any, context: functions.https.CallableContext) => {
         // 1. Authentication check
-        if (!request.auth) {
-            throw new https.HttpsError(
+        if (!context.auth) {
+            throw new functions.https.HttpsError(
                 "unauthenticated",
                 "User must be authenticated to create a service"
             );
         }
 
-        const technicianId = request.auth.uid;
-        const data = request.data;
+        const technicianId = context.auth.uid;
 
         // 1.1 Check if technician profile is approved and has 100% completion
         const techDoc = await db.collection('technicians').doc(technicianId).get();
         if (!techDoc.exists) {
-            throw new https.HttpsError(
+            throw new functions.https.HttpsError(
                 "not-found",
                 "Technician profile not found"
             );
@@ -576,7 +566,7 @@ export const createTechnicianService = onCall(
         const profileCompletion = Math.round((completedSteps / TOTAL_ONBOARDING_STEPS) * 100);
 
         if (!profileApproved || profileCompletion < 100) {
-            throw new https.HttpsError(
+            throw new functions.https.HttpsError(
                 "permission-denied",
                 "You must have 100% profile completion and admin approval to create services."
             );
@@ -596,21 +586,21 @@ export const createTechnicianService = onCall(
         const validation = await validateServiceInput(data);
         if (!validation.valid) {
             console.log(`[TECH_SERVICE] Validation failed: ${validation.error}`);
-            throw new https.HttpsError("invalid-argument", validation.error!);
+            throw new functions.https.HttpsError("invalid-argument", validation.error!);
         }
 
         // 3. Check for duplicate/spam
         const spamCheck = await checkDuplicateSpam(technicianId);
         if (!spamCheck.allowed) {
             console.log(`[TECH_SERVICE] Spam check failed: ${spamCheck.error}`);
-            throw new https.HttpsError("resource-exhausted", spamCheck.error!);
+            throw new functions.https.HttpsError("resource-exhausted", spamCheck.error!);
         }
 
         // 4. Content Quality Guard: Check for duplicate title by same technician
         const titleCheck = await checkDuplicateTitle(technicianId, data.title);
         if (!titleCheck.allowed) {
             console.log(`[TECH_SERVICE] Duplicate title check failed: ${titleCheck.error}`);
-            throw new https.HttpsError("invalid-argument", titleCheck.error!);
+            throw new functions.https.HttpsError("invalid-argument", titleCheck.error!);
         }
 
         // 4.1. PRODUCTION: Check for duplicate service by technicianId + subServiceId
@@ -618,7 +608,7 @@ export const createTechnicianService = onCall(
             const duplicateCheck = await checkDuplicateService(technicianId, data.subServiceId);
             if (!duplicateCheck.allowed) {
                 console.log(`[TECH_SERVICE] Duplicate service check failed: ${duplicateCheck.error}`);
-                throw new https.HttpsError("invalid-argument", duplicateCheck.error!);
+                throw new functions.https.HttpsError("invalid-argument", duplicateCheck.error!);
             }
         }
 
@@ -626,14 +616,14 @@ export const createTechnicianService = onCall(
         const categoryCheck = await verifyCategory(data.categoryId);
         if (!categoryCheck.valid) {
             console.log(`[TECH_SERVICE] Category verification failed: ${categoryCheck.error}`);
-            throw new https.HttpsError("invalid-argument", categoryCheck.error!);
+            throw new functions.https.HttpsError("invalid-argument", categoryCheck.error!);
         }
 
         // 6. Verify image exists in storage
         const imageCheck = await verifyImageExists(data.imageUrl);
         if (!imageCheck.valid) {
             console.log(`[TECH_SERVICE] Image verification failed: ${imageCheck.error}`);
-            throw new https.HttpsError("invalid-argument", imageCheck.error!);
+            throw new functions.https.HttpsError("invalid-argument", imageCheck.error!);
         }
 
         // 7. Fetch category name for search keywords
@@ -757,38 +747,21 @@ export const createTechnicianService = onCall(
  * Update Technician Service
  * Allows technicians to update their own services
  */
-export const updateTechnicianService = onCall(
-    {
-        region: "us-central1",
-        cpu: 1,
-        memory: "256MiB",
-        timeoutSeconds: 60,
-        maxInstances: 5
-    },
-    async (request: CallableRequest<{
-        serviceId: string;
-        title?: string;
-        description?: string;
-        tags?: string[];
-        price?: number;
-        durationMinutes?: number;
-        imageUrl?: string;
-        masterServiceId?: string;
-        subServiceId?: string;
-    }>) => {
+export const updateTechnicianService = functions.https.onCall(
+    async (data: any, context: functions.https.CallableContext) => {
         // 1. Authentication check
-        if (!request.auth) {
-            throw new https.HttpsError(
+        if (!context.auth) {
+            throw new functions.https.HttpsError(
                 "unauthenticated",
                 "User must be authenticated to update a service"
             );
         }
 
-        const technicianId = request.auth.uid;
-        const { serviceId, ...updates } = request.data;
+        const technicianId = context.auth.uid;
+        const { serviceId, ...updates } = data;
 
         if (!serviceId) {
-            throw new https.HttpsError("invalid-argument", "Service ID is required");
+            throw new functions.https.HttpsError("invalid-argument", "Service ID is required");
         }
 
         console.log(`[TECH_SERVICE] Updating service ${serviceId} for technician: ${technicianId}`);
@@ -796,7 +769,7 @@ export const updateTechnicianService = onCall(
         // 1.1 Check if technician profile is approved and has 100% completion
         const techDoc = await db.collection('technicians').doc(technicianId).get();
         if (!techDoc.exists) {
-            throw new https.HttpsError(
+            throw new functions.https.HttpsError(
                 "not-found",
                 "Technician profile not found"
             );
@@ -812,7 +785,7 @@ export const updateTechnicianService = onCall(
         const profileCompletion = Math.round((completedSteps / TOTAL_ONBOARDING_STEPS) * 100);
 
         if (!profileApproved || profileCompletion < 100) {
-            throw new https.HttpsError(
+            throw new functions.https.HttpsError(
                 "permission-denied",
                 "You must have 100% profile completion and admin approval to update services."
             );
@@ -822,7 +795,7 @@ export const updateTechnicianService = onCall(
         const serviceDoc = await db.collection('technician_services').doc(serviceId).get();
 
         if (!serviceDoc.exists) {
-            throw new https.HttpsError("not-found", "Service not found");
+            throw new functions.https.HttpsError("not-found", "Service not found");
         }
 
         const serviceData = serviceDoc.data()!;
@@ -830,7 +803,7 @@ export const updateTechnicianService = onCall(
         // 3. Security check - only owner can update
         if (serviceData.technicianId !== technicianId) {
             console.log(`[TECH_SERVICE] Unauthorized update attempt by ${technicianId}`);
-            throw new https.HttpsError(
+            throw new functions.https.HttpsError(
                 "permission-denied",
                 "You can only update your own services"
             );
@@ -839,31 +812,31 @@ export const updateTechnicianService = onCall(
         // 4. Validate updates
         if (updates.title !== undefined) {
             if (typeof updates.title !== 'string' || updates.title.trim().length < 3) {
-                throw new https.HttpsError("invalid-argument", "Title must be at least 3 characters");
+                throw new functions.https.HttpsError("invalid-argument", "Title must be at least 3 characters");
             }
         }
 
         if (updates.description !== undefined) {
             if (typeof updates.description !== 'string' || updates.description.trim().length < 20) {
-                throw new https.HttpsError("invalid-argument", "Description must be at least 20 characters");
+                throw new functions.https.HttpsError("invalid-argument", "Description must be at least 20 characters");
             }
         }
 
         if (updates.price !== undefined) {
             if (typeof updates.price !== 'number' || updates.price <= 0) {
-                throw new https.HttpsError("invalid-argument", "Price must be greater than 0");
+                throw new functions.https.HttpsError("invalid-argument", "Price must be greater than 0");
             }
             if (updates.price > 1000000) {
-                throw new https.HttpsError("invalid-argument", "Price exceeds maximum allowed value");
+                throw new functions.https.HttpsError("invalid-argument", "Price exceeds maximum allowed value");
             }
         }
 
         if (updates.durationMinutes !== undefined) {
             if (typeof updates.durationMinutes !== 'number' || updates.durationMinutes <= 0) {
-                throw new https.HttpsError("invalid-argument", "Duration must be greater than 0");
+                throw new functions.https.HttpsError("invalid-argument", "Duration must be greater than 0");
             }
             if (updates.durationMinutes > 1440) {
-                throw new https.HttpsError("invalid-argument", "Duration cannot exceed 24 hours");
+                throw new functions.https.HttpsError("invalid-argument", "Duration cannot exceed 24 hours");
             }
         }
 
@@ -934,28 +907,21 @@ export const updateTechnicianService = onCall(
  * Delete Technician Service
  * Allows technicians to delete their own services
  */
-export const deleteTechnicianService = onCall(
-    {
-        region: "us-central1",
-        cpu: 1,
-        memory: "128MiB",
-        timeoutSeconds: 30,
-        maxInstances: 5
-    },
-    async (request: CallableRequest<{ serviceId: string }>) => {
+export const deleteTechnicianService = functions.https.onCall(
+    async (data: { serviceId: string }, context: functions.https.CallableContext) => {
         // 1. Authentication check
-        if (!request.auth) {
-            throw new https.HttpsError(
+        if (!context.auth) {
+            throw new functions.https.HttpsError(
                 "unauthenticated",
                 "User must be authenticated to delete a service"
             );
         }
 
-        const technicianId = request.auth.uid;
-        const { serviceId } = request.data;
+        const technicianId = context.auth.uid;
+        const { serviceId } = data;
 
         if (!serviceId) {
-            throw new https.HttpsError("invalid-argument", "Service ID is required");
+            throw new functions.https.HttpsError("invalid-argument", "Service ID is required");
         }
 
         console.log(`[TECH_SERVICE] Deleting service ${serviceId} for technician: ${technicianId}`);
@@ -963,7 +929,7 @@ export const deleteTechnicianService = onCall(
         // 1.1 Check if technician profile is approved and has 100% completion
         const techDoc = await db.collection('technicians').doc(technicianId).get();
         if (!techDoc.exists) {
-            throw new https.HttpsError(
+            throw new functions.https.HttpsError(
                 "not-found",
                 "Technician profile not found"
             );
@@ -979,7 +945,7 @@ export const deleteTechnicianService = onCall(
         const profileCompletion = Math.round((completedSteps / TOTAL_ONBOARDING_STEPS) * 100);
 
         if (!profileApproved || profileCompletion < 100) {
-            throw new https.HttpsError(
+            throw new functions.https.HttpsError(
                 "permission-denied",
                 "You must have 100% profile completion and admin approval to delete services."
             );
@@ -989,7 +955,7 @@ export const deleteTechnicianService = onCall(
         const serviceDoc = await db.collection('technician_services').doc(serviceId).get();
 
         if (!serviceDoc.exists) {
-            throw new https.HttpsError("not-found", "Service not found");
+            throw new functions.https.HttpsError("not-found", "Service not found");
         }
 
         const serviceData = serviceDoc.data()!;
@@ -997,7 +963,7 @@ export const deleteTechnicianService = onCall(
         // 3. Security check - only owner can delete
         if (serviceData.technicianId !== technicianId) {
             console.log(`[TECH_SERVICE] Unauthorized delete attempt by ${technicianId}`);
-            throw new https.HttpsError(
+            throw new functions.https.HttpsError(
                 "permission-denied",
                 "You can only delete your own services"
             );
@@ -1024,24 +990,17 @@ export const deleteTechnicianService = onCall(
  * Get Technician Services
  * Returns all services for the authenticated technician
  */
-export const getMyTechnicianServices = onCall(
-    {
-        region: "us-central1",
-        cpu: 1,
-        memory: "256MiB",
-        timeoutSeconds: 30,
-        maxInstances: 5
-    },
-    async (request: CallableRequest) => {
+export const getMyTechnicianServices = functions.https.onCall(
+    async (data: any, context: functions.https.CallableContext) => {
         // 1. Authentication check
-        if (!request.auth) {
-            throw new https.HttpsError(
+        if (!context.auth) {
+            throw new functions.https.HttpsError(
                 "unauthenticated",
                 "User must be authenticated"
             );
         }
 
-        const technicianId = request.auth.uid;
+        const technicianId = context.auth.uid;
 
         console.log(`[TECH_SERVICE] Fetching services for technician: ${technicianId}`);
 
@@ -1075,30 +1034,21 @@ export const getMyTechnicianServices = onCall(
  * Toggle Technician Service Status
  * Allows technicians to toggle their service active/inactive status
  */
-export const toggleTechnicianServiceStatus = onCall(
-    {
-        region: "us-central1",
-        cpu: 1,
-        memory: "256MiB",
-        timeoutSeconds: 30,
-        maxInstances: 5
-    },
-    async (request: CallableRequest<{
-        serviceId: string;
-    }>) => {
+export const toggleTechnicianServiceStatus = functions.https.onCall(
+    async (data: { serviceId: string }, context: functions.https.CallableContext) => {
         // 1. Authentication check
-        if (!request.auth) {
-            throw new https.HttpsError(
+        if (!context.auth) {
+            throw new functions.https.HttpsError(
                 "unauthenticated",
                 "User must be authenticated to toggle service status"
             );
         }
 
-        const technicianId = request.auth.uid;
-        const { serviceId } = request.data;
+        const technicianId = context.auth.uid;
+        const { serviceId } = data;
 
         if (!serviceId) {
-            throw new https.HttpsError("invalid-argument", "Service ID is required");
+            throw new functions.https.HttpsError("invalid-argument", "Service ID is required");
         }
 
         console.log(`[TECH_SERVICE] Toggling service ${serviceId} for technician: ${technicianId}`);
@@ -1106,7 +1056,7 @@ export const toggleTechnicianServiceStatus = onCall(
         // 1.1 Check if technician exists
         const techDoc = await db.collection('technicians').doc(technicianId).get();
         if (!techDoc.exists) {
-            throw new https.HttpsError(
+            throw new functions.https.HttpsError(
                 "not-found",
                 "Technician profile not found"
             );
@@ -1116,7 +1066,7 @@ export const toggleTechnicianServiceStatus = onCall(
         const serviceDoc = await db.collection('technician_services').doc(serviceId).get();
 
         if (!serviceDoc.exists) {
-            throw new https.HttpsError("not-found", "Service not found");
+            throw new functions.https.HttpsError("not-found", "Service not found");
         }
 
         const serviceData = serviceDoc.data()!;
@@ -1124,7 +1074,7 @@ export const toggleTechnicianServiceStatus = onCall(
         // 3. Security check - only owner can toggle
         if (serviceData.technicianId !== technicianId) {
             console.log(`[TECH_SERVICE] Unauthorized toggle attempt by ${technicianId}`);
-            throw new https.HttpsError(
+            throw new functions.https.HttpsError(
                 "permission-denied",
                 "You can only toggle your own services"
             );

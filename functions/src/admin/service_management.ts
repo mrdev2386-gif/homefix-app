@@ -9,10 +9,10 @@
  * - Customer App shows only approved services
  */
 
-import { onCall } from "firebase-functions/v2/https";
-import { CallableRequest } from "firebase-functions/v2/https";
+import * as functions from "firebase-functions";
+
 import * as admin from "firebase-admin";
-import * as https from "firebase-functions/v2/https";
+
 
 const db = admin.firestore();
 
@@ -22,7 +22,7 @@ const db = admin.firestore();
 async function verifyAdmin(uid: string): Promise<void> {
   const adminDoc = await db.collection('admins').doc(uid).get();
   if (!adminDoc.exists) {
-    throw new https.HttpsError("permission-denied", "Admin access required");
+    throw new functions.https.HttpsError("permission-denied", "Admin access required");
   }
 }
 
@@ -55,44 +55,43 @@ async function logAdminAction(
  * Approve Technician Service
  * Changes status from pending to approved
  */
-export const admin_approveService = onCall(
-  { region: "us-central1", memory: "256MiB", timeoutSeconds: 30 },
-  async (request: CallableRequest<{ serviceId: string; status?: string }>) => {
+export const admin_approveService = functions.https.onCall(
+  async (request, context) => {
     // Authentication check
-    if (!request.auth) {
-      throw new https.HttpsError("unauthenticated", "Authentication required");
+    if (!context.auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Authentication required");
     }
 
     // CRITICAL FIX: Verify admin role from Firestore
-    await verifyAdmin(request.auth.uid);
+    await verifyAdmin(context.auth.uid);
 
     const { serviceId } = request.data;
     if (!serviceId) {
-      throw new https.HttpsError("invalid-argument", "Service ID is required");
+      throw new functions.https.HttpsError("invalid-argument", "Service ID is required");
     }
 
     const serviceRef = db.collection('technician_services').doc(serviceId);
     const serviceDoc = await serviceRef.get();
 
     if (!serviceDoc.exists) {
-      throw new https.HttpsError("not-found", "Service not found");
+      throw new functions.https.HttpsError("not-found", "Service not found");
     }
 
     await serviceRef.update({
       status: 'approved',
       isActive: true, // CRITICAL: Activate service on approval
       approvedAt: admin.firestore.FieldValue.serverTimestamp(),
-      approvedBy: request.auth.uid,
+      approvedBy: context.auth.uid,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
     // STEP 5: Log admin action
-    await logAdminAction(request.auth.uid, 'approve_service', serviceId, {
+    await logAdminAction(context.auth.uid, 'approve_service', serviceId, {
       previousStatus: serviceDoc.data()?.status,
       newStatus: 'approved'
     });
 
-    console.log(`[ADMIN] Service ${serviceId} approved by ${request.auth.uid}`);
+    console.log(`[ADMIN] Service ${serviceId} approved by ${context.auth.uid}`);
 
     return {
       success: true,
@@ -107,27 +106,26 @@ export const admin_approveService = onCall(
  * Reject Technician Service
  * Changes status from pending to rejected
  */
-export const admin_rejectService = onCall(
-  { region: "us-central1", memory: "256MiB", timeoutSeconds: 30 },
-  async (request: CallableRequest<{ serviceId: string; status?: string; reason?: string }>) => {
+export const admin_rejectService = functions.https.onCall(
+  async (request, context) => {
     // Authentication check
-    if (!request.auth) {
-      throw new https.HttpsError("unauthenticated", "Authentication required");
+    if (!context.auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Authentication required");
     }
 
     // CRITICAL FIX: Verify admin role from Firestore
-    await verifyAdmin(request.auth.uid);
+    await verifyAdmin(context.auth.uid);
 
     const { serviceId, reason } = request.data;
     if (!serviceId) {
-      throw new https.HttpsError("invalid-argument", "Service ID is required");
+      throw new functions.https.HttpsError("invalid-argument", "Service ID is required");
     }
 
     const serviceRef = db.collection('technician_services').doc(serviceId);
     const serviceDoc = await serviceRef.get();
 
     if (!serviceDoc.exists) {
-      throw new https.HttpsError("not-found", "Service not found");
+      throw new functions.https.HttpsError("not-found", "Service not found");
     }
 
     await serviceRef.update({
@@ -135,18 +133,18 @@ export const admin_rejectService = onCall(
       isActive: false, // CRITICAL: Keep inactive on rejection
       rejectionReason: reason || 'Not specified',
       rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
-      rejectedBy: request.auth.uid,
+      rejectedBy: context.auth.uid,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
     // STEP 5: Log admin action
-    await logAdminAction(request.auth.uid, 'reject_service', serviceId, {
+    await logAdminAction(context.auth.uid, 'reject_service', serviceId, {
       previousStatus: serviceDoc.data()?.status,
       newStatus: 'rejected',
       reason: reason || 'Not specified'
     });
 
-    console.log(`[ADMIN] Service ${serviceId} rejected by ${request.auth.uid}`);
+    console.log(`[ADMIN] Service ${serviceId} rejected by ${context.auth.uid}`);
 
     return {
       success: true,
@@ -161,44 +159,43 @@ export const admin_rejectService = onCall(
  * Disable Technician Service
  * Changes status to disabled (SOFT DELETE - never removes document)
  */
-export const admin_disableService = onCall(
-  { region: "us-central1", memory: "256MiB", timeoutSeconds: 30 },
-  async (request: CallableRequest<{ serviceId: string; status?: string }>) => {
+export const admin_disableService = functions.https.onCall(
+  async (request, context) => {
     // Authentication check
-    if (!request.auth) {
-      throw new https.HttpsError("unauthenticated", "Authentication required");
+    if (!context.auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Authentication required");
     }
 
     // CRITICAL FIX: Verify admin role from Firestore
-    await verifyAdmin(request.auth.uid);
+    await verifyAdmin(context.auth.uid);
 
     const { serviceId } = request.data;
     if (!serviceId) {
-      throw new https.HttpsError("invalid-argument", "Service ID is required");
+      throw new functions.https.HttpsError("invalid-argument", "Service ID is required");
     }
 
     const serviceRef = db.collection('technician_services').doc(serviceId);
     const serviceDoc = await serviceRef.get();
 
     if (!serviceDoc.exists) {
-      throw new https.HttpsError("not-found", "Service not found");
+      throw new functions.https.HttpsError("not-found", "Service not found");
     }
 
     // SOFT DELETE: Set status to disabled, never delete document
     await serviceRef.update({
       status: 'disabled',
       disabledAt: admin.firestore.FieldValue.serverTimestamp(),
-      disabledBy: request.auth.uid,
+      disabledBy: context.auth.uid,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
     // STEP 5: Log admin action
-    await logAdminAction(request.auth.uid, 'disable_service', serviceId, {
+    await logAdminAction(context.auth.uid, 'disable_service', serviceId, {
       previousStatus: serviceDoc.data()?.status,
       newStatus: 'disabled'
     });
 
-    console.log(`[ADMIN] Service ${serviceId} disabled by ${request.auth.uid}`);
+    console.log(`[ADMIN] Service ${serviceId} disabled by ${context.auth.uid}`);
 
     return {
       success: true,

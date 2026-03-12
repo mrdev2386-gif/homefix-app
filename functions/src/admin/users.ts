@@ -172,16 +172,26 @@ export const blockUser = functions.https.onCall(async (data, context) => {
 export const manageUser = functions.https.onCall(async (data, context) => {
     try {
         await assertAdmin(context);
-        const { userId, action, type } = data;
+        
+        // Support both parameter naming conventions
+        const userId = data.userId || data.uid;
+        const action = data.action;
+        const type = data.type;
+        const reason = data.reason;
 
-        if (!userId || !action) throw new functions.https.HttpsError('invalid-argument', 'Missing userId or action');
+        if (!userId || !action) {
+            console.error('[manageUser] Missing parameters:', { userId, action, data });
+            throw new functions.https.HttpsError('invalid-argument', 'Missing userId/uid or action');
+        }
+
+        console.log('[manageUser] Processing:', { userId, action, type, reason });
 
         const userRoleDoc = await db.collection('users').doc(userId).get();
         if (userRoleDoc.exists && userRoleDoc.data()?.role === 'admin') {
             throw new functions.https.HttpsError('permission-denied', 'Cannot block/unblock admin accounts');
         }
 
-        const collection = type === 'technician' ? 'technicians' : 'users'; // changed from customers to users to match project structure
+        const collection = type === 'technician' ? 'technicians' : 'users';
         const ref = db.collection(collection).doc(userId);
 
         const updates: any = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
@@ -189,6 +199,13 @@ export const manageUser = functions.https.onCall(async (data, context) => {
         if (action === 'block' || action === 'unblock') {
             const isBlocked = action === 'block';
             updates.isBlocked = isBlocked;
+            updates.suspended = isBlocked;
+            if (isBlocked && reason) {
+                updates.suspensionReason = reason;
+                updates.suspendedAt = admin.firestore.FieldValue.serverTimestamp();
+                updates.suspendedBy = context.auth!.uid;
+            }
+            
             await admin.auth().updateUser(userId, { disabled: isBlocked });
             // Also update the 'users' collection regardless of type
             await db.collection('users').doc(userId).update({ isBlocked });
@@ -197,11 +214,12 @@ export const manageUser = functions.https.onCall(async (data, context) => {
         }
 
         await ref.update(updates);
-        await logAdminAction(context.auth!.uid, `user_${action}`, userId, { type });
+        await logAdminAction(context.auth!.uid, `user_${action}`, userId, { type, reason });
 
+        console.log('[manageUser] Success:', { userId, action, updates });
         return { success: true };
     } catch (error: any) {
-        console.error('[User] Error in manageUser:', error);
+        console.error('[manageUser] Error:', error);
         if (error instanceof functions.https.HttpsError) throw error;
         throw new functions.https.HttpsError('internal', error.message || 'Failed to manage user');
     }

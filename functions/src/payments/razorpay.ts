@@ -699,7 +699,7 @@ export const verifyPayment = functions.https.onCall(async (data, context) => {
         }
 
         // Update booking
-        const isNewFlow = booking.status === 'awaiting_payment' || booking.status === 'pending_admin' || booking.status === 'pending';
+        const isNewFlow = booking.status === 'awaiting_payment' || booking.status === 'pending_admin_review' || booking.status === 'pending';
         const newStatus = isNewFlow ? 'confirmed' : 'completed';
 
         const updateData: any = {

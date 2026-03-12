@@ -32,7 +32,6 @@ interface TechnicianService {
 
 export default function TechnicianServicesPage() {
   const [services, setServices] = useState<TechnicianService[]>([]);
-  const [filteredServices, setFilteredServices] = useState<TechnicianService[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [lastVisible, setLastVisible] = useState<DocumentSnapshot | null>(null);
@@ -77,6 +76,13 @@ export default function TechnicianServicesPage() {
     setToast({ show: true, message, type });
   };
 
+  // Helper for development-only logging
+  const debugLog = (...args: any[]) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(...args);
+    }
+  };
+
   const fetchServices = async (statusFilter?: string, loadMore = false) => {
     try {
       if (loadMore) {
@@ -88,9 +94,9 @@ export default function TechnicianServicesPage() {
         setHasMore(true);
       }
       
-      console.log("Fetching services from technician_services collection...");
-      console.log("Status filter:", statusFilter || 'all');
-      console.log("Load more:", loadMore);
+      debugLog("Fetching services from technician_services collection...");
+      debugLog("Status filter:", statusFilter || 'all');
+      debugLog("Load more:", loadMore);
       
       // PRODUCTION-READY: Paginated query with cursor-based pagination
       let servicesQuery;
@@ -113,7 +119,7 @@ export default function TechnicianServicesPage() {
       }
       
       const snapshot = await getDocs(servicesQuery);
-      console.log("Fetched services:", snapshot.size);
+      debugLog("Fetched services:", snapshot.size);
       
       // Update pagination state
       if (snapshot.docs.length > 0) {
@@ -124,7 +130,7 @@ export default function TechnicianServicesPage() {
       }
       
       if (snapshot.empty) {
-        console.warn("No services found in technician_services collection");
+        debugLog("No services found in technician_services collection");
         showToast('No technician services found', 'error');
         setServices([]);
         return;
@@ -136,7 +142,7 @@ export default function TechnicianServicesPage() {
       for (const serviceDoc of snapshot.docs) {
         const serviceData = serviceDoc.data();
         
-        console.log(`Resolving service ${serviceDoc.id}:`, {
+        debugLog(`Resolving service ${serviceDoc.id}:`, {
           technicianId: serviceData.technicianId || 'missing',
           categoryId: serviceData.categoryId || 'missing',
           serviceId: serviceData.serviceId || 'missing'
@@ -154,7 +160,7 @@ export default function TechnicianServicesPage() {
               technicianPhone = techData.phone || 'N/A';
             }
           } catch (error) {
-            console.warn(`Failed to resolve technician ${serviceData.technicianId}:`, error);
+            debugLog(`Failed to resolve technician ${serviceData.technicianId}:`, error);
           }
         }
 
@@ -168,7 +174,7 @@ export default function TechnicianServicesPage() {
               categoryName = catData.name || 'Unknown Category';
             }
           } catch (error) {
-            console.warn(`Failed to resolve category ${serviceData.categoryId}:`, error);
+            debugLog(`Failed to resolve category ${serviceData.categoryId}:`, error);
           }
         }
 
@@ -182,7 +188,7 @@ export default function TechnicianServicesPage() {
               serviceName = svcData.name || 'Unknown Service';
             }
           } catch (error) {
-            console.warn(`Failed to resolve service ${serviceData.serviceId}:`, error);
+            debugLog(`Failed to resolve service ${serviceData.serviceId}:`, error);
           }
         }
 
@@ -215,8 +221,8 @@ export default function TechnicianServicesPage() {
         servicesData.push(resolvedService);
       }
       
-      console.log("Services loaded:", servicesData.length);
-      console.log("Services by status:", {
+      debugLog("Services loaded:", servicesData.length);
+      debugLog("Services by status:", {
         pending: servicesData.filter(s => s.status === 'pending').length,
         approved: servicesData.filter(s => s.status === 'approved').length,
         rejected: servicesData.filter(s => s.status === 'rejected').length,
@@ -231,17 +237,21 @@ export default function TechnicianServicesPage() {
       }
       
     } catch (error: any) {
-      console.error('Error fetching services:', error);
+      debugLog('Error fetching services:', error);
       
       if (error.code === 'failed-precondition' && error.message.includes('index')) {
-        console.error("❌ FIRESTORE INDEX REQUIRED:");
-        console.error("Collection: technician_services");
-        console.error("Fields: status (ASC), createdAt (DESC)");
-        console.error("Create index at: https://console.firebase.google.com/project/homefix-aa42d/firestore/indexes");
+        if (process.env.NODE_ENV === 'development') {
+          console.error("❌ FIRESTORE INDEX REQUIRED:");
+          console.error("Collection: technician_services");
+          console.error("Fields: status (ASC), createdAt (DESC)");
+          console.error("Create index at: https://console.firebase.google.com/project/homefix-aa42d/firestore/indexes");
+        }
         showToast('Database index required for technician_services collection', 'error');
       } else if (error.code === 'permission-denied') {
-        console.error("❌ PERMISSION DENIED - Check Firestore Security Rules:");
-        console.error("Required rule: match /technician_services/{serviceId} { allow read: if true; }");
+        if (process.env.NODE_ENV === 'development') {
+          console.error("❌ PERMISSION DENIED - Check Firestore Security Rules:");
+          console.error("Required rule: match /technician_services/{serviceId} { allow read: if true; }");
+        }
         showToast('Permission denied. Check Firestore security rules.', 'error');
       } else {
         showToast('Failed to load services: ' + error.message, 'error');
@@ -261,16 +271,6 @@ export default function TechnicianServicesPage() {
     }
   };
 
-  const applyFilters = () => {
-    let filtered = [...services];
-    
-    if (statusFilter) {
-      filtered = filtered.filter(s => s.status === statusFilter);
-    }
-    
-    console.log(`Filtered services: ${filtered.length} (from ${services.length})`);
-    setFilteredServices(filtered);
-  };
 
   const handleAction = (action: string, serviceId: string, serviceTitle: string) => {
     const titles: Record<string, string> = {
@@ -293,7 +293,7 @@ export default function TechnicianServicesPage() {
 
   const executeAction = async (action: string, serviceId: string) => {
     try {
-      console.log(`Executing action '${action}' on service:`, serviceId);
+      debugLog(`Executing action '${action}' on service:`, serviceId);
 
       if (action === 'approve') {
         const approveService = httpsCallable(functions, 'admin_approveService');
@@ -312,7 +312,7 @@ export default function TechnicianServicesPage() {
       setConfirmDialog({ ...confirmDialog, isOpen: false });
       await fetchServices(statusFilter, false);
     } catch (error: any) {
-      console.error('Error executing action:', error);
+      debugLog('Error executing action:', error);
       showToast(error.message || 'Failed to execute action', 'error');
     }
   };

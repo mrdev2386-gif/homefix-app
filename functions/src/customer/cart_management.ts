@@ -1,7 +1,5 @@
-import { onCall } from 'firebase-functions/v2/https';
-import { CallableRequest } from 'firebase-functions/v2/https';
+import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import * as https from 'firebase-functions/v2/https';
 
 const db = admin.firestore();
 
@@ -9,14 +7,13 @@ const db = admin.firestore();
  * Add item to cart
  * Creates or updates customers/{uid}/cart/{itemId}
  */
-export const addToCartCallable = onCall(
-  { region: 'us-central1', memory: '256MiB', timeoutSeconds: 30 },
-  async (request: CallableRequest<any>) => {
-    if (!request.auth) {
-      throw new https.HttpsError('unauthenticated', 'User must be authenticated');
+export const addToCartCallable = functions.https.onCall(
+  async (request, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     }
 
-    const uid = request.auth.uid;
+    const uid = context.auth.uid;
     const {
       serviceId,
       categoryId,
@@ -33,18 +30,18 @@ export const addToCartCallable = onCall(
 
     // Validation
     if (!serviceId || !categoryId || !technicianId || !price) {
-      throw new https.HttpsError(
+      throw new functions.https.HttpsError(
         'invalid-argument',
         'Missing required fields: serviceId, categoryId, technicianId, price'
       );
     }
 
     if (price <= 0) {
-      throw new https.HttpsError('invalid-argument', 'Price must be greater than 0');
+      throw new functions.https.HttpsError('invalid-argument', 'Price must be greater than 0');
     }
 
     if (quantity <= 0) {
-      throw new https.HttpsError('invalid-argument', 'Quantity must be greater than 0');
+      throw new functions.https.HttpsError('invalid-argument', 'Quantity must be greater than 0');
     }
 
     try {
@@ -100,7 +97,7 @@ export const addToCartCallable = onCall(
       };
     } catch (error: any) {
       console.error(`[CART] Add failed for user ${uid}:`, error);
-      throw new https.HttpsError('internal', 'Failed to add item to cart');
+      throw new functions.https.HttpsError('internal', 'Failed to add item to cart');
     }
   }
 );
@@ -108,22 +105,21 @@ export const addToCartCallable = onCall(
 /**
  * Update cart item quantity
  */
-export const updateCartQuantityCallable = onCall(
-  { region: 'us-central1', memory: '256MiB', timeoutSeconds: 30 },
-  async (request: CallableRequest<any>) => {
-    if (!request.auth) {
-      throw new https.HttpsError('unauthenticated', 'User must be authenticated');
+export const updateCartQuantityCallable = functions.https.onCall(
+  async (request, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     }
 
-    const uid = request.auth.uid;
+    const uid = context.auth.uid;
     const { itemId, quantity } = request.data;
 
     if (!itemId) {
-      throw new https.HttpsError('invalid-argument', 'itemId is required');
+      throw new functions.https.HttpsError('invalid-argument', 'itemId is required');
     }
 
     if (quantity <= 0) {
-      throw new https.HttpsError('invalid-argument', 'Quantity must be greater than 0');
+      throw new functions.https.HttpsError('invalid-argument', 'Quantity must be greater than 0');
     }
 
     try {
@@ -131,7 +127,7 @@ export const updateCartQuantityCallable = onCall(
       const itemDoc = await itemRef.get();
 
       if (!itemDoc.exists) {
-        throw new https.HttpsError('not-found', 'Item not found in cart');
+        throw new functions.https.HttpsError('not-found', 'Item not found in cart');
       }
 
       const itemData = itemDoc.data()!;
@@ -146,7 +142,7 @@ export const updateCartQuantityCallable = onCall(
       return { success: true, message: 'Quantity updated' };
     } catch (error: any) {
       console.error(`[CART] Update quantity failed for user ${uid}:`, error);
-      throw new https.HttpsError('internal', 'Failed to update quantity');
+      throw new functions.https.HttpsError('internal', 'Failed to update quantity');
     }
   }
 );
@@ -154,18 +150,17 @@ export const updateCartQuantityCallable = onCall(
 /**
  * Remove item from cart
  */
-export const removeFromCartCallable = onCall(
-  { region: 'us-central1', memory: '256MiB', timeoutSeconds: 30 },
-  async (request: CallableRequest<any>) => {
-    if (!request.auth) {
-      throw new https.HttpsError('unauthenticated', 'User must be authenticated');
+export const removeFromCartCallable = functions.https.onCall(
+  async (request, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     }
 
-    const uid = request.auth.uid;
+    const uid = context.auth.uid;
     const { itemId } = request.data;
 
     if (!itemId) {
-      throw new https.HttpsError('invalid-argument', 'itemId is required');
+      throw new functions.https.HttpsError('invalid-argument', 'itemId is required');
     }
 
     try {
@@ -173,7 +168,7 @@ export const removeFromCartCallable = onCall(
       return { success: true, message: 'Item removed from cart' };
     } catch (error: any) {
       console.error(`[CART] Remove failed for user ${uid}:`, error);
-      throw new https.HttpsError('internal', 'Failed to remove item from cart');
+      throw new functions.https.HttpsError('internal', 'Failed to remove item from cart');
     }
   }
 );
@@ -181,14 +176,13 @@ export const removeFromCartCallable = onCall(
 /**
  * Clear entire cart
  */
-export const clearCartCallable = onCall(
-  { region: 'us-central1', memory: '256MiB', timeoutSeconds: 30 },
-  async (request: CallableRequest<any>) => {
-    if (!request.auth) {
-      throw new https.HttpsError('unauthenticated', 'User must be authenticated');
+export const clearCartCallable = functions.https.onCall(
+  async (request, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     }
 
-    const uid = request.auth.uid;
+    const uid = context.auth.uid;
 
     try {
       const cartRef = db.collection('customers').doc(uid).collection('cart');
@@ -206,7 +200,7 @@ export const clearCartCallable = onCall(
       return { success: true, message: 'Cart cleared', itemsDeleted: cartItems.size };
     } catch (error: any) {
       console.error(`[CART] Clear failed for user ${uid}:`, error);
-      throw new https.HttpsError('internal', 'Failed to clear cart');
+      throw new functions.https.HttpsError('internal', 'Failed to clear cart');
     }
   }
 );

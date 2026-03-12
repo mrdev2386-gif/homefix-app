@@ -103,9 +103,13 @@ export default function CustomersPage() {
       message: 'Are you sure you want to block this customer? They will not be able to place new bookings.',
       variant: 'danger',
       requireInput: true,
-      onConfirm: async () => {
+      inputLabel: 'Block Reason',
+      inputPlaceholder: 'Please provide the reason for blocking...',
+      onConfirm: async (inputValue?: string) => {
         try {
+          // Note: blockUser API may need updating to support reason parameter
           await adminApi.blockUser(customerId, true);
+          // TODO: Pass reason to API if backend supports it
           await fetchCustomers();
           setConfirmDialog({ ...confirmDialog, isOpen: false });
         } catch (error) {

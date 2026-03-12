@@ -2,8 +2,9 @@ import 'package:flutter/foundation.dart';
 
 /// Valid booking statuses (NEW FLOW)
 const List<String> validBookingStatuses = [
-  'pending_admin',
-  'technician_pending',
+  'pending_admin_review',
+  'admin_approved',
+  'technician_accepted',
   'awaiting_payment',
   'confirmed',
   'in_progress',
@@ -44,10 +45,12 @@ bool isValidBookingStatus(String? status) {
 String getBookingStatusDisplayName(String status) {
   final sanitized = sanitizeBookingStatus(status);
   switch (sanitized) {
-    case 'pending_admin':
-      return 'Pending Admin';
-    case 'technician_pending':
-      return 'Awaiting Technician';
+    case 'pending_admin_review':
+      return 'Pending Admin Review';
+    case 'admin_approved':
+      return 'Admin Approved';
+    case 'technician_accepted':
+      return 'Technician Accepted';
     case 'awaiting_payment':
       return 'Awaiting Payment';
     case 'confirmed':

@@ -3,8 +3,6 @@ import 'package:flutter/foundation.dart';
 import '../constants/app_constants.dart';
 import 'sub_service.dart';
 
-
-
 class HomeService {
   final String id;
   final String key;
@@ -77,125 +75,50 @@ class HomeService {
     final data = doc.data() as Map<String, dynamic>? ?? {};
     final String id = doc.id;
 
-    // MANDATORY CATEGORY CHECK - FIX FOR SERVICE_COUNT 0
-    String? categoryId = data['category'] ?? data['categoryId'];
+    // ============================================================================
+    // VALIDATION: Critical Fields Extraction with Safe Defaults
+    // ============================================================================
     
-    // FORENSIC FIX: Infer categoryId from path if missing
-    if (categoryId == null || categoryId.toString().isEmpty) {
-      try {
-        // Try to find 'categories' segment in path
-        final pathSegments = doc.reference.path.split('/');
-        final catIndex = pathSegments.indexOf('categories');
-        if (catIndex != -1 && catIndex + 1 < pathSegments.length) {
-          categoryId = pathSegments[catIndex + 1];
-          if (kDebugMode) {
-            debugPrint('🔧 [HomeService] Inferred categoryId=$categoryId from path for ${doc.id}');
-          }
-        }
-      } catch (e) {
-        // ignore
-      }
-    }
-
-    if (categoryId == null || categoryId.toString().isEmpty) {
-      // ✅ LOG but do NOT drop — the service is still valid for display.
-      // categoryId is only needed for subServices path, which is now always
-      // supplied via widget.categoryId from the navigation argument.
-      if (kDebugMode) {
-        debugPrint('⚠️ [HomeService] categoryId missing for doc: $id (path: ${doc.reference.path})');
-        debugPrint('   Service will still be shown. categoryId defaults to empty string.');
-        debugPrint('   FIX: Add categoryId/category field to this Firestore document.');
-      }
-      categoryId = ''; // safe fallback — never drop a service just for missing categoryId
-    }
-
-    // DEBUG (Temporary as requested)
-    if (kDebugMode) {
-      debugPrint(
-        'SERVICE DEBUG → id=$id category=$categoryId name=${data['name'] ?? data['title']}',
-      );
-    }
-
-    // Map Firestore fields with fallbacks - Ensure ONLY imageUrl is used for UI
+    // Extract categoryId with fallback logic
+    String categoryId = _extractCategoryId(doc, data);
+    
+    // Extract title/name (required for display)
     final String key = (data['id'] ?? data['serviceId'] ?? data['key'] ?? id).toString();
     final String title = (data['name'] ?? data['title'] ?? 'Service').toString();
     
-    // AUDIT: Strict mapping - never allow null
-    String? imageUrl = (data['imageUrl'] ?? data['image'] ?? data['thumbnail'] ?? data['bannerUrl'] ?? data['imageAssetPath'])?.toString().trim();
+    // Extract and validate image URL with global fallback
+    final String imageUrl = _extractImageUrl(id, title, data);
     
-    if (imageUrl == null || imageUrl.isEmpty) {
-      if (kDebugMode) {
-        debugPrint('⚠️ [HomeService Model] No image found for $id (title: $title). Using global fallback.');
-      }
-      imageUrl = AppConstants.fallbackServiceImage;
-    }
+    // ============================================================================
+    // PRICE EXTRACTION: Safe number parsing for all price fields
+    // ============================================================================
     
-    // SAFE NUMBER PARSING
     double price = 0.0;
-    final dynamic priceData = data['price'] ?? data['basePrice'];
-    if (priceData is num) {
-      price = priceData.toDouble();
-    } else if (priceData is String) {
-      price = double.tryParse(priceData) ?? 0.0;
-    }
-
-    // NEW: Parse originalPrice and offerPrice
     double? originalPrice;
-    final dynamic originalPriceData = data['originalPrice'];
-    if (originalPriceData is num) {
-      originalPrice = originalPriceData.toDouble();
-    } else if (originalPriceData is String) {
-      originalPrice = double.tryParse(originalPriceData);
-    }
-
     double? offerPrice;
-    final dynamic offerPriceData = data['offerPrice'];
-    if (offerPriceData is num) {
-      offerPrice = offerPriceData.toDouble();
-    } else if (offerPriceData is String) {
-      offerPrice = double.tryParse(offerPriceData);
+    
+    price = _parsePrice(data['price'] ?? data['basePrice']);
+    originalPrice = _parsePrice(data['originalPrice']);
+    offerPrice = _parsePrice(data['offerPrice']);
+    
+    // Log price information only for services with special offers (reduce spam)
+    if (kDebugMode && offerPrice != null && offerPrice > 0 && offerPrice < price) {
+      final discountPercent = ((price - offerPrice!) / price * 100).toInt();
+      debugPrint('💰 [SERVICE_OFFER] $title: ₹$price → ₹$offerPrice ($discountPercent% off)');
     }
 
-    // DEBUG: Log price information for verification
-    if (kDebugMode) {
-      final hasDiscount = offerPrice != null && offerPrice > 0 && offerPrice < price;
-      if (hasDiscount) {
-        final discountPercent = ((price - offerPrice!) / price * 100).toInt();
-        debugPrint('💰 [SERVICE_PRICES] id=$id | basePrice=$price | offerPrice=$offerPrice | discount=$discountPercent%');
-      } else if (price > 0) {
-        debugPrint('💰 [SERVICE_PRICES] id=$id | price=$price (no offer)');
-      }
-    }
-
+    // ============================================================================
+    // REMAINING FIELDS: Activity status, metadata, technician info
+    // ============================================================================
     final bool isActive = data['isActive'] ?? true;
-    final String finalCategory = categoryId.toString();
+    final String finalCategory = categoryId.isNotEmpty ? categoryId : (data['categoryName'] ?? 'General').toString();
     final String finalCategoryName = (data['categoryName'] ?? data['category'] ?? 'General').toString();
     
     final bool isTop = data['isTopService'] ?? false;
     
-    int order = 0;
-    final dynamic orderData = data['order'] ?? 0;
-    if (orderData is num) {
-      order = (orderData.isFinite ? orderData : 0).toInt();
-    } else if (orderData is String) {
-      order = int.tryParse(orderData) ?? 0;
-    }
-
-    double rating = 0.0;
-    final dynamic ratingData = data['rating'] ?? data['ratingValue'];
-    if (ratingData is num) {
-      rating = ratingData.toDouble();
-    } else if (ratingData is String) {
-      rating = double.tryParse(ratingData) ?? 0.0;
-    }
-
-    int reviews = 0;
-    final dynamic reviewsDataRaw = data['reviewCount'] ?? data['reviews'] ?? 0;
-    if (reviewsDataRaw is num) {
-      reviews = (reviewsDataRaw.isFinite ? reviewsDataRaw : 0).toInt();
-    } else if (reviewsDataRaw is String) {
-      reviews = int.tryParse(reviewsDataRaw) ?? 0;
-    }
+    int order = _parseInteger(data['order'], defaultValue: 0);
+    double rating = _parsePrice(data['rating'] ?? data['ratingValue'], isRating: true);
+    int reviews = _parseInteger(data['reviewCount'] ?? data['reviews'], defaultValue: 0);
 
     final bool isTrending = data['isTrending'] ?? false;
     final bool isRecommended = data['isRecommended'] ?? false;
@@ -206,16 +129,8 @@ class HomeService {
       createdAt = (data['createdAt'] as Timestamp).toDate();
     }
 
-    String? technicianId = data['technicianId']?.toString();
-    if (technicianId == null || technicianId.isEmpty) {
-      try {
-        final pathSegments = doc.reference.path.split('/');
-        final techIndex = pathSegments.indexOf('technicians');
-        if (techIndex != -1 && techIndex + 1 < pathSegments.length) {
-          technicianId = pathSegments[techIndex + 1];
-        }
-      } catch (_) {}
-    }
+    // Extract technician info with fallback to Firestore path
+    String? technicianId = _extractTechnicianId(doc, data);
 
     List<SubService> subServices = [];
     if (data['subServices'] is List) {
@@ -255,6 +170,114 @@ class HomeService {
       subServices: subServices,
     );
   }
+
+  /// ============================================================================
+  /// HELPER METHODS: Data extraction and validation
+  /// ============================================================================
+
+  /// Extract categoryId with multiple fallback strategies
+  static String _extractCategoryId(DocumentSnapshot doc, Map<String, dynamic> data) {
+    String? categoryId = data['category'] ?? data['categoryId'];
+    
+    // Strategy 1: Check direct field mapping
+    if (categoryId != null && categoryId.toString().isNotEmpty) {
+      return categoryId.toString();
+    }
+    
+    // Strategy 2: Infer from Firestore document path (e.g., /categories/electrical/services/doc_id)
+    try {
+      final pathSegments = doc.reference.path.split('/');
+      final catIndex = pathSegments.indexOf('categories');
+      if (catIndex != -1 && catIndex + 1 < pathSegments.length) {
+        categoryId = pathSegments[catIndex + 1];
+        if (kDebugMode) {
+          debugPrint('🔧 [Service] categoryId inferred from path: $categoryId for service: ${data['name'] ?? data['title'] ?? doc.id}');
+        }
+        return categoryId;
+      }
+    } catch (e) {
+      // Ignore path parsing errors
+    }
+    
+    // Strategy 3: Default to empty (will be handled upstream, but warn in debug)
+    if (kDebugMode) {
+      debugPrint('⚠️ [Service] categoryId missing for service: ${data['name'] ?? data['title'] ?? doc.id}');
+    }
+    return '';
+  }
+
+  /// Extract and validate image URL with fallback
+  static String _extractImageUrl(String serviceId, String serviceName, Map<String, dynamic> data) {
+    // Check multiple image field names
+    String? imageUrl = (data['imageUrl'] ?? 
+                        data['image'] ?? 
+                        data['thumbnail'] ?? 
+                        data['bannerUrl'] ?? 
+                        data['imageAssetPath'])?.toString().trim();
+    
+    // Validate extracted URL
+    if (imageUrl != null && imageUrl.isNotEmpty && _isValidImageUrl(imageUrl)) {
+      return imageUrl;
+    }
+    
+    // Return global fallback (avoid logging for every missing image to reduce spam)
+    return AppConstants.fallbackServiceImage;
+  }
+
+  /// Parse numeric price values safely
+  static double _parsePrice(dynamic value, {bool isRating = false}) {
+    if (value == null) return 0.0;
+    
+    if (value is num) {
+      return value.toDouble();
+    } else if (value is String) {
+      return double.tryParse(value) ?? 0.0;
+    }
+    
+    return 0.0;
+  }
+
+  /// Parse integer values safely with default
+  static int _parseInteger(dynamic value, {required int defaultValue}) {
+    if (value == null) return defaultValue;
+    
+    if (value is num) {
+      return value.isFinite ? value.toInt() : defaultValue;
+    } else if (value is String) {
+      return int.tryParse(value) ?? defaultValue;
+    }
+    
+    return defaultValue;
+  }
+
+  /// Extract technician ID with fallback to path
+  static String? _extractTechnicianId(DocumentSnapshot doc, Map<String, dynamic> data) {
+    String? technicianId = data['technicianId']?.toString();
+    
+    if (technicianId != null && technicianId.isNotEmpty) {
+      return technicianId;
+    }
+    
+    // Try extracting from path
+    try {
+      final pathSegments = doc.reference.path.split('/');
+      final techIndex = pathSegments.indexOf('technicians');
+      if (techIndex != -1 && techIndex + 1 < pathSegments.length) {
+        return pathSegments[techIndex + 1];
+      }
+    } catch (_) {}
+    
+    return null;
+  }
+
+  /// Validate image URL format
+  static bool _isValidImageUrl(String url) {
+    final trimmed = url.trim();
+    return trimmed.startsWith('http://') || 
+           trimmed.startsWith('https://') ||
+           trimmed.startsWith('assets/');
+  }
+
 
   Map<String, dynamic> toMap() {
     return {

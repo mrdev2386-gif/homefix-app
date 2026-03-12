@@ -1,4 +1,4 @@
-import * as functions from 'firebase-functions/v2';
+import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 
 const db = admin.firestore();
@@ -7,14 +7,14 @@ const db = admin.firestore();
  * Set Primary Address with Transaction Safety
  * Ensures only one primary address exists at any time
  */
-export const setPrimaryAddress = functions.https.onCall(async (request) => {
-  const { auth, data } = request;
+export const setPrimaryAddress = functions.https.onCall(async (request, context) => {
+  const auth = context.auth;
 
   if (!auth) {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
 
-  const { addressId } = data;
+  const { addressId } = request.data;
   if (!addressId) {
     throw new functions.https.HttpsError('invalid-argument', 'addressId is required');
   }
@@ -55,14 +55,14 @@ export const setPrimaryAddress = functions.https.onCall(async (request) => {
   }
 });
 
-export const manageAddress = functions.https.onCall(async (request) => {
-  const { auth, data } = request;
+export const manageAddress = functions.https.onCall(async (request, context) => {
+  const auth = context.auth;
 
   if (!auth) {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
 
-  const { action, addressId, addressData, setAsPrimary } = data;
+  const { action, addressId, addressData, setAsPrimary } = request.data;
   const userId = auth.uid;
 
   try {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -8,23 +9,9 @@ import 'package:customer_app/core/providers/favorites_provider.dart';
 import '../../../core/widgets/safe_network_image.dart';
 import '../../services/presentation/service_details_screen.dart';
 
-/// Unified Service Card Widget
-/// 
-/// A single reusable card widget for all service displays.
-/// Supports both horizontal scrolling (170px fixed width) and grid layouts (responsive).
-/// 
-/// Features:
-/// - Fixed image height: 130px
-/// - Fixed card height: 280px (horizontal) or responsive (grid)
-/// - Favorite button with instant UI update
-/// - Discount display with strike-through price
-/// - Rating badge
-/// - Technician name and location
-/// - Get Service button
-/// - Auto-navigation to service details
 class UniversalServiceCard extends StatefulWidget {
   final HomeService service;
-  final bool isGrid; // true for grid layout, false for horizontal list
+  final bool isGrid;
   final VoidCallback? onNavigateToDetails;
 
   const UniversalServiceCard({
@@ -41,7 +28,6 @@ class UniversalServiceCard extends StatefulWidget {
 class _UniversalServiceCardState extends State<UniversalServiceCard> {
   bool _isNavigating = false;
 
-  /// Navigate to service details screen with haptic feedback
   void _navigateToDetails() async {
     if (_isNavigating) return;
     
@@ -77,7 +63,6 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
   Widget build(BuildContext context) {
     final service = widget.service;
     
-    // Offer calculation: only show as offer if offerPrice is cheaper than basePrice
     final hasOffer = service.offerPrice != null && 
                      service.offerPrice! > 0 && 
                      service.offerPrice! < service.basePrice;
@@ -88,24 +73,26 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
 
     final finalPrice = hasOffer ? service.offerPrice! : service.basePrice;
 
+    if (kDebugMode && hasOffer) {
+      debugPrint('🏷️ [DISCOUNT_CARD] ${service.title}: ₹${service.basePrice} → ₹${service.offerPrice} ($discount% OFF)');
+    }
+
     return Card(
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       margin: widget.isGrid ? EdgeInsets.zero : const EdgeInsets.only(right: 12),
       child: Container(
-        // Fixed dimensions for horizontal layout, responsive for grid
         width: widget.isGrid ? null : 170,
-        height: 280,
+        height: 320,
         decoration: BoxDecoration(borderRadius: BorderRadius.circular(18)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ========== IMAGE SECTION ==========
+            // IMAGE SECTION
             GestureDetector(
               onTap: _navigateToDetails,
               child: Stack(
                 children: [
-                  // Image with fixed height and proper fit
                   ClipRRect(
                     borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(18),
@@ -120,7 +107,7 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
                     ),
                   ),
 
-                  // Rating badge (top-left)
+                  // Rating badge
                   Positioned(
                     top: 8,
                     left: 8,
@@ -157,7 +144,7 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
                     ),
                   ),
 
-                  // Favorite button (top-right)
+                  // Favorite button
                   Positioned(
                     top: 8,
                     right: 8,
@@ -190,7 +177,7 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
                     ),
                   ),
 
-                  // Price & Discount section (bottom-right)
+                  // Price & Discount section
                   Positioned(
                     bottom: 8,
                     right: 8,
@@ -198,7 +185,6 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Urgent badge if enabled
                         if (service.urgentBookingEnabled)
                           Container(
                             margin: const EdgeInsets.only(bottom: 6),
@@ -231,7 +217,6 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
                             ),
                           ),
 
-                        // Discount badge if offer exists
                         if (discount > 0)
                           Container(
                             margin: const EdgeInsets.only(bottom: 6),
@@ -253,7 +238,6 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
                             ),
                           ),
 
-                        // Price display
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
@@ -267,7 +251,6 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
                             crossAxisAlignment: CrossAxisAlignment.end,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              // Current price (offer or base)
                               Text(
                                 '₹${finalPrice.toStringAsFixed(0)}',
                                 style: GoogleFonts.outfit(
@@ -276,7 +259,6 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
-                              // Strike-through base price if offer exists
                               if (hasOffer)
                                 Text(
                                   '₹${service.basePrice.toStringAsFixed(0)}',
@@ -297,14 +279,14 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
               ),
             ),
 
-            // ========== CONTENT SECTION ==========
+            // CONTENT SECTION - Fixed overflow by using proper constraints
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.all(10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Service title
                     Text(
                       service.title,
                       style: GoogleFonts.outfit(
@@ -318,7 +300,6 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
 
                     const SizedBox(height: 4),
 
-                    // Technician name
                     Row(
                       children: [
                         const Icon(
@@ -342,37 +323,38 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
                       ],
                     ),
 
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
 
-                    // Location badge (only if district is available)
                     if (service.technicianDistrict != null &&
                         service.technicianDistrict!.isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(5),
-                        ),
-                        child: Text(
-                          service.technicianDistrict!.toUpperCase(),
-                          style: GoogleFonts.outfit(
-                            fontSize: 8,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.blue[700],
-                            letterSpacing: 0.3,
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(5),
+                          ),
+                          child: Text(
+                            service.technicianDistrict!.toUpperCase(),
+                            style: GoogleFonts.outfit(
+                              fontSize: 8,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.blue[700],
+                              letterSpacing: 0.3,
+                            ),
                           ),
                         ),
                       ),
 
                     const Spacer(),
 
-                    // Get Service button
                     SizedBox(
                       width: double.infinity,
-                      height: 36,
+                      height: 32,
                       child: ElevatedButton(
                         onPressed: _navigateToDetails,
                         style: ElevatedButton.styleFrom(

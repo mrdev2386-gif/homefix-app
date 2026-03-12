@@ -188,6 +188,11 @@ export function validateRequiredFields(data: any, requiredFields: string[]) {
 
 /**
  * Rate limiting check
+ * 
+ * @param userId - User ID to check
+ * @param action - Action being rate limited
+ * @param maxAttempts - Maximum attempts allowed
+ * @param windowMinutes - Time window in minutes (NOT seconds)
  */
 export async function checkRateLimit(
     userId: string,

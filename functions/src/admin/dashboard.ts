@@ -50,36 +50,38 @@ export const getDashboardStats = functions.https.onCall(async (data, context) =>
             safeCount(db.collection('technicians').where('isAvailable', '==', true))
         ]);
 
-        // Revenue calculations
+        // Revenue & Payout calculations
         let revenueToday = 0;
         let totalRevenue = 0;
+        let platformEarningsTotal = 0;
+        let technicianPayoutsTotal = 0;
 
         try {
             const revenueTodaySnap = await db.collection('bookings')
                 .where('paymentStatus', '==', 'paid')
-                .where('createdAt', '>=', today) // This requires an index
+                .where('createdAt', '>=', today)
                 .get();
 
-            if (!revenueTodaySnap.empty) {
-                revenueTodaySnap.forEach(doc => {
-                    const amount = Number(doc.data().finalAmount);
-                    if (!isNaN(amount)) revenueToday += amount;
-                });
-            }
+            revenueTodaySnap.forEach(doc => {
+                const amount = Number(doc.data().finalAmount || doc.data().price || 0);
+                revenueToday += amount;
+            });
 
-            const totalRevenueSnap = await db.collection('bookings')
-                .where('paymentStatus', '==', 'paid') // This might be large, consider aggregation later
+            // Aggregate Platform Earnings and Payouts
+            const paidBookingsSnap = await db.collection('bookings')
+                .where('paymentStatus', '==', 'paid')
                 .get();
 
-            if (!totalRevenueSnap.empty) {
-                totalRevenueSnap.forEach(doc => {
-                    const amount = Number(doc.data().finalAmount);
-                    if (!isNaN(amount)) totalRevenue += amount;
-                });
-            }
+            paidBookingsSnap.forEach(doc => {
+                const data = doc.data();
+                const amount = Number(data.finalAmount || data.price || 0);
+                totalRevenue += amount;
+                platformEarningsTotal += Number(data.platformCommission || (amount * 0.10));
+                technicianPayoutsTotal += Number(data.technicianPayout || (amount * 0.90));
+            });
+
         } catch (e) {
             console.error('Failed to calculate revenue:', e);
-            // Default to 0
         }
 
         // Get recent bookings safely
@@ -90,41 +92,28 @@ export const getDashboardStats = functions.https.onCall(async (data, context) =>
                 .limit(10)
                 .get();
 
-            if (!recentSnap.empty) {
-                recentActivity = recentSnap.docs.map(d => {
-                    const data = d.data();
-                    // Ensure createdAt is a string
-                    let createdStr = todayStr;
-                    if (data.createdAt && typeof data.createdAt.toDate === 'function') {
-                        createdStr = data.createdAt.toDate().toISOString();
-                    } else if (data.createdAt && typeof data.createdAt === 'string') {
-                        createdStr = data.createdAt;
-                    }
-
-                    return {
-                        id: d.id,
-                        customerName: data.customerName || 'Unknown Customer',
-                        serviceTitle: data.serviceTitle || 'Unknown Service',
-                        amount: data.finalAmount || 0,
-                        status: data.status || 'unknown',
-                        createdAt: createdStr
-                    };
-                });
-            }
+            recentActivity = recentSnap.docs.map(d => {
+                const data = d.data();
+                return {
+                    id: d.id,
+                    customerName: data.customerName || 'Unknown',
+                    serviceTitle: data.serviceName || data.serviceTitle || 'Service',
+                    amount: data.finalAmount || data.price || 0,
+                    status: data.status || 'unknown',
+                    createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString()
+                };
+            });
         } catch (e) {
-            console.error('[Dashboard] Failed to fetch recent activity', e);
+            console.error('[Dashboard] Recent activity fetch failed:', e);
         }
 
-        // Chart Data: Last 7 Days Bookings
+        // Chart Data: Last 7 Days (Existing logic)
         const chartDataPoints: any[] = [];
         const chartQueries: Promise<number>[] = [];
-        const daysToCheck = 7;
-
-        for (let i = daysToCheck - 1; i >= 0; i--) {
+        for (let i = 6; i >= 0; i--) {
             const d = new Date();
             d.setDate(d.getDate() - i);
             d.setHours(0, 0, 0, 0);
-
             const nextD = new Date(d);
             nextD.setDate(nextD.getDate() + 1);
 
@@ -135,20 +124,16 @@ export const getDashboardStats = functions.https.onCall(async (data, context) =>
                     .count()
                     .get()
                     .then(snap => snap.data().count)
-                    .catch(() => 0)
             );
 
             chartDataPoints.push({
                 date: d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
-                fullDate: d.toISOString(),
-                count: 0 // Placeholder, will be filled
+                count: 0
             });
         }
 
-        const chartCounts = await Promise.all(chartQueries);
-        chartCounts.forEach((count, index) => {
-            chartDataPoints[index].count = count;
-        });
+        const counts = await Promise.all(chartQueries);
+        counts.forEach((c, idx) => chartDataPoints[idx].count = c);
 
         return {
             counters: {
@@ -157,6 +142,8 @@ export const getDashboardStats = functions.https.onCall(async (data, context) =>
                 bookingsToday: totalBookingsToday,
                 revenueToday,
                 totalRevenue,
+                platformEarnings: platformEarningsTotal,
+                technicianPayouts: technicianPayoutsTotal,
                 pendingBookings,
                 confirmedBookings,
                 activeBookings,

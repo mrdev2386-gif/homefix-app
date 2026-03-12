@@ -1,5 +1,5 @@
 /**
- * Razorpay Webhook Handler (2nd Gen) - FINTECH GRADE
+ * Razorpay Webhook Handler (1st Gen) - FINTECH GRADE
  * 
  * SECURITY HARDENING:
  * - Signature verification
@@ -15,7 +15,7 @@
  * - Wallet auto-create inside transaction
  */
 
-import { onRequest } from "firebase-functions/v2/https";
+import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import * as crypto from "crypto";
 
@@ -32,13 +32,9 @@ const REPLAY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const LOG_PREFIX = "[RAZORPAY_WEBHOOK]";
 
 /**
- * Razorpay Webhook Handler (V2) - Production Secure
+ * Razorpay Webhook Handler (Gen1) - Production Secure
  */
-export const razorpayWebhookV2 = onRequest(
-    {
-        memory: "256MiB",
-        timeoutSeconds: 60,
-    },
+export const razorpayWebhookV2 = functions.https.onRequest(
     async (req, res) => {
         if (req.method !== "POST") {
             res.status(405).send("Method Not Allowed");

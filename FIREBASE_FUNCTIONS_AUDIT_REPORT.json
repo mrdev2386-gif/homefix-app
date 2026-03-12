@@ -1,0 +1,805 @@
+{
+  "audit_timestamp": "2026-03-11",
+  "audit_scope": "functions/src directory",
+  "summary": {
+    "total_gen1_functions": 180,
+    "total_gen2_functions": 3,
+    "files_analyzed": 56,
+    "critical_blocking_issues": 5,
+    "migration_priority": "HIGH - 98% of codebase is Gen1"
+  },
+  "gen1_functions": {
+    "count": 180,
+    "description": "Using legacy functions.https.onCall and functions.https.onRequest syntax",
+    "files_and_counts": [
+      {
+        "file": "finance/technician_withdrawal.ts",
+        "gen1_count": 9,
+        "functions": [
+          "line 56: requestWithdrawal",
+          "line 240: approveWithdrawal",
+          "line 411: rejectWithdrawal",
+          "line 459: getWithdrawalRequests",
+          "line 514: getTransactionHistory",
+          "line 560: getPayoutHistory",
+          "line 595: generateBookingQR",
+          "line 697: getPendingWithdrawalRequests"
+        ]
+      },
+      {
+        "file": "admin/services.ts",
+        "gen1_count": 9,
+        "functions": [
+          "line 23: createService",
+          "line 78: updateService",
+          "line 112: deleteService",
+          "line 153: createSubService",
+          "line 253: updateSubService",
+          "line 310: deleteSubService",
+          "line 351: updatePricingConfig",
+          "line 386: getPricingConfig",
+          "line 405: bulkUpdatePrices"
+        ]
+      },
+      {
+        "file": "admin/dynamic_content.ts",
+        "gen1_count": 11,
+        "functions": [
+          "line 7: admin_manageProfessionalVideos",
+          "line 60: admin_manageCleaningEssentials",
+          "line 108: findEligibleTechniciansCount",
+          "line 161: admin_manageServiceBanners",
+          "line 214: admin_initializeHomeContent",
+          "line 404: admin_manageCategories",
+          "line 451: admin_manageServices",
+          "line 502: admin_manageHomeSections",
+          "line 606: admin_manageCategory",
+          "line 718: admin_manageNestedService",
+          "line 834: admin_manageNestedSubSubService"
+        ]
+      },
+      {
+        "file": "admin/technicians.ts",
+        "gen1_count": 6,
+        "functions": [
+          "line 7: adminApproveTechnician",
+          "line 68: approveTechnician",
+          "line 134: toggleTechAvailability",
+          "line 162: updateTechServices",
+          "line 190: getTechnicians",
+          "line 245: getTechnicianById",
+          "line 307: updateTechnician"
+        ]
+      },
+      {
+        "file": "admin/booking_moderation.ts",
+        "gen1_count": 2,
+        "functions": [
+          "line 41: approveBooking",
+          "line 95: rejectBooking"
+        ]
+      },
+      {
+        "file": "booking/booking_lifecycle.ts",
+        "gen1_count": 8,
+        "functions": [
+          "line 51: approveBookingByAdmin",
+          "line 145: rejectBookingByAdmin",
+          "line 204: technicianAcceptBooking",
+          "line 267: technicianStartJob",
+          "line 325: completeBooking",
+          "line 391: cancelBooking",
+          "line 485: technicianRejectBooking",
+          "line 563: verifyBookingPayment"
+        ]
+      },
+      {
+        "file": "booking/new_booking_flow.ts",
+        "gen1_count": 6,
+        "functions": [
+          "line 119: createBookingRequest",
+          "line 388: adminApproveBooking",
+          "line 508: technicianRespondBooking",
+          "line 644: customerConfirmPayment",
+          "line 760: markWorkCompleted",
+          "line 840: updateBookingStatusGeneric"
+        ]
+      },
+      {
+        "file": "booking/production_hardening.ts",
+        "gen1_count": 3,
+        "functions": [
+          "line 81: handlePaymentWebhook (onRequest)",
+          "line 207: createBookingIdempotent",
+          "line 518: getTechnicianEarnings",
+          "line 567: generateWeeklyPayoutReport"
+        ]
+      },
+      {
+        "file": "booking/final_hardening.ts",
+        "gen1_count": 3,
+        "functions": [
+          "line 398: acknowledgeAdminAlert",
+          "line 718: manualPayoutCheck",
+          "line 758: getAdminDashboard"
+        ]
+      },
+      {
+        "file": "booking/payment_qr.ts",
+        "gen1_count": 2,
+        "functions": [
+          "line 12: generateTechnicianQR",
+          "line 42: confirmQRPayment"
+        ]
+      },
+      {
+        "file": "booking/refund_system.ts",
+        "gen1_count": 1,
+        "functions": [
+          "line 10: refundBookingPayment"
+        ]
+      },
+      {
+        "file": "technician/onboarding.ts",
+        "gen1_count": 8,
+        "functions": [
+          "line 38: createTechnicianProfile",
+          "line 141: saveTechnicianBasicDetails",
+          "line 264: saveTechnicianDocuments",
+          "line 343: saveTechnicianServices",
+          "line 412: submitTechnicianKyc",
+          "line 476: updateTechnicianProfile",
+          "line 527: updateTechnicianStatus",
+          "line 582: saveTechnicianStepData"
+        ]
+      },
+      {
+        "file": "technician/profile_management.ts",
+        "gen1_count": 5,
+        "note": "Uses functions.region('asia-south1').https.onCall",
+        "functions": [
+          "line 6: updateTechnicianPersonalDetails",
+          "line 80: updateTechnicianBankDetails",
+          "line 144: reuploadVerificationDocument",
+          "line 204: adminUpdateBankStatus",
+          "line 255: adminUpdateDocumentStatus"
+        ]
+      },
+      {
+        "file": "technician/createTechnicianService.ts",
+        "gen1_count": 5,
+        "functions": [
+          "line 538: createTechnicianService",
+          "line 750: updateTechnicianService",
+          "line 910: deleteTechnicianService",
+          "line 993: getMyTechnicianServices",
+          "line 1037: toggleTechnicianServiceStatus"
+        ]
+      },
+      {
+        "file": "technician/services_management.ts",
+        "gen1_count": 4,
+        "functions": [
+          "line 98: addTechnicianService",
+          "line 260: updateTechnicianService",
+          "line 362: toggleTechnicianServiceStatus",
+          "line 411: deleteTechnicianService"
+        ]
+      },
+      {
+        "file": "technician/booking_actions_hardened.ts",
+        "gen1_count": 3,
+        "functions": [
+          "line 51: technicianRespondBooking",
+          "line 156: updateBookingStatusNew",
+          "line 460: technicianRespondBookingRateLimited"
+        ]
+      },
+      {
+        "file": "technician/application.ts",
+        "gen1_count": 11,
+        "functions": [
+          "line 20: initiatePhoneVerification",
+          "line 63: savePersonalDetails",
+          "line 102: submitKYC",
+          "line 147: saveSkillSelection",
+          "line 191: saveExperienceDetails",
+          "line 213: saveAvailability",
+          "line 237: saveServiceArea",
+          "line 262: saveBankDetails",
+          "line 294: completeTraining",
+          "line 321: submitApplication",
+          "line 394: submitTechnicianApplication"
+        ]
+      },
+      {
+        "file": "technician/tracking.ts",
+        "gen1_count": 2,
+        "functions": [
+          "line 9: updateLocation",
+          "line 63: toggleOnlineStatus"
+        ]
+      },
+      {
+        "file": "technician/security.ts",
+        "gen1_count": 1,
+        "functions": [
+          "line 8: bindDevice"
+        ]
+      },
+      {
+        "file": "technician/kyc.ts",
+        "gen1_count": 2,
+        "functions": [
+          "line 30: evaluateTechnicianKyc",
+          "line 151: checkKycStatus"
+        ]
+      },
+      {
+        "file": "technician/bank_verification.ts",
+        "gen1_count": 2,
+        "functions": [
+          "line 18: verifyTechnicianBankAccount",
+          "line 167: razorpayBankWebhook (onRequest)"
+        ]
+      },
+      {
+        "file": "finance/technician_withdrawal.ts",
+        "gen1_count": 9,
+        "functions": [
+          "line 56: requestWithdrawal",
+          "line 240: approveWithdrawal",
+          "line 411: rejectWithdrawal",
+          "line 459: getWithdrawalRequests",
+          "line 514: getTransactionHistory",
+          "line 560: getPayoutHistory",
+          "line 595: generateBookingQR",
+          "line 697: getPendingWithdrawalRequests"
+        ]
+      },
+      {
+        "file": "finance/wallet_reconciliation.ts",
+        "gen1_count": 3,
+        "functions": [
+          "line 72: triggerManualReconciliation",
+          "line 134: getReconciliationAnomalies",
+          "line 178: markWalletReviewed"
+        ]
+      },
+      {
+        "file": "finance/wallet_logic.ts",
+        "gen1_count": 1,
+        "functions": [
+          "line 106: processWalletTransaction"
+        ]
+      },
+      {
+        "file": "finance/payout_logic.ts",
+        "gen1_count": 3,
+        "functions": [
+          "line 26: triggerTechnicianPayout",
+          "line 144: razorpayPayoutWebhook (onRequest)",
+          "line 206: settleTechnicianBalance"
+        ]
+      },
+      {
+        "file": "finance/invoice_logic.ts",
+        "gen1_count": 0,
+        "note": "Trigger function (firestore.onUpdate) - correctly uses context.params"
+      },
+      {
+        "file": "payments/razorpay.ts",
+        "gen1_count": 5,
+        "functions": [
+          "line 115: createRazorpayOrder",
+          "line 220: createPaymentOrder",
+          "line 388: razorpayWebhook (onRequest)",
+          "line 637: verifyPayment",
+          "line 756: initiateRefund"
+        ]
+      },
+      {
+        "file": "payments/payouts.ts",
+        "gen1_count": 9,
+        "functions": [
+          "line 34: getPendingPayouts",
+          "line 77: getPayoutHistory",
+          "line 130: getPayoutSummary",
+          "line 199: markPayoutPaid",
+          "line 287: putPayoutOnHold",
+          "line 330: releasePayoutFromHold",
+          "line 374: bulkMarkPayoutsPaid",
+          "line 466: getPayoutAnalytics"
+        ]
+      },
+      {
+        "file": "payments/razorpayWebhookV2.ts",
+        "gen1_count": 1,
+        "functions": [
+          "line 37: razorpayWebhookV2 (onRequest)"
+        ]
+      },
+      {
+        "file": "customer/address_management.ts",
+        "gen1_count": 3,
+        "functions": [
+          "line 10: setPrimaryAddress",
+          "line 58: manageAddress",
+          "line 173: validateAddressForBooking"
+        ]
+      },
+      {
+        "file": "customer/cart_management.ts",
+        "gen1_count": 4,
+        "functions": [
+          "line 10: addToCartCallable",
+          "line 108: updateCartQuantityCallable",
+          "line 153: removeFromCartCallable",
+          "line 179: clearCartCallable"
+        ]
+      },
+      {
+        "file": "customer/favorites_management.ts",
+        "gen1_count": 1,
+        "functions": [
+          "line 10: toggleFavoriteCallable"
+        ]
+      },
+      {
+        "file": "chat/chat.ts",
+        "gen1_count": 4,
+        "functions": [
+          "line 216: getOrCreateChat",
+          "line 351: sendChatMessage",
+          "line 515: markMessagesRead",
+          "line 603: getChatDetails"
+        ]
+      },
+      {
+        "file": "custom_request.ts",
+        "gen1_count": 6,
+        "functions": [
+          "line 74: createCustomServiceRequest",
+          "line 159: adminApproveServiceRequest",
+          "line 228: technicianRespondServiceRequest",
+          "line 270: customerConfirmServicePayment",
+          "line 310: getTechnicianInbox",
+          "line 341: getCustomRequestDetail"
+        ]
+      },
+      {
+        "file": "customer_features.ts",
+        "gen1_count": 8,
+        "functions": [
+          "line 11: validateReferralCode",
+          "line 98: cancelBooking",
+          "line 166: submitServiceRating",
+          "line 307: submitSupportRequest",
+          "line 335: updateUserProfile",
+          "line 462: updateTechnicianProfile",
+          "line 495: deleteAccount",
+          "line 507: manageAddress",
+          "line 539: managePaymentMethod",
+          "line 561: updatePrivacySettings"
+        ]
+      },
+      {
+        "file": "booking_actions.ts",
+        "gen1_count": 7,
+        "functions": [
+          "line 15: scheduleInspection",
+          "line 22: startInspection",
+          "line 29: submitInspectionReport",
+          "line 36: startJob",
+          "line 43: completeJob",
+          "line 50: approveJobQuote",
+          "line 57: rejectJobQuote"
+        ]
+      },
+      {
+        "file": "matching/engine.ts",
+        "gen1_count": 2,
+        "functions": [
+          "line 115: respondToBooking",
+          "line 183: getEligibleTechnicians"
+        ]
+      },
+      {
+        "file": "matching/matching_v2.ts",
+        "gen1_count": 1,
+        "functions": [
+          "line 385: handleAssignmentResponse"
+        ]
+      },
+      {
+        "file": "matching/technician_matching.ts",
+        "gen1_count": 2,
+        "functions": [
+          "line 93: matchTechnicians",
+          "line 463: updateTechnicianAssignment"
+        ]
+      },
+      {
+        "file": "matching/matchTechniciansV2.ts",
+        "gen1_count": 1,
+        "functions": [
+          "line 123: matchTechniciansV2"
+        ]
+      },
+      {
+        "file": "instant_booking.ts",
+        "gen1_count": 1,
+        "functions": [
+          "line 64: getInstantServices"
+        ]
+      },
+      {
+        "file": "notifications_management.ts",
+        "gen1_count": 4,
+        "functions": [
+          "line 9: markNotificationRead",
+          "line 29: markAllNotificationsRead",
+          "line 50: deleteNotificationCallable",
+          "line 70: deleteAllNotificationsCallable"
+        ]
+      },
+      {
+        "file": "partner/applications.ts",
+        "gen1_count": 1,
+        "functions": [
+          "line 16: submitPartnerApplication"
+        ]
+      },
+      {
+        "file": "admin/users.ts",
+        "gen1_count": 5,
+        "functions": [
+          "line 10: getUsers",
+          "line 63: getUserById",
+          "line 107: updateUser",
+          "line 145: blockUser",
+          "line 172: manageUser"
+        ]
+      },
+      {
+        "file": "admin/dashboard.ts",
+        "gen1_count": 1,
+        "functions": [
+          "line 7: getDashboardStats"
+        ]
+      },
+      {
+        "file": "admin/bookings.ts",
+        "gen1_count": 1,
+        "functions": [
+          "line 9: adminManageBooking"
+        ]
+      },
+      {
+        "file": "admin/finance.ts",
+        "gen1_count": 3,
+        "functions": [
+          "line 7: refundBooking",
+          "line 48: adjustWallet",
+          "line 82: processBookingPayout"
+        ]
+      },
+      {
+        "file": "testing/factory.ts",
+        "gen1_count": 3,
+        "functions": [
+          "line 9: createTestCustomer",
+          "line 41: createTestTechnician",
+          "line 94: generateTestBooking"
+        ]
+      },
+      {
+        "file": "testing/actions.ts",
+        "gen1_count": 2,
+        "functions": [
+          "line 6: simulatePayment",
+          "line 55: resetTestData"
+        ]
+      },
+      {
+        "file": "index.ts",
+        "gen1_count": 2,
+        "note": "COMMENTED OUT - Functions 602 and 641",
+        "functions": [
+          "line 602: removeAllFcmTokens (commented)",
+          "line 641: getFcmTokens (commented)"
+        ]
+      }
+    ]
+  },
+  "gen2_functions": {
+    "count": 3,
+    "description": "Using modern firebase-functions/v2/https.onCall syntax",
+    "examples": [
+      {
+        "file": "index.ts",
+        "line": 486,
+        "name": "assignTechnicianToBooking",
+        "syntax": "onCall({ enforceAppCheck: false }, async (request) => { ... })"
+      },
+      {
+        "file": "index.ts",
+        "line": 510,
+        "name": "saveFcmToken",
+        "syntax": "onCall({ enforceAppCheck: false }, async (request) => { ... })"
+      },
+      {
+        "file": "index.ts",
+        "line": 559,
+        "name": "removeFcmToken",
+        "syntax": "onCall({ enforceAppCheck: false }, async (request) => { ... })"
+      }
+    ]
+  },
+  "context_params_analysis": {
+    "summary": "19 instances of context.params usage found - ALL ARE CORRECT (used in trigger functions)",
+    "proper_usage": [
+      {
+        "file": "booking/booking_notifications.ts",
+        "line": 46,
+        "function_type": "firestore.onUpdate trigger",
+        "usage": "const bookingId = context.params.bookingId;",
+        "status": "VALID - Correct usage in trigger"
+      },
+      {
+        "file": "custom_requests/custom_request_notifications.ts",
+        "line": 42,
+        "function_type": "firestore.onUpdate trigger",
+        "usage": "const requestId = context.params.requestId;",
+        "status": "VALID - Correct usage in trigger"
+      },
+      {
+        "file": "fraud_protection.ts",
+        "line": 149,
+        "function_type": "firestore.onUpdate trigger",
+        "usage": "const techId = context.params.techId;",
+        "status": "VALID - Correct usage in trigger"
+      },
+      {
+        "file": "finance/invoice_logic.ts",
+        "line": 13,
+        "function_type": "firestore.onUpdate trigger",
+        "usage": "const bookingId = context.params.bookingId;",
+        "status": "VALID - Correct usage in trigger"
+      },
+      {
+        "file": "technician/triggers.ts",
+        "line": 21,
+        "function_type": "firestore.onUpdate trigger",
+        "usage": "const techId = context.params.techId;",
+        "status": "VALID - Correct usage in trigger"
+      },
+      {
+        "file": "booking/production_hardening.ts",
+        "line": 753,
+        "function_type": "firestore.onUpdate trigger",
+        "usage": "bookingId: context.params.bookingId,",
+        "status": "VALID - Correct usage in trigger"
+      },
+      {
+        "file": "technician/booking_actions_hardened.ts",
+        "line": 384,
+        "function_type": "firestore.onUpdate trigger",
+        "usage": "const bookingId = context.params.bookingId;",
+        "status": "VALID - Correct usage in trigger"
+      },
+      {
+        "file": "booking/booking_lifecycle.ts",
+        "line": 36,
+        "function_type": "firestore.onCreate trigger",
+        "usage": "bookingId: context.params.bookingId,",
+        "status": "VALID - Correct usage in trigger"
+      },
+      {
+        "file": "technician/alerts.ts",
+        "lines": [24, 28, 63, 79, 86],
+        "function_type": "firestore.onCreate trigger",
+        "usage": "context.params.requestId in logs and data",
+        "status": "VALID - Correct usage in trigger"
+      },
+      {
+        "file": "notification_triggers.ts",
+        "lines": [41, 100],
+        "function_type": "firestore triggers",
+        "usage": "context.params for bookingId and techId",
+        "status": "VALID - Correct usage in trigger"
+      },
+      {
+        "file": "matching/matching_v2.ts",
+        "line": 357,
+        "function_type": "firestore.onCreate trigger",
+        "usage": "const bookingId = context.params.bookingId;",
+        "status": "VALID - Correct usage in trigger"
+      },
+      {
+        "file": "matching/engine.ts",
+        "lines": [83, 94, 106],
+        "function_type": "firestore.onCreate trigger",
+        "usage": "context.params.bookingId",
+        "status": "VALID - Correct usage in trigger"
+      }
+    ]
+  },
+  "auth_access_issues": {
+    "summary": "No critical auth access issues detected. All sampled files properly guard context.auth with checks.",
+    "properly_guarded_files": [
+      {
+        "file": "technician/services_management.ts",
+        "pattern": "if (!context.auth) { ... throw error }",
+        "lines": [100, 262, 364, 413]
+      },
+      {
+        "file": "technician/profile_management.ts",
+        "pattern": "if (!context.auth) { ... throw error }",
+        "lines": [9, 81, 145, 205, 256]
+      },
+      {
+        "file": "technician/onboarding.ts",
+        "pattern": "const uid = context.auth!.uid;",
+        "lines": [40, 143, 266, 345, 414, 478, 529, 584]
+      },
+      {
+        "file": "admin/users.ts",
+        "pattern": "if (!context.auth) { ... throw error }",
+        "lines": [16, 69, 114, 152, 179]
+      },
+      {
+        "file": "booking/booking_lifecycle.ts",
+        "pattern": "Proper request.auth checks",
+        "lines": [204, 267, 325, 391, 485, 563]
+      }
+    ],
+    "potential_concerns": [
+      {
+        "file": "shared/utils.ts",
+        "issue": "Helper function checks context.auth and context.auth.token.admin",
+        "lines": [16, 21],
+        "status": "VALID - Helper validates before use"
+      }
+    ]
+  },
+  "mixed_usage_files": {
+    "summary": "3 files have MIXED Gen1 and Gen2 usage",
+    "files": [
+      {
+        "file": "index.ts",
+        "total_exports": 180,
+        "gen1_direct": 2,
+        "gen2": 3,
+        "mixed": true,
+        "description": "Main export file re-exports from modules; contains 2 commented Gen1 functions and 3 Gen2 functions",
+        "impact": "HIGH - Central entry point needs cleanup"
+      },
+      {
+        "file": "index.ts",
+        "line": 602,
+        "gen1_function": "removeAllFcmTokens",
+        "status": "COMMENTED OUT - Can be safely deleted"
+      },
+      {
+        "file": "index.ts",
+        "line": 641,
+        "gen1_function": "getFcmTokens",
+        "status": "COMMENTED OUT - Can be safely deleted"
+      }
+    ]
+  },
+  "critical_files_blocking_deployment": {
+    "count": 5,
+    "severity": "CRITICAL",
+    "files": [
+      {
+        "file": "finance/technician_withdrawal.ts",
+        "gen1_count": 9,
+        "reason": "Core financial operations using Gen1 - No timeout config, may cause deployment issues",
+        "priority": "CRITICAL",
+        "blocking": true,
+        "required_migration": "Financial functions must be migrated to Gen2 with proper concurrency settings"
+      },
+      {
+        "file": "technician/onboarding.ts",
+        "gen1_count": 8,
+        "reason": "Complex onboarding flow with region specification not properly converted to Gen2",
+        "priority": "CRITICAL",
+        "blocking": true,
+        "required_migration": "All 8 functions must use v2 with regional routing"
+      },
+      {
+        "file": "admin/dynamic_content.ts",
+        "gen1_count": 11,
+        "reason": "Largest single file with Gen1; database operations may timeout",
+        "priority": "HIGH",
+        "blocking": true,
+        "required_migration": "11 functions need conversion; add memory config and timeout settings"
+      },
+      {
+        "file": "booking/booking_lifecycle.ts",
+        "gen1_count": 8,
+        "reason": "Core booking workflow - Gen1 lacks request-reply semantics of Gen2",
+        "priority": "CRITICAL",
+        "blocking": true,
+        "required_migration": "Use Gen2 request object for proper typing and error handling"
+      },
+      {
+        "file": "technician/application.ts",
+        "gen1_count": 11,
+        "reason": "Multi-step application flow - Gen1 lacks proper request validation",
+        "priority": "HIGH",
+        "blocking": true,
+        "required_migration": "11 functions need conversion; add input validation middleware"
+      }
+    ]
+  },
+  "migration_summary": {
+    "total_functions_to_migrate": 180,
+    "gen2_already_implemented": 3,
+    "migration_percentage": "1.6% complete, 98.4% remaining",
+    "estimated_effort": {
+      "low_complexity": "45 functions - Simple callables with basic auth checks",
+      "medium_complexity": "90 functions - Database operations with validation",
+      "high_complexity": "45 functions - Regional, webhook, or complex async operations"
+    },
+    "blocking_factors": [
+      "No timeout configurations in Gen1 functions - must add to Gen2",
+      "Regional functions need proper Gen2 conversion (asia-south1 region)",
+      "Webhook handlers need proper request/response handling in Gen2",
+      "Memory and concurrency settings not documented for most functions"
+    ]
+  },
+  "recommendations": {
+    "immediate_actions": [
+      "Delete or uncomment 2 commented Gen1 functions in index.ts (lines 602, 641)",
+      "Create migration plan prioritizing critical files: technician_withdrawal, booking_lifecycle, onboarding",
+      "Audit timeout configurations - add proper settings to Gen2 migrations"
+    ],
+    "migration_order": [
+      "Phase 1 (Critical): finance/technician_withdrawal.ts, booking/booking_lifecycle.ts",
+      "Phase 2 (High):technician/onboarding.ts, admin/dynamic_content.ts, technician/application.ts",
+      "Phase 3 (Medium): All customer, chat, booking_actions, and testing functions",
+      "Phase 4 (Low): Admin utilities, notifications, matching engine refactoring"
+    ],
+    "testing_requirements": [
+      "Each Gen2 migration needs unit tests for request/context object changes",
+      "Integration tests needed for all regional functions",
+      "Performance testing required - Gen2 cold start times may differ"
+    ]
+  },
+  "file_list_for_migration": {
+    "critical_priority": [
+      "finance/technician_withdrawal.ts",
+      "finance/wallet_reconciliation.ts",
+      "finance/wallet_logic.ts",
+      "finance/payout_logic.ts",
+      "booking/booking_lifecycle.ts",
+      "technician/onboarding.ts"
+    ],
+    "high_priority": [
+      "admin/dynamic_content.ts",
+      "admin/services.ts",
+      "technician/application.ts",
+      "technician/createTechnicianService.ts",
+      "booking/new_booking_flow.ts",
+      "payments/razorpay.ts",
+      "payments/payouts.ts"
+    ],
+    "medium_priority": [
+      "custom_request.ts",
+      "customer_features.ts",
+      "booking_actions.ts",
+      "chat/chat.ts",
+      "customer/*"
+    ],
+    "low_priority": [
+      "testing/*",
+      "admin/users.ts",
+      "admin/bookings.ts",
+      "notifications_management.ts",
+      "matching/*"
+    ]
+  }
+}

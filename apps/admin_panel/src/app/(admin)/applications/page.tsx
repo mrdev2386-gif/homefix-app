@@ -35,8 +35,10 @@ export default function ApplicationsPage() {
   const fetchApplications = async () => {
     try {
       setLoading(true);
+      // FIXED: Query only pending technician applications, not all technicians
       const techQuery = query(
         collection(db, 'technicians'),
+        where('status', '==', 'pending'),
         orderBy('createdAt', 'desc'),
         firestoreLimit(100)
       );
@@ -99,9 +101,12 @@ export default function ApplicationsPage() {
       message: 'Are you sure you want to reject this technician application?',
       variant: 'danger',
       requireInput: true,
-      onConfirm: async () => {
+      inputLabel: 'Rejection Reason',
+      inputPlaceholder: 'Please provide the reason for rejection...',
+      onConfirm: async (inputValue?: string) => {
         try {
-          await adminApi.rejectTechnicianApp(techId, 'Application rejected by admin');
+          const reason = inputValue || 'Rejected by admin';
+          await adminApi.rejectTechnicianApp(techId, reason);
           await fetchApplications();
           setConfirmDialog({ ...confirmDialog, isOpen: false });
         } catch (error) {

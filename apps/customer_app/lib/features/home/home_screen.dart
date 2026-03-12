@@ -14,7 +14,7 @@ import '../services/presentation/service_list_screen.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
 import '../support/presentation/support_screen.dart';
 import '../profile/presentation/saved_addresses_screen.dart';
-import '../custom_request/presentation/custom_request_form_screen.dart';
+import '../custom_request/presentation/custom_request_screen.dart';
 import '../dashboard/widgets/real_services_sections.dart';
 import '../cart/presentation/cart_screen.dart';
 import '../../core/providers/cart_provider.dart';
@@ -30,6 +30,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen>
     with AutomaticKeepAliveClientMixin {
   Stream<List<Booking>>? _bookingsStream;
+  final Set<String> _displayedServiceIds = {}; // Global duplicate tracking
 
   bool _isNavigatingToCustomRequest = false;
   DateTime? _lastCustomRequestNavigationTime;
@@ -115,8 +116,11 @@ class _HomeScreenState extends State<HomeScreen>
             // Recommended Technicians
             SliverToBoxAdapter(child: _buildRecommendedSection()),
             
-            // Top Rated
+            // Top Rated Services
             SliverToBoxAdapter(child: _buildTopRatedSection()),
+            
+            // Near You Services
+            SliverToBoxAdapter(child: _buildNearYouSection()),
             
             // Need Assistance
             SliverToBoxAdapter(child: _buildNeedAssistance(context)),
@@ -548,7 +552,7 @@ class _HomeScreenState extends State<HomeScreen>
                 child: GestureDetector(
                   onTap: () => Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => CustomRequestFormScreen()),
+                    MaterialPageRoute(builder: (_) => const CustomRequestScreen()),
                   ),
                   child: Container(
                     height: 60,
@@ -723,18 +727,23 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildRecommendedSection() {
-    // RecommendedServicesSection already displays its own title "Recommended For You"
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 12),
-      child: RecommendedServicesSection(),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: RecommendedServicesSection(displayedServiceIds: _displayedServiceIds),
     );
   }
 
   Widget _buildTopRatedSection() {
-    // TopRatedRealServicesSection already displays its own title "Top Rated Services"
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 12),
-      child: TopRatedRealServicesSection(),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: TopRatedRealServicesSection(displayedServiceIds: _displayedServiceIds),
+    );
+  }
+
+  Widget _buildNearYouSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: RecentlyAddedServicesSection(displayedServiceIds: _displayedServiceIds),
     );
   }
 
@@ -990,7 +999,7 @@ class _HomeScreenState extends State<HomeScreen>
 
     try {
       await Navigator.push(context,
-          MaterialPageRoute(builder: (_) => CustomRequestFormScreen()));
+          MaterialPageRoute(builder: (_) => const CustomRequestScreen()));
     } catch (e) {
       debugPrint('Navigation error: $e');
     } finally {

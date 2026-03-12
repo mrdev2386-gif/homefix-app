@@ -50,7 +50,9 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
   // STEP 6: Status fallback - check if status is known
   bool _isKnownStatus(String status) {
     const knownStatuses = [
-      'technician_pending',
+      'admin_approved',
+      'technician_accepted',
+      'awaiting_payment',
       'pending',
       'confirmed',
       'accepted',
@@ -59,6 +61,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
       'completed',
       'cancelled',
       'rejected',
+      'awaiting_customer_payment',
     ];
     return knownStatuses.contains(status);
   }
@@ -238,7 +241,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
       return null;
     }
     
-    if (status == 'technician_pending' || status == 'pending') {
+    if (status == 'admin_approved' || status == 'pending') {
       return _ActionBar(
         child: Row(
           children: [
@@ -302,6 +305,21 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
       );
     }
 
+    if (status == 'awaiting_customer_payment') {
+      return _ActionBar(
+        child: ElevatedButton.icon(
+          onPressed: () => _showQRScanner(context),
+          icon: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white),
+          label: Text("SCAN FOR PAYMENT", style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF6366F1),
+            minimumSize: const Size(double.infinity, 56),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+        ),
+      );
+    }
+
     if (status == 'completed') {
       return null;
     }
@@ -335,7 +353,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
       } else if (action == 'start') {
         await service.updateBookingStatus(widget.booking.id, 'in_progress');
       } else if (action == 'complete') {
-        await service.updateBookingStatus(widget.booking.id, 'completed');
+        await service.markWorkCompleted(widget.booking.id);
       }
       
       if (!mounted) return;
@@ -468,8 +486,10 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     if (status == 'completed') color = const Color(0xFF10B981);
     if (status == 'started' || status == 'in_progress') color = const Color(0xFFF59E0B);
     if (status == 'cancelled' || status == 'rejected') color = const Color(0xFFEF4444);
-    if (status == 'technician_pending' || status == 'pending') color = const Color(0xFF8B5CF6);
+    if (status == 'admin_approved' || status == 'pending') color = const Color(0xFF8B5CF6);
+    if (status == 'technician_accepted' || status == 'awaiting_payment') color = const Color(0xFFF59E0B);
     if (status == 'confirmed' || status == 'accepted') color = const Color(0xFF3B82F6);
+    if (status == 'awaiting_customer_payment') color = const Color(0xFF6366F1);
     
     // Unknown status gets neutral gray color
     if (!_isKnownStatus(status)) {
@@ -769,6 +789,75 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
           backgroundColor: Colors.red,
         ),
       );
+    }
+  }
+
+  void _showQRScanner(BuildContext context) {
+    // Note: In real device, this would use mobile_scanner
+    // For this simulation/demo, we'll show a dialog to "confirm scan"
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Scan Customer QR"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.qr_code_2, size: 100, color: Colors.indigo),
+            const SizedBox(height: 16),
+            Text("Scan the QR code shown on the customer's phone to receive ₹${_getTechnicianEarnings().toStringAsFixed(0)} in your wallet.",
+              textAlign: TextAlign.center,
+              style: GoogleFonts.plusJakartaSans(),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _processQRPayment();
+            },
+            child: const Text("Simulate Scan"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _processQRPayment() async {
+    if (_isActionRunning) return;
+    setState(() => _isActionRunning = true);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final service = BookingService();
+      await service.confirmQRPayment(
+        bookingId: widget.booking.id,
+        customerId: widget.booking.customerId,
+        amount: widget.booking.finalAmount > 0 ? widget.booking.finalAmount : widget.booking.price,
+      );
+
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Payment Confirmed! Your wallet has been credited."), backgroundColor: Colors.green),
+      );
+      
+      Navigator.pop(context); // Go back to dashboard
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: ${e.toString()}"), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _isActionRunning = false);
     }
   }
 }

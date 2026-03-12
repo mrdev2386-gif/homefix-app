@@ -9,8 +9,8 @@ const db = admin.firestore();
  */
 export const onNewReviewNotification = functions.firestore
     .document('reviews/{reviewId}')
-    .onCreate(async (snapshot, context) => {
-        const review = snapshot.data();
+    .onCreate(async (snap, context) => {
+        const review = snap.data();
         if (!review) return;
 
         const { technicianId, rating, customerName, bookingId } = review;
@@ -68,8 +68,8 @@ export const onBookingCancelledNotification = functions.firestore
  */
 export const onTechnicianLikeNotification = functions.firestore
     .document('technician_likes/{likeId}')
-    .onCreate(async (snapshot, context) => {
-        const like = snapshot.data();
+    .onCreate(async (snap, context) => {
+        const like = snap.data();
         if (!like) return;
 
         const { technicianId, customerName } = like;
@@ -80,7 +80,7 @@ export const onTechnicianLikeNotification = functions.firestore
                 userType: 'technician',
                 title: 'New Like! ❤️',
                 body: `${customerName || 'A customer'} liked your profile.`,
-                type: 'general', // Or add a 'profile_liked' type
+                type: 'general',
                 priority: 'normal',
             });
         }

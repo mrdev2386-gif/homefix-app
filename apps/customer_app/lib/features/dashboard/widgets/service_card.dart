@@ -179,31 +179,85 @@ class ServiceCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 6),
-                      // Price
+                      // Price with discount logic
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.baseline,
                         textBaseline: TextBaseline.alphabetic,
                         children: [
-                          Text(
-                            '₹',
-                            style: GoogleFonts.outfit(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xFF6366F1),
-                            ),
-                          ),
-                          Flexible(
-                            child: Text(
-                              service.basePrice.toStringAsFixed(0),
+                          // Check if there's an offer price
+                          if (service.offerPrice != null && service.offerPrice! > 0 && service.offerPrice! < service.basePrice) ...[
+                            // Show original price with strikethrough
+                            Text(
+                              '₹${service.basePrice.toStringAsFixed(0)}',
                               style: GoogleFonts.outfit(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[500],
+                                decoration: TextDecoration.lineThrough,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            // Show offer price
+                            Text(
+                              '₹',
+                              style: GoogleFonts.outfit(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
                                 color: const Color(0xFF6366F1),
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
+                            Flexible(
+                              child: Text(
+                                service.offerPrice!.toStringAsFixed(0),
+                                style: GoogleFonts.outfit(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF6366F1),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            // Discount badge
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.green,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                '${((service.basePrice - service.offerPrice!) / service.basePrice * 100).round()}% OFF',
+                                style: GoogleFonts.outfit(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ] else ...[
+                            // Show regular price
+                            Text(
+                              '₹',
+                              style: GoogleFonts.outfit(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFF6366F1),
+                              ),
+                            ),
+                            Flexible(
+                              child: Text(
+                                service.basePrice.toStringAsFixed(0),
+                                style: GoogleFonts.outfit(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF6366F1),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                           const SizedBox(width: 4),
                           Flexible(
                             child: Text(

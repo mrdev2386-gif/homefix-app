@@ -65,6 +65,7 @@ class FirestoreService {
   /// FIX: Query technician_services collection directly (not collectionGroup)
   /// Filters: status='approved' (not 'active'), no isPublished/technicianApproved checks
   /// Includes error handling and reconnection resilience
+  /// BROADCAST: Safe for multiple listeners
   Stream<List<HomeService>> streamAllTechnicianServices({int limit = 50}) {
     return _withErrorHandling(
       _db.collection('technician_services')
@@ -78,12 +79,14 @@ class FirestoreService {
                 .toList();
             services.sort((a, b) => b.createdAt.compareTo(a.createdAt));
             return services;
-          }),
+          })
+          .asBroadcastStream(),
     );
   }
   
   // Get Banners - removed orderBy to avoid index requirement
   // Includes error handling for network resilience
+  // BROADCAST: Safe for multiple listeners
   Stream<List<BannerModel>> streamBanners() {
     return _withErrorHandling(
       _db.collection('home_banners')
@@ -108,7 +111,8 @@ class FirestoreService {
             // Sort by order field in-memory
             banners.sort((a, b) => (a.order).compareTo(b.order));
             return banners;
-          }),
+          })
+          .asBroadcastStream(),
     );
   }
 
@@ -786,14 +790,15 @@ class FirestoreService {
                 .whereType<HomeService>()
                 .toList();
             
-            if (userLocation != null && userLocation['state']!.isNotEmpty && userLocation['district']!.isNotEmpty) {
+            if (userLocation != null && userLocation['district']!.isNotEmpty) {
               return services
-                  .where((s) => (s.technicianDistrict?.toLowerCase() ?? '') == userLocation['district'])
+                  .where((s) => _normalizeLocation(s.technicianDistrict ?? '') == userLocation['district'])
                   .take(limit)
                   .toList();
             }
             return services.take(limit).toList();
-          }),
+          })
+          .asBroadcastStream(),
     );
   }
 
@@ -801,16 +806,20 @@ class FirestoreService {
     return _withErrorHandling(
       _db.collection('technician_services')
           .where('status', isEqualTo: 'approved')
-          .orderBy('rating', descending: true)
-          .limit(limit)
+          .limit(limit * 3)
           .snapshots()
           .map((snapshot) {
-            return snapshot.docs
+            final services = snapshot.docs
                 .map((doc) => HomeService.fromFirestore(doc))
                 .whereType<HomeService>()
-                .where((service) => service.rating > 0) // Only include services with ratings
                 .toList();
-          }),
+            services.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+            return services
+                .where((s) => (s.rating ?? 0) >= 4.0)
+                .take(limit)
+                .toList();
+          })
+          .asBroadcastStream(),
     );
   }
 
@@ -823,8 +832,13 @@ class FirestoreService {
           .snapshots()
           .map((snapshot) {
             return snapshot.docs.map((doc) => HomeService.fromFirestore(doc)).whereType<HomeService>().toList();
-          }),
+          })
+          .asBroadcastStream(),
     );
+  }
+
+  String _normalizeLocation(String value) {
+    return value.trim().toLowerCase();
   }
 
   Future<Map<String, String>?> _getUserLocation(String userId) async {
@@ -833,8 +847,8 @@ class FirestoreService {
       if (!userDoc.exists) return null;
       final data = userDoc.data();
       return {
-        'state': (data?['state'] ?? '').toString().toLowerCase(),
-        'district': (data?['district'] ?? '').toString().toLowerCase(),
+        'state': _normalizeLocation(data?['state'] ?? ''),
+        'district': _normalizeLocation(data?['district'] ?? ''),
       };
     } catch (e) {
       debugPrint('Error getting user location: $e');
@@ -843,25 +857,28 @@ class FirestoreService {
   }
 
   Stream<List<HomeService>> streamNearbyServices(String userId, {int limit = 10}) {
-    return _db.collection('technician_services')
-        .where('status', isEqualTo: 'approved')
-        .limit(limit * 3)
-        .snapshots()
-        .asyncMap((snapshot) async {
-          final userLocation = await _getUserLocation(userId);
-          final services = snapshot.docs
-              .map((doc) => HomeService.fromFirestore(doc))
-              .whereType<HomeService>()
-              .toList();
-          
-          if (userLocation != null && userLocation['district']!.isNotEmpty) {
-            return services
-                .where((s) => (s.technicianDistrict?.toLowerCase() ?? '') == userLocation['district'])
-                .take(limit)
+    return _withErrorHandling(
+      _db.collection('technician_services')
+          .where('status', isEqualTo: 'approved')
+          .limit(limit * 3)
+          .snapshots()
+          .asyncMap((snapshot) async {
+            final userLocation = await _getUserLocation(userId);
+            final services = snapshot.docs
+                .map((doc) => HomeService.fromFirestore(doc))
+                .whereType<HomeService>()
                 .toList();
-          }
-          return services.take(limit).toList();
-        });
+            
+            if (userLocation != null && userLocation['district']!.isNotEmpty) {
+              return services
+                  .where((s) => _normalizeLocation(s.technicianDistrict ?? '') == userLocation['district'])
+                  .take(limit)
+                  .toList();
+            }
+            return services.take(limit).toList();
+          })
+          .asBroadcastStream(),
+    );
   }
 
   Future<HomeService?> getServiceById(String serviceId) async {
@@ -900,5 +917,32 @@ class FirestoreService {
       if (kDebugMode) debugPrint('❌ [CustomRequest] Creation failed: $e');
       rethrow;
     }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchSubCategories(String categoryId) async {
+    try {
+      final snapshot = await _db
+          .collection('categories')
+          .doc(categoryId)
+          .collection('subcategories')
+          .get();
+      
+      return snapshot.docs
+          .map((doc) => {...doc.data(), "id": doc.id})
+          .toList();
+    } catch (e) {
+      if (kDebugMode) debugPrint('❌ [CustomRequest] Failed to fetch subcategories: $e');
+      return [];
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> streamCustomRequests(String userId) {
+    return _db
+        .collection('custom_requests')
+        .where('customerId', isEqualTo: userId)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) => 
+            snapshot.docs.map((doc) => {...doc.data(), "id": doc.id}).toList());
   }
 }

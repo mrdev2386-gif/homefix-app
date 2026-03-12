@@ -3,8 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/booking_service.dart';
 import '../models/booking.dart';
 
-/// Price tolerance for booking validation (5% variance allowed)
-const double kPriceTolerancePercent = 0.05;
+/// Price tolerance for booking validation (₹1 strict tolerance)
+const double kPriceToleranceRupees = 1.0;
 
 class BookingProvider extends ChangeNotifier {
   final BookingService _bookingService = BookingService();
@@ -15,9 +15,8 @@ class BookingProvider extends ChangeNotifier {
   /// Live verification before creating a booking request
   /// 
   /// Validates:
-  /// - Service exists and is active
+  /// - Service exists in technician_services collection (SOURCE OF TRUTH)
   /// - Technician exists, is active, and is approved
-  /// - SubService is valid (if provided)
   /// - Price matches within tolerance
   /// - CategoryId is present
   /// - District is normalized
@@ -31,8 +30,10 @@ class BookingProvider extends ChangeNotifier {
     required Map<String, dynamic> address,
     required double price,
     String? subcategoryId,
+    int? quantity,
     int? durationMinutes,
     String? couponCode,
+    String? paymentMode,
   }) async {
     _isBooking = true;
     notifyListeners();
@@ -41,67 +42,38 @@ class BookingProvider extends ChangeNotifier {
       final db = _bookingService.db;
       
       // ─────────────────────────────────────────────────────────────────────
-      // 1. RE-FETCH AND VERIFY SERVICE
+      // 1. RE-FETCH AND VERIFY SERVICE FROM technician_services (SOURCE OF TRUTH)
       // ─────────────────────────────────────────────────────────────────────
-      DocumentSnapshot? techServiceDoc;
-      DocumentSnapshot? globalServiceDoc;
+      print('[BOOKING_FLOW] serviceId received: $serviceId');
+      print('[BOOKING_FLOW] Fetching from technician_services');
       
-      try {
-        techServiceDoc = await db.collection('technicians').doc(technicianId)
-            .collection('technician_services').doc(serviceId).get();
-      } catch (e) {
-        if (kDebugMode) debugPrint('⚠️ [BookingProvider] Error fetching tech service: $e');
+      final techServiceDoc = await db.collection('technician_services')
+          .doc(serviceId).get();
+      
+      if (!techServiceDoc.exists) {
+        throw Exception('Service not found. It may have been removed.');
       }
       
-      if (techServiceDoc != null && techServiceDoc.exists) {
-        final data = techServiceDoc.data() as Map<String, dynamic>?;
-        if (data == null) {
-          throw Exception('Service data missing');
-        }
-        // Check if service is active and published
-        if (data['status'] != 'active' || data['isPublished'] == false) {
-          throw Exception('This service is no longer available. Please select another.');
-        }
-        
-        // Verify subService is valid if provided
-        if (subcategoryId != null && subcategoryId.isNotEmpty) {
-          final subServiceId = data['subServiceId'];
-          if (subServiceId != subcategoryId) {
-            throw Exception('Sub-service has changed. Please refresh and try again.');
-          }
-        }
-        
-        // Price integrity check - verify against stored price
-        final storedPrice = ((data['price'] ?? data['finalPrice'] ?? 0) as num).toDouble();
-        final priceDiff = (price - storedPrice).abs();
-        final tolerance = storedPrice * kPriceTolerancePercent;
-        if (priceDiff > tolerance && storedPrice > 0) {
-          if (kDebugMode) debugPrint('⚠️ [BookingProvider] Price mismatch: stored=$storedPrice, provided=$price, diff=$priceDiff, tolerance=$tolerance');
-          throw Exception('Price has changed. Please refresh and try again.');
-        }
-      } else {
-        // Fallback to global service check
-        globalServiceDoc = await db.collection('categories').doc(categoryId)
-            .collection('services').doc(serviceId).get();
-            
-        if (!globalServiceDoc.exists) {
-          throw Exception('Service not found. It may have been removed.');
-        }
-        final globalData = globalServiceDoc.data() as Map<String, dynamic>?;
-        if (globalData == null) {
-          throw Exception('Global service data missing');
-        }
-        if (globalData['isActive'] == false) {
-          throw Exception('This service is currently inactive.');
-        }
-        
-        // Price integrity check for global service
-        final storedPrice = ((globalData['price'] ?? 0) as num).toDouble();
-        final priceDiff = (price - storedPrice).abs();
-        final tolerance = storedPrice * kPriceTolerancePercent;
-        if (priceDiff > tolerance && storedPrice > 0) {
-          throw Exception('Price has changed. Please refresh and try again.');
-        }
+      final data = techServiceDoc.data() as Map<String, dynamic>?;
+      if (data == null) {
+        throw Exception('Service data missing');
+      }
+      
+      // Check if service is approved (status='approved' is the source of truth)
+      if (data['status'] != 'approved') {
+        throw Exception('This service is no longer available. Please select another.');
+      }
+      
+      // Price integrity check - verify against stored price (quantity-aware)
+      // Strict ₹1 tolerance to prevent price manipulation
+      final storedPrice = ((data['price'] ?? data['finalPrice'] ?? 0) as num).toDouble();
+      final qty = quantity ?? 1;
+      final expectedPrice = storedPrice * qty;
+      final priceDiff = (price - expectedPrice).abs();
+      
+      if (priceDiff > kPriceToleranceRupees && expectedPrice > 0) {
+        if (kDebugMode) debugPrint('⚠️ [BookingProvider] Price mismatch: stored=$storedPrice, qty=$qty, expected=$expectedPrice, provided=$price, diff=₹$priceDiff');
+        throw Exception('Price has changed. Please refresh and try again.');
       }
 
       // ─────────────────────────────────────────────────────────────────────
@@ -160,6 +132,7 @@ class BookingProvider extends ChangeNotifier {
       // ─────────────────────────────────────────────────────────────────────
       // 5. CREATE BOOKING REQUEST
       // ─────────────────────────────────────────────────────────────────────
+      print('[BOOKING_FLOW] Booking created successfully');
       final response = await _bookingService.createBookingRequest(
         serviceId: serviceId,
         technicianId: technicianId,
@@ -170,8 +143,10 @@ class BookingProvider extends ChangeNotifier {
         address: address,
         price: price,
         subcategoryId: subcategoryId,
+        quantity: quantity,
         durationMinutes: durationMinutes,
         couponCode: couponCode,
+        paymentMode: paymentMode,
       );
       return response;
     } catch (e) {

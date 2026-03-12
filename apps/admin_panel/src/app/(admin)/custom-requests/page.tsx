@@ -128,9 +128,12 @@ export default function CustomRequestsPage() {
       message: 'Are you sure you want to reject this custom request?',
       variant: 'danger',
       requireInput: true,
-      onConfirm: async () => {
+      inputLabel: 'Rejection Reason',
+      inputPlaceholder: 'Please provide the reason for rejection...',
+      onConfirm: async (inputValue?: string) => {
         try {
-          await adminApi.rejectCustomRequest(requestId, 'Rejected by admin');
+          const reason = inputValue || 'Rejected by admin';
+          await adminApi.rejectCustomRequest(requestId, reason);
           await fetchRequests();
           setConfirmDialog({ ...confirmDialog, isOpen: false });
         } catch (error) {

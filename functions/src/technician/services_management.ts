@@ -9,10 +9,8 @@
  * - Server-side validation and security
  */
 
-import { onCall } from "firebase-functions/v2/https";
-import { CallableRequest } from "firebase-functions/v2/https";
+import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import * as https from "firebase-functions/v2/https";
 import { sanitizeString } from '../shared/security';
 
 const db = admin.firestore();
@@ -97,15 +95,14 @@ interface UpdateServiceInput {
  * Creates service under technicians/{technicianId}/services/{serviceId}
  * DISTRICT-SAFE: District auto-injected from technician profile
  */
-export const addTechnicianService = onCall(
-  { region: "us-central1", memory: "256MiB", timeoutSeconds: 60 },
-  async (request: CallableRequest<ServiceInput>) => {
-    if (!request.auth) {
-      throw new https.HttpsError("unauthenticated", "Authentication required");
+export const addTechnicianService = functions.https.onCall(
+  async (data: any, context: functions.https.CallableContext) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Authentication required");
     }
 
-    const technicianId = request.auth.uid;
-    const { name, price, basePrice, offerPrice, imageUrl, category, description, urgentBooking, nightService } = request.data;
+    const technicianId = context.auth.uid;
+    const { name, price, basePrice, offerPrice, imageUrl, category, description, urgentBooking, nightService } = data;
 
     // SECURITY FIX: Sanitize inputs
     const sanitizedName = sanitizeString(name || '', 200);
@@ -114,22 +111,22 @@ export const addTechnicianService = onCall(
 
     // Validation
     if (!sanitizedName || sanitizedName.length < 3) {
-      throw new https.HttpsError("invalid-argument", "Service name must be at least 3 characters");
+      throw new functions.https.HttpsError("invalid-argument", "Service name must be at least 3 characters");
     }
     if (!price || price <= 0) {
-      throw new https.HttpsError("invalid-argument", "Price must be greater than 0");
+      throw new functions.https.HttpsError("invalid-argument", "Price must be greater than 0");
     }
     if (!imageUrl?.trim()) {
-      throw new https.HttpsError("invalid-argument", "Image is required");
+      throw new functions.https.HttpsError("invalid-argument", "Image is required");
     }
     if (!sanitizedCategory) {
-      throw new https.HttpsError("invalid-argument", "Category is required");
+      throw new functions.https.HttpsError("invalid-argument", "Category is required");
     }
 
     // CRITICAL: Fetch technician profile to get district AND state AND validate approval
     const techDoc = await db.collection('technicians').doc(technicianId).get();
     if (!techDoc.exists) {
-      throw new https.HttpsError("not-found", "Technician profile not found");
+      throw new functions.https.HttpsError("not-found", "Technician profile not found");
     }
 
     const techData = techDoc.data()!;
@@ -142,7 +139,7 @@ export const addTechnicianService = onCall(
     console.log(`[SERVICE ALLOWED] ${techData.status === 'approved'}`);
 
     if (profileCompletion < 100) {
-      throw new https.HttpsError(
+      throw new functions.https.HttpsError(
         "failed-precondition",
         "Please complete your profile to 100% before listing services."
       );
@@ -153,12 +150,12 @@ export const addTechnicianService = onCall(
 
     if (!isApproved) {
       if (techData.profileRejected) {
-        throw new https.HttpsError(
+        throw new functions.https.HttpsError(
           "failed-precondition",
           "Your profile was rejected. Please update your information and resubmit."
         );
       }
-      throw new https.HttpsError(
+      throw new functions.https.HttpsError(
         "failed-precondition",
         "Complete profile and wait for admin approval."
       );
@@ -168,14 +165,14 @@ export const addTechnicianService = onCall(
     const state = techData.state || techData.stateNormalized;
 
     if (!district) {
-      throw new https.HttpsError(
+      throw new functions.https.HttpsError(
         "failed-precondition",
         "Your profile must have a district set. Please update your profile."
       );
     }
 
     if (!state) {
-      throw new https.HttpsError(
+      throw new functions.https.HttpsError(
         "failed-precondition",
         "Your profile must have a state set. Please update your profile."
       );
@@ -260,31 +257,30 @@ export const addTechnicianService = onCall(
  * Only owner can update
  * PROTECTED: Cannot update district, technicianId, or rating fields
  */
-export const updateTechnicianService = onCall(
-  { region: "us-central1", memory: "256MiB", timeoutSeconds: 60 },
-  async (request: CallableRequest<UpdateServiceInput>) => {
-    if (!request.auth) {
-      throw new https.HttpsError("unauthenticated", "Authentication required");
+export const updateTechnicianService = functions.https.onCall(
+  async (data: any, context: functions.https.CallableContext) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Authentication required");
     }
 
-    const technicianId = request.auth.uid;
-    const { serviceId, ...updates } = request.data;
+    const technicianId = context.auth.uid;
+    const { serviceId, ...updates } = data;
 
     if (!serviceId) {
-      throw new https.HttpsError("invalid-argument", "Service ID is required");
+      throw new functions.https.HttpsError("invalid-argument", "Service ID is required");
     }
 
     const serviceRef = db.collection('technician_services').doc(serviceId);
     const serviceDoc = await serviceRef.get();
 
     if (!serviceDoc.exists) {
-      throw new https.HttpsError("not-found", "Service not found");
+      throw new functions.https.HttpsError("not-found", "Service not found");
     }
 
     // Security check - only owner can update
     const serviceData = serviceDoc.data()!;
     if (serviceData.technicianId !== technicianId) {
-      throw new https.HttpsError("permission-denied", "You can only update your own services");
+      throw new functions.https.HttpsError("permission-denied", "You can only update your own services");
     }
 
     // Validation
@@ -293,21 +289,21 @@ export const updateTechnicianService = onCall(
     if (updates.name !== undefined) {
       const sanitizedName = sanitizeString(updates.name, 200);
       if (!sanitizedName || sanitizedName.length < 3) {
-        throw new https.HttpsError("invalid-argument", "Service name must be at least 3 characters");
+        throw new functions.https.HttpsError("invalid-argument", "Service name must be at least 3 characters");
       }
       updateData.name = sanitizedName;
     }
 
     if (updates.price !== undefined) {
       if (updates.price <= 0) {
-        throw new https.HttpsError("invalid-argument", "Price must be greater than 0");
+        throw new functions.https.HttpsError("invalid-argument", "Price must be greater than 0");
       }
       updateData.price = updates.price;
     }
 
     if (updates.imageUrl !== undefined) {
       if (!updates.imageUrl.trim()) {
-        throw new https.HttpsError("invalid-argument", "Image is required");
+        throw new functions.https.HttpsError("invalid-argument", "Image is required");
       }
       updateData.imageUrl = updates.imageUrl.trim();
     }
@@ -315,7 +311,7 @@ export const updateTechnicianService = onCall(
     if (updates.category !== undefined) {
       const sanitizedCategory = sanitizeString(updates.category, 100);
       if (!sanitizedCategory) {
-        throw new https.HttpsError("invalid-argument", "Category cannot be empty");
+        throw new functions.https.HttpsError("invalid-argument", "Category cannot be empty");
       }
       updateData.category = sanitizedCategory;
     }
@@ -363,31 +359,30 @@ export const updateTechnicianService = onCall(
  * Toggle Service Status
  * Flips isActive between true/false
  */
-export const toggleTechnicianServiceStatus = onCall(
-  { region: "us-central1", memory: "128MiB", timeoutSeconds: 30 },
-  async (request: CallableRequest<{ serviceId: string }>) => {
-    if (!request.auth) {
-      throw new https.HttpsError("unauthenticated", "Authentication required");
+export const toggleTechnicianServiceStatus = functions.https.onCall(
+  async (data: { serviceId: string }, context: functions.https.CallableContext) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Authentication required");
     }
 
-    const technicianId = request.auth.uid;
-    const { serviceId } = request.data;
+    const technicianId = context.auth.uid;
+    const { serviceId } = data;
 
     if (!serviceId) {
-      throw new https.HttpsError("invalid-argument", "Service ID is required");
+      throw new functions.https.HttpsError("invalid-argument", "Service ID is required");
     }
 
     const serviceRef = db.collection('technician_services').doc(serviceId);
     const serviceDoc = await serviceRef.get();
 
     if (!serviceDoc.exists) {
-      throw new https.HttpsError("not-found", "Service not found");
+      throw new functions.https.HttpsError("not-found", "Service not found");
     }
 
     // Security check - only owner can toggle
     const serviceData = serviceDoc.data()!;
     if (serviceData.technicianId !== technicianId) {
-      throw new https.HttpsError("permission-denied", "You can only toggle your own services");
+      throw new functions.https.HttpsError("permission-denied", "You can only toggle your own services");
     }
 
     const currentStatus = serviceData.isActive ?? true;
@@ -413,31 +408,30 @@ export const toggleTechnicianServiceStatus = onCall(
  * Delete Service (Soft Delete)
  * Sets isDeleted = true, isActive = false
  */
-export const deleteTechnicianService = onCall(
-  { region: "us-central1", memory: "128MiB", timeoutSeconds: 30 },
-  async (request: CallableRequest<{ serviceId: string }>) => {
-    if (!request.auth) {
-      throw new https.HttpsError("unauthenticated", "Authentication required");
+export const deleteTechnicianService = functions.https.onCall(
+  async (data: { serviceId: string }, context: functions.https.CallableContext) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Authentication required");
     }
 
-    const technicianId = request.auth.uid;
-    const { serviceId } = request.data;
+    const technicianId = context.auth.uid;
+    const { serviceId } = data;
 
     if (!serviceId) {
-      throw new https.HttpsError("invalid-argument", "Service ID is required");
+      throw new functions.https.HttpsError("invalid-argument", "Service ID is required");
     }
 
     const serviceRef = db.collection('technician_services').doc(serviceId);
     const serviceDoc = await serviceRef.get();
 
     if (!serviceDoc.exists) {
-      throw new https.HttpsError("not-found", "Service not found");
+      throw new functions.https.HttpsError("not-found", "Service not found");
     }
 
     // Security check - only owner can delete
     const serviceData = serviceDoc.data()!;
     if (serviceData.technicianId !== technicianId) {
-      throw new https.HttpsError("permission-denied", "You can only delete your own services");
+      throw new functions.https.HttpsError("permission-denied", "You can only delete your own services");
     }
 
     await serviceRef.update({

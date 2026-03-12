@@ -139,13 +139,16 @@ class _SavedAddressesScreenState extends State<SavedAddressesScreen> {
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 2))],
       ),
       child: InkWell(
-        onTap: () async {
+        onTap: () {
           if (isSelectionMode || isPrimarySelectionMode) {
-            // Set as primary address
-            await service.setPrimaryAddress(userId, address.id);
+            // FIX #1: Update UI instantly, then save to Firestore in background
             if (context.mounted) {
               Navigator.pop(context, address);
             }
+            // Background save - don't wait for response
+            service.setPrimaryAddress(userId, address.id).catchError((e) {
+              debugPrint('⚠️ [ADDRESS] Background save failed: $e');
+            });
           }
         },
         borderRadius: BorderRadius.circular(16),
@@ -178,7 +181,7 @@ class _SavedAddressesScreenState extends State<SavedAddressesScreen> {
                           address.label,
                           style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
                         ),
-                        if (address.isDefault) ...[
+                        if (address.isDefault) ...[ 
                           const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -281,10 +284,6 @@ class _SavedAddressesScreenState extends State<SavedAddressesScreen> {
       default:
         return Colors.green;
     }
-  }
-
-  Widget _buildAddressMenu(BuildContext context, Address address, FirestoreService service, String userId) {
-    return const SizedBox.shrink();
   }
 
   void _confirmDelete(BuildContext context, Address address, FirestoreService service, String userId) {

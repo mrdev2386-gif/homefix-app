@@ -36,61 +36,91 @@ export const generateTechnicianQR = functions.https.onCall(
 );
 
 // ==========================================
-// CONFIRM QR PAYMENT
+// CONFIRM QR PAYMENT (Called by Technician after scanning)
 // ==========================================
 
 export const confirmQRPayment = functions.https.onCall(
-    async (data: { bookingId: string, transactionId?: string }, context) => {
+    async (data: { bookingId: string, customerId: string, amount: number }, context) => {
         if (!context.auth) {
             throw new functions.https.HttpsError('unauthenticated', 'Auth required');
         }
 
-        const customerId = context.auth.uid;
-        const { bookingId, transactionId } = data;
+        const technicianId = context.auth.uid;
+        const { bookingId, customerId, amount } = data;
 
-        const booking = await db.collection('bookings').doc(bookingId).get();
-
-        if (!booking.exists) {
-            throw new functions.https.HttpsError('not-found', 'Booking not found');
-        }
-
-        const bookingData = booking.data()!;
-
-        if (bookingData.customerId !== customerId) {
-            throw new functions.https.HttpsError('permission-denied', 'Not your booking');
-        }
-
-        if (bookingData.status !== 'work_completed') {
-            throw new functions.https.HttpsError('failed-precondition', 'Work not completed');
+        if (!bookingId || !customerId || !amount) {
+            throw new functions.https.HttpsError('invalid-argument', 'Missing required fields');
         }
 
         const now = admin.firestore.FieldValue.serverTimestamp();
 
-        await booking.ref.update({
-            status: 'completed',
-            paymentStatus: 'paid',
-            paymentMethod: 'qr_wallet',
-            paymentTransactionId: transactionId || null,
-            paidAt: now,
-            completedAt: now,
-            updatedAt: now,
-        });
 
-        // Process earnings
-        await processTechnicianEarning(
-            bookingId,
-            bookingData.technicianId,
-            bookingData.finalAmount,
-            [bookingData.serviceId]
-        );
+        // RUN ATOMIC TRANSACTION
+        try {
+            await db.runTransaction(async (transaction) => {
+                // 1. Get Booking
+                const bookingRef = db.collection('bookings').doc(bookingId);
+                const bookingDoc = await transaction.get(bookingRef);
 
-        // Notify technician
-        await notify.notifyTechnicianNewPayment(
-            bookingData.technicianId,
-            bookingId,
-            bookingData.finalAmount
-        );
+                if (!bookingDoc.exists) {
+                    throw new Error('Booking not found');
+                }
 
-        return { success: true, status: 'completed' };
+                const booking = bookingDoc.data()!;
+
+                // Security Checks
+                if (booking.technicianId !== technicianId) {
+                    throw new Error('Not your booking');
+                }
+                if (booking.customerId !== customerId) {
+                    throw new Error('Customer ID mismatch');
+                }
+                if (booking.status !== 'awaiting_customer_payment') {
+                    throw new Error('Booking is not in awaiting_payment status');
+                }
+                if (booking.paymentStatus === 'paid') {
+                    throw new Error('Already paid');
+                }
+
+                // SECURITY: Never trust client amount, use booking amount
+                const finalAmount = booking.finalAmount || booking.price || 0;
+
+                // 2. Deduct from Customer Balance (Ledger-based)
+                // This will throw if insufficient funds
+                const { updateWalletBalance } = await import('../finance/wallet_logic');
+                await updateWalletBalance(
+                    transaction,
+                    customerId,
+                    -finalAmount,
+                    'booking_payment_qr',
+                    bookingId,
+                    `Payment for service ${booking.serviceName}`
+                );
+
+                // 3. Update Booking Status
+                transaction.update(bookingRef, {
+                    status: 'completed',
+                    paymentStatus: 'paid',
+                    paymentMethod: 'wallet_qr',
+                    paidAt: now,
+                    completedAt: now,
+                    updatedAt: now
+                });
+            });
+
+            // 4. Release Payout to Technician (Outside customer txn to keep it clean, or handled by trigger)
+            // Actually, for strict safety, we can call it here as a separate transaction or same.
+            // Since we want 90/10 split, let's call processTechnicianEarning
+            const { processTechnicianEarning } = await import('../finance/wallet_logic');
+            await processTechnicianEarning(bookingId, technicianId, amount, customerId);
+
+            await notify.notifyCustomerPaymentSuccess(customerId, bookingId, amount);
+            await notify.notifyTechnicianNewPayment(technicianId, bookingId, amount);
+
+            return { success: true, status: 'completed' };
+        } catch (err: any) {
+            console.error('[confirmQRPayment] failed:', err);
+            throw new functions.https.HttpsError('failed-precondition', err.message);
+        }
     }
 );

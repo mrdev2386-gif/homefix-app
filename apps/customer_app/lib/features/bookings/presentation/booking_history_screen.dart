@@ -66,7 +66,7 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
             floating: true,
             snap: true,
             bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(60),
+              preferredSize: const Size.fromHeight(65),
               child: Container(
                 color: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),

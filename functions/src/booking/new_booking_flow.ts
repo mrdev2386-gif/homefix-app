@@ -36,6 +36,33 @@ function createBookingNumber(): string {
     return `BK-${year}-${random}`;
 }
 
+// Helper to refund wallet
+async function refundToCustomerWallet(customerId: string, amount: number, bookingId: string, reason: string) {
+    const now = admin.firestore.Timestamp.now();
+    await db.runTransaction(async (transaction) => {
+        const walletRef = db.collection('wallets').doc(customerId);
+        const walletDoc = await transaction.get(walletRef);
+        const balance = walletDoc.exists ? (walletDoc.data()?.balance || 0) : 0;
+
+        // Refund
+        transaction.set(walletRef, {
+            balance: balance + amount,
+            updatedAt: now
+        }, { merge: true });
+
+        // Record txn
+        const txnRef = db.collection('walletTransactions').doc();
+        transaction.set(txnRef, {
+            type: 'booking_refund',
+            amount: amount,
+            bookingId: bookingId,
+            userId: customerId,
+            reason: reason,
+            createdAt: now
+        });
+    });
+}
+
 // ==========================================
 // NEW STATUS ENUM
 // ==========================================
@@ -51,18 +78,34 @@ type BookingStatus =
     | 'confirmed'
     | 'in_progress'
     | 'completed'
+    | 'awaiting_customer_payment'
     | 'cancelled';
 
 type PaymentStatus =
     | 'pending'
     | 'processing'
     | 'paid'
+    | 'paid_escrow'
     | 'failed'
     | 'refunded';
 
 // ==========================================
 // 1. CREATE BOOKING REQUEST
 // ==========================================
+// NOTE: App Check Preparation
+// This function is currently using Gen1 (firebase-functions v3)
+// For production with App Check:
+// 1. Migrate to Gen2: import { onCall } from 'firebase-functions/v2/https'
+// 2. Add enforceAppCheck option:
+//    export const createBookingRequest = onCall(
+//        { enforceAppCheck: process.env.NODE_ENV === 'production' },
+//        async (request) => { ... }
+//    );
+// 3. Configure Play Integrity API and SHA-256 certificates in Firebase Console
+// 4. Test thoroughly in development before enabling in production
+//
+// Current: enforceAppCheck = false (development safe)
+// Production: enforceAppCheck = true (after setup complete)
 interface CreateBookingRequestData {
     serviceId: string;
     technicianId: string;
@@ -73,10 +116,11 @@ interface CreateBookingRequestData {
     scheduledTime: string;
     address: Record<string, any>;
     price: number;
+    quantity?: number; // Support for quantity-based pricing
     durationMinutes?: number;
     couponCode?: string;
     idempotencyKey?: string; // For production safety
-    paymentType?: 'before_work' | 'after_work'; // Payment timing preference
+    paymentMode?: 'before_work' | 'after_work'; // Payment timing preference
 }
 
 interface CreateBookingRequestResponse {
@@ -96,7 +140,7 @@ export const createBookingRequest = functions.https.onCall(
         }
 
         const customerId = context.auth.uid;
-        const { serviceId, technicianId, categoryId, categoryName, scheduledDate, scheduledTime, address, price, idempotencyKey, paymentType } = data;
+        const { serviceId, technicianId, categoryId, categoryName, scheduledDate, scheduledTime, address, price, idempotencyKey, paymentMode } = data;
 
         // 2. Idempotency Check
         if (idempotencyKey) {
@@ -115,16 +159,38 @@ export const createBookingRequest = functions.https.onCall(
             }
         }
 
-        // 3. Rate Limiting (Hardening) - PRODUCTION SAFETY
-        // Limit: 10 bookings per hour per user to prevent abuse
+        // 3. Rate Limiting (Firestore-Based) - PRODUCTION SAFETY
+        // Development: 50 bookings/hour | Production: 10 bookings/hour
+        // Uses Firestore query to count recent bookings (stateless, scalable)
+        const RATE_LIMIT = process.env.NODE_ENV === 'production' ? 10 : 50;
+        const oneHourAgo = admin.firestore.Timestamp.fromDate(
+            new Date(Date.now() - 60 * 60 * 1000)
+        );
+        
         try {
-            await checkRateLimit(customerId, 'create_booking', 10, 3600);
+            // Query Firestore for recent bookings by this customer
+            const recentBookings = await db
+                .collection('bookings')
+                .where('customerId', '==', customerId)
+                .where('createdAt', '>', oneHourAgo)
+                .get();
+            
+            if (recentBookings.size >= RATE_LIMIT) {
+                console.warn(`[createBookingRequest] Rate limit exceeded for ${customerId}: ${recentBookings.size} bookings in last hour`);
+                throw new functions.https.HttpsError(
+                    'resource-exhausted',
+                    `Too many booking requests (${recentBookings.size}/${RATE_LIMIT}). Please try again later.`
+                );
+            }
+            
+            console.log(`[createBookingRequest] Rate limit check passed: ${recentBookings.size}/${RATE_LIMIT} bookings in last hour`);
         } catch (rateLimitError: any) {
-            console.warn(`[createBookingRequest] Rate limit exceeded for ${customerId}`);
-            throw new functions.https.HttpsError(
-                'resource-exhausted',
-                'Too many booking requests. Please try again later.'
-            );
+            // Re-throw if it's already an HttpsError
+            if (rateLimitError.code === 'resource-exhausted') {
+                throw rateLimitError;
+            }
+            // Log other errors but don't block booking
+            console.error(`[createBookingRequest] Rate limit check failed:`, rateLimitError);
         }
 
         // 4. Input validation
@@ -133,41 +199,40 @@ export const createBookingRequest = functions.https.onCall(
         }
 
         // 5. Validate service exists and is active/published
-        let serviceData: any;
+        console.log('BOOKING DEBUG serviceId:', serviceId);
+        
+        const serviceRef = db.collection('technician_services').doc(serviceId);
+        const serviceDoc = await serviceRef.get();
 
-        // Check if it's a technician-specific service
-        const techServiceRef = db.collection('technicians').doc(technicianId)
-            .collection('technician_services').doc(serviceId);
-        const techServiceDoc = await techServiceRef.get();
-
-        if (techServiceDoc.exists) {
-            serviceData = techServiceDoc.data();
-            if (serviceData.status !== 'active' || serviceData.isPublished === false || serviceData.technicianApproved === false) {
-                throw new functions.https.HttpsError('failed-precondition', 'This service is currently unavailable');
-            }
-        } else {
-            // Fallback to global services (if applicable)
-            const globalServiceDoc = await db.collection('categories').doc(categoryId)
-                .collection('services').doc(serviceId).get();
-
-            if (!globalServiceDoc.exists) {
-                throw new functions.https.HttpsError('not-found', 'Service not found');
-            }
-            serviceData = globalServiceDoc.data();
-            if (serviceData.isActive === false) {
-                throw new functions.https.HttpsError('failed-precondition', 'This service is currently inactive');
-            }
+        if (!serviceDoc.exists) {
+            console.error('SERVICE LOOKUP FAILED', serviceId);
+            throw new functions.https.HttpsError('not-found', 'Service not found');
         }
 
-        // 5.5. ENFORCE PRICE INTEGRITY (Harden)
-        const expectedBasePrice = serviceData.price || serviceData.basePrice || 0;
-        // The price comes from the frontend cart which includes quantity and 5% tax
-        if (price < expectedBasePrice) {
-            console.error(`[createBookingRequest] PRICE_FRAUD_PREVENTION: Data price ${price} is less than base price ${expectedBasePrice}`);
+        const serviceData = serviceDoc.data();
+        console.log('BOOKING DEBUG serviceData:', serviceData);
+        
+        if (serviceData.status !== 'approved') {
+            throw new functions.https.HttpsError('failed-precondition', 'Service is not available');
+        }
+
+        // 5.5. ENFORCE PRICE INTEGRITY (Quantity-Safe Validation)
+        const servicePrice = serviceData.price || serviceData.basePrice || 0;
+        const quantity = data.quantity || 1;
+        const expectedPrice = servicePrice * quantity;
+        const priceDiff = Math.abs(price - expectedPrice);
+        const tolerance = 1; // Allow ₹1 tolerance for rounding
+        
+        if (priceDiff > tolerance && expectedPrice > 0) {
+            console.error(`[createBookingRequest] PRICE_MISMATCH: Received ${price}, Expected ${expectedPrice} (${servicePrice} × ${quantity}), Diff ${priceDiff}`);
             throw new functions.https.HttpsError('failed-precondition', 'Pricing has changed. Please refresh and try again.');
         }
+        
+        console.log(`[createBookingRequest] Price validation passed: ${price} ≈ ${expectedPrice} (${servicePrice} × ${quantity})`);
 
         // 6. Validate technician exists and is active
+        console.log('BOOKING DEBUG technicianId:', technicianId);
+        
         const techDoc = await db.collection('technicians').doc(technicianId).get();
 
         if (!techDoc.exists) {
@@ -191,13 +256,48 @@ export const createBookingRequest = functions.https.onCall(
         const now = admin.firestore.Timestamp.now();
 
         try {
+            console.log('[createBookingRequest] TRANSACTION READ PHASE');
+            
             await db.runTransaction(async (transaction) => {
-                // Double check idempotency inside transaction for absolute safety
+                // ===== PHASE 1: ALL READS FIRST =====
+                console.log('[createBookingRequest] Starting transaction reads');
+                
+                // Read 1: Idempotency check
+                let idemDocExists = false;
+                let idemRef: any = null;
                 if (idempotencyKey) {
-                    const idemRef = db.collection('booking_idempotency').doc(`${customerId}_${idempotencyKey}`);
-                    const idemDoc = await transaction.get(idemRef);
-                    if (idemDoc.exists) throw new Error('ALREADY_PROCESSED');
+                    idemRef = db.collection('booking_idempotency').doc(`${customerId}_${idempotencyKey}`);
+                    const idemDoc = await transaction.get(idemRef) as any;
+                    if (idemDoc.exists) {
+                        idemDocExists = true;
+                    }
+                }
 
+                // Read 2: Wallet balance (if before_work payment)
+                let walletBalance = 0;
+                let walletRef: any = null;
+                if (paymentMode === 'before_work') {
+                    walletRef = db.collection('wallets').doc(customerId);
+                    const walletDoc = await transaction.get(walletRef) as any;
+                    walletBalance = walletDoc.exists ? (walletDoc.data()?.balance || 0) : 0;
+                }
+
+                // ===== PHASE 2: VALIDATION (after all reads) =====
+                console.log('[createBookingRequest] Validating transaction data');
+                
+                if (idemDocExists) {
+                    throw new Error('ALREADY_PROCESSED');
+                }
+
+                if (paymentMode === 'before_work' && walletBalance < price) {
+                    throw new Error('INSUFFICIENT_WALLET_BALANCE');
+                }
+
+                // ===== PHASE 3: ALL WRITES AFTER READS =====
+                console.log('[createBookingRequest] TRANSACTION WRITE PHASE');
+                
+                // Write 1: Set idempotency record
+                if (idempotencyKey && idemRef) {
                     transaction.set(idemRef, {
                         bookingId,
                         customerId,
@@ -206,7 +306,26 @@ export const createBookingRequest = functions.https.onCall(
                     });
                 }
 
-                // Build booking data
+                // Write 2: Deduct from wallet if before_work
+                if (paymentMode === 'before_work' && walletRef) {
+                    transaction.set(walletRef, {
+                        balance: walletBalance - price,
+                        updatedAt: now
+                    }, { merge: true });
+
+                    // Write 3: Record wallet transaction
+                    const txnRef = db.collection('walletTransactions').doc();
+                    transaction.set(txnRef, {
+                        type: 'booking_escrow',
+                        amount: -price,
+                        bookingId: bookingId,
+                        userId: customerId,
+                        description: `Escrow deduction for booking ${bookingId}`,
+                        createdAt: now
+                    });
+                }
+
+                // Write 4: Create booking document
                 const bookingData = {
                     // IDs
                     id: bookingId,
@@ -233,6 +352,7 @@ export const createBookingRequest = functions.https.onCall(
 
                     // Pricing
                     price: price,
+                    quantity: data.quantity || 1,
                     finalAmount: price,
                     finalPriceSnapshot: price, // AUDIT: Required field for audit trail
                     discountAmount: (serviceData.basePrice && serviceData.offerPrice && serviceData.basePrice > serviceData.offerPrice) ? (serviceData.basePrice - serviceData.offerPrice) : 0,
@@ -246,9 +366,9 @@ export const createBookingRequest = functions.https.onCall(
                     durationMinutes: data.durationMinutes || serviceData.estimatedDuration || 60,
 
                     // Status - NEW FLOW
-                    status: 'pending_admin',
-                    paymentStatus: 'pending' as PaymentStatus,
-                    paymentType: paymentType || 'after_work', // Default to pay after work
+                    status: 'pending_admin_review',
+                    paymentStatus: paymentMode === 'before_work' ? 'paid_escrow' : 'pending',
+                    paymentMode: paymentMode || 'after_work', // Default to pay after work
 
                     // Timestamps
                     createdAt: now,
@@ -313,7 +433,7 @@ export const createBookingRequest = functions.https.onCall(
             return {
                 success: true,
                 bookingId,
-                status: 'pending_admin',
+                status: 'pending_admin_review',
                 message: 'Booking request created. Waiting for admin approval.'
             };
 
@@ -378,8 +498,8 @@ export const adminApproveBooking = functions.https.onCall(
 
         const booking = bookingDoc.data()!;
 
-        // 3. Validation: Current Status must be pending_admin
-        if (booking.status !== 'pending_admin') {
+        // 3. Validation: Current Status must be pending_admin_review
+        if (booking.status !== 'pending_admin_review') {
             console.log(`[adminApproveBooking] Idempotency: Booking ${bookingId} already in status ${booking.status}`);
             return {
                 success: true,
@@ -394,7 +514,7 @@ export const adminApproveBooking = functions.https.onCall(
 
         try {
             if (action === 'approve') {
-                newStatus = 'technician_pending';
+                newStatus = 'admin_approved';
                 message = 'Booking approved. Technician will be notified.';
 
                 await bookingDoc.ref.update({
@@ -431,6 +551,13 @@ export const adminApproveBooking = functions.https.onCall(
                     bookingId,
                     rejectionReason || 'Booking rejected by admin'
                 );
+
+                // Refund if Pay Before Work
+                if (booking.paymentStatus === 'paid_escrow') {
+                    const amount = booking.finalAmount || booking.price || 0;
+                    await refundToCustomerWallet(booking.customerId, amount, bookingId, 'Admin rejected booking');
+                    await bookingDoc.ref.update({ paymentStatus: 'refunded' });
+                }
             }
 
             return {
@@ -494,7 +621,7 @@ export const technicianRespondBooking = functions.https.onCall(
         }
 
         // 4. Validate current status
-        if (booking.status !== 'technician_pending') {
+        if (booking.status !== 'admin_approved') {
             console.log(`[technicianRespondBooking] Idempotency: Booking ${bookingId} already in status ${booking.status}`);
             return {
                 success: true,
@@ -509,8 +636,11 @@ export const technicianRespondBooking = functions.https.onCall(
 
         try {
             if (action === 'accept') {
-                newStatus = 'awaiting_payment';
-                message = 'Booking accepted. Waiting for customer payment.';
+                const isPrePaid = booking.paymentMode === 'before_work' && booking.paymentStatus === 'paid_escrow';
+                const isPayAfter = booking.paymentMode === 'after_work';
+
+                newStatus = 'confirmed';
+                message = 'Booking confirmed.';
 
                 await bookingDoc.ref.update({
                     status: newStatus,
@@ -518,14 +648,14 @@ export const technicianRespondBooking = functions.https.onCall(
                     updatedAt: now,
                 });
 
-                // Notify customer to pay
+                // Notify customer
                 await notify.sendUserNotification({
                     userId: booking.customerId,
                     userType: 'customer',
-                    title: 'Technician Accepted!',
-                    body: `${booking.technicianName || 'Technician'} has accepted your booking. Please proceed with payment.`,
+                    title: 'Booking Confirmed!',
+                    body: `${booking.technicianName || 'Technician'} has accepted your booking. They will arrive on time.`,
                     type: 'booking_confirmed',
-                    data: { bookingId, screen: 'payment_checkout' },
+                    data: { bookingId, screen: 'booking_details' },
                     priority: 'high'
                 });
 
@@ -547,6 +677,13 @@ export const technicianRespondBooking = functions.https.onCall(
                     bookingId,
                     'The technician has declined your booking.'
                 );
+
+                // Refund if Pay Before Work
+                if (booking.paymentStatus === 'paid_escrow') {
+                    const amount = booking.finalAmount || booking.price || 0;
+                    await refundToCustomerWallet(booking.customerId, amount, bookingId, 'Technician declined booking');
+                    await bookingDoc.ref.update({ paymentStatus: 'refunded' });
+                }
 
                 // Notify admin
                 await notify.sendUserNotification({
@@ -578,7 +715,7 @@ export const technicianRespondBooking = functions.https.onCall(
 
 interface CustomerConfirmPaymentData {
     bookingId: string;
-    paymentMethod: 'online' | 'cash';
+    paymentMethod: 'wallet';
     paymentDetails?: Record<string, any>;
 }
 
@@ -635,25 +772,48 @@ export const customerConfirmPayment = functions.https.onCall(
         let message: string;
 
         try {
-            if (paymentMethod === 'online') {
-                // For online payment, we'd typically create a Razorpay order first
-                // For now, assume payment is processed
+            if (booking.paymentStatus === 'paid_escrow') {
                 newStatus = 'confirmed';
-                paymentStatus = 'paid';
-                message = 'Payment successful! Your booking is confirmed.';
+                paymentStatus = 'paid_escrow';
+                message = 'Payment already received. Booking confirmed.';
             } else {
-                // Pay after service
+                // Deduct from wallet now
+                const walletRef = db.collection('wallets').doc(customerId);
+                await db.runTransaction(async (transaction) => {
+                    const walletDoc = await transaction.get(walletRef);
+                    const balance = walletDoc.exists ? (walletDoc.data()?.balance || 0) : 0;
+
+                    const amountToPay = booking.finalAmount || booking.price || 0;
+                    if (balance < amountToPay) {
+                        throw new Error('INSUFFICIENT_FUNDS');
+                    }
+
+                    transaction.set(walletRef, {
+                        balance: balance - amountToPay,
+                        updatedAt: now
+                    }, { merge: true });
+
+                    // Txn record
+                    const txnRef = db.collection('walletTransactions').doc();
+                    transaction.set(txnRef, {
+                        type: 'booking_payment',
+                        amount: amountToPay,
+                        bookingId: bookingId,
+                        userId: customerId,
+                        createdAt: now
+                    });
+                });
+
                 newStatus = 'confirmed';
-                paymentStatus = 'pending'; // Will be collected after service
-                message = 'Booking confirmed! Pay after service completion.';
+                paymentStatus = 'paid_escrow';
+                message = 'Payment successful! Your booking is confirmed.';
             }
 
             await bookingDoc.ref.update({
                 status: newStatus,
-                paymentStatus,
-                paymentMethod,
-                paymentDetails: paymentDetails || null,
-                paidAt: paymentMethod === 'online' ? now : null,
+                paymentStatus: 'paid_escrow',
+                paymentMethod: 'wallet',
+                paidAt: now,
                 confirmedAt: now,
                 updatedAt: now,
             });
@@ -700,23 +860,48 @@ export const markWorkCompleted = functions.https.onCall(
             throw new functions.https.HttpsError('failed-precondition', 'Work not started');
         }
 
-        await bookingDoc.ref.update({
-            status: 'work_completed',
-            workCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        const paymentMode = booking.paymentMode || 'after_work';
 
-        await notify.sendUserNotification({
-            userId: booking.customerId,
-            userType: 'customer',
-            title: 'Work Completed! 🎉',
-            body: 'Please proceed with payment',
-            type: 'job_completed',
-            data: { bookingId, screen: 'payment' },
-            priority: 'high'
-        });
+        if (paymentMode === 'before_work') {
+            // Already paid to escrow, now complete and payout
+            await processTechnicianEarning(bookingId, technicianId, booking.finalAmount || booking.price || 0, booking.customerId);
 
-        return { success: true, status: 'work_completed' };
+            await db.collection('bookings').doc(bookingId).update({
+                status: 'completed',
+                completedAt: now,
+                updatedAt: now,
+                workCompletedAt: now,
+                paymentStatus: 'paid'
+            });
+
+            await notify.notifyCustomerJobCompleted(
+                booking.customerId,
+                bookingId,
+                booking.technicianName || 'Technician'
+            );
+
+            return { success: true, status: 'completed', message: 'Work completed and payout released.' };
+        } else {
+            // after_work mode -> set status to awaiting payment for QR scan
+            await bookingDoc.ref.update({
+                status: 'awaiting_customer_payment',
+                workCompletedAt: now,
+                updatedAt: now,
+            });
+
+            await notify.sendUserNotification({
+                userId: booking.customerId,
+                userType: 'customer',
+                title: 'Work Completed! 🎉',
+                body: 'Please show the QR code to your technician for payment.',
+                type: 'job_completed',
+                data: { bookingId, screen: 'payment_qr' },
+                priority: 'high'
+            });
+
+            return { success: true, status: 'awaiting_customer_payment', message: 'Work completed. Waiting for QR payment.' };
+        }
     }
 );
 
@@ -812,7 +997,7 @@ export const updateBookingStatusGeneric = functions.https.onCall(
                             bookingId,
                             booking.technicianId,
                             booking.finalAmount,
-                            serviceIds
+                            booking.customerId
                         );
                         console.log(`[updateBookingStatus] Earnings processed for booking ${bookingId}`);
                         updateData.earningsProcessed = true;
@@ -821,11 +1006,20 @@ export const updateBookingStatusGeneric = functions.https.onCall(
                     }
                 }
             }
+
             if (status === 'cancelled') {
                 updateData.cancelledAt = now;
                 updateData.cancellationReason = reason || 'Cancelled by user';
                 updateData.cancelledBy = isCustomer ? 'customer' : (isTechnician ? 'technician' : 'admin');
+
+                // Refund if Pay Before Work
+                if (booking.paymentStatus === 'paid_escrow') {
+                    const amount = booking.finalAmount || booking.price || 0;
+                    await refundToCustomerWallet(booking.customerId, amount, bookingId, `Cancelled by ${updateData.cancelledBy}`);
+                    updateData.paymentStatus = 'refunded';
+                }
             }
+
             if (status === 'in_progress') {
                 updateData.startedAt = now;
 

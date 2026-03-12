@@ -27,9 +27,8 @@ class CartProvider with ChangeNotifier {
     
     if (userId != null) {
       _isLoading = true;
-      notifyListeners(); // FIX: Notify UI immediately so it shows loading state
+      notifyListeners();
 
-      // SAFETY TIMEOUT: Guarantee _isLoading becomes false even if stream never fires
       _loadingTimeout = Timer(const Duration(seconds: 15), () {
         if (_isLoading) {
           if (kDebugMode) debugPrint('⚠️ [CartProvider] Loading timeout — forcing isLoading=false');
@@ -46,7 +45,6 @@ class CartProvider with ChangeNotifier {
           notifyListeners();
         },
         onError: (error) {
-          // FIX: CRITICAL — Without this, _isLoading stays true forever on Firestore errors
           _loadingTimeout?.cancel();
           if (kDebugMode) debugPrint('❌ [CartProvider] Stream error: $error');
           _items = [];
@@ -80,21 +78,59 @@ class CartProvider with ChangeNotifier {
 
   Future<void> updateQuantity(String itemId, int quantity) async {
     if (_userId == null) return;
+    
+    // FIX #2: Update local state instantly
+    final itemIndex = _items.indexWhere((item) => item.id == itemId);
+    if (itemIndex != -1) {
+      if (quantity <= 0) {
+        _items.removeAt(itemIndex);
+      } else {
+        final item = _items[itemIndex];
+        final newTotalPrice = item.price * quantity;
+        _items[itemIndex] = item.copyWith(
+          quantity: quantity,
+          totalPrice: newTotalPrice,
+        );
+      }
+      notifyListeners();
+    }
+    
+    // Then update Firestore in background
     if (quantity <= 0) {
-      await removeItem(itemId);
+      _firestoreService.removeFromCart(_userId!, itemId).catchError((e) {
+        debugPrint('⚠️ [CART] Background remove failed: $e');
+      });
     } else {
-      await _firestoreService.updateCartItemQuantity(_userId!, itemId, quantity);
+      _firestoreService.updateCartItemQuantity(_userId!, itemId, quantity).catchError((e) {
+        debugPrint('⚠️ [CART] Background update failed: $e');
+      });
     }
   }
 
   Future<void> removeItem(String itemId) async {
     if (_userId == null) return;
-    await _firestoreService.removeFromCart(_userId!, itemId);
+    
+    // Update local state instantly
+    _items.removeWhere((item) => item.id == itemId);
+    notifyListeners();
+    
+    // Then remove from Firestore in background
+    _firestoreService.removeFromCart(_userId!, itemId).catchError((e) {
+      debugPrint('⚠️ [CART] Background remove failed: $e');
+    });
   }
 
   Future<void> clearCart() async {
     if (_userId == null) return;
-    await _firestoreService.clearCart(_userId!);
+    
+    // Update local state instantly
+    _items.clear();
+    notifyListeners();
+    
+    // Then clear Firestore in background
+    _firestoreService.clearCart(_userId!).catchError((e) {
+      debugPrint('⚠️ [CART] Background clear failed: $e');
+    });
   }
 
   @override

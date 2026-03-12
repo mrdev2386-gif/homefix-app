@@ -3,10 +3,10 @@
  * Runs once to normalize all technician documents to standard schema
  */
 
-import { onCall } from "firebase-functions/v2/https";
-import { CallableRequest } from "firebase-functions/v2/https";
+import * as functions from "firebase-functions";
+
 import * as admin from "firebase-admin";
-import * as https from "firebase-functions/v2/https";
+
 
 const db = admin.firestore();
 
@@ -14,11 +14,10 @@ const db = admin.firestore();
  * Normalize Technician Data
  * Migrates legacy fields to standard schema
  */
-export const normalizeTechnicianData = onCall(
-  { region: "us-central1", memory: "512MiB", timeoutSeconds: 300 },
-  async (request: CallableRequest) => {
-    if (!request.auth) {
-      throw new https.HttpsError("unauthenticated", "Authentication required");
+export const normalizeTechnicianData = functions.https.onCall(
+  async (request, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Authentication required");
     }
 
     // TODO: Add admin role check
@@ -131,7 +130,7 @@ export const normalizeTechnicianData = onCall(
 
     } catch (error) {
       console.error("[MIGRATION] Error:", error);
-      throw new https.HttpsError("internal", `Migration failed: ${error}`);
+      throw new functions.https.HttpsError("internal", `Migration failed: ${error}`);
     }
   }
 );

@@ -26,26 +26,61 @@ class BookingService {
     required Map<String, dynamic> address,
     required double price,
     String? subcategoryId,
+    int? quantity,
     int? durationMinutes,
     String? couponCode,
     String? idempotencyKey,
+    String? paymentMode,
   }) async {
     try {
-      final HttpsCallable callable = _functions.httpsCallable('createBookingRequest');
-      final results = await callable.call({
+      // Sanitize address - remove FieldValue and non-JSON types
+      final cleanAddress = <String, dynamic>{};
+      address.forEach((key, value) {
+        if (value == null) return;
+        final valueStr = value.toString();
+        if (valueStr.contains('FieldValue') || valueStr.contains('Instance of')) return;
+        if (value is String || value is num || value is bool || value is List || value is Map) {
+          cleanAddress[key] = value;
+        }
+      });
+      
+      // Build payload with only valid JSON types
+      final payload = {
         'serviceId': serviceId,
         'technicianId': technicianId,
         'categoryId': categoryId,
         'categoryName': categoryName,
-        'subcategoryId': subcategoryId,
         'scheduledDate': scheduledDate,
         'scheduledTime': scheduledTime,
-        'address': address,
+        'address': cleanAddress,
         'price': price,
-        'durationMinutes': durationMinutes,
-        'couponCode': couponCode,
         'idempotencyKey': idempotencyKey ?? 'BK_${DateTime.now().millisecondsSinceEpoch}',
-      });
+      };
+      
+      // Add optional fields only if provided
+      if (subcategoryId != null && subcategoryId.isNotEmpty) {
+        payload['subcategoryId'] = subcategoryId;
+      }
+      if (quantity != null && quantity > 0) {
+        payload['quantity'] = quantity;
+      }
+      if (durationMinutes != null) {
+        payload['durationMinutes'] = durationMinutes;
+      }
+      if (couponCode != null && couponCode.isNotEmpty) {
+        payload['couponCode'] = couponCode;
+      }
+      if (paymentMode != null && paymentMode.isNotEmpty) {
+        payload['paymentMode'] = paymentMode;
+      }
+      
+      // Debug logging
+      print('[BOOKING_FLOW] Sending booking payload: $payload');
+      
+      final HttpsCallable callable = _functions.httpsCallable('createBookingRequest');
+      final results = await callable.call(payload);
+      
+      print('[BOOKING_FLOW] Cloud Function response: ${results.data}');
       return results.data as Map<String, dynamic>;
     } catch (e) {
       if (kDebugMode) debugPrint("Error creating booking request: $e");

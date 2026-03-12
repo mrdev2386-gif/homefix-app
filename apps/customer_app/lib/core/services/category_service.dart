@@ -124,7 +124,8 @@ class CategoryService extends ChangeNotifier {
         .handleError((error, stackTrace) {
           if (kDebugMode) debugPrint('❌ [CategoryService] Stream error: $error');
           return <Category>[];
-        });
+        })
+        .asBroadcastStream();
   }
 
   Stream<List<Category>> getActiveCategories() {

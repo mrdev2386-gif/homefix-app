@@ -192,9 +192,9 @@ class StatusTracker extends StatelessWidget {
     }
 
     switch (statusLower) {
-      case 'pending_admin':
+      case 'pending_admin_review':
         return 0;
-      case 'technician_pending':
+      case 'admin_approved':
       case 'assigned':
         return 1;
       case 'awaiting_payment':
@@ -203,6 +203,8 @@ class StatusTracker extends StatelessWidget {
       case 'on_the_way':
       case 'started':
       case 'in_progress':
+        return 3;
+      case 'awaiting_customer_payment':
         return 3;
       case 'completed':
         return 4;

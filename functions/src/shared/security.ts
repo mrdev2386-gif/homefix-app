@@ -104,13 +104,12 @@ export function assertAuthenticated(context: functions.https.CallableContext) {
 }
 
 export async function assertAdmin(context: functions.https.CallableContext) {
-    assertAuthenticated(context);
-    // You might want to check a custom claim or a document in 'admins' collection
-    if (context.auth!.token.admin === true) return;
-
-    // Fallback check against Firestore
-    const adminDoc = await db.collection('admins').doc(context.auth!.uid).get();
-    if (!adminDoc.exists) {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+    }
+    
+    // Use custom claims for admin verification
+    if (!context.auth.token?.admin) {
         throw new functions.https.HttpsError('permission-denied', 'Admin access required');
     }
 }

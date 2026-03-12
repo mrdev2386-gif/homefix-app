@@ -51,32 +51,39 @@ export default function ServiceApprovalsPage() {
   const itemsPerPage = 20;
   const categories = [...new Set(services.map(service => service.category))];
 
+  // Helper for development-only logging
+  const debugLog = (...args: any[]) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(...args);
+    }
+  };
+
   useEffect(() => {
-    console.log('[ADMIN PANEL] Setting up service approvals listener...');
+    debugLog('[ADMIN PANEL] Setting up service approvals listener...');
     
     const q = query(
       collection(db, 'technician_services'),
       where('status', '==', 'pending')
     );
 
-    console.log('[ADMIN PANEL] Query configured for collection: technician_services, status: pending');
+    debugLog('[ADMIN PANEL] Query configured for collection: technician_services, status: pending');
 
     const unsubscribe = onSnapshot(q, 
       async (snapshot) => {
-        console.log('[ADMIN PANEL] Snapshot received');
-        console.log('[ADMIN PANEL] Total documents:', snapshot.docs.length);
-        console.log('[ADMIN PANEL] Empty:', snapshot.empty);
+        debugLog('[ADMIN PANEL] Snapshot received');
+        debugLog('[ADMIN PANEL] Total documents:', snapshot.docs.length);
+        debugLog('[ADMIN PANEL] Empty:', snapshot.empty);
         
         // Log each document
         snapshot.docs.forEach((doc, index) => {
-          console.log(`[ADMIN PANEL] Doc ${index + 1}:`, doc.id, doc.data());
+          debugLog(`[ADMIN PANEL] Doc ${index + 1}:`, doc.id, doc.data());
         });
         
         const serviceData = await Promise.all(
           snapshot.docs.map(async (serviceDoc) => {
             const data = serviceDoc.data();
             
-            console.log(`[ADMIN PANEL] Processing service ${serviceDoc.id}:`, {
+            debugLog(`[ADMIN PANEL] Processing service ${serviceDoc.id}:`, {
               name: data.name || data.serviceName,
               status: data.status,
               technicianId: data.technicianId
@@ -130,24 +137,26 @@ export default function ServiceApprovalsPage() {
           return bTime - aTime;
         }));
         
-        console.log('[ADMIN PANEL] Services set:', serviceData.length);
-        console.log('[ADMIN PANEL] Service IDs:', serviceData.map(s => s.id));
+        debugLog('[ADMIN PANEL] Services set:', serviceData.length);
+        debugLog('[ADMIN PANEL] Service IDs:', serviceData.map(s => s.id));
         
         setLoading(false);
         setError(null);
       },
       (err) => {
-        console.error('[ADMIN PANEL] Error fetching service approvals:', err);
-        console.error('[ADMIN PANEL] Error code:', err.code);
-        console.error('[ADMIN PANEL] Error message:', err.message);
+        if (process.env.NODE_ENV === 'development') {
+          console.error('[ADMIN PANEL] Error fetching service approvals:', err);
+          console.error('[ADMIN PANEL] Error code:', err.code);
+          console.error('[ADMIN PANEL] Error message:', err.message);
+        }
         setError(`Failed to load service approvals: ${err.message}`);
         setLoading(false);
       }
     );
 
-    console.log('[ADMIN PANEL] Listener attached');
+    debugLog('[ADMIN PANEL] Listener attached');
     return () => {
-      console.log('[ADMIN PANEL] Cleaning up listener');
+      debugLog('[ADMIN PANEL] Cleaning up listener');
       unsubscribe();
     };
   }, []);

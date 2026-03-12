@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { PageHeader, StatusBadge, Column, ConfirmDialog, StatCard } from '@/components/ui';
 import { Search, Filter, X, CheckCircle, XCircle, Calendar, Clock, TrendingUp, Package, Eye, Phone, MapPin, IndianRupee } from 'lucide-react';
 import { Timestamp } from 'firebase/firestore';
 import { subscribeToBookings, AdminBooking, approveBookingAction, rejectBookingAction } from '@/lib/services/adminBookingService';
 
 export default function BookingsPage() {
+  const router = useRouter();
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
   const [filteredBookings, setFilteredBookings] = useState<AdminBooking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -219,7 +221,7 @@ export default function BookingsPage() {
       render: (item) => (
         <div className="flex items-center gap-2 justify-end">
           <button
-            onClick={() => { setSelectedBooking(item); setShowDetailsModal(true); }}
+            onClick={() => router.push(`/bookings/${item.id}`)}
             className="px-3 py-1 text-xs bg-[#1F2937] text-[#E5E7EB] rounded-lg hover:bg-[#374151]"
           >
             <Eye size={12} className="inline mr-1" />

@@ -50,7 +50,7 @@ async function sendNotification(
 
     for (let i = 0; i < messages.length; i += 500) {
       const chunk = messages.slice(i, i + 500);
-      await admin.messaging().sendAll(chunk);
+      await admin.messaging().sendEachForMulticast({ tokens: chunk.map(m => m.token), notification: chunk[0].notification, data: chunk[0].data });
     }
   } catch (error) {
     console.error(`[Notification Error] ${userId}:`, error);

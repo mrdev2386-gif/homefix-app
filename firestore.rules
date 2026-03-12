@@ -202,23 +202,24 @@ service cloud.firestore {
           'cancelledBy',
           'cancellationReason',
           'completedAt',
-          'startedAt'
+          'startedAt',
+          'technicianPayout',
+          'platformCommission'
         ];
       }
       
-      // Customers can read their own bookings
+      // Customers and Technicians can read their own/assigned bookings
       allow read: if isAuthenticated() 
         && (resource.data.customerId == request.auth.uid 
-            || resource.data.assignedTechnicianId == request.auth.uid
+            || resource.data.technicianId == request.auth.uid
             || isAdmin());
       
       // Customers can create bookings
       allow create: if isAuthenticated() 
         && request.resource.data.customerId == request.auth.uid
-        && request.resource.data.status == 'pending';
+        && request.resource.data.status in ['pending', 'pending_admin_review'];
       
       // NO ONE can update booking status directly (must use Cloud Functions)
-      // This prevents manipulation of booking lifecycle
       allow update: if false;
       
       // Admins can read all bookings
@@ -226,6 +227,25 @@ service cloud.firestore {
       
       // No one can delete bookings
       allow delete: if false;
+    }
+
+    // ==========================================
+    // ROOT WALLET SYSTEM (Ledger-based)
+    // ==========================================
+
+    match /wallets/{userId} {
+      // Users can only read their own wallet balance
+      allow read: if isOwner(userId) || isAdmin();
+      // No one can write to wallets directly (Cloud Functions only)
+      allow write: if false;
+    }
+
+    match /walletTransactions/{txnId} {
+      // Users can read their own transactions
+      allow read: if isAuthenticated() 
+        && (resource.data.userId == request.auth.uid || isAdmin());
+      // No one can write to transactions directly
+      allow write: if false;
     }
     
     // ==========================================

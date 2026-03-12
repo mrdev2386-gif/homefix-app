@@ -3,10 +3,22 @@ import * as admin from 'firebase-admin';
 
 const db = admin.firestore();
 
-async function assertAdmin(context: functions.https.CallableContext) {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
-    const adminDoc = await db.collection('admins').doc(context.auth.uid).get();
-    if (!adminDoc.exists) throw new functions.https.HttpsError('permission-denied', 'Admin access required');
+// Normalize booking status to handle different variations
+function normalizeBookingStatus(status: string): string {
+    if (!status) return '';
+    return status.toLowerCase()
+        .replace(/[-\s]/g, '_')
+        .replace(/pending_admin.*/, 'pending_admin_approval');
+}
+
+async function assertAdmin(uid: string | undefined) {
+    if (!uid) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+    
+    // Use custom claims for admin verification
+    const userRecord = await admin.auth().getUser(uid);
+    if (!userRecord.customClaims?.admin) {
+        throw new functions.https.HttpsError('permission-denied', 'Admin access required');
+    }
 }
 
 async function sendNotification(userId: string, userType: 'customer' | 'technician', payload: {
@@ -15,7 +27,7 @@ async function sendNotification(userId: string, userType: 'customer' | 'technici
     data?: any;
 }) {
     try {
-        const tokensSnap = await db.collection(userType === 'customer' ? 'customers' : 'technicians')
+        const tokensSnap = await db.collection(userType === 'customer' ? 'users' : 'technicians')
             .doc(userId)
             .collection('fcmTokens')
             .where('isActive', '==', true)
@@ -24,7 +36,8 @@ async function sendNotification(userId: string, userType: 'customer' | 'technici
         const tokens = tokensSnap.docs.map(doc => doc.data().token).filter(Boolean);
 
         if (tokens.length > 0) {
-            await admin.messaging().sendMulticast({
+            const messaging = admin.messaging();
+            await messaging.sendEachForMulticast({
                 tokens,
                 notification: {
                     title: payload.title,
@@ -38,111 +51,211 @@ async function sendNotification(userId: string, userType: 'customer' | 'technici
     }
 }
 
-export const approveBooking = functions.https.onCall(async (data, context) => {
-    await assertAdmin(context);
+export const approveBooking = functions.https.onCall(
+    async (data, context) => {
+        const uid = context.auth?.uid;
+        await assertAdmin(uid);
 
-    const { bookingId } = data;
-    if (!bookingId) throw new functions.https.HttpsError('invalid-argument', 'Missing bookingId');
+        const { bookingId } = data;
+        if (!bookingId) throw new functions.https.HttpsError('invalid-argument', 'Missing bookingId');
 
-    const bookingRef = db.collection('bookings').doc(bookingId);
+        const bookingRef = db.collection('bookings').doc(bookingId);
 
-    try {
-        await db.runTransaction(async (t) => {
-            const bookingDoc = await t.get(bookingRef);
-            if (!bookingDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
+        try {
+            await db.runTransaction(async (t) => {
+                const bookingDoc = await t.get(bookingRef);
+                if (!bookingDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
 
-            const booking = bookingDoc.data()!;
-            if (booking.status !== 'PENDING_ADMIN_APPROVAL') {
-                throw new functions.https.HttpsError('failed-precondition', 'Booking is not pending approval');
+                const booking = bookingDoc.data()!;
+                const normalizedStatus = normalizeBookingStatus(booking.status);
+                
+                if (!['pending_admin_approval', 'pending_admin_review', 'pending_admin'].includes(normalizedStatus)) {
+                    throw new functions.https.HttpsError('failed-precondition', `Booking is not pending approval. Current status: ${booking.status}`);
+                }
+
+                t.update(bookingRef, {
+                    status: 'ADMIN_APPROVED',
+                    adminApprovedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    adminApprovedBy: uid,
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+
+                // Log activity
+                t.set(db.collection('activity_logs').doc(), {
+                    actorType: 'admin',
+                    actorUid: uid,
+                    action: 'booking_approved',
+                    entityId: bookingId,
+                    entityType: 'booking',
+                    metadata: { bookingId, customerId: booking.customerId, technicianId: booking.technicianId },
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+            });
+
+            // Send notification to technician
+            const bookingData = (await bookingRef.get()).data();
+            if (bookingData?.technicianId) {
+                await sendNotification(bookingData.technicianId, 'technician', {
+                    title: 'New Booking Request',
+                    body: `You have a new booking for ${bookingData.serviceName}`,
+                    data: { type: 'booking_approved', bookingId },
+                });
             }
 
-            t.update(bookingRef, {
-                status: 'ADMIN_APPROVED',
-                adminApprovedAt: admin.firestore.FieldValue.serverTimestamp(),
-                adminApprovedBy: context.auth!.uid,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-
-            // Log activity
-            t.set(db.collection('activity_logs').doc(), {
-                actorType: 'admin',
-                actorUid: context.auth!.uid,
-                action: 'booking_approved',
-                entityId: bookingId,
-                entityType: 'booking',
-                metadata: { bookingId, customerId: booking.customerId, technicianId: booking.technicianId },
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-        });
-
-        // Send notification to technician
-        const bookingData = (await bookingRef.get()).data();
-        if (bookingData?.technicianId) {
-            await sendNotification(bookingData.technicianId, 'technician', {
-                title: 'New Booking Request',
-                body: `You have a new booking for ${bookingData.serviceName}`,
-                data: { type: 'booking_approved', bookingId },
-            });
+            return { success: true, message: 'Booking approved successfully' };
+        } catch (error: any) {
+            console.error('Error approving booking:', error);
+            throw new functions.https.HttpsError('internal', error.message);
         }
-
-        return { success: true, message: 'Booking approved successfully' };
-    } catch (error: any) {
-        console.error('Error approving booking:', error);
-        throw new functions.https.HttpsError('internal', error.message);
     }
-});
+);
 
-export const rejectBooking = functions.https.onCall(async (data, context) => {
-    await assertAdmin(context);
+export const rejectBooking = functions.https.onCall(
+    async (data, context) => {
+        const uid = context.auth?.uid;
+        await assertAdmin(uid);
 
-    const { bookingId, reason } = data;
-    if (!bookingId) throw new functions.https.HttpsError('invalid-argument', 'Missing bookingId');
+        const { bookingId, reason } = data;
+        if (!bookingId) throw new functions.https.HttpsError('invalid-argument', 'Missing bookingId');
 
-    const bookingRef = db.collection('bookings').doc(bookingId);
+        const bookingRef = db.collection('bookings').doc(bookingId);
 
-    try {
-        await db.runTransaction(async (t) => {
-            const bookingDoc = await t.get(bookingRef);
-            if (!bookingDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
+        try {
+            await db.runTransaction(async (t) => {
+                const bookingDoc = await t.get(bookingRef);
+                if (!bookingDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
 
-            const booking = bookingDoc.data()!;
-            if (booking.status !== 'PENDING_ADMIN_APPROVAL') {
-                throw new functions.https.HttpsError('failed-precondition', 'Booking is not pending approval');
+                const booking = bookingDoc.data()!;
+                const normalizedStatus = normalizeBookingStatus(booking.status);
+                
+                if (!['pending_admin_approval', 'pending_admin_review', 'pending_admin'].includes(normalizedStatus)) {
+                    throw new functions.https.HttpsError('failed-precondition', `Booking is not pending approval. Current status: ${booking.status}`);
+                }
+
+                t.update(bookingRef, {
+                    status: 'CANCELLED',
+                    cancellationReason: reason || 'Rejected by admin',
+                    cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+                    cancelledBy: uid,
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+
+                // Log activity
+                t.set(db.collection('activity_logs').doc(), {
+                    actorType: 'admin',
+                    actorUid: uid,
+                    action: 'booking_rejected',
+                    entityId: bookingId,
+                    entityType: 'booking',
+                    metadata: { bookingId, customerId: booking.customerId, reason },
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+            });
+
+            // Send notification to customer
+            const bookingData = (await bookingRef.get()).data();
+            if (bookingData?.customerId) {
+                await sendNotification(bookingData.customerId, 'customer', {
+                    title: 'Booking Cancelled',
+                    body: `Your booking for ${bookingData.serviceName} has been cancelled`,
+                    data: { type: 'booking_rejected', bookingId },
+                });
             }
 
-            t.update(bookingRef, {
-                status: 'CANCELLED',
-                cancellationReason: reason || 'Rejected by admin',
-                cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
-                cancelledBy: context.auth!.uid,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-
-            // Log activity
-            t.set(db.collection('activity_logs').doc(), {
-                actorType: 'admin',
-                actorUid: context.auth!.uid,
-                action: 'booking_rejected',
-                entityId: bookingId,
-                entityType: 'booking',
-                metadata: { bookingId, customerId: booking.customerId, reason },
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-        });
-
-        // Send notification to customer
-        const bookingData = (await bookingRef.get()).data();
-        if (bookingData?.customerId) {
-            await sendNotification(bookingData.customerId, 'customer', {
-                title: 'Booking Cancelled',
-                body: `Your booking for ${bookingData.serviceName} has been cancelled`,
-                data: { type: 'booking_rejected', bookingId },
-            });
+            return { success: true, message: 'Booking rejected successfully' };
+        } catch (error: any) {
+            console.error('Error rejecting booking:', error);
+            throw new functions.https.HttpsError('internal', error.message);
         }
-
-        return { success: true, message: 'Booking rejected successfully' };
-    } catch (error: any) {
-        console.error('Error rejecting booking:', error);
-        throw new functions.https.HttpsError('internal', error.message);
     }
-});
+);
+
+export const updateBookingPayment = functions.https.onCall(
+    async (data, context) => {
+        const uid = context.auth?.uid;
+        await assertAdmin(uid);
+
+        const { bookingId, paymentStatus } = data;
+        if (!bookingId) throw new functions.https.HttpsError('invalid-argument', 'Missing bookingId');
+        if (!paymentStatus) throw new functions.https.HttpsError('invalid-argument', 'Missing paymentStatus');
+
+        const bookingRef = db.collection('bookings').doc(bookingId);
+
+        try {
+            await db.runTransaction(async (t) => {
+                const bookingDoc = await t.get(bookingRef);
+                if (!bookingDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
+
+                const booking = bookingDoc.data()!;
+
+                t.update(bookingRef, {
+                    paymentStatus: paymentStatus,
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    ...(paymentStatus === 'PAID' && { paidAt: admin.firestore.FieldValue.serverTimestamp() })
+                });
+
+                // Log activity
+                t.set(db.collection('activity_logs').doc(), {
+                    actorType: 'admin',
+                    actorUid: uid,
+                    action: 'payment_status_updated',
+                    entityId: bookingId,
+                    entityType: 'booking',
+                    metadata: { bookingId, paymentStatus, customerId: booking.customerId },
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+            });
+
+            return { success: true, message: 'Payment status updated successfully' };
+        } catch (error: any) {
+            console.error('Error updating payment status:', error);
+            throw new functions.https.HttpsError('internal', error.message);
+        }
+    }
+);
+
+export const markBookingActive = functions.https.onCall(
+    async (data, context) => {
+        const uid = context.auth?.uid;
+        await assertAdmin(uid);
+
+        const { bookingId } = data;
+        if (!bookingId) throw new functions.https.HttpsError('invalid-argument', 'Missing bookingId');
+
+        const bookingRef = db.collection('bookings').doc(bookingId);
+
+        try {
+            await db.runTransaction(async (t) => {
+                const bookingDoc = await t.get(bookingRef);
+                if (!bookingDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
+
+                const booking = bookingDoc.data()!;
+                if (booking.status !== 'TECHNICIAN_ACCEPTED') {
+                    throw new functions.https.HttpsError('failed-precondition', 'Booking must be accepted by technician first');
+                }
+
+                t.update(bookingRef, {
+                    status: 'IN_PROGRESS',
+                    serviceStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+
+                // Log activity
+                t.set(db.collection('activity_logs').doc(), {
+                    actorType: 'admin',
+                    actorUid: uid,
+                    action: 'booking_started',
+                    entityId: bookingId,
+                    entityType: 'booking',
+                    metadata: { bookingId, customerId: booking.customerId, technicianId: booking.technicianId },
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+            });
+
+            return { success: true, message: 'Booking marked as active successfully' };
+        } catch (error: any) {
+            console.error('Error marking booking active:', error);
+            throw new functions.https.HttpsError('internal', error.message);
+        }
+    }
+);

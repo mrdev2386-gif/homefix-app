@@ -474,9 +474,9 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildStatItem(Icons.verified_rounded, 'Verified', service.technicianName ?? 'Safe Expert', Colors.blue),
-          _buildStatItem(Icons.groups_rounded, '$_techCount Available', 'In Your Area', Colors.purple),
-          _buildStatItem(Icons.star_rounded, service.rating > 0 ? service.rating.toStringAsFixed(1) : 'New', '${service.reviewCount} Reviews', Colors.orange),
+          _buildStatItem(Icons.verified_rounded, 'Verified', service.technicianName ?? 'Pro Expert', Colors.blue),
+          _buildStatItem(Icons.location_on_rounded, 'Available in', service.technicianDistrict ?? 'Your Area', Colors.purple),
+          _buildStatItem(Icons.star_rounded, service.rating > 0 ? service.rating.toStringAsFixed(1) : 'New', service.reviewCount > 0 ? '${service.reviewCount} Reviews' : 'No reviews yet', Colors.orange),
         ],
       ),
     );

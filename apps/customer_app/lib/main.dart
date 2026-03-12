@@ -25,11 +25,12 @@ import 'core/providers/location_provider.dart';
 import 'core/providers/checkout_provider.dart';
 import 'core/providers/locale_provider.dart';
 import 'core/utils/app_localizations.dart';
+import 'core/utils/logger.dart';
 import 'features/auth/screens/splash_screen.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/onboarding_screen.dart';
 import 'features/home/main_wrapper_screen.dart';
-import 'features/custom_request/presentation/custom_request_form_screen.dart';
+import 'features/custom_request/presentation/custom_request_screen.dart';
 import 'features/profile/presentation/saved_addresses_screen.dart';
 import 'core/models/user_model.dart';
 import 'firebase_options.dart';
@@ -39,16 +40,19 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  debugPrint("Background message: ${message.notification?.title}");
+  AppLogger.firebase('FCM', 'Background message: ${message.notification?.title}');
 }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Initialize Firebase first
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  AppLogger.firebase('Init', 'Firebase initialized');
 
+  // Initialize App Check immediately after Firebase
   await initializeFirebaseAppCheck();
 
   runApp(const HomeFixApp());
@@ -110,7 +114,7 @@ class HomeFixApp extends StatelessWidget {
                 GlobalCupertinoLocalizations.delegate,
               ],
               routes: {
-                '/customRequest': (context) => const CustomRequestFormScreen(),
+                '/customRequest': (context) => const CustomRequestScreen(),
                 '/addresses': (context) => const SavedAddressesScreen(),
               },
               home: const AuthWrapper(),
@@ -171,7 +175,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
           }
         }, onError: (e) {
           // FIX: Handle stream errors — prevent stuck splash screen
-          debugPrint('❌ [AuthWrapper] User data stream error: $e');
+          AppLogger.error('AuthWrapper', 'User data stream error', e);
           if (mounted) {
             setState(() {
               _isInitialized = true;
@@ -219,7 +223,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
         
         // FIX: Handle errors gracefully — don't get stuck on splash
         if (snapshot.hasError) {
-          debugPrint('❌ [AuthWrapper] StreamBuilder error: ${snapshot.error}');
+          AppLogger.error('AuthWrapper', 'StreamBuilder error', snapshot.error);
           // Still allow access to app — onboarding can handle missing data
           return const OnboardingScreen();
         }
@@ -228,7 +232,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
         
         // ROOT PROFILE GUARD - Check profile completion before allowing access
         if (kDebugMode) {
-          debugPrint('[ROOT_PROFILE_GUARD] profileCompleted: ${userData?.profileCompleted}, district: ${userData?.district}');
+          AppLogger.debug('AuthWrapper', 'profileCompleted: ${userData?.profileCompleted}, district: ${userData?.district}');
         }
         
         // Check if profile is completed with district

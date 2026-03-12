@@ -184,7 +184,7 @@ export async function sendUserNotification(input: SendNotificationInput): Promis
 
     // Step 2: Fetch all FCM tokens
     const tokensCollection = (userType === 'customer' || userType === 'customers' as any)
-      ? db.collection('customers').doc(userId).collection('fcmTokens')
+      ? db.collection('users').doc(userId).collection('fcmTokens')
       : db.collection('technicians').doc(userId).collection('fcmTokens');
 
     const tokensSnapshot = await tokensCollection.get();
@@ -192,7 +192,7 @@ export async function sendUserNotification(input: SendNotificationInput): Promis
     if (tokensSnapshot.empty) {
       console.log(`[NOTIFICATION] No FCM tokens found for ${userType}:${userId}`);
       // Also check for legacy token
-      const userDoc = await db.collection(userType === 'customer' ? 'customers' : 'technicians').doc(userId).get();
+      const userDoc = await db.collection(userType === 'customer' ? 'users' : 'technicians').doc(userId).get();
       const legacyToken = userDoc.data()?.fcmToken;
       if (legacyToken) {
         await sendPushToToken(legacyToken, {

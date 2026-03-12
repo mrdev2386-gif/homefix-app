@@ -3,10 +3,10 @@
  * Properly sets technician status and ensures profile completion is 100%
  */
 
-import { onCall } from "firebase-functions/v2/https";
-import { CallableRequest } from "firebase-functions/v2/https";
+import * as functions from "firebase-functions";
+
 import * as admin from "firebase-admin";
-import * as https from "firebase-functions/v2/https";
+
 
 const db = admin.firestore();
 
@@ -20,30 +20,29 @@ interface ApprovalRequest {
  * Approve or Reject Technician
  * Sets proper status and profile completion
  */
-export const approveTechnician = onCall(
-  { region: "us-central1", memory: "256MiB", timeoutSeconds: 30 },
-  async (request: CallableRequest<ApprovalRequest>) => {
-    if (!request.auth) {
-      throw new https.HttpsError("unauthenticated", "Authentication required");
+export const approveTechnician = functions.https.onCall(
+  async (request, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Authentication required");
     }
 
     // TODO: Add admin role check here
-    // const adminDoc = await db.collection('admins').doc(request.auth.uid).get();
+    // const adminDoc = await db.collection('admins').doc(context.auth.uid).get();
     // if (!adminDoc.exists) {
-    //   throw new https.HttpsError("permission-denied", "Admin access required");
+    //   throw new functions.https.HttpsError("permission-denied", "Admin access required");
     // }
 
     const { technicianId, action, rejectionReason } = request.data;
 
     if (!technicianId || !action) {
-      throw new https.HttpsError("invalid-argument", "Technician ID and action are required");
+      throw new functions.https.HttpsError("invalid-argument", "Technician ID and action are required");
     }
 
     const techRef = db.collection('technicians').doc(technicianId);
     const techDoc = await techRef.get();
 
     if (!techDoc.exists) {
-      throw new https.HttpsError("not-found", "Technician not found");
+      throw new functions.https.HttpsError("not-found", "Technician not found");
     }
 
     const updateData: any = {

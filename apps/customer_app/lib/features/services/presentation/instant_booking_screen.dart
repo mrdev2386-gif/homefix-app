@@ -7,7 +7,7 @@ import 'package:customer_app/core/theme/app_theme.dart';
 import '../../../core/providers/location_provider.dart';
 import 'package:customer_app/core/models/category.dart';
 import 'package:customer_app/core/services/category_service.dart';
-import 'service_request_screen.dart';
+
 import '../../custom_request/presentation/custom_request_screen.dart';
 
 /// DTO for instant service from cloud function

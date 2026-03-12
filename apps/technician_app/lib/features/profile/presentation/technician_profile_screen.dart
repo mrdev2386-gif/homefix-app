@@ -15,151 +15,8 @@ import '../../../core/services/functions_service.dart';
 import '../../support/faqs_screen.dart';
 import '../../../core/widgets/safe_network_image.dart';
 import '../../../../main.dart';
-
-// ============================================================================
-// REUSABLE WIDGET: Profile Completion Circle (Enhanced)
-// ============================================================================
-class ProfileCompletionCircle extends StatelessWidget {
-  /// Value from 0.0 to 1.0
-  final double value;
-  
-  /// Size of the circle (default 72)
-  final double size;
-  
-  /// Stroke width (default 6)
-  final double strokeWidth;
-  
-  /// Background track color
-  final Color backgroundColor;
-  
-  /// Primary gradient start color
-  final Color primaryColor;
-  
-  /// Secondary gradient end color  
-  final Color secondaryColor;
-  
-  const ProfileCompletionCircle({
-    super.key,
-    required this.value,
-    this.size = 72,
-    this.strokeWidth = 6,
-    this.backgroundColor = const Color(0xFFF1F5F9),
-    this.primaryColor = const Color(0xFF6366F1),
-    this.secondaryColor = const Color(0xFF8B5CF6),
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // Clamp value between 0 and 1
-    final clampedValue = value.clamp(0.0, 1.0);
-    final percentage = (clampedValue * 100).round();
-    
-    return SizedBox(
-      width: size,
-      height: size,
-      child: TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0.0, end: clampedValue),
-        duration: const Duration(milliseconds: 1500),
-        curve: Curves.easeOutCubic,
-        builder: (context, animatedValue, child) {
-          return Stack(
-            alignment: Alignment.center,
-            children: [
-              // Background track
-              CustomPaint(
-                size: Size(size, size),
-                painter: _GradientCirclePainter(
-                  progress: animatedValue,
-                  strokeWidth: strokeWidth,
-                  backgroundColor: backgroundColor,
-                  primaryColor: primaryColor,
-                  secondaryColor: secondaryColor,
-                ),
-              ),
-              // Center percentage text - perfectly centered
-              Center(
-                child: Text(
-                  '$percentage%',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: size * 0.22,
-                    color: const Color(0xFF1E293B),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-/// Custom painter for gradient circle progress
-class _GradientCirclePainter extends CustomPainter {
-  final double progress;
-  final double strokeWidth;
-  final Color backgroundColor;
-  final Color primaryColor;
-  final Color secondaryColor;
-  
-  _GradientCirclePainter({
-    required this.progress,
-    required this.strokeWidth,
-    required this.backgroundColor,
-    required this.primaryColor,
-    required this.secondaryColor,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = (size.width - strokeWidth) / 2;
-    
-    // Draw background track
-    final backgroundPaint = Paint()
-      ..color = backgroundColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
-    
-    canvas.drawCircle(center, radius, backgroundPaint);
-    
-    // Draw gradient progress arc
-    if (progress > 0) {
-      final rect = Rect.fromCircle(center: center, radius: radius);
-      final gradient = SweepGradient(
-        startAngle: -90 * (3.14159 / 180),
-        colors: [primaryColor, secondaryColor, primaryColor],
-        stops: const [0.0, 0.5, 1.0],
-      );
-      
-      final progressPaint = Paint()
-        ..shader = gradient.createShader(rect)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = strokeWidth
-        ..strokeCap = StrokeCap.round;
-      
-      final sweepAngle = 2 * 3.14159 * progress;
-      canvas.drawArc(
-        rect,
-        -90 * (3.14159 / 180),
-        sweepAngle,
-        false,
-        progressPaint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _GradientCirclePainter oldDelegate) {
-    return oldDelegate.progress != progress ||
-        oldDelegate.strokeWidth != strokeWidth ||
-        oldDelegate.backgroundColor != backgroundColor ||
-        oldDelegate.primaryColor != primaryColor ||
-        oldDelegate.secondaryColor != secondaryColor;
-  }
-}
+import 'edit_personal_details_screen.dart';
+import 'edit_bank_details_screen.dart';
 
 /// Technician Profile Screen - Premium UI
 /// 
@@ -208,7 +65,6 @@ class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with 
 
   @override
   Widget build(BuildContext context) {
-    debugPrint('>>> RENDERING: TechnicianProfileScreen vREFAC');
     return Scaffold(
       backgroundColor: AppTheme.bgLight,
       floatingActionButton: _buildEditProfileFAB(context),
@@ -326,7 +182,7 @@ class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with 
   void _navigateToEditProfile(BuildContext context) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+      MaterialPageRoute(builder: (_) => const EditPersonalDetailsScreen()),
     );
   }
 
@@ -566,7 +422,7 @@ class _VerificationAndCompletionCardState extends State<_VerificationAndCompleti
   }
 
   int _getProfileCompletion(Technician tech) {
-    return tech.calculateProfileCompletion();
+    return tech.getProfileCompletion();
   }
 
   @override
@@ -933,43 +789,147 @@ class _DetailRow extends StatelessWidget {
   final String value;
   final bool isMissing;
 
-  const _DetailRow({required this.icon, required this.label, required this.value, this.isMissing = false});
+  const _DetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.isMissing = false,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final Color color = isMissing ? Colors.red : Colors.grey.shade800;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: const Color(0xFFF3F0FF), borderRadius: BorderRadius.circular(10)),
-            child: Icon(icon, size: 18, color: const Color(0xFF6A5AE0)),
-          ),
-          const SizedBox(width: 14),
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8))),
-                const SizedBox(height: 4),
-                Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: isMissing ? Colors.red : const Color(0xFF1E293B)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                Text(
+                  label,
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: color,
+                  ),
+                ),
               ],
             ),
           ),
-          if (isMissing)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
-              child: const Text('Not Set', style: TextStyle(fontSize: 11, color: Colors.red, fontWeight: FontWeight.w600)),
-            ),
         ],
       ),
     );
   }
 }
 
+
+// ============================================
+// PART 5: Earnings Section
+// ============================================
+class _EarningsCard extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _EarningsCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        const Color(0xFF6366F1),
+                        const Color(0xFF8B5CF6),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.account_balance_wallet,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Flexible(
+                  fit: FlexFit.loose,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'My Earnings',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'View your earnings and transactions',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 13,
+                          color: const Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.chevron_right,
+                    color: Color(0xFF64748B),
+                    size: 20,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 // ============================================
 // PART 6: Documents Section
@@ -1151,39 +1111,20 @@ class _BankDetailsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasBankDetails = technician.payoutPreference != null && technician.payoutPreference!.isNotEmpty;
+    final techData = technician.toMap();
+    final hasBankDetails = (techData['bankName'] != null && techData['bankName'].toString().isNotEmpty) ||
+                          (techData['accountNumber'] != null && techData['accountNumber'].toString().isNotEmpty);
 
     return _PremiumCard(
       title: 'Bank & Payout',
       titleAction: TextButton.icon(
         onPressed: onUpdateTap,
         icon: const Icon(Icons.edit, size: 16),
-        label: const Text('Update'),
-        style: TextButton.styleFrom(
-          foregroundColor: AppTheme.primaryColor,
-        ),
+        label: Text(hasBankDetails ? 'Edit' : 'Add'),
+        style: TextButton.styleFrom(foregroundColor: AppTheme.primaryColor),
       ),
       child: hasBankDetails
-          ? Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _BankInfoRow(
-                  icon: Icons.account_balance,
-                  label: 'Bank Account',
-                  value: _maskAccountNumber(technician.payoutPreference!),
-                  status: 'verified',
-                ),
-                if (technician.panNumber != null && technician.panNumber!.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  _BankInfoRow(
-                    icon: Icons.article,
-                    label: 'PAN',
-                    value: _maskPanNumber(technician.panNumber!),
-                    status: 'verified',
-                  ),
-                ],
-              ],
-            )
+          ? _buildBankDetailsView(techData)
           : const _EmptyState(
               icon: Icons.account_balance_outlined,
               message: 'No payout method added',
@@ -1192,98 +1133,146 @@ class _BankDetailsCard extends StatelessWidget {
     );
   }
 
-  String _maskAccountNumber(String account) {
-    if (account.length <= 4) return account;
-    return '****${account.substring(account.length - 4)}';
-  }
-
-  String _maskPanNumber(String pan) {
-    if (pan.length < 5) return pan;
-    return '${pan.substring(0, 2)}***${pan.substring(pan.length - 3)}';
-  }
-}
-
-class _BankInfoRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final String status;
-
-  const _BankInfoRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.status,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isVerified = status == 'verified';
+  Widget _buildBankDetailsView(Map<String, dynamic> techData) {
+    final bankName = techData['bankName'] as String?;
+    final accountNumber = techData['accountNumber'] as String?;
+    final ifscCode = techData['ifscCode'] as String?;
+    final bankStatus = techData['bankStatus'] as String? ?? 'not_submitted';
     
+    final maskedAccount = accountNumber != null && accountNumber.length > 4
+        ? '****${accountNumber.substring(accountNumber.length - 4)}'
+        : accountNumber ?? '****';
+
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.success.withOpacity(0.2)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AppTheme.success.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, size: 20, color: AppTheme.success),
+        gradient: LinearGradient(
+          colors: [const Color(0xFF6366F1), const Color(0xFF8B5CF6)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF6366F1).withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
-          const SizedBox(width: 14),
-          Flexible(
-            fit: FlexFit.loose,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  fit: FlexFit.loose,
-                  child: Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF94A3B8),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                Flexible(
-                  fit: FlexFit.loose,
-                  child: Text(
-                    value,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF1E293B),
-                      letterSpacing: 1.5,
+                child: const Icon(Icons.account_balance, color: Colors.white, size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      bankName ?? 'Bank Account',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    const SizedBox(height: 4),
+                    Text(
+                      'Account: $maskedAccount',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.white.withOpacity(0.9),
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _buildStatusBadge(bankStatus),
+            ],
+          ),
+          if (ifscCode != null) ...[
+            const SizedBox(height: 16),
+            const Divider(color: Colors.white24, height: 1),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Icon(Icons.code, color: Colors.white70, size: 16),
+                const SizedBox(width: 8),
+                Text(
+                  'IFSC: $ifscCode',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.white.withOpacity(0.8),
                   ),
                 ),
               ],
             ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: AppTheme.success.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              isVerified ? Icons.check : Icons.pending,
-              size: 14,
-              color: AppTheme.success,
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(String status) {
+    Color bgColor;
+    Color textColor;
+    IconData icon;
+    String label;
+
+    switch (status) {
+      case 'approved':
+        bgColor = Colors.green;
+        textColor = Colors.white;
+        icon = Icons.verified;
+        label = 'Verified';
+        break;
+      case 'pending':
+        bgColor = Colors.orange;
+        textColor = Colors.white;
+        icon = Icons.pending;
+        label = 'Pending';
+        break;
+      case 'rejected':
+        bgColor = Colors.red;
+        textColor = Colors.white;
+        icon = Icons.error;
+        label = 'Rejected';
+        break;
+      default:
+        bgColor = Colors.white.withOpacity(0.2);
+        textColor = Colors.white;
+        icon = Icons.info;
+        label = 'Not Verified';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: textColor),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: textColor,
             ),
           ),
         ],
@@ -1673,8 +1662,8 @@ class _SupportItem extends StatelessWidget {
           child: InkWell(
             onTap: onTap,
             borderRadius: BorderRadius.circular(12),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14),
               child: Row(
                 children: [
                   Container(
@@ -1685,7 +1674,7 @@ class _SupportItem extends StatelessWidget {
                     ),
                     child: Icon(icon, size: 20, color: const Color(0xFF64748B)),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Text(
                       label,
@@ -2168,15 +2157,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _bioController = TextEditingController();
   
   bool _isSaving = false;
+  bool _isUploadingPhoto = false;
+  String? _profilePhotoUrl;
   String? _selectedGender;
+  DateTime? _selectedDOB;
   
   final List<String> _genderOptions = ['Male', 'Female', 'Other'];
   Technician? _technician;
-  final FunctionsService _functionsService = FunctionsService();
 
   @override
   void initState() {
     super.initState();
+    print("[EDIT PROFILE] Loading initial data");
     _loadCurrentData();
   }
 
@@ -2188,7 +2180,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _cityController.text = _technician!.district ?? '';
       _experienceController.text = _technician!.experienceYears?.toString() ?? '';
       _bioController.text = _technician!.bio ?? '';
+      _profilePhotoUrl = _technician!.profilePhotoUrl;
       _selectedGender = _technician!.gender;
+      _selectedDOB = _technician!.dateOfBirth;
     }
   }
 
@@ -2208,40 +2202,127 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     ).join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
+  Future<void> _pickImage() async {
+    if (_isSaving || _isUploadingPhoto) return;
+    
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Camera'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _getImage(useCamera: true);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Gallery'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _getImage(useCamera: false);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _getImage({required bool useCamera}) async {
+    if (_isUploadingPhoto) return;
+    
+    setState(() => _isUploadingPhoto = true);
+    
+    try {
+      final provider = context.read<TechnicianProvider>();
+      final picker = ImagePicker();
+      final source = useCamera ? ImageSource.camera : ImageSource.gallery;
+      
+      final pickedFile = await picker.pickImage(
+        source: source,
+        maxWidth: 1280,
+        maxHeight: 1280,
+        imageQuality: 70,
+      );
+      
+      if (pickedFile != null && mounted) {
+        final file = File(pickedFile.path);
+        final url = await provider.uploadDocumentImage(file, 'profile_photo');
+        
+        if (mounted) {
+          setState(() {
+            _profilePhotoUrl = url;
+            _isUploadingPhoto = false;
+          });
+        }
+      } else if (mounted) {
+        setState(() => _isUploadingPhoto = false);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isUploadingPhoto = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to upload image: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   Future<void> _saveProfile() async {
+    print("[EDIT PROFILE] Save pressed");
+    
     if (_isSaving) return;
     if (!_formKey.currentState!.validate()) return;
     
     setState(() => _isSaving = true);
     
     try {
-      // Use callable function for secure update
-      await _functionsService.updateTechnicianPersonalDetails(
-        fullName: _capitalizeWords(_nameController.text.trim()),
-        city: _capitalizeWords(_cityController.text.trim()),
-        experience: int.tryParse(_experienceController.text),
-        gender: _selectedGender,
-        bio: _bioController.text.trim(),
-      );
+      final provider = context.read<TechnicianProvider>();
       
-      // Refresh technician data from Firestore
-      await context.read<TechnicianProvider>().refreshTechnicianData();
+      final payload = {
+        'fullName': _capitalizeWords(_nameController.text.trim()),
+        'email': _technician?.email ?? '',
+        'phone': _technician?.phone ?? '',
+        'district': _capitalizeWords(_cityController.text.trim()),
+        'experienceYears': int.tryParse(_experienceController.text) ?? 0,
+        'bio': _bioController.text.trim(),
+        'gender': _selectedGender,
+        'dateOfBirth': _selectedDOB?.toIso8601String(),
+        'profilePhotoUrl': _profilePhotoUrl,
+      };
+      
+      debugPrint('[PROFILE_SAVE] payload=$payload');
+      
+      await provider.saveStepData(step: 1, data: payload);
+      
+      debugPrint('[PROVIDER_REFRESH] started');
+      await provider.refreshTechnicianData();
+      debugPrint('[PROVIDER_REFRESH] done, tech=${provider.technician?.toMap()}');
+      
+      print("[EDIT PROFILE] SUCCESS");
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Personal details updated successfully!'),
+            content: Text('Profile updated successfully!'),
             backgroundColor: Colors.green,
           ),
         );
         Navigator.pop(context);
       }
     } catch (e) {
-      debugPrint('[PERSONAL_DETAILS_SAVE] error=$e');
+      print("[EDIT PROFILE] ERROR: $e");
+      debugPrint('[PROFILE_SAVE] error=$e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to update: $e'),
+            content: Text('Failed to update profile: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -2257,7 +2338,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Edit Personal Details'),
+        title: const Text('Edit Profile'),
         backgroundColor: AppTheme.primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
@@ -2272,29 +2353,37 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Header
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
+                    // Profile Photo
+                    Center(
+                      child: Stack(
                         children: [
-                          Text(
-                            'Edit Personal Details',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: const Color(0xFF1E293B),
-                            ),
+                          CircleAvatar(
+                            radius: 60,
+                            backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.1),
+                            backgroundImage: _profilePhotoUrl != null
+                                ? NetworkImage(_profilePhotoUrl!)
+                                : null,
+                            child: _profilePhotoUrl == null
+                                ? const Icon(Icons.person, size: 60, color: AppTheme.primaryColor)
+                                : null,
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Only these fields can be edited',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 12,
-                              color: const Color(0xFF64748B),
+                          if (_isUploadingPhoto)
+                            const Positioned.fill(
+                              child: CircleAvatar(
+                                backgroundColor: Colors.black38,
+                                child: CircularProgressIndicator(color: Colors.white),
+                              ),
+                            ),
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: CircleAvatar(
+                              radius: 20,
+                              backgroundColor: AppTheme.primaryColor,
+                              child: IconButton(
+                                icon: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                                onPressed: _pickImage,
+                              ),
                             ),
                           ),
                         ],
@@ -2431,7 +2520,7 @@ class _EditAvailabilityScreenState extends State<EditAvailabilityScreen> {
   TimeOfDay _startTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay _endTime = const TimeOfDay(hour: 18, minute: 0);
   bool _isSaving = false;
-  List<int> _selectedDays = [1, 2, 3, 4, 5]; // Mon-Fri
+  final List<int> _selectedDays = [1, 2, 3, 4, 5]; // Mon-Fri
   bool _emergencyAvailable = false;
 
   final List<String> _dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -2851,9 +2940,6 @@ class _EditSkillsScreenState extends State<EditSkillsScreen> {
           style: GoogleFonts.plusJakartaSans(
             fontSize: 20,
             fontWeight: FontWeight.bold,
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
             color: const Color(0xFF0F172A),
           ),
         ),
@@ -2985,2020 +3071,7 @@ class _EditSkillsScreenState extends State<EditSkillsScreen> {
   }
 }
 
-class EditBankDetailsScreen extends StatefulWidget {
-  const EditBankDetailsScreen({super.key});
 
-  @override
-  State<EditBankDetailsScreen> createState() => _EditBankDetailsScreenState();
-}
-
-class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _accountHolderController = TextEditingController();
-  final _accountNumberController = TextEditingController();
-  final _ifscCodeController = TextEditingController();
-  final _bankNameController = TextEditingController();
-  final FunctionsService _functionsService = FunctionsService();
-  
-  bool _isSaving = false;
-  bool _showAccountNumber = false;
-  bool _isEditMode = false;
-  Technician? _technician;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadCurrentData();
-  }
-
-  void _loadCurrentData() {
-    final provider = context.read<TechnicianProvider>();
-    _technician = provider.technician;
-    if (_technician != null) {
-      // Pre-fill if bank details exist
-      _accountHolderController.text = _technician!.accountHolderName ?? '';
-      _bankNameController.text = _technician!.bankName ?? '';
-      _accountNumberController.text = _technician!.accountNumber ?? '';
-      _ifscCodeController.text = _technician!.ifscCode ?? '';
-      
-      // Check if bank details already exist - if so, start in view mode
-      _isEditMode = _technician!.accountNumber == null || _technician!.accountNumber!.isEmpty;
-    }
-  }
-
-  @override
-  void dispose() {
-    _accountHolderController.dispose();
-    _accountNumberController.dispose();
-    _ifscCodeController.dispose();
-    _bankNameController.dispose();
-    super.dispose();
-  }
-
-  String? _validateIfscCode(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'IFSC Code is required';
-    }
-    // IFSC code format: 11 characters, first 4 letters (bank code), 5th character 0, last 6 digits
-    final ifscRegex = RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text('Bank Details', style: GoogleFonts.plusJakartaSans(fontSize: 20, fontWeight: FontWeight.bold, color: const Color(0xFF0F172A))),
-        centerTitle: true,
-      ),
-      body: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: const Color(0xFF10B981).withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-                child: Row(
-                  children: [
-                    const Icon(Icons.security, color: Color(0xFF10B981)),
-                    const SizedBox(width: 12),
-                    Flexible(
-                      fit: FlexFit.loose,
-                      child: Text('Your bank details are securely encrypted and stored.', style: GoogleFonts.plusJakartaSans(fontSize: 14, color: const Color(0xFF10B981))),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text('Account Holder Name', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _accountHolderController,
-                decoration: InputDecoration(hintText: 'Enter account holder name', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                validator: (value) => value == null || value.trim().isEmpty ? 'Account holder name is required' : value.trim().length < 3 ? 'Name must be at least 3 characters' : null,
-              ),
-              const SizedBox(height: 20),
-              Text('Bank Name', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _bankNameController,
-                decoration: InputDecoration(hintText: 'Enter bank name', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                validator: (value) => value == null || value.trim().isEmpty ? 'Bank name is required' : null,
-              ),
-              const SizedBox(height: 20),
-              Text('Account Number', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _accountNumberController,
-                keyboardType: TextInputType.number,
-                obscureText: !_showAccountNumber,
-                decoration: InputDecoration(
-                  hintText: 'Enter account number',
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  suffixIcon: IconButton(icon: Icon(_showAccountNumber ? Icons.visibility_off : Icons.visibility), onPressed: () => setState(() => _showAccountNumber = !_showAccountNumber)),
-                ),
-                validator: _validateAccountNumber,
-              ),
-              const SizedBox(height: 20),
-              Text('IFSC Code', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _ifscCodeController,
-                textCapitalization: TextCapitalization.characters,
-                decoration: InputDecoration(hintText: 'e.g., SBIN0001234', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                validator: _validateIfscCode,
-              ),
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _isSaving ? null : _saveBankDetails,
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6366F1), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                  child: _isSaving ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white))) : Text('Save Bank Details', style: GoogleFonts.plusJakartaSans(fontSize: 16, fontWeight: FontWeight.w600)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class RaiseDisputeScreen extends StatefulWidget {
-  const RaiseDisputeScreen({super.key});
-
-  @override
-  State<RaiseDisputeScreen> createState() => _RaiseDisputeScreenState();
-}
-
-class _RaiseDisputeScreenState extends State<RaiseDisputeScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _descriptionController = TextEditingController();
-  final _jobIdController = TextEditingController();
-  bool _isSubmitting = false;
-  String? _selectedReason;
-
-  final List<String> _reasons = [
-    'Payment Not Received',
-    'Incorrect Payment Amount',
-    'Customer Not Satisfied',
-    'Job Cancellation Issue',
-    'Service Quality Issue',
-    'Other',
-  ];
-
-  @override
-  void dispose() {
-    _descriptionController.dispose();
-    _jobIdController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submitDispute() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_isSubmitting) return;
-
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please login to submit a dispute')),
-        );
-      }
-      return;
-    }
-
-    setState(() => _isSubmitting = true);
-
-    try {
-      final trimmedDescription = _descriptionController.text.trim();
-      final jobIdText = _jobIdController.text.trim();
-      final jobId = jobIdText.isEmpty ? null : jobIdText;
-
-      // Write to Firestore
-      final docRef = await FirebaseFirestore.instance
-          .collection('disputes')
-          .add({
-            'uid': user.uid,
-            'jobId': jobId,
-            'reason': _selectedReason,
-            'description': trimmedDescription,
-            'status': 'open',
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-
-      // Verify write
-      final docSnapshot = await docRef.get();
-      
-      if (docSnapshot.exists) {
-        debugPrint('[WRITE VERIFY] dispute created: ${docRef.id}');
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Dispute submitted successfully!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          Navigator.pop(context);
-        }
-      } else {
-        throw Exception('Failed to verify dispute creation');
-      }
-    } on FirebaseException catch (e) {
-      debugPrint('[RaiseDispute] Firebase error: ${e.code} - ${e.message}');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.message}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('[RaiseDispute] Error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Raise Dispute',
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: const Color(0xFF0F172A),
-          ),
-        ),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Info Card
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFEF3C7),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.warning_amber_rounded,
-                      color: Color(0xFFF59E0B),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Please provide detailed information about your dispute. Our team will review it within 48 hours.',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 14,
-                          color: const Color(0xFF64748B),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Job ID Field (Optional)
-              Text(
-                'Job ID (Optional)',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF1E293B),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: TextFormField(
-                  controller: _jobIdController,
-                  decoration: InputDecoration(
-                    contentPadding: const EdgeInsets.all(16),
-                    border: InputBorder.none,
-                    hintText: 'Enter Job ID if related to a specific job',
-                    hintStyle: GoogleFonts.plusJakartaSans(
-                      color: const Color(0xFF94A3B8),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Reason Dropdown
-              Text(
-                'Reason *',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF1E293B),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: DropdownButtonFormField<String>(
-                  value: _selectedReason,
-                  decoration: const InputDecoration(
-                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    border: InputBorder.none,
-                  ),
-                  hint: Text(
-                    'Select a reason',
-                    style: GoogleFonts.plusJakartaSans(
-                      color: const Color(0xFF94A3B8),
-                    ),
-                  ),
-                  items: _reasons.map((reason) {
-                    return DropdownMenuItem(
-                      value: reason,
-                      child: Text(
-                        reason,
-                        style: GoogleFonts.plusJakartaSans(
-                          color: const Color(0xFF1E293B),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    setState(() => _selectedReason = value);
-                  },
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please select a reason';
-                    }
-                    return null;
-                  },
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Description Field
-              Text(
-                'Description *',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF1E293B),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: TextFormField(
-                  controller: _descriptionController,
-                  maxLines: 6,
-                  decoration: InputDecoration(
-                    contentPadding: const EdgeInsets.all(16),
-                    border: InputBorder.none,
-                    hintText: 'Describe your dispute in detail...',
-                    hintStyle: GoogleFonts.plusJakartaSans(
-                      color: const Color(0xFF94A3B8),
-                    ),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please enter a description';
-                    }
-                    if (value.trim().length < 20) {
-                      return 'Description must be at least 20 characters';
-                    }
-                    return null;
-                  },
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              // Submit Button
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _isSubmitting ? null : _submitDispute,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFEF4444),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: _isSubmitting
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : Text(
-                          'Submit Dispute',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class ContactSupportScreen extends StatefulWidget {
-  const ContactSupportScreen({super.key});
-
-  @override
-  State<ContactSupportScreen> createState() => _ContactSupportScreenState();
-}
-
-class _ContactSupportScreenState extends State<ContactSupportScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _messageController = TextEditingController();
-  bool _isSubmitting = false;
-  String? _selectedCategory;
-
-  final List<String> _categories = [
-    'Payment Issue',
-    'Booking Problem',
-    'Account Issue',
-    'Technical Problem',
-    'Other',
-  ];
-
-  @override
-  void dispose() {
-    _messageController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submitTicket() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_isSubmitting) return;
-
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please login to submit a ticket')),
-        );
-      }
-      return;
-    }
-
-    setState(() => _isSubmitting = true);
-
-    try {
-      final trimmedMessage = _messageController.text.trim();
-
-      // Write to Firestore
-      final docRef = await FirebaseFirestore.instance
-          .collection('support_tickets')
-          .add({
-            'uid': user.uid,
-            'message': trimmedMessage,
-            'category': _selectedCategory,
-            'type': 'support',
-            'status': 'open',
-            'createdAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-
-      // Verify write
-      final docSnapshot = await docRef.get();
-      
-      if (docSnapshot.exists) {
-        debugPrint('[WRITE VERIFY] support ticket created: ${docRef.id}');
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Support ticket submitted successfully!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          Navigator.pop(context);
-        }
-      } else {
-        throw Exception('Failed to verify ticket creation');
-      }
-    } on FirebaseException catch (e) {
-      debugPrint('[ContactSupport] Firebase error: ${e.code} - ${e.message}');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.message}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('[ContactSupport] Error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Contact Support',
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: const Color(0xFF0F172A),
-          ),
-        ),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Info Card
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEEF2FF),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.info_outline,
-                      color: AppTheme.primaryColor,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Submit a support ticket and our team will get back to you within 24 hours.',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 14,
-                          color: const Color(0xFF64748B),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Category Dropdown
-              Text(
-                'Category (Optional)',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF1E293B),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: DropdownButtonFormField<String>(
-                  value: _selectedCategory,
-                  decoration: const InputDecoration(
-                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    border: InputBorder.none,
-                  ),
-                  hint: Text(
-                    'Select a category',
-                    style: GoogleFonts.plusJakartaSans(
-                      color: const Color(0xFF94A3B8),
-                    ),
-                  ),
-                  items: _categories.map((category) {
-                    return DropdownMenuItem(
-                      value: category,
-                      child: Text(
-                        category,
-                        style: GoogleFonts.plusJakartaSans(
-                          color: const Color(0xFF1E293B),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    setState(() => _selectedCategory = value);
-                  },
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Message Field
-              Text(
-                'Message *',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF1E293B),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: TextFormField(
-                  controller: _messageController,
-                  maxLines: 6,
-                  decoration: InputDecoration(
-                    contentPadding: const EdgeInsets.all(16),
-                    border: InputBorder.none,
-                    hintText: 'Describe your issue in detail...',
-                    hintStyle: GoogleFonts.plusJakartaSans(
-                      color: const Color(0xFF94A3B8),
-                    ),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please enter your message';
-                    }
-                    if (value.trim().length < 10) {
-                      return 'Message must be at least 10 characters';
-                    }
-                    return null;
-                  },
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              // Submit Button
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _isSubmitting ? null : _submitTicket,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: _isSubmitting
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : Text(
-                          'Submit Ticket',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-);
-    if (!ifscRegex.hasMatch(value.toUpperCase())) {
-      return 'Invalid IFSC Code format';
-    }
-    return null;
-  }
-
-  String? _validateAccountNumber(String? value) {
-    if (value == null || value.trim().isEmpty) {
-      return 'Account number required';
-    }
-
-    final cleaned = value.trim();
-
-    if (!RegExp(r'^[0-9]{9,18}
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text('Bank Details', style: GoogleFonts.plusJakartaSans(fontSize: 20, fontWeight: FontWeight.bold, color: const Color(0xFF0F172A))),
-        centerTitle: true,
-      ),
-      body: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: const Color(0xFF10B981).withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-                child: Row(
-                  children: [
-                    const Icon(Icons.security, color: Color(0xFF10B981)),
-                    const SizedBox(width: 12),
-                    Flexible(
-                      fit: FlexFit.loose,
-                      child: Text('Your bank details are securely encrypted and stored.', style: GoogleFonts.plusJakartaSans(fontSize: 14, color: const Color(0xFF10B981))),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text('Account Holder Name', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _accountHolderController,
-                decoration: InputDecoration(hintText: 'Enter account holder name', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                validator: (value) => value == null || value.trim().isEmpty ? 'Account holder name is required' : value.trim().length < 3 ? 'Name must be at least 3 characters' : null,
-              ),
-              const SizedBox(height: 20),
-              Text('Bank Name', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _bankNameController,
-                decoration: InputDecoration(hintText: 'Enter bank name', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                validator: (value) => value == null || value.trim().isEmpty ? 'Bank name is required' : null,
-              ),
-              const SizedBox(height: 20),
-              Text('Account Number', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _accountNumberController,
-                keyboardType: TextInputType.number,
-                obscureText: !_showAccountNumber,
-                decoration: InputDecoration(
-                  hintText: 'Enter account number',
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  suffixIcon: IconButton(icon: Icon(_showAccountNumber ? Icons.visibility_off : Icons.visibility), onPressed: () => setState(() => _showAccountNumber = !_showAccountNumber)),
-                ),
-                validator: _validateAccountNumber,
-              ),
-              const SizedBox(height: 20),
-              Text('IFSC Code', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _ifscCodeController,
-                textCapitalization: TextCapitalization.characters,
-                decoration: InputDecoration(hintText: 'e.g., SBIN0001234', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                validator: _validateIfscCode,
-              ),
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _isSaving ? null : _saveBankDetails,
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6366F1), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                  child: _isSaving ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white))) : Text('Save Bank Details', style: GoogleFonts.plusJakartaSans(fontSize: 16, fontWeight: FontWeight.w600)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class RaiseDisputeScreen extends StatefulWidget {
-  const RaiseDisputeScreen({super.key});
-
-  @override
-  State<RaiseDisputeScreen> createState() => _RaiseDisputeScreenState();
-}
-
-class _RaiseDisputeScreenState extends State<RaiseDisputeScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _descriptionController = TextEditingController();
-  final _jobIdController = TextEditingController();
-  bool _isSubmitting = false;
-  String? _selectedReason;
-
-  final List<String> _reasons = [
-    'Payment Not Received',
-    'Incorrect Payment Amount',
-    'Customer Not Satisfied',
-    'Job Cancellation Issue',
-    'Service Quality Issue',
-    'Other',
-  ];
-
-  @override
-  void dispose() {
-    _descriptionController.dispose();
-    _jobIdController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submitDispute() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_isSubmitting) return;
-
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please login to submit a dispute')),
-        );
-      }
-      return;
-    }
-
-    setState(() => _isSubmitting = true);
-
-    try {
-      final trimmedDescription = _descriptionController.text.trim();
-      final jobIdText = _jobIdController.text.trim();
-      final jobId = jobIdText.isEmpty ? null : jobIdText;
-
-      // Write to Firestore
-      final docRef = await FirebaseFirestore.instance
-          .collection('disputes')
-          .add({
-            'uid': user.uid,
-            'jobId': jobId,
-            'reason': _selectedReason,
-            'description': trimmedDescription,
-            'status': 'open',
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-
-      // Verify write
-      final docSnapshot = await docRef.get();
-      
-      if (docSnapshot.exists) {
-        debugPrint('[WRITE VERIFY] dispute created: ${docRef.id}');
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Dispute submitted successfully!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          Navigator.pop(context);
-        }
-      } else {
-        throw Exception('Failed to verify dispute creation');
-      }
-    } on FirebaseException catch (e) {
-      debugPrint('[RaiseDispute] Firebase error: ${e.code} - ${e.message}');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.message}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('[RaiseDispute] Error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Raise Dispute',
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: const Color(0xFF0F172A),
-          ),
-        ),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Info Card
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFEF3C7),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.warning_amber_rounded,
-                      color: Color(0xFFF59E0B),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Please provide detailed information about your dispute. Our team will review it within 48 hours.',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 14,
-                          color: const Color(0xFF64748B),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Job ID Field (Optional)
-              Text(
-                'Job ID (Optional)',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF1E293B),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: TextFormField(
-                  controller: _jobIdController,
-                  decoration: InputDecoration(
-                    contentPadding: const EdgeInsets.all(16),
-                    border: InputBorder.none,
-                    hintText: 'Enter Job ID if related to a specific job',
-                    hintStyle: GoogleFonts.plusJakartaSans(
-                      color: const Color(0xFF94A3B8),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Reason Dropdown
-              Text(
-                'Reason *',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF1E293B),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: DropdownButtonFormField<String>(
-                  value: _selectedReason,
-                  decoration: const InputDecoration(
-                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    border: InputBorder.none,
-                  ),
-                  hint: Text(
-                    'Select a reason',
-                    style: GoogleFonts.plusJakartaSans(
-                      color: const Color(0xFF94A3B8),
-                    ),
-                  ),
-                  items: _reasons.map((reason) {
-                    return DropdownMenuItem(
-                      value: reason,
-                      child: Text(
-                        reason,
-                        style: GoogleFonts.plusJakartaSans(
-                          color: const Color(0xFF1E293B),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    setState(() => _selectedReason = value);
-                  },
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please select a reason';
-                    }
-                    return null;
-                  },
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Description Field
-              Text(
-                'Description *',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF1E293B),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: TextFormField(
-                  controller: _descriptionController,
-                  maxLines: 6,
-                  decoration: InputDecoration(
-                    contentPadding: const EdgeInsets.all(16),
-                    border: InputBorder.none,
-                    hintText: 'Describe your dispute in detail...',
-                    hintStyle: GoogleFonts.plusJakartaSans(
-                      color: const Color(0xFF94A3B8),
-                    ),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please enter a description';
-                    }
-                    if (value.trim().length < 20) {
-                      return 'Description must be at least 20 characters';
-                    }
-                    return null;
-                  },
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              // Submit Button
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _isSubmitting ? null : _submitDispute,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFEF4444),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: _isSubmitting
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : Text(
-                          'Submit Dispute',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class ContactSupportScreen extends StatefulWidget {
-  const ContactSupportScreen({super.key});
-
-  @override
-  State<ContactSupportScreen> createState() => _ContactSupportScreenState();
-}
-
-class _ContactSupportScreenState extends State<ContactSupportScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _messageController = TextEditingController();
-  bool _isSubmitting = false;
-  String? _selectedCategory;
-
-  final List<String> _categories = [
-    'Payment Issue',
-    'Booking Problem',
-    'Account Issue',
-    'Technical Problem',
-    'Other',
-  ];
-
-  @override
-  void dispose() {
-    _messageController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submitTicket() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_isSubmitting) return;
-
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please login to submit a ticket')),
-        );
-      }
-      return;
-    }
-
-    setState(() => _isSubmitting = true);
-
-    try {
-      final trimmedMessage = _messageController.text.trim();
-
-      // Write to Firestore
-      final docRef = await FirebaseFirestore.instance
-          .collection('support_tickets')
-          .add({
-            'uid': user.uid,
-            'message': trimmedMessage,
-            'category': _selectedCategory,
-            'type': 'support',
-            'status': 'open',
-            'createdAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-
-      // Verify write
-      final docSnapshot = await docRef.get();
-      
-      if (docSnapshot.exists) {
-        debugPrint('[WRITE VERIFY] support ticket created: ${docRef.id}');
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Support ticket submitted successfully!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          Navigator.pop(context);
-        }
-      } else {
-        throw Exception('Failed to verify ticket creation');
-      }
-    } on FirebaseException catch (e) {
-      debugPrint('[ContactSupport] Firebase error: ${e.code} - ${e.message}');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.message}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('[ContactSupport] Error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Contact Support',
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: const Color(0xFF0F172A),
-          ),
-        ),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Info Card
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEEF2FF),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.info_outline,
-                      color: AppTheme.primaryColor,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Submit a support ticket and our team will get back to you within 24 hours.',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 14,
-                          color: const Color(0xFF64748B),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Category Dropdown
-              Text(
-                'Category (Optional)',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF1E293B),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: DropdownButtonFormField<String>(
-                  value: _selectedCategory,
-                  decoration: const InputDecoration(
-                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    border: InputBorder.none,
-                  ),
-                  hint: Text(
-                    'Select a category',
-                    style: GoogleFonts.plusJakartaSans(
-                      color: const Color(0xFF94A3B8),
-                    ),
-                  ),
-                  items: _categories.map((category) {
-                    return DropdownMenuItem(
-                      value: category,
-                      child: Text(
-                        category,
-                        style: GoogleFonts.plusJakartaSans(
-                          color: const Color(0xFF1E293B),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    setState(() => _selectedCategory = value);
-                  },
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Message Field
-              Text(
-                'Message *',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF1E293B),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: TextFormField(
-                  controller: _messageController,
-                  maxLines: 6,
-                  decoration: InputDecoration(
-                    contentPadding: const EdgeInsets.all(16),
-                    border: InputBorder.none,
-                    hintText: 'Describe your issue in detail...',
-                    hintStyle: GoogleFonts.plusJakartaSans(
-                      color: const Color(0xFF94A3B8),
-                    ),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please enter your message';
-                    }
-                    if (value.trim().length < 10) {
-                      return 'Message must be at least 10 characters';
-                    }
-                    return null;
-                  },
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              // Submit Button
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _isSubmitting ? null : _submitTicket,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: _isSubmitting
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : Text(
-                          'Submit Ticket',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-).hasMatch(cleaned)) {
-      return 'Invalid Account Number';
-    }
-
-    return null;
-  }
-
-  String _maskAccountNumber(String account) {
-    if (account.length <= 4) return account;
-    return '****${account.substring(account.length - 4)}';
-  }
-
-  Future<void> _saveBankDetails() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_isSaving) return;
-
-    setState(() => _isSaving = true);
-
-    try {
-      // Use callable function for secure update
-      await _functionsService.updateTechnicianBankDetails(
-        accountHolderName: _accountHolderController.text.trim(),
-        bankName: _bankNameController.text.trim(),
-        accountNumber: _accountNumberController.text.trim(),
-        ifscCode: _ifscCodeController.text.trim(),
-      );
-
-      // Refresh technician data from Firestore
-      await context.read<TechnicianProvider>().refreshTechnicianData();
-      
-      // Reload data
-      final provider = context.read<TechnicianProvider>();
-      _technician = provider.technician;
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Bank details saved successfully!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-
-      // Switch to view mode after successful save
-      setState(() {
-        _isEditMode = false;
-        _isSaving = false;
-      });
-    } catch (e) {
-      debugPrint('[BANK_DETAILS_SAVE] error=$e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        setState(() => _isSaving = false);
-      }
-    }
-  }
-
-  void _toggleEditMode() {
-    setState(() {
-      _isEditMode = !_isEditMode;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text('Bank Details', style: GoogleFonts.plusJakartaSans(fontSize: 20, fontWeight: FontWeight.bold, color: const Color(0xFF0F172A))),
-        centerTitle: true,
-        actions: [
-          if (!_isEditMode && _technician?.accountNumber != null && _technician!.accountNumber!.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.edit, color: Color(0xFF6A5AE0)),
-              onPressed: _toggleEditMode,
-            ),
-        ],
-      ),
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        child: _isEditMode 
-          ? _BankDetailsEditWidget(
-              key: const ValueKey('edit'),
-              formKey: _formKey,
-              accountHolderController: _accountHolderController,
-              accountNumberController: _accountNumberController,
-              ifscCodeController: _ifscCodeController,
-              bankNameController: _bankNameController,
-              showAccountNumber: _showAccountNumber,
-              isSaving: _isSaving,
-              onToggleVisibility: () => setState(() => _showAccountNumber = !_showAccountNumber),
-              onSave: _saveBankDetails,
-              validateIfscCode: _validateIfscCode,
-              validateAccountNumber: _validateAccountNumber,
-            )
-          : _BankDetailsViewWidget(
-              key: const ValueKey('view'),
-              technician: _technician,
-              maskAccountNumber: _maskAccountNumber,
-              onEditTap: _toggleEditMode,
-            ),
-      ),
-    );
-  }
-}
-
-// ============================================
-// Bank Details View Widget (Premium UI)
-// ============================================
-class _BankDetailsViewWidget extends StatelessWidget {
-  final Technician? technician;
-  final String Function(String) maskAccountNumber;
-  final VoidCallback onEditTap;
-
-  const _BankDetailsViewWidget({
-    super.key,
-    required this.technician,
-    required this.maskAccountNumber,
-    required this.onEditTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final hasBankDetails = technician?.accountNumber != null && 
-                          technician!.accountNumber!.isNotEmpty &&
-                          technician!.bankName != null &&
-                          technician!.bankName!.isNotEmpty;
-
-    if (!hasBankDetails) {
-      return _BankDetailsEditWidget(
-        key: const ValueKey('empty_edit'),
-        formKey: GlobalKey<FormState>(),
-        accountHolderController: TextEditingController(),
-        accountNumberController: TextEditingController(),
-        ifscCodeController: TextEditingController(),
-        bankNameController: TextEditingController(),
-        showAccountNumber: false,
-        isSaving: false,
-        onToggleVisibility: () {},
-        onSave: () {},
-        validateIfscCode: (v) => null,
-        validateAccountNumber: (v) => null,
-      );
-    }
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Premium Card
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
-              ),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF667EEA).withValues(alpha: 0.3),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Bank Account',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white70,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.verified, size: 14, color: Colors.white),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Verified',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  technician!.accountHolderName ?? 'N/A',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Bank Name',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 11,
-                              color: Colors.white60,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            technician!.bankName ?? 'N/A',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Account Number',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 11,
-                              color: Colors.white60,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            maskAccountNumber(technician!.accountNumber!),
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'IFSC: ${technician!.ifscCode ?? 'N/A'}',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 13,
-                    color: Colors.white70,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-          // Security Note
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF10B981).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.2)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.security, color: Color(0xFF10B981), size: 20),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Your bank details are securely encrypted and stored.',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 13,
-                      color: const Color(0xFF10B981),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ============================================
-// Bank Details Edit Widget
-// ============================================
-class _BankDetailsEditWidget extends StatelessWidget {
-  final GlobalKey<FormState> formKey;
-  final TextEditingController accountHolderController;
-  final TextEditingController accountNumberController;
-  final TextEditingController ifscCodeController;
-  final TextEditingController bankNameController;
-  final bool showAccountNumber;
-  final bool isSaving;
-  final VoidCallback onToggleVisibility;
-  final Future<void> Function() onSave;
-  final String? Function(String?) validateIfscCode;
-  final String? Function(String?) validateAccountNumber;
-
-  const _BankDetailsEditWidget({
-    super.key,
-    required this.formKey,
-    required this.accountHolderController,
-    required this.accountNumberController,
-    required this.ifscCodeController,
-    required this.bankNameController,
-    required this.showAccountNumber,
-    required this.isSaving,
-    required this.onToggleVisibility,
-    required this.onSave,
-    required this.validateIfscCode,
-    required this.validateAccountNumber,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Form(
-        key: formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: const Color(0xFF10B981).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
-              child: Row(
-                children: [
-                  const Icon(Icons.security, color: Color(0xFF10B981)),
-                  const SizedBox(width: 12),
-                  Flexible(
-                    fit: FlexFit.loose,
-                    child: Text('Your bank details are securely encrypted and stored.', style: GoogleFonts.plusJakartaSans(fontSize: 14, color: const Color(0xFF10B981))),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text('Account Holder Name', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
-            const SizedBox(height: 8),
-            TextFormField(
-              controller: accountHolderController,
-              decoration: InputDecoration(hintText: 'Enter account holder name', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-              validator: (value) => value == null || value.trim().isEmpty ? 'Account holder name is required' : value.trim().length < 3 ? 'Name must be at least 3 characters' : null,
-            ),
-            const SizedBox(height: 20),
-            Text('Bank Name', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
-            const SizedBox(height: 8),
-            TextFormField(
-              controller: bankNameController,
-              decoration: InputDecoration(hintText: 'Enter bank name', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-              validator: (value) => value == null || value.trim().isEmpty ? 'Bank name is required' : null,
-            ),
-            const SizedBox(height: 20),
-            Text('Account Number', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
-            const SizedBox(height: 8),
-            TextFormField(
-              controller: accountNumberController,
-              keyboardType: TextInputType.number,
-              obscureText: !showAccountNumber,
-              decoration: InputDecoration(
-                hintText: 'Enter account number',
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                suffixIcon: IconButton(icon: Icon(showAccountNumber ? Icons.visibility_off : Icons.visibility), onPressed: onToggleVisibility),
-              ),
-              validator: validateAccountNumber,
-            ),
-            const SizedBox(height: 20),
-            Text('IFSC Code', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
-            const SizedBox(height: 8),
-            TextFormField(
-              controller: ifscCodeController,
-              textCapitalization: TextCapitalization.characters,
-              decoration: InputDecoration(hintText: 'e.g., SBIN0001234', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-              validator: validateIfscCode,
-            ),
-            const SizedBox(height: 32),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                onPressed: isSaving ? null : onSave,
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6366F1), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                child: isSaving ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white))) : Text('Save Bank Details', style: GoogleFonts.plusJakartaSans(fontSize: 16, fontWeight: FontWeight.w600)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text('Bank Details', style: GoogleFonts.plusJakartaSans(fontSize: 20, fontWeight: FontWeight.bold, color: const Color(0xFF0F172A))),
-        centerTitle: true,
-      ),
-      body: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: const Color(0xFF10B981).withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-                child: Row(
-                  children: [
-                    const Icon(Icons.security, color: Color(0xFF10B981)),
-                    const SizedBox(width: 12),
-                    Flexible(
-                      fit: FlexFit.loose,
-                      child: Text('Your bank details are securely encrypted and stored.', style: GoogleFonts.plusJakartaSans(fontSize: 14, color: const Color(0xFF10B981))),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text('Account Holder Name', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _accountHolderController,
-                decoration: InputDecoration(hintText: 'Enter account holder name', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                validator: (value) => value == null || value.trim().isEmpty ? 'Account holder name is required' : value.trim().length < 3 ? 'Name must be at least 3 characters' : null,
-              ),
-              const SizedBox(height: 20),
-              Text('Bank Name', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _bankNameController,
-                decoration: InputDecoration(hintText: 'Enter bank name', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                validator: (value) => value == null || value.trim().isEmpty ? 'Bank name is required' : null,
-              ),
-              const SizedBox(height: 20),
-              Text('Account Number', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _accountNumberController,
-                keyboardType: TextInputType.number,
-                obscureText: !_showAccountNumber,
-                decoration: InputDecoration(
-                  hintText: 'Enter account number',
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  suffixIcon: IconButton(icon: Icon(_showAccountNumber ? Icons.visibility_off : Icons.visibility), onPressed: () => setState(() => _showAccountNumber = !_showAccountNumber)),
-                ),
-                validator: _validateAccountNumber,
-              ),
-              const SizedBox(height: 20),
-              Text('IFSC Code', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF64748B))),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _ifscCodeController,
-                textCapitalization: TextCapitalization.characters,
-                decoration: InputDecoration(hintText: 'e.g., SBIN0001234', filled: true, fillColor: Colors.white, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-                validator: _validateIfscCode,
-              ),
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: _isSaving ? null : _saveBankDetails,
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6366F1), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                  child: _isSaving ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white))) : Text('Save Bank Details', style: GoogleFonts.plusJakartaSans(fontSize: 16, fontWeight: FontWeight.w600)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class RaiseDisputeScreen extends StatefulWidget {
   const RaiseDisputeScreen({super.key});
