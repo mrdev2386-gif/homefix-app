@@ -25,12 +25,12 @@ export * from './admin/service_moderation';
 // ============================================
 
 const BOOKING_STATUS = {
-  PENDING_ADMIN_APPROVAL: 'PENDING_ADMIN_APPROVAL',
-  ADMIN_APPROVED: 'ADMIN_APPROVED',
-  TECHNICIAN_ACCEPTED: 'TECHNICIAN_ACCEPTED',
-  IN_PROGRESS: 'IN_PROGRESS',
-  COMPLETED: 'COMPLETED',
-  REJECTED: 'REJECTED',
+  PENDING_ADMIN_APPROVAL: 'pending_admin_approval',
+  APPROVED_BY_ADMIN: 'approved_by_admin',
+  TECHNICIAN_ACCEPTED: 'technician_accepted',
+  SERVICE_IN_PROGRESS: 'service_in_progress',
+  SERVICE_COMPLETED: 'service_completed',
+  REJECTED: 'rejected',
 } as const;
 
 // Initialize Firebase Admin
@@ -1020,13 +1020,491 @@ export const getPayoutHistory = functions.https.onCall(
 );
 
 // ============================================
-// BOOKING LIFECYCLE FUNCTIONS
+// BOOKING CREATION AND LIFECYCLE FUNCTIONS
+// ============================================
+
+/**
+ * Create Urgent Booking - Customer creates urgent booking
+ * 
+ * Creates urgent booking with immediate technician assignment
+ */
+export const createUrgentBooking = functions.https.onCall(
+    {
+        cors: true,
+        enforceAppCheck: true,
+    },
+    async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError(
+                'unauthenticated',
+                'User must be authenticated'
+            );
+        }
+
+        const {
+            technicianId,
+            technicianName,
+            serviceType,
+            district,
+            urgentFee
+        } = data;
+
+        // Validate required fields
+        if (!technicianId || !serviceType) {
+            throw new functions.https.HttpsError(
+                'invalid-argument',
+                'Missing required fields'
+            );
+        }
+
+        try {
+            const bookingRef = db.collection('bookings').doc();
+            const bookingId = bookingRef.id;
+
+            // Create urgent booking document
+            await bookingRef.set({
+                bookingId: bookingId,
+                customerId: context.auth.uid,
+                technicianId: technicianId,
+                technicianName: technicianName || 'Unknown',
+                serviceType: serviceType,
+                serviceTitle: `Urgent ${serviceType}`,
+                bookingStatus: BOOKING_STATUS.APPROVED_BY_ADMIN, // Skip admin approval for urgent
+                paymentStatus: 'pending',
+                paymentMode: 'pay_after_work',
+                isUrgent: true,
+                urgentFee: urgentFee || 100,
+                district: district || '',
+                scheduledDate: new Date().toISOString(),
+                scheduledTime: 'ASAP',
+                scheduledAt: admin.firestore.FieldValue.serverTimestamp(),
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+            // Create audit log
+            await createBookingAuditLog(
+                context.auth.uid,
+                'urgent_booking_created',
+                bookingId,
+                {
+                    technicianId,
+                    serviceType,
+                    urgentFee,
+                    status: BOOKING_STATUS.APPROVED_BY_ADMIN
+                }
+            );
+
+            // Send notification to technician
+            await sendNotification(
+                technicianId,
+                'Urgent Booking Request',
+                `New urgent ${serviceType} booking request`,
+                { bookingId, type: 'urgent_booking' }
+            );
+
+            return {
+                success: true,
+                bookingId: bookingId,
+                status: BOOKING_STATUS.APPROVED_BY_ADMIN,
+                message: 'Urgent booking created successfully'
+            };
+        } catch (error: any) {
+            console.error('Error creating urgent booking:', error);
+            throw new functions.https.HttpsError('internal', 'Failed to create urgent booking');
+        }
+    }
+);
+
+/**
+ * Create Booking Request - Customer creates booking
+ * 
+ * Creates booking with status: pending_admin_approval
+ * Admin must approve before technician can see it
+ */
+export const createBookingRequest = functions.https.onCall(
+    {
+        cors: true,
+        enforceAppCheck: true,
+    },
+    async (data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError(
+                'unauthenticated',
+                'User must be authenticated'
+            );
+        }
+
+        const {
+            serviceId,
+            technicianId,
+            categoryId,
+            categoryName,
+            scheduledDate,
+            scheduledTime,
+            address,
+            price,
+            subcategoryId,
+            quantity,
+            durationMinutes,
+            couponCode,
+            paymentMode,
+            idempotencyKey
+        } = data;
+
+        // Validate required fields
+        if (!serviceId || !technicianId || !categoryId || !scheduledDate || !scheduledTime || !address || !price) {
+            throw new functions.https.HttpsError(
+                'invalid-argument',
+                'Missing required fields'
+            );
+        }
+
+        try {
+            const bookingRef = db.collection('bookings').doc();
+            const bookingId = bookingRef.id;
+
+            // Create booking document
+            await bookingRef.set({
+                bookingId: bookingId,
+                customerId: context.auth.uid,
+                technicianId: technicianId,
+                serviceId: serviceId,
+                categoryId: categoryId,
+                categoryName: categoryName || '',
+                subcategoryId: subcategoryId || '',
+                scheduledDate: scheduledDate,
+                scheduledTime: scheduledTime,
+                scheduledAt: admin.firestore.Timestamp.fromDate(new Date(`${scheduledDate} ${scheduledTime}`)),
+                address: address,
+                price: price,
+                finalAmount: price,
+                quantity: quantity || 1,
+                durationMinutes: durationMinutes || 60,
+                couponCode: couponCode || null,
+                paymentMode: paymentMode || 'pay_after_work',
+                bookingStatus: BOOKING_STATUS.PENDING_ADMIN_APPROVAL,
+                paymentStatus: 'pending',
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                idempotencyKey: idempotencyKey || `BK_${Date.now()}`
+            });
+
+            // Create audit log
+            await createBookingAuditLog(
+                context.auth.uid,
+                'booking_created',
+                bookingId,
+                {
+                    serviceId,
+                    technicianId,
+                    price,
+                    status: BOOKING_STATUS.PENDING_ADMIN_APPROVAL
+                }
+            );
+
+            return {
+                success: true,
+                bookingId: bookingId,
+                status: BOOKING_STATUS.PENDING_ADMIN_APPROVAL,
+                message: 'Booking created successfully. Waiting for admin approval.'
+            };
+        } catch (error: any) {
+            console.error('Error creating booking:', error);
+            throw new functions.https.HttpsError('internal', 'Failed to create booking');
+        }
+    }
+);
+
+/**
+ * Technician Respond to Job - Accept or Reject booking
+ */
+export const technicianRespondToJob = functions.https.onCall(
+    {
+        cors: true,
+        enforceAppCheck: true,
+    },
+    async (data: { bookingId: string; action: string; reason?: string }, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError(
+                'unauthenticated',
+                'User must be authenticated'
+            );
+        }
+
+        const { bookingId, action, reason } = data;
+        const technicianId = context.auth.uid;
+
+        if (!bookingId || !action) {
+            throw new functions.https.HttpsError(
+                'invalid-argument',
+                'Missing bookingId or action'
+            );
+        }
+
+        if (!['accept', 'reject'].includes(action)) {
+            throw new functions.https.HttpsError(
+                'invalid-argument',
+                'Action must be accept or reject'
+            );
+        }
+
+        try {
+            const bookingRef = db.collection('bookings').doc(bookingId);
+            const bookingDoc = await bookingRef.get();
+
+            if (!bookingDoc.exists) {
+                throw new functions.https.HttpsError('not-found', 'Booking not found');
+            }
+
+            const bookingData = bookingDoc.data();
+
+            // Verify technician owns this booking
+            if (bookingData?.technicianId !== technicianId) {
+                throw new functions.https.HttpsError(
+                    'permission-denied',
+                    'This booking is not assigned to you'
+                );
+            }
+
+            // Verify booking is in correct status
+            if (bookingData?.bookingStatus !== BOOKING_STATUS.APPROVED_BY_ADMIN) {
+                throw new functions.https.HttpsError(
+                    'failed-precondition',
+                    'Booking must be approved by admin first'
+                );
+            }
+
+            const newStatus = action === 'accept' 
+                ? BOOKING_STATUS.TECHNICIAN_ACCEPTED 
+                : BOOKING_STATUS.REJECTED;
+
+            // Update booking status
+            const updateData: Record<string, any> = {
+                bookingStatus: newStatus,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            };
+
+            if (action === 'accept') {
+                updateData.technicianAcceptedAt = admin.firestore.FieldValue.serverTimestamp();
+            } else {
+                updateData.rejectedByTechnician = true;
+                updateData.rejectionReason = reason || 'Technician declined';
+                updateData.rejectedAt = admin.firestore.FieldValue.serverTimestamp();
+            }
+
+            await bookingRef.update(updateData);
+
+            // Create audit log
+            await createBookingAuditLog(
+                technicianId,
+                action === 'accept' ? 'technician_accepted' : 'technician_rejected',
+                bookingId,
+                {
+                    previousStatus: bookingData?.bookingStatus,
+                    newStatus: newStatus,
+                    reason: reason || null
+                }
+            );
+
+            // Send notification to customer
+            const notificationTitle = action === 'accept' 
+                ? 'Technician Accepted' 
+                : 'Technician Declined';
+            const notificationBody = action === 'accept'
+                ? 'Your booking has been accepted by the technician'
+                : reason || 'The technician has declined your booking';
+
+            await sendNotification(
+                bookingData?.customerId,
+                notificationTitle,
+                notificationBody,
+                { bookingId, type: `technician_${action}` }
+            );
+
+            return {
+                success: true,
+                message: `Booking ${action}ed successfully`,
+                bookingId,
+                newStatus
+            };
+        } catch (error: any) {
+            console.error(`Error ${action}ing booking:`, error);
+            if (error instanceof functions.https.HttpsError) {
+                throw error;
+            }
+            throw new functions.https.HttpsError('internal', `Failed to ${action} booking`);
+        }
+    }
+);
+
+/**
+ * Update Booking Status - Generic status update function
+ */
+export const updateBookingStatus = functions.https.onCall(
+    {
+        cors: true,
+        enforceAppCheck: true,
+    },
+    async (data: { bookingId: string; status: string }, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError(
+                'unauthenticated',
+                'User must be authenticated'
+            );
+        }
+
+        const { bookingId, status } = data;
+
+        if (!bookingId || !status) {
+            throw new functions.https.HttpsError(
+                'invalid-argument',
+                'Missing bookingId or status'
+            );
+        }
+
+        // Map status values to standardized format
+        const statusMapping: Record<string, string> = {
+            'in_progress': BOOKING_STATUS.SERVICE_IN_PROGRESS,
+            'service_in_progress': BOOKING_STATUS.SERVICE_IN_PROGRESS,
+            'completed': BOOKING_STATUS.SERVICE_COMPLETED,
+            'service_completed': BOOKING_STATUS.SERVICE_COMPLETED
+        };
+
+        const mappedStatus = statusMapping[status] || status;
+
+        try {
+            const bookingRef = db.collection('bookings').doc(bookingId);
+            const bookingDoc = await bookingRef.get();
+
+            if (!bookingDoc.exists) {
+                throw new functions.https.HttpsError('not-found', 'Booking not found');
+            }
+
+            const bookingData = bookingDoc.data();
+
+            // Verify user has permission to update this booking
+            const userId = context.auth.uid;
+            if (bookingData?.customerId !== userId && bookingData?.technicianId !== userId) {
+                throw new functions.https.HttpsError(
+                    'permission-denied',
+                    'You do not have permission to update this booking'
+                );
+            }
+
+            await bookingRef.update({
+                bookingStatus: mappedStatus,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+            return {
+                success: true,
+                message: 'Booking status updated successfully',
+                bookingId,
+                newStatus: mappedStatus
+            };
+        } catch (error: any) {
+            console.error('Error updating booking status:', error);
+            if (error instanceof functions.https.HttpsError) {
+                throw error;
+            }
+            throw new functions.https.HttpsError('internal', 'Failed to update booking status');
+        }
+    }
+);
+
+/**
+ * Complete Service - Mark service as completed
+ */
+export const completeService = functions.https.onCall(
+    {
+        cors: true,
+        enforceAppCheck: true,
+    },
+    async (data: { bookingId: string }, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError(
+                'unauthenticated',
+                'User must be authenticated'
+            );
+        }
+
+        const { bookingId } = data;
+        const technicianId = context.auth.uid;
+
+        if (!bookingId) {
+            throw new functions.https.HttpsError(
+                'invalid-argument',
+                'Missing bookingId'
+            );
+        }
+
+        try {
+            const bookingRef = db.collection('bookings').doc(bookingId);
+            const bookingDoc = await bookingRef.get();
+
+            if (!bookingDoc.exists) {
+                throw new functions.https.HttpsError('not-found', 'Booking not found');
+            }
+
+            const bookingData = bookingDoc.data();
+
+            // Verify technician owns this booking
+            if (bookingData?.technicianId !== technicianId) {
+                throw new functions.https.HttpsError(
+                    'permission-denied',
+                    'This booking is not assigned to you'
+                );
+            }
+
+            await bookingRef.update({
+                bookingStatus: BOOKING_STATUS.SERVICE_COMPLETED,
+                completedAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+            // Create audit log
+            await createBookingAuditLog(
+                technicianId,
+                'service_completed',
+                bookingId,
+                {
+                    previousStatus: bookingData?.bookingStatus,
+                    newStatus: BOOKING_STATUS.SERVICE_COMPLETED
+                }
+            );
+
+            // Send notification to customer
+            await sendNotification(
+                bookingData?.customerId,
+                'Service Completed',
+                'Your service has been completed. Please rate your experience.',
+                { bookingId, type: 'service_completed' }
+            );
+
+            return {
+                success: true,
+                message: 'Service completed successfully',
+                bookingId
+            };
+        } catch (error: any) {
+            console.error('Error completing service:', error);
+            if (error instanceof functions.https.HttpsError) {
+                throw error;
+            }
+            throw new functions.https.HttpsError('internal', 'Failed to complete service');
+        }
+    }
+);
+
+// ============================================
+// ADMIN BOOKING LIFECYCLE FUNCTIONS
 // ============================================
 
 /**
  * Approve Booking - Admin approves booking for technician assignment
  * 
- * Updates booking status from PENDING_ADMIN_APPROVAL to ADMIN_APPROVED
+ * Updates booking status from PENDING_ADMIN_APPROVAL to APPROVED_BY_ADMIN
  * Sends notification to nearby technicians
  */
 export const approveBooking = functions.https.onCall(
@@ -1053,7 +1531,7 @@ export const approveBooking = functions.https.onCall(
 
             const bookingData = bookingDoc.data();
             
-            if (bookingData?.status !== BOOKING_STATUS.PENDING_ADMIN_APPROVAL) {
+            if (bookingData?.bookingStatus !== BOOKING_STATUS.PENDING_ADMIN_APPROVAL) {
                 throw new functions.https.HttpsError(
                     'failed-precondition',
                     `Booking status must be ${BOOKING_STATUS.PENDING_ADMIN_APPROVAL}`
@@ -1063,7 +1541,7 @@ export const approveBooking = functions.https.onCall(
             // Update booking status
             await db.runTransaction(async (transaction) => {
                 transaction.update(bookingRef, {
-                    status: BOOKING_STATUS.ADMIN_APPROVED,
+                    bookingStatus: BOOKING_STATUS.APPROVED_BY_ADMIN,
                     adminApprovedAt: admin.firestore.FieldValue.serverTimestamp(),
                     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 });
@@ -1075,8 +1553,8 @@ export const approveBooking = functions.https.onCall(
                 'booking_approved',
                 bookingId,
                 {
-                    previousStatus: bookingData?.status,
-                    newStatus: BOOKING_STATUS.ADMIN_APPROVED,
+                    previousStatus: bookingData?.bookingStatus,
+                    newStatus: BOOKING_STATUS.APPROVED_BY_ADMIN,
                 }
             );
 
@@ -1133,7 +1611,7 @@ export const rejectBooking = functions.https.onCall(
 
             const bookingData = bookingDoc.data();
             
-            if (bookingData?.status !== BOOKING_STATUS.PENDING_ADMIN_APPROVAL) {
+            if (bookingData?.bookingStatus !== BOOKING_STATUS.PENDING_ADMIN_APPROVAL) {
                 throw new functions.https.HttpsError(
                     'failed-precondition',
                     `Booking status must be ${BOOKING_STATUS.PENDING_ADMIN_APPROVAL}`
@@ -1143,7 +1621,7 @@ export const rejectBooking = functions.https.onCall(
             // Update booking status
             await db.runTransaction(async (transaction) => {
                 transaction.update(bookingRef, {
-                    status: BOOKING_STATUS.REJECTED,
+                    bookingStatus: BOOKING_STATUS.REJECTED,
                     rejectedByAdmin: true,
                     rejectionReason: reason || 'Rejected by admin',
                     rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1157,7 +1635,7 @@ export const rejectBooking = functions.https.onCall(
                 'booking_rejected',
                 bookingId,
                 {
-                    previousStatus: bookingData?.status,
+                    previousStatus: bookingData?.bookingStatus,
                     newStatus: BOOKING_STATUS.REJECTED,
                     reason: reason || 'No reason provided',
                 }
@@ -1215,7 +1693,7 @@ export const markBookingActive = functions.https.onCall(
 
             const bookingData = bookingDoc.data();
             
-            if (bookingData?.status !== BOOKING_STATUS.TECHNICIAN_ACCEPTED) {
+            if (bookingData?.bookingStatus !== BOOKING_STATUS.TECHNICIAN_ACCEPTED) {
                 throw new functions.https.HttpsError(
                     'failed-precondition',
                     `Booking status must be ${BOOKING_STATUS.TECHNICIAN_ACCEPTED}`
@@ -1225,7 +1703,7 @@ export const markBookingActive = functions.https.onCall(
             // Update booking status
             await db.runTransaction(async (transaction) => {
                 transaction.update(bookingRef, {
-                    status: BOOKING_STATUS.IN_PROGRESS,
+                    bookingStatus: BOOKING_STATUS.SERVICE_IN_PROGRESS,
                     serviceStartedAt: admin.firestore.FieldValue.serverTimestamp(),
                     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 });
@@ -1237,8 +1715,8 @@ export const markBookingActive = functions.https.onCall(
                 'booking_started',
                 bookingId,
                 {
-                    previousStatus: bookingData?.status,
-                    newStatus: BOOKING_STATUS.IN_PROGRESS,
+                    previousStatus: bookingData?.bookingStatus,
+                    newStatus: BOOKING_STATUS.SERVICE_IN_PROGRESS,
                 }
             );
 
@@ -1294,17 +1772,17 @@ export const completeBooking = functions.https.onCall(
 
             const bookingData = bookingDoc.data();
             
-            if (bookingData?.status !== BOOKING_STATUS.IN_PROGRESS) {
+            if (bookingData?.bookingStatus !== BOOKING_STATUS.SERVICE_IN_PROGRESS) {
                 throw new functions.https.HttpsError(
                     'failed-precondition',
-                    `Booking status must be ${BOOKING_STATUS.IN_PROGRESS}`
+                    `Booking status must be ${BOOKING_STATUS.SERVICE_IN_PROGRESS}`
                 );
             }
 
             // Update booking status
             await db.runTransaction(async (transaction) => {
                 transaction.update(bookingRef, {
-                    status: BOOKING_STATUS.COMPLETED,
+                    bookingStatus: BOOKING_STATUS.SERVICE_COMPLETED,
                     completedAt: admin.firestore.FieldValue.serverTimestamp(),
                     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 });
@@ -1316,8 +1794,8 @@ export const completeBooking = functions.https.onCall(
                 'booking_completed',
                 bookingId,
                 {
-                    previousStatus: bookingData?.status,
-                    newStatus: BOOKING_STATUS.COMPLETED,
+                    previousStatus: bookingData?.bookingStatus,
+                    newStatus: BOOKING_STATUS.SERVICE_COMPLETED,
                 }
             );
 

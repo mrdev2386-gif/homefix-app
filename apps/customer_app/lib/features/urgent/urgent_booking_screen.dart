@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/models/address.dart';
 import '../../core/services/firestore_service.dart';
@@ -346,22 +347,15 @@ class _UrgentBookingScreenState extends State<UrgentBookingScreen> {
         builder: (context) => const Center(child: CircularProgressIndicator()),
       );
 
-      final bookingData = {
-        'customerId': user.uid,
+      // Use Cloud Function instead of direct Firestore write
+      final callable = FirebaseFunctions.instance.httpsCallable('createUrgentBooking');
+      await callable.call({
         'technicianId': techId,
         'technicianName': techData['name'] ?? 'Unknown',
         'serviceType': (techData['skills'] as List<dynamic>?)?.first ?? 'General Service',
-        'status': 'pending',
-        'isUrgent': true,
+        'district': _userDistrict,
         'urgentFee': 100,
-        'district': _userDistrict, // Use the validated district
-        'scheduledDate': DateTime.now().toIso8601String(),
-        'scheduledTime': 'ASAP',
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-
-      await FirebaseFirestore.instance.collection('bookings').add(bookingData);
+      });
 
       if (mounted) {
         Navigator.pop(context);

@@ -1,16 +1,21 @@
 import 'package:flutter/foundation.dart';
 
-/// Valid booking statuses (NEW FLOW)
+/// Valid booking statuses (STANDARDIZED)
 const List<String> validBookingStatuses = [
+  'pending_admin_approval',
+  'approved_by_admin',
+  'technician_accepted',
+  'service_in_progress',
+  'service_completed',
+  'rejected',
+  // Legacy statuses for backward compatibility
   'pending_admin_review',
   'admin_approved',
-  'technician_accepted',
   'awaiting_payment',
   'confirmed',
   'in_progress',
   'completed',
   'cancelled',
-  // Legacy statuses for backward compatibility
   'pending',
   'accepted',
   'on_the_way',
@@ -45,20 +50,26 @@ bool isValidBookingStatus(String? status) {
 String getBookingStatusDisplayName(String status) {
   final sanitized = sanitizeBookingStatus(status);
   switch (sanitized) {
+    case 'pending_admin_approval':
     case 'pending_admin_review':
-      return 'Pending Admin Review';
+      return 'Pending Admin Approval';
+    case 'approved_by_admin':
     case 'admin_approved':
-      return 'Admin Approved';
+      return 'Approved by Admin';
     case 'technician_accepted':
       return 'Technician Accepted';
+    case 'service_in_progress':
+    case 'in_progress':
+      return 'Service in Progress';
+    case 'service_completed':
+    case 'completed':
+      return 'Service Completed';
+    case 'rejected':
+      return 'Rejected';
     case 'awaiting_payment':
       return 'Awaiting Payment';
     case 'confirmed':
       return 'Confirmed';
-    case 'in_progress':
-      return 'In Progress';
-    case 'completed':
-      return 'Completed';
     case 'cancelled':
       return 'Cancelled';
     // Legacy statuses

@@ -4,31 +4,31 @@
  */
 
 export const BOOKING_STATUS = {
-  PENDING_ADMIN_APPROVAL: 'PENDING_ADMIN_APPROVAL',
-  ADMIN_APPROVED: 'ADMIN_APPROVED',
-  TECHNICIAN_ACCEPTED: 'TECHNICIAN_ACCEPTED',
-  IN_PROGRESS: 'IN_PROGRESS',
-  COMPLETED: 'COMPLETED',
-  REJECTED: 'REJECTED',
+  PENDING_ADMIN_APPROVAL: 'pending_admin_approval',
+  APPROVED_BY_ADMIN: 'approved_by_admin',
+  TECHNICIAN_ACCEPTED: 'technician_accepted',
+  SERVICE_IN_PROGRESS: 'service_in_progress',
+  SERVICE_COMPLETED: 'service_completed',
+  REJECTED: 'rejected',
 } as const;
 
 export type BookingStatus = typeof BOOKING_STATUS[keyof typeof BOOKING_STATUS];
 
 export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
   [BOOKING_STATUS.PENDING_ADMIN_APPROVAL]: 'Pending Admin Approval',
-  [BOOKING_STATUS.ADMIN_APPROVED]: 'Admin Approved',
+  [BOOKING_STATUS.APPROVED_BY_ADMIN]: 'Approved by Admin',
   [BOOKING_STATUS.TECHNICIAN_ACCEPTED]: 'Technician Accepted',
-  [BOOKING_STATUS.IN_PROGRESS]: 'In Progress',
-  [BOOKING_STATUS.COMPLETED]: 'Completed',
+  [BOOKING_STATUS.SERVICE_IN_PROGRESS]: 'Service in Progress',
+  [BOOKING_STATUS.SERVICE_COMPLETED]: 'Service Completed',
   [BOOKING_STATUS.REJECTED]: 'Rejected',
 };
 
 export const BOOKING_STATUS_VARIANTS: Record<BookingStatus, 'success' | 'warning' | 'error' | 'info' | 'default'> = {
   [BOOKING_STATUS.PENDING_ADMIN_APPROVAL]: 'warning',
-  [BOOKING_STATUS.ADMIN_APPROVED]: 'info',
+  [BOOKING_STATUS.APPROVED_BY_ADMIN]: 'info',
   [BOOKING_STATUS.TECHNICIAN_ACCEPTED]: 'info',
-  [BOOKING_STATUS.IN_PROGRESS]: 'info',
-  [BOOKING_STATUS.COMPLETED]: 'success',
+  [BOOKING_STATUS.SERVICE_IN_PROGRESS]: 'info',
+  [BOOKING_STATUS.SERVICE_COMPLETED]: 'success',
   [BOOKING_STATUS.REJECTED]: 'error',
 };
 
@@ -39,18 +39,21 @@ export const BOOKING_STATUS_VARIANTS: Record<BookingStatus, 'success' | 'warning
 export function normalizeBookingStatus(status: string): BookingStatus {
   if (!status) return BOOKING_STATUS.PENDING_ADMIN_APPROVAL;
   
-  const normalized = status.toUpperCase().replace(/-/g, '_');
+  const normalized = status.toLowerCase().replace(/-/g, '_');
   
   // Map common variants to standard status
   const variantMap: Record<string, BookingStatus> = {
-    'PENDING_ADMIN_APPROVAL': BOOKING_STATUS.PENDING_ADMIN_APPROVAL,
-    'PENDING_ADMIN_REVIEW': BOOKING_STATUS.PENDING_ADMIN_APPROVAL,
-    'PENDING_ADMIN': BOOKING_STATUS.PENDING_ADMIN_APPROVAL,
-    'ADMIN_APPROVED': BOOKING_STATUS.ADMIN_APPROVED,
-    'TECHNICIAN_ACCEPTED': BOOKING_STATUS.TECHNICIAN_ACCEPTED,
-    'IN_PROGRESS': BOOKING_STATUS.IN_PROGRESS,
-    'COMPLETED': BOOKING_STATUS.COMPLETED,
-    'REJECTED': BOOKING_STATUS.REJECTED,
+    'pending_admin_approval': BOOKING_STATUS.PENDING_ADMIN_APPROVAL,
+    'pending_admin_review': BOOKING_STATUS.PENDING_ADMIN_APPROVAL,
+    'pending_admin': BOOKING_STATUS.PENDING_ADMIN_APPROVAL,
+    'approved_by_admin': BOOKING_STATUS.APPROVED_BY_ADMIN,
+    'admin_approved': BOOKING_STATUS.APPROVED_BY_ADMIN,
+    'technician_accepted': BOOKING_STATUS.TECHNICIAN_ACCEPTED,
+    'service_in_progress': BOOKING_STATUS.SERVICE_IN_PROGRESS,
+    'in_progress': BOOKING_STATUS.SERVICE_IN_PROGRESS,
+    'service_completed': BOOKING_STATUS.SERVICE_COMPLETED,
+    'completed': BOOKING_STATUS.SERVICE_COMPLETED,
+    'rejected': BOOKING_STATUS.REJECTED,
   };
   
   return variantMap[normalized] || (status as BookingStatus);
@@ -87,5 +90,5 @@ export function canMarkActive(status: string): boolean {
  */
 export function canMarkCompleted(status: string): boolean {
   const normalized = normalizeBookingStatus(status);
-  return normalized === BOOKING_STATUS.IN_PROGRESS;
+  return normalized === BOOKING_STATUS.SERVICE_IN_PROGRESS;
 }

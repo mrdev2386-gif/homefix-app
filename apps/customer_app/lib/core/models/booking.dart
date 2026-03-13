@@ -15,6 +15,7 @@ class Booking {
   final Map<String, dynamic> addressSnapshot;
   final String status;
   final String paymentStatus;
+  final String? paymentMode; // 'pay_before_work' or 'pay_after_work'
   final String? razorpayOrderId;
   final bool isRated;
   final String? ratingId;
@@ -22,6 +23,8 @@ class Booking {
   final String? couponCode;
   final double discountAmount;
   final double finalAmount;
+  final String? description;
+  final String? category;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -40,6 +43,7 @@ class Booking {
     required this.addressSnapshot,
     required this.status,
     this.paymentStatus = 'pending',
+    this.paymentMode,
     this.razorpayOrderId,
     this.isRated = false,
     this.ratingId,
@@ -47,6 +51,8 @@ class Booking {
     this.couponCode,
     this.discountAmount = 0.0,
     required this.finalAmount,
+    this.description,
+    this.category,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -59,8 +65,8 @@ class Booking {
       id: doc.id,
       customerId: (data['customerId'] ?? '').toString(),
       customerName: data['customerName']?.toString(),
-      technicianId: (data['assignedTechnicianId'] ?? data['technicianId'])?.toString(),
-      technicianName: (data['assignedTechnicianName'] ?? data['technicianName'])?.toString(),
+      technicianId: (data['technicianId'] ?? data['assignedTechnicianId'])?.toString(),
+      technicianName: (data['technicianName'] ?? data['assignedTechnicianName'])?.toString(),
       services: servicesList,
       serviceId: (data['serviceId'] ?? data['serviceKey'] ?? (servicesList.isNotEmpty ? servicesList[0]['id'] : '')).toString(),
       serviceTitle: (data['serviceTitle'] ?? data['serviceName'] ?? (servicesList.isNotEmpty ? servicesList[0]['name'] : 'Service')).toString(),
@@ -71,16 +77,19 @@ class Booking {
           ? (data['scheduledDate'] as Timestamp).toDate() 
           : null,
       scheduledTime: data['scheduledTime']?.toString(),
-      addressSnapshot: Map<String, dynamic>.from(data['addressSnapshot'] ?? {}),
-      status: (data['status'] ?? 'pending').toString(),
+      addressSnapshot: Map<String, dynamic>.from(data['addressSnapshot'] ?? data['address'] ?? {}),
+      status: (data['status'] ?? data['bookingStatus'] ?? 'pending').toString(),
       paymentStatus: (data['paymentStatus'] ?? 'pending').toString(),
+      paymentMode: data['paymentMode']?.toString(),
       razorpayOrderId: data['razorpayOrderId']?.toString(),
       isRated: data['isRated'] ?? false,
       ratingId: data['ratingId']?.toString(),
       price: double.tryParse((data['price'] ?? data['totalAmount'] ?? 0.0).toString()) ?? 0.0,
       couponCode: data['couponCode']?.toString(),
       discountAmount: double.tryParse((data['discountAmount'] ?? 0.0).toString()) ?? 0.0,
-      finalAmount: double.tryParse((data['finalAmount'] ?? 0.0).toString()) ?? 0.0,
+      finalAmount: double.tryParse((data['finalAmount'] ?? data['price'] ?? data['totalAmount'] ?? 0.0).toString()) ?? 0.0,
+      description: data['description']?.toString(),
+      category: data['category']?.toString(),
       createdAt: data['createdAt'] is Timestamp 
           ? (data['createdAt'] as Timestamp).toDate() 
           : DateTime.now(),
@@ -94,8 +103,8 @@ class Booking {
     return {
       'customerId': customerId,
       'customerName': customerName,
-      'assignedTechnicianId': technicianId,
-      'assignedTechnicianName': technicianName,
+      'technicianId': technicianId,
+      'technicianName': technicianName,
       'services': services,
       'serviceId': serviceId,
       'serviceTitle': serviceTitle,
@@ -105,6 +114,7 @@ class Booking {
       'addressSnapshot': addressSnapshot,
       'status': status,
       'paymentStatus': paymentStatus,
+      'paymentMode': paymentMode,
       'razorpayOrderId': razorpayOrderId,
       'isRated': isRated,
       'ratingId': ratingId,
@@ -112,6 +122,8 @@ class Booking {
       'couponCode': couponCode,
       'discountAmount': discountAmount,
       'finalAmount': finalAmount,
+      'description': description,
+      'category': category,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
     };

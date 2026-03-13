@@ -15,9 +15,13 @@ class Booking {
   final DateTime scheduledAt;
   final String scheduledTime;
   final String status;
+  final String paymentStatus;
+  final String? paymentMode; // 'pay_before_work' or 'pay_after_work'
   final double price;
   final double finalAmount;
   final Map<String, dynamic> addressSnapshot;
+  final String? category;
+  final String? description;
   final DateTime createdAt;
   final Map<String, dynamic>? quoteData;
 
@@ -37,9 +41,13 @@ class Booking {
     required this.scheduledAt,
     required this.scheduledTime,
     required this.status,
+    this.paymentStatus = 'unpaid',
+    this.paymentMode,
     required this.price,
     required this.finalAmount,
     required this.addressSnapshot,
+    this.category,
+    this.description,
     required this.createdAt,
     this.quoteData,
   });
@@ -51,20 +59,24 @@ class Booking {
       customerId: data['customerId'] ?? '',
       customerName: data['customerName'] ?? 'Customer',
       serviceId: data['serviceId'] ?? '',
-      serviceTitle: data['serviceTitle'] ?? '',
+      serviceTitle: data['serviceTitle'] ?? data['serviceName'] ?? '',
       serviceImage: data['serviceImage'],
-      problemDescription: data['problemDescription'],
-      assignedTechnicianId: data['assignedTechnicianId'],
-      assignedTechnicianName: data['assignedTechnicianName'],
+      problemDescription: data['problemDescription'] ?? data['description'],
+      assignedTechnicianId: data['technicianId'] ?? data['assignedTechnicianId'],
+      assignedTechnicianName: data['technicianName'] ?? data['assignedTechnicianName'],
       slotId: data['slotId'] ?? '',
       scheduledAt: data['scheduledAt'] != null 
           ? (data['scheduledAt'] as Timestamp).toDate() 
           : (data['scheduledDate'] != null ? (data['scheduledDate'] as Timestamp).toDate() : DateTime.now()),
       scheduledTime: data['scheduledTime'] ?? '',
-      status: FirestoreSafeParser.toSafeString(data['status'], fallback: 'pending'),
+      status: FirestoreSafeParser.toSafeString(data['status'] ?? data['bookingStatus'], fallback: 'pending'),
+      paymentStatus: FirestoreSafeParser.toSafeString(data['paymentStatus'], fallback: 'unpaid'),
+      paymentMode: data['paymentMode']?.toString(),
       price: FirestoreSafeParser.toSafeDouble(data['price']),
-      finalAmount: FirestoreSafeParser.toSafeDouble(data['finalAmount']),
+      finalAmount: FirestoreSafeParser.toSafeDouble(data['finalAmount'] ?? data['price']),
       addressSnapshot: FirestoreSafeParser.toSafeMap(data['addressSnapshot'] ?? data['address']),
+      category: data['category']?.toString(),
+      description: data['description']?.toString(),
       createdAt: data['createdAt'] != null ? (data['createdAt'] as Timestamp).toDate() : DateTime.now(),
       quoteData: data['quoteData'] != null ? Map<String, dynamic>.from(data['quoteData']) : null,
     );
@@ -79,15 +91,19 @@ class Booking {
       'serviceTitle': serviceTitle,
       'serviceImage': serviceImage,
       'problemDescription': problemDescription,
-      'assignedTechnicianId': assignedTechnicianId,
-      'assignedTechnicianName': assignedTechnicianName,
+      'technicianId': assignedTechnicianId,
+      'technicianName': assignedTechnicianName,
       'slotId': slotId,
       'scheduledAt': Timestamp.fromDate(scheduledAt),
       'scheduledTime': scheduledTime,
       'status': status,
+      'paymentStatus': paymentStatus,
+      'paymentMode': paymentMode,
       'price': price,
       'finalAmount': finalAmount,
       'addressSnapshot': addressSnapshot,
+      'category': category,
+      'description': description,
       'createdAt': Timestamp.fromDate(createdAt),
       'quoteData': quoteData,
     };

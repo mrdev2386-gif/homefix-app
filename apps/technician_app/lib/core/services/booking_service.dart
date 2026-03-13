@@ -9,11 +9,11 @@ class BookingService {
   final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
   /// NEW FLOW: Get pending bookings that need technician response
-  /// Status: admin_approved - admin approved, waiting for technician
+  /// Status: approved_by_admin - admin approved, waiting for technician
   Stream<List<Booking>> getPendingBookings(String techId) {
     return _db.collection('bookings')
         .where('technicianId', isEqualTo: techId)
-        .where('status', isEqualTo: 'admin_approved')
+        .where('bookingStatus', isEqualTo: 'approved_by_admin')
         .limit(20)
         .snapshots()
         .map((snapshot) {
@@ -34,7 +34,7 @@ class BookingService {
   Stream<List<Booking>> getAwaitingPaymentBookings(String techId) {
     return _db.collection('bookings')
         .where('technicianId', isEqualTo: techId)
-        .where('status', isEqualTo: 'awaiting_payment')
+        .where('bookingStatus', isEqualTo: 'awaiting_payment')
         .limit(20)
         .snapshots()
         .map((snapshot) {
@@ -57,7 +57,7 @@ class BookingService {
     
     return _db.collection('bookings')
         .where('assignedTechnicianId', isNull: true)
-        .where('status', whereIn: ['pending', 'confirmed'])
+        .where('bookingStatus', whereIn: ['pending', 'confirmed'])
         .limit(20)
         .snapshots()
         .map((snapshot) {
@@ -90,7 +90,7 @@ class BookingService {
   Stream<List<Booking>> getActiveBookings(String techId) {
     return _db.collection('bookings')
         .where('technicianId', isEqualTo: techId)
-        .where('status', whereIn: ['assigned', 'accepted', 'in_progress'])
+        .where('bookingStatus', whereIn: ['assigned', 'accepted', 'service_in_progress'])
         .snapshots()
         .map((snapshot) {
           return snapshot.docs

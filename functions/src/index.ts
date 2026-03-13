@@ -109,14 +109,15 @@ export { matchTechniciansV2 } from './matching/matchTechniciansV2';
 
 export const onStaleTechnicianCleanup = cleanupStaleTechnicianStatus;
 
-export {
-    createBookingRequest,
-    technicianRespondBooking,
-    customerConfirmPayment,
-    updateBookingStatusGeneric as updateBookingStatusNew,
-    updateBookingStatusGeneric as updateBookingStatus,
-    markWorkCompleted
-} from './booking/new_booking_flow';
+// Complete Booking Flow Functions
+import * as completeBookingFlow from './booking/complete_booking_flow';
+export const createBookingRequest = completeBookingFlow.createBookingRequest;
+export const approveBookingRequest = completeBookingFlow.approveBookingRequest;
+export const technicianRespondToJob = completeBookingFlow.technicianRespondToJob;
+export const payBeforeWork = completeBookingFlow.payBeforeWork;
+export const completeService = completeBookingFlow.completeService;
+export const confirmAfterWorkPayment = completeBookingFlow.confirmAfterWorkPayment;
+export const updateBookingStatus = completeBookingFlow.updateBookingStatus;
 
 // ==========================================
 // SECURE BOOKING LIFECYCLE FUNCTIONS
