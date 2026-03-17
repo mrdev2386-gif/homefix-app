@@ -1,41 +1,11 @@
 {
   "indexes": [
     {
-      "collectionGroup": "technician_services",
-      "queryScope": "COLLECTION",
+      "collectionGroup": "bookings",
+      "queryScope": "Collection",
       "fields": [
         {
-          "fieldPath": "technicianId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "isDeleted",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "technician_services",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "state",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "district",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "isActive",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "isDeleted",
+          "fieldPath": "bookingStatus",
           "order": "ASCENDING"
         },
         {
@@ -46,7 +16,7 @@
     },
     {
       "collectionGroup": "bookings",
-      "queryScope": "COLLECTION",
+      "queryScope": "Collection",
       "fields": [
         {
           "fieldPath": "customerId",
@@ -60,28 +30,10 @@
     },
     {
       "collectionGroup": "bookings",
-      "queryScope": "COLLECTION",
+      "queryScope": "Collection",
       "fields": [
         {
           "fieldPath": "technicianId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "bookings",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "technicianId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "bookingStatus",
           "order": "ASCENDING"
         },
         {
@@ -92,7 +44,67 @@
     },
     {
       "collectionGroup": "bookings",
-      "queryScope": "COLLECTION",
+      "queryScope": "Collection",
+      "fields": [
+        {
+          "fieldPath": "paymentStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "technicians",
+      "queryScope": "Collection",
+      "fields": [
+        {
+          "fieldPath": "verificationStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "avgRating",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "technicians",
+      "queryScope": "Collection",
+      "fields": [
+        {
+          "fieldPath": "city",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "avgRating",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "technicians",
+      "queryScope": "Collection",
+      "fields": [
+        {
+          "fieldPath": "isOnline",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "avgRating",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "technician_services",
+      "queryScope": "Collection",
       "fields": [
         {
           "fieldPath": "status",
@@ -105,36 +117,8 @@
       ]
     },
     {
-      "collectionGroup": "reviews",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "technicianId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "walletTransactions",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "userId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "technician_wallet_transactions",
-      "queryScope": "COLLECTION",
+      "collectionGroup": "technician_services",
+      "queryScope": "Collection",
       "fields": [
         {
           "fieldPath": "technicianId",
@@ -148,28 +132,98 @@
     },
     {
       "collectionGroup": "technician_services",
-      "queryScope": "COLLECTION",
+      "queryScope": "Collection",
       "fields": [
         {
           "fieldPath": "categoryId",
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "status",
-          "order": "ASCENDING"
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
         }
       ]
     },
     {
-      "collectionGroup": "bookings",
-      "queryScope": "COLLECTION",
+      "collectionGroup": "users",
+      "queryScope": "Collection",
       "fields": [
         {
-          "fieldPath": "paymentStatus",
+          "fieldPath": "city",
           "order": "ASCENDING"
         },
         {
           "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "Collection",
+      "fields": [
+        {
+          "fieldPath": "isSuspended",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "reviews",
+      "queryScope": "Collection",
+      "fields": [
+        {
+          "fieldPath": "technicianId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "reviews",
+      "queryScope": "Collection",
+      "fields": [
+        {
+          "fieldPath": "bookingId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "security_audit_logs",
+      "queryScope": "Collection",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "security_audit_logs",
+      "queryScope": "Collection",
+      "fields": [
+        {
+          "fieldPath": "eventType",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
           "order": "DESCENDING"
         }
       ]

@@ -96,10 +96,10 @@ export default function BookingDetailsPage() {
     const normalizedStatus = normalizeBookingStatus(b.status);
     return [
       { label: 'Booking Created', date: b.createdAt, completed: true },
-      { label: 'Admin Approved', date: b.adminApprovedAt, completed: [BOOKING_STATUS.ADMIN_APPROVED, BOOKING_STATUS.TECHNICIAN_ACCEPTED, BOOKING_STATUS.IN_PROGRESS, BOOKING_STATUS.COMPLETED].includes(normalizedStatus) },
-      { label: 'Technician Accepted', date: b.technicianAcceptedAt, completed: [BOOKING_STATUS.TECHNICIAN_ACCEPTED, BOOKING_STATUS.IN_PROGRESS, BOOKING_STATUS.COMPLETED].includes(normalizedStatus) },
-      { label: 'Service Started', date: b.serviceStartedAt, completed: [BOOKING_STATUS.IN_PROGRESS, BOOKING_STATUS.COMPLETED].includes(normalizedStatus) },
-      { label: 'Service Completed', date: b.completedAt, completed: normalizedStatus === BOOKING_STATUS.COMPLETED },
+      { label: 'Admin Approved', date: b.adminApprovedAt, completed: ([BOOKING_STATUS.APPROVED_BY_ADMIN, BOOKING_STATUS.TECHNICIAN_ACCEPTED, BOOKING_STATUS.SERVICE_IN_PROGRESS, BOOKING_STATUS.SERVICE_COMPLETED] as any[]).includes(normalizedStatus) },
+      { label: 'Technician Accepted', date: b.technicianAcceptedAt, completed: ([BOOKING_STATUS.TECHNICIAN_ACCEPTED, BOOKING_STATUS.SERVICE_IN_PROGRESS, BOOKING_STATUS.SERVICE_COMPLETED] as any[]).includes(normalizedStatus) },
+      { label: 'Service Started', date: b.serviceStartedAt, completed: ([BOOKING_STATUS.SERVICE_IN_PROGRESS, BOOKING_STATUS.SERVICE_COMPLETED] as any[]).includes(normalizedStatus) },
+      { label: 'Service Completed', date: b.completedAt, completed: normalizedStatus === BOOKING_STATUS.SERVICE_COMPLETED },
     ];
   };
 
@@ -344,18 +344,9 @@ export default function BookingDetailsPage() {
                 </h3>
                 <div className="space-y-2">
                   <p className="text-sm text-[#E5E7EB]">
-                    {typeof booking.customerAddress === 'string' 
-                      ? booking.customerAddress 
-                      : booking.customerAddress.fullAddress || booking.customerAddress.addressLine || 'Address not available'
-                    }
+                    {booking.customerAddress || 'Address not available'}
                   </p>
                   {booking.city && <p className="text-sm text-[#9CA3AF] flex items-center gap-2"><Building size={14} />{booking.city}</p>}
-                  {typeof booking.customerAddress === 'object' && booking.customerAddress.city && (
-                    <p className="text-sm text-[#9CA3AF] flex items-center gap-2"><Building size={14} />{booking.customerAddress.city}, {booking.customerAddress.district}</p>
-                  )}
-                  {typeof booking.customerAddress === 'object' && booking.customerAddress.landmark && (
-                    <p className="text-xs text-[#6B7280]">Landmark: {booking.customerAddress.landmark}</p>
-                  )}
                 </div>
               </div>
             )}

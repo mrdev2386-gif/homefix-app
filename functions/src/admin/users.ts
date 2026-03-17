@@ -1,13 +1,14 @@
-
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { db } from '../shared/config';
 import { assertAdmin, logAdminAction } from './utils';
+import { secureCallable, sanitize } from '../shared/security';
 
 /**
  * Get paginated and filtered list of users
  */
-export const getUsers = functions.https.onCall(async (data, context) => {
+export const getUsers = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
         const { limit = 10, offset = 0, role, status, search } = data;
@@ -32,12 +33,12 @@ export const getUsers = functions.https.onCall(async (data, context) => {
         let users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
         if (search) {
-            const lowerSearch = search.toLowerCase();
+            const lowerSearch = sanitize(search).toLowerCase();
             users = users.filter((u: any) =>
                 u.name?.toLowerCase().includes(lowerSearch) ||
                 u.email?.toLowerCase().includes(lowerSearch) ||
-                u.phone?.includes(search) ||
-                u.id.includes(search)
+                u.phone?.includes(lowerSearch) ||
+                u.id.includes(lowerSearch)
             );
         }
 
@@ -55,12 +56,14 @@ export const getUsers = functions.https.onCall(async (data, context) => {
         if (error instanceof functions.https.HttpsError) throw error;
         throw new functions.https.HttpsError('internal', error.message || 'Failed to fetch users');
     }
-});
+  })
+);
 
 /**
  * Get full details of a single user
  */
-export const getUserById = functions.https.onCall(async (data, context) => {
+export const getUserById = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
         const { userId } = data;
@@ -99,12 +102,14 @@ export const getUserById = functions.https.onCall(async (data, context) => {
         if (error instanceof functions.https.HttpsError) throw error;
         throw new functions.https.HttpsError('internal', error.message || 'Failed to fetch user details');
     }
-});
+  })
+);
 
 /**
  * Update user fields (Name, Role, Status)
  */
-export const updateUser = functions.https.onCall(async (data, context) => {
+export const updateUser = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
         const { userId, updates } = data;
@@ -124,7 +129,7 @@ export const updateUser = functions.https.onCall(async (data, context) => {
 
         for (const field of allowedFields) {
             if (updates[field] !== undefined) {
-                cleanUpdates[field] = updates[field];
+                cleanUpdates[field] = (typeof updates[field] === 'string') ? sanitize(updates[field]) : updates[field];
             }
         }
 
@@ -137,12 +142,14 @@ export const updateUser = functions.https.onCall(async (data, context) => {
         if (error instanceof functions.https.HttpsError) throw error;
         throw new functions.https.HttpsError('internal', error.message || 'Failed to update user');
     }
-});
+  })
+);
 
 /**
  * Block or Unblock a user
  */
-export const blockUser = functions.https.onCall(async (data, context) => {
+export const blockUser = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
         const { userId, block } = data;
@@ -166,10 +173,12 @@ export const blockUser = functions.https.onCall(async (data, context) => {
         if (error instanceof functions.https.HttpsError) throw error;
         throw new functions.https.HttpsError('internal', error.message || 'Failed to update user status');
     }
-});
+  })
+);
 
 // Keep legacy manageUser for backward compatibility if needed, but we'll use the new ones
-export const manageUser = functions.https.onCall(async (data, context) => {
+export const manageUser = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
         
@@ -201,7 +210,7 @@ export const manageUser = functions.https.onCall(async (data, context) => {
             updates.isBlocked = isBlocked;
             updates.suspended = isBlocked;
             if (isBlocked && reason) {
-                updates.suspensionReason = reason;
+                updates.suspensionReason = sanitize(reason);
                 updates.suspendedAt = admin.firestore.FieldValue.serverTimestamp();
                 updates.suspendedBy = context.auth!.uid;
             }
@@ -214,7 +223,7 @@ export const manageUser = functions.https.onCall(async (data, context) => {
         }
 
         await ref.update(updates);
-        await logAdminAction(context.auth!.uid, `user_${action}`, userId, { type, reason });
+        await logAdminAction(context.auth!.uid, `user_${action}`, userId, { type, reason: sanitize(reason) });
 
         console.log('[manageUser] Success:', { userId, action, updates });
         return { success: true };
@@ -223,4 +232,5 @@ export const manageUser = functions.https.onCall(async (data, context) => {
         if (error instanceof functions.https.HttpsError) throw error;
         throw new functions.https.HttpsError('internal', error.message || 'Failed to manage user');
     }
-});
+  })
+);

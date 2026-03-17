@@ -52,7 +52,7 @@ export default function BookingApprovalsPage() {
   const [rejectionReason, setRejectionReason] = useState('');
 
   const itemsPerPage = 20;
-  const districts = [...new Set(bookings.map(booking => booking.district))];
+  const districts = Array.from(new Set(bookings.map(booking => booking.district)));
 
   useEffect(() => {
     const q = query(

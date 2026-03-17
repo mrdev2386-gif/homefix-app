@@ -5,8 +5,13 @@ import 'package:flutter/foundation.dart';
 import '../models/technician.dart';
 
 class TechnicianService {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  late final FirebaseFirestore _db;
+  late final FirebaseFunctions _functions;
+
+  TechnicianService() {
+    _db = FirebaseFirestore.instance;
+    _functions = FirebaseFunctions.instance;
+  }
 
   Future<void> saveTechnicianProfile(User user, {
     required List<String> skills,

@@ -1,7 +1,7 @@
 
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import { assertAuthenticated } from '../shared/security';
+import { verifyAdmin } from '../shared/security_audit';
 
 const db = admin.firestore();
 

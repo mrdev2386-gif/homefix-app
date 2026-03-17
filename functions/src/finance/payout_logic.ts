@@ -16,7 +16,7 @@ async function getRazorpay() {
         key_secret: razorpayKeySecret || 'placeholder_secret',
     });
 }
-import { assertAdmin, logAdminAction } from '../admin/utils';
+import { assertAdmin, logAdminAction } from '../shared/utils';
 import { sendUserNotification, notifyTechnicianPayoutProcessed, notifyCustomerBookingCancelled } from '../shared/notification_helper';
 import * as notify from '../shared/notification_helper';
 

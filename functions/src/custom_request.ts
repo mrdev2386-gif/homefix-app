@@ -1,6 +1,7 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { checkRateLimit } from './shared/utils';
+import { secureCallable, sanitize } from './shared/security';
 
 if (!admin.apps.length) {
   admin.initializeApp();
@@ -72,7 +73,7 @@ interface CreateCustomRequestData {
 }
 
 export const createCustomServiceRequest = functions.https.onCall(
-  async (data: CreateCustomRequestData, context: functions.https.CallableContext) => {
+  secureCallable(async (data: CreateCustomRequestData, context: functions.https.CallableContext) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
 
   const customerId = context.auth.uid;
@@ -143,7 +144,8 @@ export const createCustomServiceRequest = functions.https.onCall(
     await sendNotification('admin', 'admin', 'New Custom Request', `A new custom request from ${district} requires review.`);
     return result;
   });
-});
+})
+);
 
 // ==========================================
 // 2. ADMIN APPROVE SERVICE REQUEST
@@ -157,7 +159,7 @@ interface AdminApproveData {
 }
 
 export const adminApproveServiceRequest = functions.https.onCall(
-  async (data: AdminApproveData, context: functions.https.CallableContext) => {
+  secureCallable(async (data: AdminApproveData, context: functions.https.CallableContext) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Unauthenticated');
   if (!(await isAdmin(context.auth.uid))) throw new functions.https.HttpsError('permission-denied', 'Admin access required');
 
@@ -207,13 +209,14 @@ export const adminApproveServiceRequest = functions.https.onCall(
   } else {
     await requestRef.update({
       status: 'admin_rejected',
-      rejectionReason: rejectionReason || 'Rejected by admin',
+      rejectionReason: sanitize(rejectionReason) || 'Rejected by admin',
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     await sendNotification(request.customerId, 'customer', 'Request Update', 'Your custom request was not approved by admin.');
     return { success: true, message: 'Request rejected' };
   }
-});
+  })
+);
 
 // ==========================================
 // 3. TECHNICIAN RESPOND SERVICE REQUEST
@@ -226,7 +229,7 @@ interface TechnicianRespondData {
 }
 
 export const technicianRespondServiceRequest = functions.https.onCall(
-  async (data: TechnicianRespondData, context: functions.https.CallableContext) => {
+  secureCallable(async (data: TechnicianRespondData, context: functions.https.CallableContext) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Unauthenticated');
   const technicianId = context.auth.uid;
   const { requestId, action, rejectionReason } = data;
@@ -250,13 +253,14 @@ export const technicianRespondServiceRequest = functions.https.onCall(
   } else {
     await requestRef.update({
       status: 'technician_rejected',
-      rejectionReason: rejectionReason || 'Technician declined',
+      rejectionReason: sanitize(rejectionReason) || 'Technician declined',
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     await sendNotification('admin', 'admin', 'Technician Rejected Request', `Technician rejected the request for ${request.district}.`);
     return { success: true, message: 'Request rejected' };
   }
-});
+  })
+);
 
 // ==========================================
 // 4. CUSTOMER CONFIRM SERVICE PAYMENT
@@ -268,7 +272,7 @@ interface CustomerPaymentData {
 }
 
 export const customerConfirmServicePayment = functions.https.onCall(
-  async (data: CustomerPaymentData, context: functions.https.CallableContext) => {
+  secureCallable(async (data: CustomerPaymentData, context: functions.https.CallableContext) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Unauthenticated');
   const customerId = context.auth.uid;
   const { requestId, paymentMethod } = data;
@@ -302,13 +306,14 @@ export const customerConfirmServicePayment = functions.https.onCall(
 
   await sendNotification(request.technicianId, 'technician', 'Booking Confirmed!', 'The customer has confirmed the booking. You can start the job.');
   return { success: true, message: 'Booking confirmed' };
-});
+})
+);
 
 /**
  * Technician: Get inbox of assigned custom requests
  */
 export const getTechnicianInbox = functions.https.onCall(
-  async (data: { limit?: number; startAfter?: string }, context: functions.https.CallableContext) => {
+  secureCallable(async (data: { limit?: number; startAfter?: string }, context: functions.https.CallableContext) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Unauthenticated');
   const technicianId = context.auth.uid;
   const limit = data.limit || 20;
@@ -333,13 +338,14 @@ export const getTechnicianInbox = functions.https.onCall(
   }));
 
   return { success: true, requests };
-});
+})
+);
 
 /**
  * Get details of a single custom request
  */
 export const getCustomRequestDetail = functions.https.onCall(
-  async (data: { requestId: string }, context: functions.https.CallableContext) => {
+  secureCallable(async (data: { requestId: string }, context: functions.https.CallableContext) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Unauthenticated');
   const uid = context.auth.uid;
   const { requestId } = data;
@@ -360,4 +366,5 @@ export const getCustomRequestDetail = functions.https.onCall(
   }
 
   return { success: true, request };
-});
+})
+);

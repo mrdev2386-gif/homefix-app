@@ -1,10 +1,11 @@
-
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import { secureCallable, sanitize } from '../shared/security';
 
 const db = admin.firestore();
 
-export const manageRiskProfile = functions.https.onCall(async (data, context) => {
+export const manageRiskProfile = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
 
     // Verify Admin via Claims
@@ -31,7 +32,7 @@ export const manageRiskProfile = functions.https.onCall(async (data, context) =>
                     status: 'normal',
                     flags: [],
                     lastEvaluatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                    metadata: { lastResetBy: context.auth!.uid, reason }
+                    metadata: { lastResetBy: context.auth!.uid, reason: sanitize(reason) }
                 }, { merge: true });
             } else if (action === 'update_status') {
                 if (!newStatus) throw new functions.https.HttpsError('invalid-argument', 'Missing newStatus');
@@ -49,7 +50,7 @@ export const manageRiskProfile = functions.https.onCall(async (data, context) =>
                 actorUid: context.auth!.uid,
                 action: `risk_${action}`,
                 entityId,
-                metadata: { reason, newStatus },
+                metadata: { reason: sanitize(reason), newStatus },
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
         });
@@ -59,4 +60,5 @@ export const manageRiskProfile = functions.https.onCall(async (data, context) =>
         console.error('Manage Risk Profile Error:', e);
         throw new functions.https.HttpsError('internal', e.message);
     }
-});
+  })
+);

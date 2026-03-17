@@ -1,12 +1,14 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import { secureCallable } from './shared/security';
 
 const db = admin.firestore();
 
 /**
  * Marks a specific notification as read
  */
-export const markNotificationRead = functions.https.onCall(async (data, context) => {
+export const markNotificationRead = functions.https.onCall(
+    secureCallable(async (data, context) => {
     const uid = context.auth?.uid;
     if (!uid) throw new functions.https.HttpsError('unauthenticated', 'User not logged in');
 
@@ -21,12 +23,14 @@ export const markNotificationRead = functions.https.onCall(async (data, context)
 
     await notifRef.update({ isRead: true, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
     return { success: true };
-});
+  })
+);
 
 /**
  * Marks all notifications for the current user as read
  */
-export const markAllNotificationsRead = functions.https.onCall(async (data, context) => {
+export const markAllNotificationsRead = functions.https.onCall(
+    secureCallable(async (data, context) => {
     const uid = context.auth?.uid;
     if (!uid) throw new functions.https.HttpsError('unauthenticated', 'User not logged in');
 
@@ -42,12 +46,14 @@ export const markAllNotificationsRead = functions.https.onCall(async (data, cont
 
     if (!snapshot.empty) await batch.commit();
     return { success: true, count: snapshot.size };
-});
+  })
+);
 
 /**
  * Deletes a specific notification
  */
-export const deleteNotificationCallable = functions.https.onCall(async (data, context) => {
+export const deleteNotificationCallable = functions.https.onCall(
+    secureCallable(async (data, context) => {
     const uid = context.auth?.uid;
     if (!uid) throw new functions.https.HttpsError('unauthenticated', 'User not logged in');
 
@@ -62,12 +68,14 @@ export const deleteNotificationCallable = functions.https.onCall(async (data, co
 
     await notifRef.delete();
     return { success: true };
-});
+  })
+);
 
 /**
  * Deletes all notifications for the current user
  */
-export const deleteAllNotificationsCallable = functions.https.onCall(async (data, context) => {
+export const deleteAllNotificationsCallable = functions.https.onCall(
+    secureCallable(async (data, context) => {
     const uid = context.auth?.uid;
     if (!uid) throw new functions.https.HttpsError('unauthenticated', 'User not logged in');
 
@@ -82,4 +90,5 @@ export const deleteAllNotificationsCallable = functions.https.onCall(async (data
 
     if (!snapshot.empty) await batch.commit();
     return { success: true, count: snapshot.size };
-});
+  })
+);

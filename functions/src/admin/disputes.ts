@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import { secureCallable, sanitize } from '../shared/security';
 
 const db = admin.firestore();
 
@@ -9,7 +10,8 @@ async function assertAdmin(context: functions.https.CallableContext) {
     if (!adminDoc.exists) throw new functions.https.HttpsError('permission-denied', 'Admin access required');
 }
 
-export const manageDispute = functions.https.onCall(async (data, context) => {
+export const manageDispute = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     await assertAdmin(context);
     const { disputeId, action, notes, amount } = data;
     if (!disputeId || !action) throw new functions.https.HttpsError('invalid-argument', 'Missing disputeId or action');
@@ -21,7 +23,7 @@ export const manageDispute = functions.https.onCall(async (data, context) => {
     const dispute = disputeDoc.data()!;
     const updates: any = {
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        adminNotes: notes || dispute.adminNotes || ''
+        adminNotes: sanitize(notes) || dispute.adminNotes || ''
     };
 
     switch (action) {
@@ -78,4 +80,5 @@ export const manageDispute = functions.https.onCall(async (data, context) => {
     });
 
     return { success: true };
-});
+    })
+);

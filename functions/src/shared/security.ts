@@ -1,115 +1,112 @@
 
-import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
-import * as crypto from 'crypto';
+import { logger } from './utils';
 
-const db = admin.firestore();
+/**
+ * Production Security & Hardening Layer
+ */
 
-// Environment variable for encryption key
-const ENCRYPTION_KEY_SECRET = process.env.SECURITY_SECRET || 'default_secret_key_change_me_in_prod';
+/**
+ * Enforce App Check on all incoming requests
+ */
+export function enforceAppCheck(context: functions.https.CallableContext) {
+    if (!context.app) {
+        logger.warn('APP_CHECK_MISSING', { 
+            uid: context.auth?.uid,
+            ip: context.rawRequest?.ip 
+        });
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            'App Check token required'
+        );
+    }
+}
 
-// --- RATE LIMITING ---
-
-export async function checkRateLimit(uid: string, action: string, limit: number, windowMs: number) {
-    const now = Date.now();
-    const rateLimitRef = db.collection('rate_limits').doc(`${uid}_${action}`);
-    const doc = await rateLimitRef.get();
-
-    if (doc.exists) {
-        const data = doc.data()!;
-        if (now - data.lastReset < windowMs) {
-            if (data.count >= limit) {
-                throw new functions.https.HttpsError('resource-exhausted', 'Rate limit exceeded. Try again later.');
+/**
+ * Sanitize user input strings
+ */
+export function sanitize(text: any): any {
+    if (typeof text !== 'string') {
+        if (text && typeof text === 'object') {
+            const sanitizedObj: any = {};
+            for (const key in text) {
+                sanitizedObj[key] = sanitize(text[key]);
             }
-            await rateLimitRef.update({ count: admin.firestore.FieldValue.increment(1) });
-        } else {
-            await rateLimitRef.set({ count: 1, lastReset: now });
+            return sanitizedObj;
         }
-    } else {
-        await rateLimitRef.set({ count: 1, lastReset: now });
+        return text;
     }
+
+    // Remove scripts, HTML tags, and dangerous characters
+    return text
+        .replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gim, "")
+        .replace(/<[^>]*>?/gm, "")
+        .trim();
 }
-
-// --- ENCRYPTION ---
-
-// Use a fixed key from config or environment for demo purposes. 
-// In production, use Google Cloud KMS.
-// We'll use a 32-byte key derived from a config secret or default.
-const ENCRYPTION_KEY = crypto.scryptSync(ENCRYPTION_KEY_SECRET, 'salt', 32);
-const IV_LENGTH = 16;
-
-export function encrypt(text: string): string {
-    const iv = crypto.randomBytes(IV_LENGTH);
-    const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
-    let encrypted = cipher.update(text);
-    encrypted = Buffer.concat([encrypted, cipher.final()]);
-    return iv.toString('hex') + ':' + encrypted.toString('hex');
-}
-
-export function decrypt(text: string): string {
-    const textParts = text.split(':');
-    const iv = Buffer.from(textParts.shift()!, 'hex');
-    const encryptedText = Buffer.from(textParts.join(':'), 'hex');
-    const decipher = crypto.createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
-    let decrypted = decipher.update(encryptedText);
-    decrypted = Buffer.concat([decrypted, decipher.final()]);
-    return decrypted.toString();
-}
-
-// --- INPUT SANITIZATION ---
 
 /**
- * Sanitize string input to prevent XSS
+ * Standardized High-Performance Function Wrapper
+ * - Enforces App Check
+ * - Standardizes Error Handling
+ * - Provides Structured Logging
  */
-export function sanitizeString(input: string, maxLength: number = 500): string {
-    if (!input) return '';
+export function secureCallable(
+    handler: (data: any, context: functions.https.CallableContext) => Promise<any>
+) {
+    return async (data: any, context: functions.https.CallableContext) => {
+        const functionName = context.rawRequest?.url?.split('/').pop() || 'unknown';
+        
+        try {
+            // 1. App Check Enforcement
+            enforceAppCheck(context);
+
+            // 2. Structured Start Log
+            logger.info(`${functionName}_start`, { 
+                uid: context.auth?.uid,
+                params: sanitizeParams(data)
+            });
+
+            // 3. Execute Handler
+            const result = await handler(data, context);
+
+            // 4. Structured Success Log
+            logger.info(`${functionName}_success`, { uid: context.auth?.uid });
+
+            return result;
+        } catch (error: any) {
+            // 5. Standardized Error Response
+            if (error instanceof functions.https.HttpsError) {
+                logger.warn(`${functionName}_error`, { 
+                    code: error.code, 
+                    message: error.message,
+                    uid: context.auth?.uid 
+                });
+                throw error;
+            }
+
+            // 6. Fallback Unhandled Error
+            logger.error(`${functionName}_failure`, { uid: context.auth?.uid }, error);
+            throw new functions.https.HttpsError(
+                'internal',
+                'An unexpected error occurred. Please try again later.'
+            );
+        }
+    };
+}
+
+/**
+ * Internal helper to sanitize params for logging (hide PII)
+ */
+function sanitizeParams(data: any): any {
+    if (!data || typeof data !== 'object') return data;
+    const sanitized = { ...data };
+    const piiFields = ['phone', 'email', 'address', 'token', 'password', 'paymentId'];
     
-    return input
-        .trim()
-        .replace(/[<>]/g, '') // Remove HTML tags
-        .replace(/[^\w\s\-.,!?@#$%&*()]/g, '') // Remove special chars except common punctuation
-        .substring(0, maxLength);
-}
-
-/**
- * Sanitize Aadhaar number (digits only)
- */
-export function sanitizeAadhaar(aadhaar: string): string {
-    if (!aadhaar) return '';
-    return aadhaar.replace(/[^0-9]/g, '').substring(0, 12);
-}
-
-/**
- * Sanitize email
- */
-export function sanitizeEmail(email: string): string {
-    if (!email) return '';
-    return email.trim().toLowerCase().substring(0, 100);
-}
-
-/**
- * Sanitize phone number (digits only)
- */
-export function sanitizePhone(phone: string): string {
-    if (!phone) return '';
-    return phone.replace(/[^0-9+]/g, '').substring(0, 15);
-}
-
-// --- AUTH HELPERS ---
-
-export function assertAuthenticated(context: functions.https.CallableContext) {
-    if (!context.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
-    }
-}
-
-export async function assertAdmin(context: functions.https.CallableContext) {
-    if (!context.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
-    }
+    piiFields.forEach(field => {
+        if (field in sanitized) {
+            sanitized[field] = '***REDACTED***';
+        }
+    });
     
-    // Use custom claims for admin verification
-    if (!context.auth.token?.admin) {
-        throw new functions.https.HttpsError('permission-denied', 'Admin access required');
-    }
+    return sanitized;
 }

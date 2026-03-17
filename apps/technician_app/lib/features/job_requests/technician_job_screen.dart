@@ -47,7 +47,7 @@ class _TechnicianJobScreenState extends State<TechnicianJobScreen> {
         stream: FirebaseFirestore.instance
             .collection('bookings')
             .where('technicianId', isEqualTo: uid)
-            .where('bookingStatus', isEqualTo: 'approved_by_admin')
+            .where('status', whereIn: ['ASSIGNED', 'approved_by_admin'])
             .orderBy('createdAt', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
@@ -257,6 +257,12 @@ class _TechnicianJobScreenState extends State<TechnicianJobScreen> {
     String displayText;
 
     switch (status.toLowerCase()) {
+      case 'assigned':
+      case 'ASSIGNED':
+        backgroundColor = const Color(0xFFEEF2FF);
+        textColor = const Color(0xFF6366F1);
+        displayText = 'New Job';
+        break;
       case 'approved_by_admin':
         backgroundColor = const Color(0xFFEEF2FF);
         textColor = const Color(0xFF6366F1);
@@ -365,7 +371,7 @@ class _TechnicianJobScreenState extends State<TechnicianJobScreen> {
   }
 
   Widget _buildActionButtons(Booking booking) {
-    if (booking.status == 'approved_by_admin') {
+    if (booking.status == 'approved_by_admin' || booking.status == 'ASSIGNED') {
       return Row(
         children: [
           Expanded(

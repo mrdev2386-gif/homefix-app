@@ -5,15 +5,20 @@ import 'package:rxdart/rxdart.dart';
 import '../models/booking.dart';
 
 class BookingService {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  late final FirebaseFirestore _db;
+  late final FirebaseFunctions _functions;
+
+  BookingService() {
+    _db = FirebaseFirestore.instance;
+    _functions = FirebaseFunctions.instance;
+  }
 
   /// NEW FLOW: Get pending bookings that need technician response
-  /// Status: approved_by_admin - admin approved, waiting for technician
+  /// Status: ASSIGNED - admin approved, waiting for technician
   Stream<List<Booking>> getPendingBookings(String techId) {
     return _db.collection('bookings')
         .where('technicianId', isEqualTo: techId)
-        .where('bookingStatus', isEqualTo: 'approved_by_admin')
+        .where('status', whereIn: ['ASSIGNED', 'approved_by_admin'])
         .limit(20)
         .snapshots()
         .map((snapshot) {
@@ -90,7 +95,7 @@ class BookingService {
   Stream<List<Booking>> getActiveBookings(String techId) {
     return _db.collection('bookings')
         .where('technicianId', isEqualTo: techId)
-        .where('bookingStatus', whereIn: ['assigned', 'accepted', 'service_in_progress'])
+        .where('status', whereIn: ['ASSIGNED', 'assigned', 'accepted', 'service_in_progress'])
         .snapshots()
         .map((snapshot) {
           return snapshot.docs

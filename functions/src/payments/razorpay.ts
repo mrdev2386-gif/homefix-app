@@ -28,6 +28,8 @@ import { Booking } from '../shared/models';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import { sendPushNotification } from '../shared/notifications';
+import { secureCallable } from '../shared/security';
+import { logger } from '../shared/utils';
 
 // Environment variables for Razorpay configuration
 const razorpayKeyId = process.env.RAZORPAY_KEY_ID || '';
@@ -112,7 +114,8 @@ async function createRazorpayOrderDoc(
  * 
  * Called by: Technician app to add money to wallet
  */
-export const createRazorpayOrder = functions.https.onCall(async (data, context) => {
+export const createRazorpayOrder = functions.https.onCall(
+    secureCallable(async (data, context) => {
     // Authentication check
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
@@ -184,23 +187,11 @@ export const createRazorpayOrder = functions.https.onCall(async (data, context) 
         };
 
     } catch (error: any) {
-        console.error('Error creating Razorpay order for wallet credit:', error);
-
-        // Log failure
-        await db.collection('payment_logs').add({
-            amount,
-            technicianId,
-            action: 'technician_order_creation_failed',
-            error: error.message,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        throw new functions.https.HttpsError(
-            'internal',
-            `Failed to create payment order: ${error.message}`
-        );
+        logger.error('createRazorpayOrder_failed', { technicianId, amount }, error);
+        throw error;
     }
-});
+})
+);
 
 // ============================================================================
 // PAYMENT ORDER CREATION
@@ -217,7 +208,8 @@ export const createRazorpayOrder = functions.https.onCall(async (data, context) 
  * 
  * Called by: Customer app after work completion
  */
-export const createPaymentOrder = functions.https.onCall(async (data, context) => {
+export const createPaymentOrder = functions.https.onCall(
+    secureCallable(async (data, context) => {
     // Authentication check
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
@@ -342,23 +334,11 @@ export const createPaymentOrder = functions.https.onCall(async (data, context) =
         };
 
     } catch (error: any) {
-        console.error('Error creating Razorpay order:', error);
-
-        // Log the failure
-        await db.collection('payment_logs').add({
-            bookingId,
-            action: 'order_creation_failed',
-            error: error.message,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            createdBy: userId
-        });
-
-        throw new functions.https.HttpsError(
-            'internal',
-            `Failed to create payment order: ${error.message}`
-        );
+        logger.error('createPaymentOrder_failed', { bookingId, userId }, error);
+        throw error;
     }
-});
+})
+);
 
 // ============================================================================
 // RAZORPAY WEBHOOK HANDLER
@@ -634,7 +614,8 @@ async function handlePaymentFailed(payload: any) {
  * This is a fallback in case webhook fails or is delayed
  * Still verifies signature for security
  */
-export const verifyPayment = functions.https.onCall(async (data, context) => {
+export const verifyPayment = functions.https.onCall(
+    secureCallable(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     }
@@ -741,10 +722,11 @@ export const verifyPayment = functions.https.onCall(async (data, context) => {
         return { success: true, message: 'Payment verified successfully' };
 
     } catch (error: any) {
-        console.error('Payment verification error:', error);
-        throw new functions.https.HttpsError('internal', `Verification failed: ${error.message}`);
+        logger.error('verifyPayment_failed', { bookingId, userId }, error);
+        throw error;
     }
-});
+})
+);
 
 // ============================================================================
 // REFUND MANAGEMENT (Admin only)
@@ -753,7 +735,8 @@ export const verifyPayment = functions.https.onCall(async (data, context) => {
 /**
  * Initiate refund (Admin only)
  */
-export const initiateRefund = functions.https.onCall(async (data, context) => {
+export const initiateRefund = functions.https.onCall(
+    secureCallable(async (data, context) => {
     // Check admin authentication
     if (!context.auth || !context.auth.token.admin) {
         throw new functions.https.HttpsError('permission-denied', 'Admin access required');
@@ -847,4 +830,5 @@ export const initiateRefund = functions.https.onCall(async (data, context) => {
 
         throw new functions.https.HttpsError('internal', `Refund failed: ${error.message}`);
     }
-});
+  })
+);

@@ -9,6 +9,7 @@ interface StatCardProps {
     isPositive: boolean;
   };
   color?: 'blue' | 'green' | 'orange' | 'red' | 'purple';
+  loading?: boolean;
 }
 
 const colorClasses = {
@@ -19,20 +20,24 @@ const colorClasses = {
   purple: 'bg-[#6366F1]/20 text-[#6366F1] border-[#6366F1]/30',
 };
 
-export default function StatCard({ title, value, icon: Icon, trend, color = 'purple' }: StatCardProps) {
+export default function StatCard({ title, value, icon: Icon, trend, color = 'purple', loading }: StatCardProps) {
   return (
     <div className="admin-card p-6 hover:shadow-[0_0_20px_rgba(99,102,241,0.15)] hover:border-[#6366F1]/30 transition-all duration-300">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="flex-1">
           <p className="text-sm text-[#9CA3AF] mb-1">{title}</p>
-          <h3 className="text-2xl font-bold text-[#E5E7EB]">{value}</h3>
-          {trend && (
+          {loading ? (
+            <div className="h-8 w-24 bg-[#1F2937] animate-pulse rounded" />
+          ) : (
+            <h3 className="text-2xl font-bold text-[#E5E7EB]">{value}</h3>
+          )}
+          {trend && !loading && (
             <p className={`text-sm mt-2 ${trend.isPositive ? 'text-green-400' : 'text-red-400'}`}>
               {trend.isPositive ? '↑' : '↓'} {trend.value}
             </p>
           )}
         </div>
-        <div className={`w-12 h-12 rounded-lg flex items-center justify-center border ${colorClasses[color]}`}>
+        <div className={`w-12 h-12 rounded-lg flex items-center justify-center border flex-shrink-0 ${colorClasses[color]}`}>
           <Icon size={24} />
         </div>
       </div>

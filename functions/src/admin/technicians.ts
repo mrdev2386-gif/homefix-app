@@ -1,10 +1,11 @@
-
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { db } from '../shared/config';
 import { assertAdmin, logAdminAction } from './utils';
+import { secureCallable, sanitize } from '../shared/security';
 
-export const adminApproveTechnician = functions.https.onCall(async (data, context) => {
+export const adminApproveTechnician = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
         const { techId, approve, reason } = data;
@@ -45,7 +46,7 @@ export const adminApproveTechnician = functions.https.onCall(async (data, contex
             await appRef.update({
                 status: 'rejected',
                 isApproved: false,
-                rejectionReason: reason || 'Not specified',
+                rejectionReason: sanitize(reason) || 'Not specified',
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
 
@@ -56,16 +57,18 @@ export const adminApproveTechnician = functions.https.onCall(async (data, contex
             });
         }
 
-        await logAdminAction(context.auth!.uid, approve ? 'tech_app_approve' : 'tech_app_reject', techId, { reason });
+        await logAdminAction(context.auth!.uid, approve ? 'tech_app_approve' : 'tech_app_reject', techId, { reason: sanitize(reason) });
         return { success: true };
     } catch (error: any) {
         console.error('[Technician] Error in adminApproveTechnician:', error);
         if (error instanceof functions.https.HttpsError) throw error;
         throw new functions.https.HttpsError('internal', error.message || 'Failed to process application');
     }
-});
+  })
+);
 
-export const approveTechnician = functions.https.onCall(async (data, context) => {
+export const approveTechnician = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
         const { techId, approve, reason } = data;
@@ -113,7 +116,7 @@ export const approveTechnician = functions.https.onCall(async (data, context) =>
                 isActive: false,
                 isOnline: false,               // Force offline
                 kycStatus: 'rejected',
-                rejectionReason: reason || 'Not specified',
+                rejectionReason: sanitize(reason) || 'Not specified',
                 rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
                 rejectedBy: context.auth!.uid,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -122,16 +125,18 @@ export const approveTechnician = functions.https.onCall(async (data, context) =>
             console.log('[ADMIN APPROVAL] ❌ Technician suspended:', techId);
         }
 
-        await logAdminAction(context.auth!.uid, approve ? 'tech_approve' : 'tech_suspend', techId, { reason });
+        await logAdminAction(context.auth!.uid, approve ? 'tech_approve' : 'tech_suspend', techId, { reason: sanitize(reason) });
         return { success: true };
     } catch (error: any) {
         console.error('[Technician] Error in approveTechnician:', error);
         if (error instanceof functions.https.HttpsError) throw error;
         throw new functions.https.HttpsError('internal', error.message || 'Failed to update technician status');
     }
-});
+  })
+);
 
-export const toggleTechAvailability = functions.https.onCall(async (data, context) => {
+export const toggleTechAvailability = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
         const { techId, isAvailable } = data;
@@ -154,12 +159,14 @@ export const toggleTechAvailability = functions.https.onCall(async (data, contex
         if (error instanceof functions.https.HttpsError) throw error;
         throw new functions.https.HttpsError('internal', error.message || 'Failed to toggle availability');
     }
-});
+  })
+);
 
 /**
  * Update technician services
  */
-export const updateTechServices = functions.https.onCall(async (data, context) => {
+export const updateTechServices = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
         const { techId, skills } = data;
@@ -182,12 +189,14 @@ export const updateTechServices = functions.https.onCall(async (data, context) =
         if (error instanceof functions.https.HttpsError) throw error;
         throw new functions.https.HttpsError('internal', error.message || 'Failed to update services');
     }
-});
+  })
+);
 
 /**
  * Get paginated and filtered list of technicians
  */
-export const getTechnicians = functions.https.onCall(async (data, context) => {
+export const getTechnicians = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
         const { limit = 10, offset = 0, status, search, city, kycPending } = data;
@@ -211,13 +220,13 @@ export const getTechnicians = functions.https.onCall(async (data, context) => {
         let techs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
         if (search) {
-            const lowerSearch = search.toLowerCase();
+            const lowerSearch = sanitize(search).toLowerCase();
             techs = techs.filter((t: any) =>
                 t.name?.toLowerCase().includes(lowerSearch) ||
                 t.fullName?.toLowerCase().includes(lowerSearch) ||
                 t.email?.toLowerCase().includes(lowerSearch) ||
-                t.phone?.includes(search) ||
-                t.id.includes(search)
+                t.phone?.includes(lowerSearch) ||
+                t.id.includes(lowerSearch)
             );
         }
 
@@ -237,12 +246,14 @@ export const getTechnicians = functions.https.onCall(async (data, context) => {
         if (error instanceof functions.https.HttpsError) throw error;
         throw new functions.https.HttpsError('internal', error.message || 'Failed to fetch technicians');
     }
-});
+  })
+);
 
 /**
  * Get full details of a technician
  */
-export const getTechnicianById = functions.https.onCall(async (data, context) => {
+export const getTechnicianById = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
         const { techId } = data;
@@ -299,12 +310,14 @@ export const getTechnicianById = functions.https.onCall(async (data, context) =>
         if (error instanceof functions.https.HttpsError) throw error;
         throw new functions.https.HttpsError('internal', error.message || 'Failed to fetch technician details');
     }
-});
+  })
+);
 
 /**
  * Update technician profile
  */
-export const updateTechnician = functions.https.onCall(async (data, context) => {
+export const updateTechnician = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
         const { techId, updates } = data;
@@ -319,7 +332,7 @@ export const updateTechnician = functions.https.onCall(async (data, context) => 
 
         for (const field of allowedFields) {
             if (updates[field] !== undefined) {
-                cleanUpdates[field] = updates[field];
+                cleanUpdates[field] = (typeof updates[field] === 'string') ? sanitize(updates[field]) : updates[field];
             }
         }
 
@@ -341,4 +354,5 @@ export const updateTechnician = functions.https.onCall(async (data, context) => 
         if (error instanceof functions.https.HttpsError) throw error;
         throw new functions.https.HttpsError('internal', error.message || 'Failed to update technician');
     }
-});
+  })
+);

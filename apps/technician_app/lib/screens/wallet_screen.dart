@@ -53,9 +53,9 @@ class _WalletScreenState extends State<WalletScreen> {
       final technicianId = FirebaseAuth.instance.currentUser?.uid;
       if (technicianId == null) return;
 
-      // Fetch from technicians/{uid} document where bank details are stored
+      // Fetch from technician_bank_accounts collection (single source of truth)
       final doc = await _firestore
-          .collection('technicians')
+          .collection('technician_bank_accounts')
           .doc(technicianId)
           .get();
 
@@ -65,19 +65,19 @@ class _WalletScreenState extends State<WalletScreen> {
           
           if (doc.exists) {
             final data = doc.data() as Map<String, dynamic>;
-            final bankStatus = data['bankStatus'] ?? 'not_submitted';
+            final status = data['status'] ?? 'pending';
             
-            // Only add if bank details exist and status is not deleted
-            if (bankStatus != 'not_submitted' && bankStatus != 'deleted') {
+            // Only add if bank account exists and is not deleted
+            if (status != 'deleted') {
               final bankAccount = TechnicianBankAccount(
-                id: technicianId,
+                id: doc.id,
                 technicianId: technicianId,
                 bankName: data['bankName'] ?? '',
                 accountNumber: data['accountNumber'] ?? '',
                 ifscCode: data['ifscCode'] ?? '',
                 accountHolderName: data['accountHolderName'] ?? '',
-                status: _parseBankStatus(bankStatus),
-                createdAt: DateTime.now(),
+                status: _parseBankStatus(status),
+                createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
               );
               _bankAccounts.add(bankAccount);
             }
@@ -101,10 +101,13 @@ class _WalletScreenState extends State<WalletScreen> {
   BankAccountStatus _parseBankStatus(String status) {
     switch (status) {
       case 'pending':
+      case 'unverified':
         return BankAccountStatus.pending;
       case 'verified':
+      case 'active':
         return BankAccountStatus.verified;
       case 'rejected':
+      case 'failed':
         return BankAccountStatus.rejected;
       default:
         return BankAccountStatus.pending;

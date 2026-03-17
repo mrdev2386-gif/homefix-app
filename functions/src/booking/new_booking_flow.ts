@@ -69,7 +69,7 @@ async function refundToCustomerWallet(customerId: string, amount: number, bookin
 
 type BookingStatus =
     | 'pending_admin'
-    | 'admin_approved'
+    | 'ASSIGNED'
     | 'admin_rejected'
     | 'technician_pending'
     | 'technician_accepted'
@@ -514,7 +514,7 @@ export const adminApproveBooking = functions.https.onCall(
 
         try {
             if (action === 'approve') {
-                newStatus = 'admin_approved';
+                newStatus = 'ASSIGNED';
                 message = 'Booking approved. Technician will be notified.';
 
                 await bookingDoc.ref.update({
@@ -621,7 +621,7 @@ export const technicianRespondBooking = functions.https.onCall(
         }
 
         // 4. Validate current status
-        if (booking.status !== 'admin_approved') {
+        if (booking.status !== 'ASSIGNED') {
             console.log(`[technicianRespondBooking] Idempotency: Booking ${bookingId} already in status ${booking.status}`);
             return {
                 success: true,

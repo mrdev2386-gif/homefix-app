@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import { secureCallable } from './shared/security';
 
 const db = admin.firestore();
 
@@ -61,7 +62,8 @@ const VALID_AVAILABILITY_STATUSES = ['online', 'offline', 'busy'];
  * a composite index. For efficient distance sorting, consider using
  * Firebase Extensions for Geospatial queries or Algolia/Elasticsearch.
  */
-export const getInstantServices = functions.https.onCall(async (data: InstantServiceRequest, context: functions.https.CallableContext): Promise<InstantServicesResponse> => {
+export const getInstantServices = functions.https.onCall(
+  secureCallable(async (data: InstantServiceRequest, context: functions.https.CallableContext): Promise<InstantServicesResponse> => {
   // 1. Verify Firebase Auth
   if (!context.auth) {
     throw new functions.https.HttpsError(
@@ -255,7 +257,8 @@ export const getInstantServices = functions.https.onCall(async (data: InstantSer
       'Failed to fetch instant services'
     );
   }
-});
+})
+);
 
 /**
  * Calculate estimated arrival time based on technician location

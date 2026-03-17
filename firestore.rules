@@ -86,6 +86,17 @@ service cloud.firestore {
       
       // No one can delete technician documents
       allow delete: if false;
+      
+      // Technician FCM tokens for push notifications
+      match /fcmTokens/{tokenId} {
+        allow read, write: if isOwner(technicianId);
+      }
+      
+      // Technician notifications
+      match /notifications/{notificationId} {
+        allow read: if isOwner(technicianId);
+        allow write: if false;
+      }
     }
     
     // ==========================================
@@ -137,10 +148,10 @@ service cloud.firestore {
     }
     
     // ==========================================
-    // CUSTOMERS COLLECTION
+    // USERS COLLECTION (Customers)
     // ==========================================
     
-    match /customers/{customerId} {
+    match /users/{customerId} {
       // Protected fields that only admins or Cloud Functions can modify
       function protectedCustomerFields() {
         return [
@@ -182,6 +193,18 @@ service cloud.firestore {
         // Read-only for customers
         allow read: if isOwner(customerId);
         // Only Cloud Functions can write
+        allow write: if false;
+      }
+      
+      match /fcmTokens/{tokenId} {
+        // Customers can read/write their own FCM tokens
+        allow read, write: if isOwner(customerId);
+      }
+      
+      match /notifications/{notificationId} {
+        // Customers can read their own notifications
+        allow read: if isOwner(customerId);
+        // Only Cloud Functions can create/write notifications
         allow write: if false;
       }
     }
@@ -376,16 +399,19 @@ service cloud.firestore {
     }
     
     // ==========================================
-    // CUSTOM SERVICE REQUESTS COLLECTION
+    // SERVICE REQUESTS COLLECTION
     // ==========================================
     
-    match /custom_service_requests/{requestId} {
-      // Customers can read their own requests
-      allow read: if isAuthenticated() 
-        && resource.data.customerId == request.auth.uid;
-      
-      // Technicians can read requests in their area
-      allow read: if isAuthenticated();
+    match /service_requests/{requestId} {
+      // Allow read ONLY if owner, admin, or technician in same district
+      allow read: if isAuthenticated() && (
+        resource.data.customerId == request.auth.uid || 
+        isAdmin() ||
+        (
+          request.auth.token.role == 'technician' && 
+          request.auth.token.district == resource.data.district
+        )
+      );
       
       // Customers can create requests
       allow create: if isAuthenticated() 
@@ -397,7 +423,7 @@ service cloud.firestore {
       // Customers can delete their pending requests
       allow delete: if isAuthenticated() 
         && resource.data.customerId == request.auth.uid
-        && resource.data.status == 'pending';
+        && resource.data.status in ['pending', 'pending_admin'];
     }
     
     // ==========================================

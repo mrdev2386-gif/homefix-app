@@ -1,0 +1,205 @@
+================================================================================
+TECHNICIAN APP - QUICK REFERENCE: AUTH & APP CHECK STABILIZATION
+================================================================================
+
+WHAT CHANGED?
+=============
+
+1. FIREBASE ID TOKEN REFRESH
+   - Added before EVERY Cloud Function call
+   - Prevents UNAUTHENTICATED errors
+   - Ensures fresh tokens for secure operations
+
+2. APP CHECK RETRY GUARD
+   - Max 2 retry attempts (prevents "Too many attempts" errors)
+   - 1 second delay between retries
+   - Graceful failure - app continues even if token fails
+
+3. AUTH STATE VALIDATION
+   - User authentication checked before token refresh
+   - Prevents null pointer exceptions
+   - Detailed error messages
+
+================================================================================
+WHAT TO EXPECT
+===============
+
+DEVELOPMENT:
+  ✓ No more UNAUTHENTICATED errors during normal use
+  ✓ Service creation/updates work reliably
+  ✓ Bank details updates work reliably
+  ✓ App Check initializes without hanging
+  ✓ Detailed logs show token refresh success
+
+LOGS YOU'LL SEE:
+  [SERVICE CREATE] Refreshing Firebase ID token for uid=abc123
+  [SERVICE CREATE] Token refreshed successfully
+  [APP CHECK] Attempting to get App Check token (attempt 1/2)
+  [APP CHECK] Token retrieved successfully
+
+ERRORS YOU WON'T SEE:
+  ✗ [firebase_functions/unauthenticated] UNAUTHENTICATED
+  ✗ Error getting App Check token: Too many attempts
+  ✗ Cloud Function call failed with no auth token
+
+================================================================================
+HOW TO TEST
+============
+
+SERVICE CREATION:
+  1. Open Add Service screen
+  2. Select category → Select service → Fill details
+  3. Click "Add Service"
+  4. Check console: Should see "[SERVICE CREATE] Token refreshed successfully"
+  5. Service should appear in list
+
+SERVICE UPDATE:
+  1. Open existing service
+  2. Edit details
+  3. Click "Update Service"
+  4. Check console: Should see "[SERVICE UPDATE] Token refreshed successfully"
+  5. Changes should be saved
+
+BANK DETAILS:
+  1. Go to Profile → Bank Details
+  2. Enter bank information
+  3. Click "Save"
+  4. Check console: Should see "[BANK UPDATE] Token refreshed successfully"
+  5. Details should be saved
+
+APP CHECK:
+  1. Launch app
+  2. Check console during startup
+  3. Should see "App Check activated with DEBUG provider"
+  4. Should see debug token logged (if in debug mode)
+  5. No "Too many attempts" errors
+
+================================================================================
+IF SOMETHING GOES WRONG
+========================
+
+SYMPTOM: Still getting UNAUTHENTICATED errors
+  CHECK:
+  1. Is user logged in? (Check AuthGate)
+  2. Is token refresh being called? (Check logs)
+  3. Is Cloud Function expecting auth? (Check backend)
+  FIX:
+  1. Ensure user is authenticated before operation
+  2. Check that getIdToken(true) is called
+  3. Verify Cloud Function has auth check
+
+SYMPTOM: App Check token retrieval hanging
+  CHECK:
+  1. Are retries happening? (Check logs)
+  2. Is delay between retries working? (Check timing)
+  3. Is app continuing after failure? (Check UI)
+  FIX:
+  1. Verify retry guard is in place (max 2 attempts)
+  2. Verify 1 second delay between retries
+  3. Verify app doesn't crash on failure
+
+SYMPTOM: Logs not showing token refresh
+  CHECK:
+  1. Is debugPrint() being called? (Check console)
+  2. Is operation reaching Cloud Function? (Check logs)
+  3. Is user authenticated? (Check auth state)
+  FIX:
+  1. Ensure debugPrint() is called before getIdToken()
+  2. Add more logging to trace execution
+  3. Verify user is logged in
+
+================================================================================
+CODE PATTERNS
+==============
+
+PATTERN 1: Token Refresh Before Cloud Function
+  
+  // CRITICAL: Ensure user is authenticated
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) {
+    throw Exception('User not authenticated');
+  }
+  
+  // CRITICAL: Refresh Firebase ID token BEFORE calling Cloud Function
+  debugPrint('[OPERATION] Refreshing Firebase ID token for uid=${user.uid}');
+  await user.getIdToken(true);
+  debugPrint('[OPERATION] Token refreshed successfully');
+  
+  // NOW call the Cloud Function with fresh token
+  HttpsCallable callable = _functions.httpsCallable('functionName');
+  final result = await callable.call(data);
+
+PATTERN 2: App Check Retry Guard
+  
+  int retries = 0;
+  const maxRetries = 2;
+  
+  while (retries < maxRetries) {
+    try {
+      debugPrint('[APP CHECK] Attempting to get App Check token (attempt ${retries + 1}/$maxRetries)');
+      await FirebaseAppCheck.instance.getToken(true);
+      debugPrint('[APP CHECK] Token retrieved successfully');
+      return;
+    } catch (e) {
+      retries++;
+      if (retries < maxRetries) {
+        debugPrint('[APP CHECK] Token retrieval failed, retrying in 1 second...');
+        await Future.delayed(const Duration(seconds: 1));
+      } else {
+        debugPrint('[APP CHECK] Token retrieval failed after $maxRetries attempts: $e');
+        return; // Don't rethrow - allow app to continue
+      }
+    }
+  }
+
+================================================================================
+FILES MODIFIED
+===============
+
+1. apps/technician_app/lib/core/services/functions_service.dart
+   - Added token refresh to: addService, updateService, toggleServiceStatus, 
+     deleteService, updateTechnicianBankDetails, reuploadVerificationDocument
+   - Added ensureAppCheckToken() method
+
+2. apps/technician_app/lib/core/firebase/firebase_init.dart
+   - Updated _extractDebugTokenWithRetry() with retry guard
+   - Changed from _extractDebugToken() to _extractDebugTokenWithRetry()
+   - Max 2 retry attempts with 1 second delay
+
+3. apps/technician_app/lib/main.dart
+   - No changes (already had proper auth state validation)
+   - Calls FirebaseInit.init() before runApp()
+
+================================================================================
+DEPLOYMENT CHECKLIST
+=====================
+
+Before deploying to production:
+
+  ✓ All Cloud Function calls have token refresh
+  ✓ App Check has retry guard (max 2 attempts)
+  ✓ Auth state is validated before operations
+  ✓ Logging is in place for debugging
+  ✓ Error handling is graceful (no crashes)
+  ✓ No UNAUTHENTICATED errors in testing
+  ✓ App Check initializes without hanging
+  ✓ Service creation/updates work reliably
+  ✓ Bank details updates work reliably
+  ✓ All tests pass
+
+================================================================================
+SUPPORT
+========
+
+If you encounter issues:
+
+1. Check the logs for token refresh messages
+2. Verify user is authenticated
+3. Ensure Cloud Function expects auth
+4. Check that getIdToken(true) is called
+5. Verify retry guard is in place for App Check
+6. Look for detailed error messages in logs
+
+For more details, see: TECHNICIAN_AUTH_STABILIZATION.txt
+
+================================================================================

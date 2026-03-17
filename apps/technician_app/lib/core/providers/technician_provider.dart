@@ -15,7 +15,7 @@ import '../utils/app_logger.dart';
 class TechnicianProvider extends ChangeNotifier {
   final TechnicianService _techService = TechnicianService();
   final OnboardingService _onboardingService = OnboardingService();
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  late final FirebaseAuth _auth;
   
   Technician? _technician;
   Technician? get technician => _technician;
@@ -57,6 +57,7 @@ class TechnicianProvider extends ChangeNotifier {
   StreamSubscription<Technician?>? _techSubscription;
 
   TechnicianProvider() {
+    _auth = FirebaseAuth.instance;
     _auth.authStateChanges().listen((user) {
       _techSubscription?.cancel();
       

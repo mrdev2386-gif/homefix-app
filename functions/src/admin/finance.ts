@@ -1,10 +1,11 @@
-
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { db } from '../shared/config';
 import { assertAdmin, logAdminAction } from './utils';
+import { secureCallable, sanitize } from '../shared/security';
 
-export const refundBooking = functions.https.onCall(async (data, context) => {
+export const refundBooking = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     await assertAdmin(context);
     const { bookingId } = data;
 
@@ -20,7 +21,7 @@ export const refundBooking = functions.https.onCall(async (data, context) => {
 
     await db.runTransaction(async (t) => {
         const userRef = db.collection('customers').doc(b.customerId);
-        const userDoc = await t.get(userRef);
+        // const userDoc = await t.get(userRef);
 
         t.update(userRef, {
             walletBalance: admin.firestore.FieldValue.increment(b.finalAmount),
@@ -43,9 +44,11 @@ export const refundBooking = functions.https.onCall(async (data, context) => {
 
     await logAdminAction(context.auth!.uid, 'booking_refund', bookingId);
     return { success: true };
-});
+  })
+);
 
-export const adjustWallet = functions.https.onCall(async (data, context) => {
+export const adjustWallet = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     await assertAdmin(context);
     const { userId, type, amount, reason } = data; // type: 'credit' | 'debit'
 
@@ -58,7 +61,7 @@ export const adjustWallet = functions.https.onCall(async (data, context) => {
         await db.runTransaction(async t => {
             t.update(cust.ref, { walletBalance: admin.firestore.FieldValue.increment(type === 'credit' ? amount : -amount) });
             t.set(cust.ref.collection('wallet_transactions').doc(), {
-                type, amount, description: reason, status: 'completed', createdAt: admin.firestore.FieldValue.serverTimestamp()
+                type, amount, description: sanitize(reason), status: 'completed', createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
         });
     } else {
@@ -66,20 +69,22 @@ export const adjustWallet = functions.https.onCall(async (data, context) => {
         await db.runTransaction(async t => {
             t.update(ref, { walletBalance: admin.firestore.FieldValue.increment(type === 'credit' ? amount : -amount) });
             t.set(ref.collection('wallet_transactions').doc(), {
-                type, amount, description: reason, status: 'completed', createdAt: admin.firestore.FieldValue.serverTimestamp()
+                type, amount, description: sanitize(reason), status: 'completed', createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
         });
     }
 
-    await logAdminAction(context.auth!.uid, `wallet_${type}`, userId, { amount, reason });
+    await logAdminAction(context.auth!.uid, `wallet_${type}`, userId, { amount, reason: sanitize(reason) });
     return { success: true };
-});
+  })
+);
 
 /**
  * Process a booking payout - marks it as completed
  * Requirements: 4.2, 4.3, 15.1, 15.4, 15.8, 16.1, 16.5, 16.6
  */
-export const processBookingPayout = functions.https.onCall(async (data, context) => {
+export const processBookingPayout = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     // Verify admin authentication
     await assertAdmin(context);
 
@@ -149,4 +154,5 @@ export const processBookingPayout = functions.https.onCall(async (data, context)
         console.error('[processBookingPayout] Error:', error);
         throw new functions.https.HttpsError('internal', error.message || 'Failed to process payout');
     }
-});
+  })
+);

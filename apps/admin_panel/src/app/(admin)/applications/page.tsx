@@ -19,9 +19,11 @@ export default function ApplicationsPage() {
     isOpen: boolean;
     title: string;
     message: string;
-    onConfirm: () => void;
+    onConfirm: (inputValue?: string) => void;
     variant?: 'default' | 'danger';
     requireInput?: boolean;
+    inputLabel?: string;
+    inputPlaceholder?: string;
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   useEffect(() => {

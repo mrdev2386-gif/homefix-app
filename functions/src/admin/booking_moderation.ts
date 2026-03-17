@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import { secureCallable, sanitize } from '../shared/security';
 
 const db = admin.firestore();
 
@@ -52,7 +53,7 @@ async function sendNotification(userId: string, userType: 'customer' | 'technici
 }
 
 export const approveBooking = functions.https.onCall(
-    async (data, context) => {
+    secureCallable(async (data: any, context: any) => {
         const uid = context.auth?.uid;
         await assertAdmin(uid);
 
@@ -74,7 +75,9 @@ export const approveBooking = functions.https.onCall(
                 }
 
                 t.update(bookingRef, {
-                    status: 'ADMIN_APPROVED',
+                    status: 'ASSIGNED',
+                    bookingStatus: 'approved_by_admin',
+                    technicianId: booking.technicianId,
                     adminApprovedAt: admin.firestore.FieldValue.serverTimestamp(),
                     adminApprovedBy: uid,
                     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -105,13 +108,14 @@ export const approveBooking = functions.https.onCall(
             return { success: true, message: 'Booking approved successfully' };
         } catch (error: any) {
             console.error('Error approving booking:', error);
+            if (error instanceof functions.https.HttpsError) throw error;
             throw new functions.https.HttpsError('internal', error.message);
         }
-    }
+    })
 );
 
 export const rejectBooking = functions.https.onCall(
-    async (data, context) => {
+    secureCallable(async (data: any, context: any) => {
         const uid = context.auth?.uid;
         await assertAdmin(uid);
 
@@ -134,7 +138,7 @@ export const rejectBooking = functions.https.onCall(
 
                 t.update(bookingRef, {
                     status: 'CANCELLED',
-                    cancellationReason: reason || 'Rejected by admin',
+                    cancellationReason: sanitize(reason) || 'Rejected by admin',
                     cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
                     cancelledBy: uid,
                     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -147,7 +151,7 @@ export const rejectBooking = functions.https.onCall(
                     action: 'booking_rejected',
                     entityId: bookingId,
                     entityType: 'booking',
-                    metadata: { bookingId, customerId: booking.customerId, reason },
+                    metadata: { bookingId, customerId: booking.customerId, reason: sanitize(reason) },
                     createdAt: admin.firestore.FieldValue.serverTimestamp(),
                 });
             });
@@ -165,13 +169,14 @@ export const rejectBooking = functions.https.onCall(
             return { success: true, message: 'Booking rejected successfully' };
         } catch (error: any) {
             console.error('Error rejecting booking:', error);
+            if (error instanceof functions.https.HttpsError) throw error;
             throw new functions.https.HttpsError('internal', error.message);
         }
-    }
+    })
 );
 
 export const updateBookingPayment = functions.https.onCall(
-    async (data, context) => {
+    secureCallable(async (data: any, context: any) => {
         const uid = context.auth?.uid;
         await assertAdmin(uid);
 
@@ -209,13 +214,14 @@ export const updateBookingPayment = functions.https.onCall(
             return { success: true, message: 'Payment status updated successfully' };
         } catch (error: any) {
             console.error('Error updating payment status:', error);
+            if (error instanceof functions.https.HttpsError) throw error;
             throw new functions.https.HttpsError('internal', error.message);
         }
-    }
+    })
 );
 
 export const markBookingActive = functions.https.onCall(
-    async (data, context) => {
+    secureCallable(async (data: any, context: any) => {
         const uid = context.auth?.uid;
         await assertAdmin(uid);
 
@@ -255,7 +261,8 @@ export const markBookingActive = functions.https.onCall(
             return { success: true, message: 'Booking marked as active successfully' };
         } catch (error: any) {
             console.error('Error marking booking active:', error);
+            if (error instanceof functions.https.HttpsError) throw error;
             throw new functions.https.HttpsError('internal', error.message);
         }
-    }
+    })
 );

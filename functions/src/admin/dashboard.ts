@@ -1,16 +1,17 @@
-
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { db } from '../shared/config';
 import { assertAdmin } from './utils';
+import { secureCallable } from '../shared/security';
 
-export const getDashboardStats = functions.https.onCall(async (data, context) => {
+export const getDashboardStats = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
 
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const todayStr = today.toISOString();
+        // const todayStr = today.toISOString();
 
         console.log('[Dashboard] Fetching stats...');
 
@@ -160,4 +161,5 @@ export const getDashboardStats = functions.https.onCall(async (data, context) =>
         if (error instanceof functions.https.HttpsError) throw error;
         throw new functions.https.HttpsError('internal', 'Failed to fetch dashboard stats');
     }
-});
+  })
+);

@@ -6,6 +6,7 @@
 import * as functions from "firebase-functions";
 
 import * as admin from "firebase-admin";
+import { secureCallable, sanitize } from "../shared/security";
 
 
 const db = admin.firestore();
@@ -21,16 +22,15 @@ interface ApprovalRequest {
  * Sets proper status and profile completion
  */
 export const approveTechnician = functions.https.onCall(
-  async (request, context) => {
+  secureCallable(async (request: any, context: any) => {
     if (!context.auth) {
       throw new functions.https.HttpsError("unauthenticated", "Authentication required");
     }
 
-    // TODO: Add admin role check here
-    // const adminDoc = await db.collection('admins').doc(context.auth.uid).get();
-    // if (!adminDoc.exists) {
-    //   throw new functions.https.HttpsError("permission-denied", "Admin access required");
-    // }
+    // Verify admin access
+    if (!context.auth.token?.admin) {
+      throw new functions.https.HttpsError("permission-denied", "Admin access required");
+    }
 
     const { technicianId, action, rejectionReason } = request.data;
 
@@ -68,7 +68,7 @@ export const approveTechnician = functions.https.onCall(
       updateData.status = "rejected";
       updateData.profileRejected = true;
       if (rejectionReason) {
-        updateData.rejectionReason = rejectionReason;
+        updateData.rejectionReason = sanitize(rejectionReason);
       }
 
       console.log(`[ADMIN APPROVAL] Rejecting technician ${technicianId}: ${rejectionReason || 'No reason provided'}`);
@@ -82,5 +82,5 @@ export const approveTechnician = functions.https.onCall(
       action,
       message: `Technician ${action}d successfully`,
     };
-  }
+  })
 );

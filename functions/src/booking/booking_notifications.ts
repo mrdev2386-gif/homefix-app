@@ -33,11 +33,11 @@ export const onBookingStatusChange = functions.firestore
       console.log(`[BOOKING NOTIFICATION] Status change: ${previousStatus} → ${newStatus}`);
 
       // ================================================
-      // STATUS: adminApproved
+      // STATUS: ASSIGNED
       // ================================================
       // Set by: Admin (when admin approves booking)
-      // Transitions from: pending_admin → admin_approved
-      if (newStatus === 'admin_approved' || newStatus === 'adminApproved') {
+      // Transitions from: pending_admin → ASSIGNED
+      if (newStatus === 'ASSIGNED' || newStatus === 'admin_approved' || newStatus === 'adminApproved') {
         await handleAdminApproved(customerId, technicianId, bookingId, after);
       }
 

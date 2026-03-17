@@ -7,6 +7,43 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:663243229047:android:83bd887138d9a939f44372",
+        "android_client_info": {
+          "package_name": "com.homefix.customer"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "663243229047-vkgvask0rijlu0ns5tmeqisr0iga2qgr.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.homefix.customer",
+            "certificate_hash": "93dd6769ca547b67521a7c66f1e1ca1cd2722997"
+          }
+        },
+        {
+          "client_id": "663243229047-b79fr0b7ipheh02d6cqforn9u67buoet.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyADfM4cMfTlz3Cth0QwalYntQv3AoU9daI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "663243229047-b79fr0b7ipheh02d6cqforn9u67buoet.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:663243229047:android:7cab612c44e5b787f44372",
         "android_client_info": {
           "package_name": "com.homefix.technician"

@@ -3,12 +3,15 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { db } from './shared/config';
 import { checkRateLimit } from './shared/utils';
+import { secureCallable, sanitize } from './shared/security';
+import { logger } from './shared/utils';
 
 // ==========================================
 // REFERRAL SYSTEM
 // ==========================================
 
-export const validateReferralCode = functions.https.onCall(async (data: any, context: any) => {
+export const validateReferralCode = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     const { code } = data;
 
@@ -31,7 +34,8 @@ export const validateReferralCode = functions.https.onCall(async (data: any, con
         referrerId: referrer.id,
         referrerName: referrer.data().name || 'A user'
     };
-});
+  })
+);
 
 // Trigger referral award on first successful booking completion
 export const onBookingCompletedAwardReferral = functions.firestore.document('bookings/{bookingId}')
@@ -95,7 +99,8 @@ export const onBookingCompletedAwardReferral = functions.firestore.document('boo
 // BOOKING CANCELLATION
 // ==========================================
 
-export const cancelBooking = functions.https.onCall(async (data: any, context: any) => {
+export const cancelBooking = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     const { bookingId, reason } = data;
 
@@ -123,7 +128,7 @@ export const cancelBooking = functions.https.onCall(async (data: any, context: a
     await db.runTransaction(async (t) => {
         t.update(bookingRef, {
             status: 'cancelled',
-            cancellationReason: reason || 'Cancelled by customer',
+            cancellationReason: sanitize(reason) || 'Cancelled by customer',
             cancelledBy: 'customer',
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
@@ -155,15 +160,16 @@ export const cancelBooking = functions.https.onCall(async (data: any, context: a
             t.update(bookingRef, { paymentStatus: 'refunded' });
         }
     });
-
     return { success: true };
-});
+  })
+);
 
 import { sendPushNotification } from './shared/notifications';
 
 // ... (skipping referral and cancellation for now, targeting submitServiceRating)
 
-export const submitServiceRating = functions.https.onCall(async (data: any, context: any) => {
+export const submitServiceRating = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     const { bookingId, rating, comment, tags } = data; // tags is string[]
     const customerId = context.auth.uid;
@@ -216,7 +222,7 @@ export const submitServiceRating = functions.https.onCall(async (data: any, cont
             serviceTitle: booking.serviceTitle,
             rating,
             tags: tags || [],
-            reviewText: comment || '',
+            reviewText: sanitize(comment) || '',
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
@@ -298,13 +304,15 @@ export const submitServiceRating = functions.https.onCall(async (data: any, cont
     }
 
     return { success: true, reviewId };
-});
+    })
+);
 
 // ==========================================
 // SUPPORT / ASSISTANCE
 // ==========================================
 
-export const submitSupportRequest = functions.https.onCall(async (data: any, context: any) => {
+export const submitSupportRequest = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
     const { category, message } = data;
 
@@ -326,13 +334,15 @@ export const submitSupportRequest = functions.https.onCall(async (data: any, con
     });
 
     return { success: true, requestId };
-});
+    })
+);
 
 // ==========================================
 // ACCOUNT & PROFILE MANAGEMENT
 // ==========================================
 
-export const updateUserProfile = functions.https.onCall(async (data: any, context: functions.https.CallableContext) => {
+export const updateUserProfile = functions.https.onCall(
+    secureCallable(async (data: any, context: functions.https.CallableContext) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
 
     const uid = context.auth.uid;
@@ -366,16 +376,17 @@ export const updateUserProfile = functions.https.onCall(async (data: any, contex
 
     for (const key of allowedKeys) {
         if (key in data && data[key] !== undefined && data[key] !== null) {
+            const val = sanitize(data[key]);
             if (key === 'district') {
-                const district = data[key].toString().trim();
+                const district = val.toString().trim();
                 updateData.district = district;
                 updateData.districtNormalized = district.toLowerCase();
             } else if (key === 'state') {
-                const state = data[key].toString().trim();
+                const state = val.toString().trim();
                 updateData.state = state;
                 updateData.stateNormalized = state.toLowerCase();
             } else {
-                updateData[key] = data[key];
+                updateData[key] = val;
             }
         }
     }
@@ -456,10 +467,12 @@ export const updateUserProfile = functions.https.onCall(async (data: any, contex
     }
 
     return { success: true };
-});
+  })
+);
 
 
-export const updateTechnicianProfile = functions.https.onCall(async (data: any, context: functions.https.CallableContext) => {
+export const updateTechnicianProfile = functions.https.onCall(
+    secureCallable(async (data: any, context: functions.https.CallableContext) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
 
     const uid = context.auth.uid;
@@ -490,9 +503,11 @@ export const updateTechnicianProfile = functions.https.onCall(async (data: any, 
     await db.collection('technicians').doc(uid).set(updateData, { merge: true });
 
     return { success: true };
-});
+  })
+);
 
-export const deleteAccount = functions.https.onCall(async (data: any, context: any) => {
+export const deleteAccount = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
     const uid = context.auth.uid;
 
@@ -502,9 +517,11 @@ export const deleteAccount = functions.https.onCall(async (data: any, context: a
     await admin.auth().deleteUser(uid);
 
     return { success: true };
-});
+  })
+);
 
-export const manageAddress = functions.https.onCall(async (data: any, context: any) => {
+export const manageAddress = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
     const uid = context.auth.uid;
     const { action, addressId, addressData } = data; // action: 'add', 'edit', 'delete', 'setDefault'
@@ -533,10 +550,12 @@ export const manageAddress = functions.https.onCall(async (data: any, context: a
     }
 
     return { success: true };
-});
+  })
+);
 
 
-export const managePaymentMethod = functions.https.onCall(async (data: any, context: any) => {
+export const managePaymentMethod = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
     const uid = context.auth.uid;
     const { action, methodId, methodData } = data;
@@ -556,11 +575,14 @@ export const managePaymentMethod = functions.https.onCall(async (data: any, cont
     }
 
     return { success: true };
-});
+  })
+);
 
-export const updatePrivacySettings = functions.https.onCall(async (data: any, context: any) => {
+export const updatePrivacySettings = functions.https.onCall(
+    secureCallable(async (data: any, context: any) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
     const uid = context.auth.uid;
     await db.collection('customers').doc(uid).set({ privacy: data }, { merge: true });
     return { success: true };
-});
+  })
+);

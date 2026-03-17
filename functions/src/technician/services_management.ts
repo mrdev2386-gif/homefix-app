@@ -449,3 +449,47 @@ export const deleteTechnicianService = functions.https.onCall(
     };
   }
 );
+
+/**
+ * Get My Technician Services
+ * Returns all services for the authenticated technician
+ */
+export const getMyTechnicianServices = functions.https.onCall(
+    async (data: any, context: functions.https.CallableContext) => {
+        // 1. Authentication check
+        if (!context.auth) {
+            throw new functions.https.HttpsError(
+                "unauthenticated",
+                "User must be authenticated"
+            );
+        }
+
+        const technicianId = context.auth.uid;
+
+        console.log(`[TECH_SERVICE] Fetching services for technician: ${technicianId}`);
+
+        // 2. Get all active services for this technician (including inactive for management)
+        const servicesSnapshot = await db.collection('technician_services')
+            .where('technicianId', '==', technicianId)
+            .orderBy('createdAt', 'desc')
+            .get();
+
+        const services = servicesSnapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                ...data,
+                createdAt: data.createdAt?.toDate?.()?.toISOString(),
+                updatedAt: data.updatedAt?.toDate?.()?.toISOString()
+            };
+        });
+
+        console.log(`[TECH_SERVICE] Found ${services.length} services`);
+
+        return {
+            success: true,
+            services: services,
+            count: services.length
+        };
+    }
+);

@@ -24,10 +24,9 @@ import * as adminFinance from './admin/finance';
 import * as adminNotif from './admin/notifications';
 import * as notificationsMgmt from './notifications_management';
 import * as adminDynamic from './admin/dynamic_content';
-import * as technicianFinance from './finance/wallet_logic';
-import * as payoutLogic from './finance/payout_logic';
-import * as technicianWithdrawal from './finance/technician_withdrawal';
-import * as walletReconciliation from './finance/wallet_reconciliation';
+
+// Wallet Operations (Atomic & Safe) - CONSOLIDATED
+import * as walletSafety from './shared/wallet_safety';
 
 // Payment Modules (New Razorpay Integration)
 import * as razorpayPayments from './payments/razorpay';
@@ -38,7 +37,6 @@ import { razorpayWebhookV2 } from './payments/razorpayWebhookV2';
 import * as partnerApplications from './partner/applications';
 
 // Technician Services (YouTube-style service listings)
-import * as technicianServices from './technician/createTechnicianService';
 import * as techServicesManagement from './technician/services_management';
 
 // Chat System
@@ -109,29 +107,28 @@ export { matchTechniciansV2 } from './matching/matchTechniciansV2';
 
 export const onStaleTechnicianCleanup = cleanupStaleTechnicianStatus;
 
-// Complete Booking Flow Functions
-import * as completeBookingFlow from './booking/complete_booking_flow';
-export const createBookingRequest = completeBookingFlow.createBookingRequest;
-export const approveBookingRequest = completeBookingFlow.approveBookingRequest;
-export const technicianRespondToJob = completeBookingFlow.technicianRespondToJob;
-export const payBeforeWork = completeBookingFlow.payBeforeWork;
-export const completeService = completeBookingFlow.completeService;
-export const confirmAfterWorkPayment = completeBookingFlow.confirmAfterWorkPayment;
-export const updateBookingStatus = completeBookingFlow.updateBookingStatus;
+// Migration Functions
+import * as migrateBookingStatus from './admin/migrate_booking_status';
+export const migrateBookingStatusFunction = migrateBookingStatus.migrateBookingStatus;
+export const verifyBookingStatuses = migrateBookingStatus.verifyBookingStatuses;
 
 // ==========================================
-// SECURE BOOKING LIFECYCLE FUNCTIONS
+// UNIFIED BOOKING LIFECYCLE FUNCTIONS (SINGLE SOURCE OF TRUTH)
 // ==========================================
-import * as bookingLifecycle from './booking/booking_lifecycle';
-export const notifyAdminNewBooking = bookingLifecycle.notifyAdminNewBooking;
-export const approveBookingByAdmin = bookingLifecycle.approveBookingByAdmin;
-export const rejectBookingByAdmin = bookingLifecycle.rejectBookingByAdmin;
-export const technicianAcceptBooking = bookingLifecycle.technicianAcceptBooking;
-export const technicianStartJob = bookingLifecycle.technicianStartJob;
-export const completeBooking = bookingLifecycle.completeBooking;
-export const cancelBooking = bookingLifecycle.cancelBooking;
-export const technicianRejectBooking = bookingLifecycle.technicianRejectBooking;
-export const verifyBookingPayment = bookingLifecycle.verifyBookingPayment;
+import * as unifiedBookingLifecycle from './booking/unified_booking_lifecycle';
+export const createBookingRequest = unifiedBookingLifecycle.createBookingRequest;
+export const approveBookingByAdmin = unifiedBookingLifecycle.approveBookingByAdmin;
+export const technicianAcceptBooking = unifiedBookingLifecycle.technicianAcceptBooking;
+export const startService = unifiedBookingLifecycle.startService;
+export const completeService = unifiedBookingLifecycle.completeService;
+export const technicianRejectBooking = unifiedBookingLifecycle.technicianRejectBooking;
+export const cancelBooking = unifiedBookingLifecycle.cancelBooking;
+
+// Legacy aliases for backward compatibility
+export const approveBookingRequest = unifiedBookingLifecycle.approveBookingByAdmin;
+export const technicianRespondToJob = unifiedBookingLifecycle.technicianAcceptBooking;
+export const technicianStartJob = unifiedBookingLifecycle.startService;
+export const completeBooking = unifiedBookingLifecycle.completeService;
 
 // Refund System
 import * as refundSystem from './booking/refund_system';
@@ -190,7 +187,7 @@ export const createTechnicianService = techServicesManagement.addTechnicianServi
 export const updateTechnicianService = techServicesManagement.updateTechnicianService;
 export const deleteTechnicianService = techServicesManagement.deleteTechnicianService;
 export const toggleTechnicianServiceStatus = techServicesManagement.toggleTechnicianServiceStatus;
-export const getMyTechnicianServices = technicianServices.getMyTechnicianServices;
+export const getMyTechnicianServices = techServicesManagement.getMyTechnicianServices;
 
 // ==========================================
 // TYPES & INTERFACES
@@ -247,7 +244,7 @@ export async function isAdmin(uid: string) {
 
 export const initiateRazorpayPayment = razorpayPayments.createPaymentOrder;
 export const verifyRazorpayPayment = razorpayPayments.verifyPayment;
-export const processWalletTransaction = technicianFinance.processWalletTransaction;
+export const processWalletTransaction = walletSafety.creditWalletAtomic;
 
 export const updateUserProfile = customerFeatures.updateUserProfile;
 export const updateTechnicianProfile = customerFeatures.updateTechnicianProfile;
@@ -383,6 +380,10 @@ export {
 };
 
 // Technician Finance & Payouts
+import * as payoutLogic from './finance/payout_logic';
+import * as technicianWithdrawal from './finance/technician_withdrawal';
+import * as walletReconciliation from './finance/wallet_reconciliation';
+
 export const triggerTechnicianPayout = payoutLogic.triggerTechnicianPayout;
 export const razorpayPayoutWebhook = payoutLogic.razorpayPayoutWebhook;
 export const settleTechnicianBalance = payoutLogic.settleTechnicianBalance;
@@ -427,7 +428,7 @@ export const assignTechnicianToBooking = functions.https.onCall(
 // Add missing function aliases for admin panel compatibility
 export const assignTechnician = assignTechnicianToBooking;
 export const adminApproveBooking = approveBookingByAdmin;
-export const adminRejectBooking = rejectBookingByAdmin;
+export const adminRejectBooking = technicianRejectBooking;
 
 export const respondToAssignment = handleAssignmentResponse;
 

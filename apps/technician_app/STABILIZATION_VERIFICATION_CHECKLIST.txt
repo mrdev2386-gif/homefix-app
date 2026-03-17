@@ -1,0 +1,268 @@
+================================================================================
+TECHNICIAN APP - STABILIZATION VERIFICATION CHECKLIST
+================================================================================
+
+VERIFICATION STEP 1: FIREBASE INITIALIZATION
+==============================================
+
+File: apps/technician_app/lib/core/firebase/firebase_init.dart
+
+Checklist:
+  ☐ Firebase.initializeApp() called first
+  ☐ FirebaseAppCheck.instance.activate() called second
+  ☐ _appCheckActivated flag prevents duplicate activation
+  ☐ _extractDebugTokenWithRetry() called in debug mode
+  ☐ reCAPTCHA disabled in debug mode
+  ☐ Static _initialized flag prevents duplicate init
+  ☐ All initialization in try-catch blocks
+  ☐ Errors logged but don't crash app
+
+Expected Logs:
+  ✓ "Core initialized"
+  ✓ "App Check activated with DEBUG provider"
+  ✓ "reCAPTCHA disabled for testing"
+  ✓ "Firebase initialization complete"
+
+================================================================================
+VERIFICATION STEP 2: APP CHECK RETRY GUARD
+============================================
+
+File: apps/technician_app/lib/core/firebase/firebase_init.dart
+Method: _extractDebugTokenWithRetry()
+
+Checklist:
+  ☐ Method exists and is called from init()
+  ☐ Max retries set to 2 (const maxRetries = 2)
+  ☐ Delay between retries is 1 second (Duration(seconds: 1))
+  ☐ Logs show attempt number (attempt 1/2, attempt 2/2)
+  ☐ Graceful failure - doesn't rethrow after max retries
+  ☐ App continues even if token retrieval fails
+  ☐ Only executes in debug mode (kDebugMode check)
+  ☐ Debug token logged to debugPrint (not AppLogger)
+
+Expected Logs:
+  ✓ "[APP CHECK] Attempting to get App Check token (attempt 1/2)"
+  ✓ "[APP CHECK] Token retrieved successfully"
+  OR
+  ✓ "[APP CHECK] Token retrieval failed, retrying in 1 second..."
+  ✓ "[APP CHECK] Attempting to get App Check token (attempt 2/2)"
+  ✓ "[APP CHECK] Token retrieval failed after 2 attempts: ..."
+
+================================================================================
+VERIFICATION STEP 3: TOKEN REFRESH IN CLOUD FUNCTIONS
+======================================================
+
+File: apps/technician_app/lib/core/services/functions_service.dart
+
+Functions to Check:
+  ☐ addService()
+  ☐ updateService()
+  ☐ toggleServiceStatus()
+  ☐ deleteService()
+  ☐ updateTechnicianPersonalDetails()
+  ☐ updateTechnicianBankDetails()
+  ☐ reuploadVerificationDocument()
+
+For Each Function, Verify:
+  ☐ Gets current user: final user = FirebaseAuth.instance.currentUser;
+  ☐ Checks user is not null: if (user == null) throw Exception(...)
+  ☐ Logs before token refresh: debugPrint('[OPERATION] Refreshing...')
+  ☐ Calls getIdToken(true): await user.getIdToken(true);
+  ☐ Logs after token refresh: debugPrint('[OPERATION] Token refreshed...')
+  ☐ THEN calls Cloud Function: HttpsCallable callable = ...
+  ☐ Token refresh happens BEFORE function call (not after)
+
+Expected Logs:
+  ✓ "[SERVICE CREATE] Refreshing Firebase ID token for uid=abc123"
+  ✓ "[SERVICE CREATE] Token refreshed successfully"
+  ✓ "[SERVICE CREATE] Calling Cloud Function with data: {...}"
+  ✓ "[SERVICE CREATE] SUCCESS - Service written to technician_services"
+
+================================================================================
+VERIFICATION STEP 4: AUTH STATE VALIDATION
+============================================
+
+File: apps/technician_app/lib/main.dart
+
+Checklist:
+  ☐ AuthGate monitors authStateChanges()
+  ☐ _AuthenticatedGate waits for technician document
+  ☐ Retries up to 10 times with 500ms delay
+  ☐ Validates profile completion percentage
+  ☐ Checks approval status before dashboard
+  ☐ Enforces location completion before dashboard
+  ☐ Shows loading screen while checking
+  ☐ Error boundary catches unhandled errors
+
+Expected Behavior:
+  ✓ App shows loading screen on startup
+  ✓ After auth check, shows appropriate screen
+  ✓ No UNAUTHENTICATED errors during normal use
+  ✓ Protected operations only available when authenticated
+
+================================================================================
+VERIFICATION STEP 5: LOGGING & DEBUGGING
+==========================================
+
+File: apps/technician_app/lib/core/services/functions_service.dart
+File: apps/technician_app/lib/core/firebase/firebase_init.dart
+
+Checklist:
+  ☐ debugPrint() used for token refresh logs
+  ☐ debugPrint() used for App Check logs
+  ☐ AppLogger used for Firebase init logs
+  ☐ Logs include operation name
+  ☐ Logs include user UID (where applicable)
+  ☐ Logs include status (success/failure)
+  ☐ No sensitive data logged (tokens not logged)
+  ☐ Logs visible in IDE console
+
+Expected Logs:
+  ✓ "[SERVICE CREATE] Refreshing Firebase ID token for uid=..."
+  ✓ "[SERVICE CREATE] Token refreshed successfully"
+  ✓ "[APP CHECK] Attempting to get App Check token (attempt 1/2)"
+  ✓ "[APP CHECK] Token retrieved successfully"
+
+================================================================================
+VERIFICATION STEP 6: ERROR HANDLING
+====================================
+
+File: apps/technician_app/lib/core/services/functions_service.dart
+File: apps/technician_app/lib/core/firebase/firebase_init.dart
+
+Checklist:
+  ☐ User not authenticated → throws Exception
+  ☐ Token refresh fails → exception propagates
+  ☐ Cloud Function fails → exception propagates
+  ☐ App Check token fails → app continues (graceful)
+  ☐ Firebase init fails → app continues (graceful)
+  ☐ No infinite loops
+  ☐ No hanging operations
+  ☐ All try-catch blocks in place
+
+Expected Behavior:
+  ✓ Errors are caught and logged
+  ✓ App doesn't crash on errors
+  ✓ User sees error messages
+  ✓ App continues functioning
+
+================================================================================
+VERIFICATION STEP 7: PRODUCTION READINESS
+===========================================
+
+Checklist:
+  ☐ All token refresh logic in place
+  ☐ App Check retry guard in place
+  ☐ Auth state validation in place
+  ☐ Logging in place for monitoring
+  ☐ Error handling is graceful
+  ☐ No breaking changes to existing code
+  ☐ No UNAUTHENTICATED errors in testing
+  ☐ App Check initializes without hanging
+  ☐ Service creation/updates work reliably
+  ☐ Bank details updates work reliably
+  ☐ All tests pass
+
+Expected Result:
+  ✓ Development environment is stable
+  ✓ Ready for production deployment
+  ✓ No known issues with auth or App Check
+  ✓ Detailed logging for monitoring
+
+================================================================================
+TESTING SCENARIOS
+==================
+
+SCENARIO 1: Service Creation
+  Steps:
+    1. Launch app
+    2. Login
+    3. Go to Add Service
+    4. Select category
+    5. Fill service details
+    6. Click "Add Service"
+  
+  Expected:
+    ✓ No UNAUTHENTICATED errors
+    ✓ Service created successfully
+    ✓ Logs show token refresh
+    ✓ Service appears in list
+
+SCENARIO 2: Service Update
+  Steps:
+    1. Open existing service
+    2. Edit details
+    3. Click "Update Service"
+  
+  Expected:
+    ✓ No UNAUTHENTICATED errors
+    ✓ Service updated successfully
+    ✓ Logs show token refresh
+    ✓ Changes saved
+
+SCENARIO 3: Bank Details Update
+  Steps:
+    1. Go to Profile → Bank Details
+    2. Enter bank information
+    3. Click "Save"
+  
+  Expected:
+    ✓ No UNAUTHENTICATED errors
+    ✓ Details saved successfully
+    ✓ Logs show token refresh
+    ✓ Details persisted
+
+SCENARIO 4: App Startup
+  Steps:
+    1. Launch app
+    2. Check console logs
+  
+  Expected:
+    ✓ "App Check activated with DEBUG provider"
+    ✓ Debug token logged (if in debug mode)
+    ✓ No "Too many attempts" errors
+    ✓ App initializes successfully
+
+SCENARIO 5: Auth State Flow
+  Steps:
+    1. Launch app without login
+    2. Complete login
+    3. Perform operations
+  
+  Expected:
+    ✓ Shows onboarding screen initially
+    ✓ Shows dashboard after login
+    ✓ All operations work
+    ✓ No UNAUTHENTICATED errors
+
+================================================================================
+SIGN-OFF CHECKLIST
+===================
+
+Before marking as complete:
+
+  ☐ All verification steps passed
+  ☐ All testing scenarios passed
+  ☐ No UNAUTHENTICATED errors observed
+  ☐ No "Too many attempts" errors observed
+  ☐ Logs show token refresh for all operations
+  ☐ App Check initializes without hanging
+  ☐ Error handling is graceful
+  ☐ No breaking changes to existing code
+  ☐ Documentation is complete
+  ☐ Ready for production deployment
+
+================================================================================
+FINAL STATUS
+=============
+
+Date Completed: _______________
+Verified By: _______________
+Status: ☐ COMPLETE ☐ IN PROGRESS ☐ BLOCKED
+
+Notes:
+_________________________________________________________________
+_________________________________________________________________
+_________________________________________________________________
+
+================================================================================

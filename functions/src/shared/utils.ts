@@ -9,6 +9,57 @@ import * as admin from 'firebase-admin';
 import { db } from './config';
 
 /**
+ * App Check Validation
+ */
+export function validateAppCheck(context: functions.https.CallableContext) {
+    if (!context.app) {
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            'App Check token required'
+        );
+    }
+}
+
+/**
+ * Structured Logger
+ */
+export const logger = {
+    info: (event: string, data: any = {}) => {
+        console.log(`[INFO-${event}]`, JSON.stringify({ ...data, timestamp: new Date().toISOString() }));
+    },
+    warn: (event: string, data: any = {}) => {
+        console.warn(`[WARN-${event}]`, JSON.stringify({ ...data, timestamp: new Date().toISOString() }));
+    },
+    error: (event: string, data: any = {}, error?: any) => {
+        console.error(`[ERROR-${event}]`, JSON.stringify({ 
+            ...data, 
+            error: error?.message || error, 
+            stack: error?.stack,
+            timestamp: new Date().toISOString() 
+        }));
+    }
+};
+
+/**
+ * Input Sanitization
+ */
+export function sanitizeInput(text: string): string {
+    if (!text) return '';
+    // Remove scripts, HTML tags, and dangerous characters
+    return text
+        .replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gim, "")
+        .replace(/<[^>]*>?/gm, "")
+        .replace(/[&<>"']/g, (m) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        })[m] || m)
+        .trim();
+}
+
+/**
  * Assert that the user is an admin
  * Throws HttpsError if not admin
  */

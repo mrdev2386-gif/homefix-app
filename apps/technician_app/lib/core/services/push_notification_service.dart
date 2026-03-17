@@ -23,9 +23,9 @@ class PushNotificationService {
 
   PushNotificationService._internal();
 
-  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  FirebaseMessaging? _messaging;
+  FirebaseFirestore? _firestore;
+  FirebaseAuth? _auth;
 
   bool _isInitialized = false;
   String? _currentToken;
@@ -50,11 +50,16 @@ class PushNotificationService {
     try {
       debugPrint('[PushNotificationService] Initializing...');
 
+      // Initialize Firebase services AFTER Firebase is initialized
+      _messaging = FirebaseMessaging.instance;
+      _firestore = FirebaseFirestore.instance;
+      _auth = FirebaseAuth.instance;
+
       // Step 1: Request notification permission
       await _requestNotificationPermission();
 
       // Step 2: Get initial token
-      final token = await _messaging.getToken();
+      final token = await _messaging!.getToken();
       if (token != null) {
         _currentToken = token;
         debugPrint('[PushNotificationService] Initial token obtained: ${token.substring(0, 20)}...');
@@ -73,6 +78,7 @@ class PushNotificationService {
       debugPrint('[PushNotificationService] ✅ Initialization complete');
     } catch (error) {
       debugPrint('[PushNotificationService] ❌ Initialization failed: $error');
+      rethrow;
     }
   }
 
@@ -83,8 +89,12 @@ class PushNotificationService {
   /// Android: Automatic in Android 13+
 
   Future<void> _requestNotificationPermission() async {
+    if (_messaging == null) {
+      throw Exception('PushNotificationService not initialized. Call initialize() first.');
+    }
+
     try {
-      final settings = await _messaging.requestPermission(
+      final settings = await _messaging!.requestPermission(
         alert: true,
         announcement: false,
         badge: true,
@@ -111,7 +121,11 @@ class PushNotificationService {
   /// ================================================
 
   void _setupTokenRefreshListener(VoidCallback? onTokenRefresh) {
-    _messaging.onTokenRefresh.listen((newToken) async {
+    if (_messaging == null) {
+      throw Exception('PushNotificationService not initialized. Call initialize() first.');
+    }
+
+    _messaging!.onTokenRefresh.listen((newToken) async {
       debugPrint('[PushNotificationService] Token refreshed: ${newToken.substring(0, 20)}...');
       _currentToken = newToken;
 
@@ -129,7 +143,11 @@ class PushNotificationService {
   /// ================================================
 
   void _setupAuthStateListener() {
-    _auth.authStateChanges().listen((user) async {
+    if (_auth == null) {
+      throw Exception('PushNotificationService not initialized. Call initialize() first.');
+    }
+
+    _auth!.authStateChanges().listen((user) async {
       if (user != null) {
         debugPrint('[PushNotificationService] User logged in: ${user.uid}');
         // Save token on login
@@ -137,7 +155,7 @@ class PushNotificationService {
           await _saveFcmTokenToFirestore(_currentToken!);
         } else {
           // If no token, fetch it
-          final token = await _messaging.getToken();
+          final token = await _messaging!.getToken();
           if (token != null) {
             _currentToken = token;
             await _saveFcmTokenToFirestore(token);
@@ -158,7 +176,7 @@ class PushNotificationService {
   /// Enables push notifications from Cloud Functions
 
   Future<void> _saveFcmTokenToFirestore(String token) async {
-    final user = _auth.currentUser;
+    final user = _auth?.currentUser;
     if (user == null) {
       debugPrint('[PushNotificationService] ⚠️ Cannot save token - user not logged in');
       return;
@@ -170,7 +188,7 @@ class PushNotificationService {
       final now = FieldValue.serverTimestamp();
 
       // Save token to Firestore with metadata
-      await _firestore
+      await _firestore!
           .collection('technicians')
           .doc(technicianId)
           .collection('fcmTokens')
@@ -184,7 +202,7 @@ class PushNotificationService {
       }, SetOptions(merge: true));
 
       // Also save to legacy location for backward compatibility
-      await _firestore
+      await _firestore!
           .collection('technicians')
           .doc(technicianId)
           .update({
@@ -208,6 +226,10 @@ class PushNotificationService {
   /// 3. Notification tap (onMessageOpenedApp)
 
   void _setupMessageHandlers() {
+    if (_messaging == null) {
+      throw Exception('PushNotificationService not initialized. Call initialize() first.');
+    }
+
     // 1. FOREGROUND MESSAGES
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       debugPrint('[PushNotificationService] Foreground message received');
@@ -229,14 +251,14 @@ class PushNotificationService {
   /// ================================================
 
   Future<void> removeTokenOnLogout() async {
-    final user = _auth.currentUser;
+    final user = _auth?.currentUser;
     if (user == null || _currentToken == null) return;
 
     try {
       final technicianId = user.uid;
       final tokenId = _generateTokenId(_currentToken!);
 
-      await _firestore
+      await _firestore!
           .collection('technicians')
           .doc(technicianId)
           .collection('fcmTokens')
@@ -255,9 +277,13 @@ class PushNotificationService {
   /// Call if needed to force a token refresh
 
   Future<String?> refreshToken() async {
+    if (_messaging == null) {
+      throw Exception('PushNotificationService not initialized. Call initialize() first.');
+    }
+
     try {
-      await _messaging.deleteToken();
-      final newToken = await _messaging.getToken();
+      await _messaging!.deleteToken();
+      final newToken = await _messaging!.getToken();
       if (newToken != null) {
         _currentToken = newToken;
         await _saveFcmTokenToFirestore(newToken);

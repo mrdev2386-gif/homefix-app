@@ -1,0 +1,34 @@
+{
+  "name": "homefix-system-tests",
+  "version": "1.0.0",
+  "description": "Production-ready system testing suite for HomeFix",
+  "main": "system_test_runner.ts",
+  "scripts": {
+    "build": "tsc",
+    "test:system": "npm run build && node lib/system_test_runner.js",
+    "test:firebase": "npm run build && node lib/firebase_connection_test.js",
+    "test:firestore": "npm run build && node lib/firestore_integrity_test.js",
+    "test:auth": "npm run build && node lib/auth_flow_test.js",
+    "test:functions": "npm run build && node lib/cloud_functions_test.js",
+    "test:booking": "npm run build && node lib/booking_system_test.js",
+    "test:services": "npm run build && node lib/service_creation_test.js",
+    "test:security": "npm run build && node lib/security_rules_test.js",
+    "test:e2e": "npm run build && node lib/end_to_end_lifecycle_test.js",
+    "test:all": "npm run build && node lib/system_test_runner.js",
+    "clean": "rm -rf lib"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase": "^9.23.0",
+    "axios": "^1.7.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.0",
+    "typescript": "^5.4.5"
+  },
+  "private": true
+}

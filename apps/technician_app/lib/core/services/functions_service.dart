@@ -112,6 +112,7 @@ class FunctionsService {
 
   /// Add a new technician service via Cloud Function
   /// SECURITY: Validates technician approval before service creation
+  /// CRITICAL: Ensures Firebase Auth ID token is refreshed before calling function
   Future<Map<String, dynamic>> addService({
     required String name,
     required double price,
@@ -125,6 +126,17 @@ class FunctionsService {
     Map<String, dynamic>? nightService,
   }) async {
     try {
+      // CRITICAL: Ensure user is authenticated
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+      
+      // CRITICAL: Refresh Firebase ID token BEFORE calling Cloud Function
+      debugPrint('[SERVICE CREATE] Refreshing Firebase ID token for uid=${user.uid}');
+      await user.getIdToken(true);
+      debugPrint('[SERVICE CREATE] Token refreshed successfully');
+      
       debugPrint('[SERVICE CREATE] Writing to technician_services collection');
       debugPrint('[SERVICE CREATE] categoryId: $category');
       
@@ -151,6 +163,7 @@ class FunctionsService {
   }
 
   /// Update an existing technician service via Cloud Function
+  /// CRITICAL: Ensures Firebase Auth ID token is refreshed before calling function
   Future<Map<String, dynamic>> updateService({
     required String serviceId,
     String? name,
@@ -166,6 +179,17 @@ class FunctionsService {
     Map<String, dynamic>? nightService,
   }) async {
     try {
+      // CRITICAL: Ensure user is authenticated
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+      
+      // CRITICAL: Refresh Firebase ID token BEFORE calling Cloud Function
+      debugPrint('[SERVICE UPDATE] Refreshing Firebase ID token for uid=${user.uid}');
+      await user.getIdToken(true);
+      debugPrint('[SERVICE UPDATE] Token refreshed successfully');
+      
       HttpsCallable callable = _functions.httpsCallable('updateTechnicianService');
       final Map<String, dynamic> data = {'serviceId': serviceId};
       
@@ -189,8 +213,20 @@ class FunctionsService {
   }
 
   /// Toggle technician service active status via Cloud Function
+  /// CRITICAL: Ensures Firebase Auth ID token is refreshed before calling function
   Future<Map<String, dynamic>> toggleServiceStatus(String serviceId) async {
     try {
+      // CRITICAL: Ensure user is authenticated
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+      
+      // CRITICAL: Refresh Firebase ID token BEFORE calling Cloud Function
+      debugPrint('[SERVICE TOGGLE] Refreshing Firebase ID token for uid=${user.uid}');
+      await user.getIdToken(true);
+      debugPrint('[SERVICE TOGGLE] Token refreshed successfully');
+      
       HttpsCallable callable = _functions.httpsCallable('toggleTechnicianServiceStatus');
       final result = await callable.call({'serviceId': serviceId});
       return Map<String, dynamic>.from(result.data);
@@ -200,8 +236,20 @@ class FunctionsService {
   }
 
   /// Delete (soft delete) a technician service via Cloud Function
+  /// CRITICAL: Ensures Firebase Auth ID token is refreshed before calling function
   Future<Map<String, dynamic>> deleteService(String serviceId) async {
     try {
+      // CRITICAL: Ensure user is authenticated
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+      
+      // CRITICAL: Refresh Firebase ID token BEFORE calling Cloud Function
+      debugPrint('[SERVICE DELETE] Refreshing Firebase ID token for uid=${user.uid}');
+      await user.getIdToken(true);
+      debugPrint('[SERVICE DELETE] Token refreshed successfully');
+      
       HttpsCallable callable = _functions.httpsCallable('deleteTechnicianService');
       final result = await callable.call({'serviceId': serviceId});
       return Map<String, dynamic>.from(result.data);
@@ -297,6 +345,7 @@ class FunctionsService {
 
   /// Update technician bank details via Cloud Function
   /// Only allows updating bank-related fields
+  /// CRITICAL: Ensures Firebase Auth ID token is refreshed before calling function
   Future<Map<String, dynamic>> updateTechnicianBankDetails({
     required String accountHolderName,
     required String bankName,
@@ -304,6 +353,17 @@ class FunctionsService {
     required String ifscCode,
   }) async {
     try {
+      // CRITICAL: Ensure user is authenticated
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+      
+      // CRITICAL: Refresh Firebase ID token BEFORE calling Cloud Function
+      debugPrint('[BANK UPDATE] Refreshing Firebase ID token for uid=${user.uid}');
+      await user.getIdToken(true);
+      debugPrint('[BANK UPDATE] Token refreshed successfully');
+      
       debugPrint('[FunctionsService] Calling updateTechnicianBankDetails');
       HttpsCallable callable = _functions.httpsCallable('updateTechnicianBankDetails');
       final result = await callable.call({
@@ -325,11 +385,23 @@ class FunctionsService {
 
   /// Re-upload verification document via Cloud Function
   /// Allows re-upload if status is "missing" or "rejected"
+  /// CRITICAL: Ensures Firebase Auth ID token is refreshed before calling function
   Future<Map<String, dynamic>> reuploadVerificationDocument({
     required String documentType,
     required String documentUrl,
   }) async {
     try {
+      // CRITICAL: Ensure user is authenticated
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+      
+      // CRITICAL: Refresh Firebase ID token BEFORE calling Cloud Function
+      debugPrint('[DOC REUPLOAD] Refreshing Firebase ID token for uid=${user.uid}');
+      await user.getIdToken(true);
+      debugPrint('[DOC REUPLOAD] Token refreshed successfully');
+      
       debugPrint('[FunctionsService] Calling reuploadVerificationDocument');
       HttpsCallable callable = _functions.httpsCallable('reuploadVerificationDocument');
       final result = await callable.call({
@@ -346,4 +418,6 @@ class FunctionsService {
       rethrow;
     }
   }
+
+
 }

@@ -71,9 +71,9 @@ class NotificationsService extends ChangeNotifier {
   factory NotificationsService() => _instance;
   NotificationsService._internal();
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin _localNotif = FlutterLocalNotificationsPlugin();
+  FirebaseFirestore? _firestore;
+  FirebaseMessaging? _messaging;
+  FlutterLocalNotificationsPlugin? _localNotif;
 
   List<NotificationModel> _notifications = [];
   int _unreadCount = 0;
@@ -86,6 +86,11 @@ class NotificationsService extends ChangeNotifier {
     if (_isInitialized) return;
 
     try {
+      // Initialize Firebase services AFTER Firebase is initialized
+      _firestore = FirebaseFirestore.instance;
+      _messaging = FirebaseMessaging.instance;
+      _localNotif = FlutterLocalNotificationsPlugin();
+
       // 1. Android Channels
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
         const AndroidNotificationChannel channel = AndroidNotificationChannel(
@@ -97,7 +102,7 @@ class NotificationsService extends ChangeNotifier {
           enableVibration: true,
         );
 
-        await _localNotif
+        await _localNotif!
             .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
             ?.createNotificationChannel(channel);
       }
@@ -107,7 +112,7 @@ class NotificationsService extends ChangeNotifier {
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(),
       );
-      await _localNotif.initialize(
+      await _localNotif!.initialize(
         initializationSettings,
         onDidReceiveNotificationResponse: (response) {
           if (response.payload != null) {
@@ -122,7 +127,7 @@ class NotificationsService extends ChangeNotifier {
       );
 
       // 2. Request permissions
-      await _messaging.requestPermission(
+      await _messaging!.requestPermission(
         alert: true,
         badge: true,
         sound: true,
@@ -135,6 +140,7 @@ class NotificationsService extends ChangeNotifier {
       _isInitialized = true;
     } catch (e) {
       debugPrint('[Notifications] Init error: $e');
+      rethrow;
     }
   }
 
@@ -154,7 +160,7 @@ class NotificationsService extends ChangeNotifier {
       }
     });
 
-    _messaging.onTokenRefresh.listen((token) async {
+    _messaging!.onTokenRefresh.listen((token) async {
       await _saveTokenWithRetry();
     });
   }
@@ -164,7 +170,7 @@ class NotificationsService extends ChangeNotifier {
     
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        final token = await _messaging.getToken();
+        final token = await _messaging!.getToken();
         if (token != null) {
           await _saveToken(token);
           debugPrint('[Notifications] Token saved successfully on attempt $attempt');
@@ -184,7 +190,7 @@ class NotificationsService extends ChangeNotifier {
 
   Future<void> _removeTokenOnLogout() async {
     try {
-      final token = await _messaging.getToken();
+      final token = await _messaging!.getToken();
       if (token != null) {
         final callable = FirebaseFunctions.instance.httpsCallable('removeFcmToken');
         await callable.call({
@@ -258,7 +264,7 @@ class NotificationsService extends ChangeNotifier {
       // PHASE 3: Generate dedupe key to prevent duplicate notifications
       final dedupeKey = '${message.data['type'] ?? 'general'}_${message.data['bookingId'] ?? message.messageId}';
       
-      _localNotif.show(
+      _localNotif!.show(
         dedupeKey.hashCode,
         notification.title,
         notification.body,
@@ -277,7 +283,7 @@ class NotificationsService extends ChangeNotifier {
   }
 
   void _setupDataStreams(String userId) {
-    _firestore
+    _firestore!
         .collection('notifications')
         .where('userId', isEqualTo: userId)
         .orderBy('createdAt', descending: true)

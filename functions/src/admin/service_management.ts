@@ -10,9 +10,8 @@
  */
 
 import * as functions from "firebase-functions";
-
 import * as admin from "firebase-admin";
-
+import { secureCallable, sanitize } from "../shared/security";
 
 const db = admin.firestore();
 
@@ -56,7 +55,7 @@ async function logAdminAction(
  * Changes status from pending to approved
  */
 export const admin_approveService = functions.https.onCall(
-  async (request, context) => {
+  secureCallable(async (request: any, context: any) => {
     // Authentication check
     if (!context.auth) {
       throw new functions.https.HttpsError("unauthenticated", "Authentication required");
@@ -65,7 +64,7 @@ export const admin_approveService = functions.https.onCall(
     // CRITICAL FIX: Verify admin role from Firestore
     await verifyAdmin(context.auth.uid);
 
-    const { serviceId } = request.data;
+    const { serviceId } = request;
     if (!serviceId) {
       throw new functions.https.HttpsError("invalid-argument", "Service ID is required");
     }
@@ -99,7 +98,7 @@ export const admin_approveService = functions.https.onCall(
       status: 'approved',
       message: 'Service approved successfully'
     };
-  }
+  })
 );
 
 /**
@@ -107,7 +106,7 @@ export const admin_approveService = functions.https.onCall(
  * Changes status from pending to rejected
  */
 export const admin_rejectService = functions.https.onCall(
-  async (request, context) => {
+  secureCallable(async (request: any, context: any) => {
     // Authentication check
     if (!context.auth) {
       throw new functions.https.HttpsError("unauthenticated", "Authentication required");
@@ -116,7 +115,7 @@ export const admin_rejectService = functions.https.onCall(
     // CRITICAL FIX: Verify admin role from Firestore
     await verifyAdmin(context.auth.uid);
 
-    const { serviceId, reason } = request.data;
+    const { serviceId, reason } = request;
     if (!serviceId) {
       throw new functions.https.HttpsError("invalid-argument", "Service ID is required");
     }
@@ -131,7 +130,7 @@ export const admin_rejectService = functions.https.onCall(
     await serviceRef.update({
       status: 'rejected',
       isActive: false, // CRITICAL: Keep inactive on rejection
-      rejectionReason: reason || 'Not specified',
+      rejectionReason: sanitize(reason) || 'Not specified',
       rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
       rejectedBy: context.auth.uid,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -141,7 +140,7 @@ export const admin_rejectService = functions.https.onCall(
     await logAdminAction(context.auth.uid, 'reject_service', serviceId, {
       previousStatus: serviceDoc.data()?.status,
       newStatus: 'rejected',
-      reason: reason || 'Not specified'
+      reason: sanitize(reason) || 'Not specified'
     });
 
     console.log(`[ADMIN] Service ${serviceId} rejected by ${context.auth.uid}`);
@@ -152,7 +151,7 @@ export const admin_rejectService = functions.https.onCall(
       status: 'rejected',
       message: 'Service rejected'
     };
-  }
+  })
 );
 
 /**
@@ -160,7 +159,7 @@ export const admin_rejectService = functions.https.onCall(
  * Changes status to disabled (SOFT DELETE - never removes document)
  */
 export const admin_disableService = functions.https.onCall(
-  async (request, context) => {
+  secureCallable(async (request: any, context: any) => {
     // Authentication check
     if (!context.auth) {
       throw new functions.https.HttpsError("unauthenticated", "Authentication required");
@@ -169,7 +168,7 @@ export const admin_disableService = functions.https.onCall(
     // CRITICAL FIX: Verify admin role from Firestore
     await verifyAdmin(context.auth.uid);
 
-    const { serviceId } = request.data;
+    const { serviceId } = request;
     if (!serviceId) {
       throw new functions.https.HttpsError("invalid-argument", "Service ID is required");
     }
@@ -203,5 +202,5 @@ export const admin_disableService = functions.https.onCall(
       status: 'disabled',
       message: 'Service disabled'
     };
-  }
+  })
 );

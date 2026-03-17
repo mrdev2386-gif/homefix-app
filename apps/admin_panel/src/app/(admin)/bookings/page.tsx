@@ -319,11 +319,11 @@ export default function BookingsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredBookings.map(item => (
+                  {filteredBookings.map((item, index) => (
                     <tr key={item.id} className="border-b border-[#1F2937] hover:bg-[#1F2937]/50">
                       {columns.map(col => (
                         <td key={col.key} className={`py-3 sm:py-4 px-3 sm:px-4 ${col.align === 'right' ? 'text-right' : ''}`}>
-                          {col.render ? col.render(item) : item[col.key]}
+                          {col.render ? col.render(item, index) : item[col.key]}
                         </td>
                       ))}
                     </tr>

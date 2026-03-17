@@ -20,7 +20,11 @@ export const normalizeTechnicianData = functions.https.onCall(
       throw new functions.https.HttpsError("unauthenticated", "Authentication required");
     }
 
-    // TODO: Add admin role check
+    // Verify admin access
+    if (!context.auth.token?.admin) {
+      throw new functions.https.HttpsError("permission-denied", "Admin access required");
+    }
+
     console.log("[MIGRATION] Starting technician data normalization");
 
     let processedCount = 0;
