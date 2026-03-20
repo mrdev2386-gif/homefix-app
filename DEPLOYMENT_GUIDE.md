@@ -1,525 +1,316 @@
-# HomeFix System Audit - Deployment Guide
+# Firebase Functions UNAUTHENTICATED Fix - Deployment Guide
 
-## CRITICAL: READ BEFORE DEPLOYING
-
-This guide covers deployment of all fixes from the comprehensive 11-step system audit. Follow each step carefully to ensure production stability.
+## CRITICAL: DO NOT SKIP THESE STEPS
 
 ---
 
-## PRE-DEPLOYMENT CHECKLIST
+## PHASE 1: PRE-DEPLOYMENT VERIFICATION
 
-- [ ] All code reviewed
-- [ ] All tests passing locally
-- [ ] Firestore rules reviewed
-- [ ] Cloud Functions tested
-- [ ] Admin panel tested
-- [ ] Customer app tested
-- [ ] Technician app tested
-- [ ] Backup of current production data
-- [ ] Rollback plan documented
-
----
-
-## STEP 1: DEPLOY FIRESTORE INDEXES
-
-**Why:** Composite indexes are required for scalable queries on large datasets.
-
+### 1.1 Verify Project Alignment
 ```bash
-# Deploy indexes
-firebase deploy --only firestore:indexes
+# Check current Firebase project
+firebase use
 
-# Verify indexes created
-firebase firestore:indexes
+# Expected output:
+# Currently using project: homefix-aa42d
 ```
 
-**Expected Output:**
-```
-✓ Deployed indexes for collection bookings
-✓ Deployed indexes for collection technicians
-✓ Deployed indexes for collection technician_services
-✓ Deployed indexes for collection users
-✓ Deployed indexes for collection reviews
-✓ Deployed indexes for collection security_audit_logs
+**Action**: If project is wrong, run:
+```bash
+firebase use homefix-aa42d
 ```
 
-**Indexes Created:**
-- bookings: status + createdAt
-- bookings: customerId + createdAt
-- bookings: technicianId + createdAt
-- bookings: paymentStatus + createdAt
-- technicians: status + rating + createdAt
-- technicians: city + rating
-- technicians: isOnline + rating
-- technician_services: status + createdAt
-- technician_services: technicianId + createdAt
-- technician_services: categoryId + createdAt
-- users: city + createdAt
-- users: isSuspended + createdAt
-- reviews: technicianId + createdAt
-- reviews: bookingId + createdAt
-- security_audit_logs: userId + timestamp
-- security_audit_logs: eventType + timestamp
+### 1.2 Verify Frontend Configuration
+```bash
+# Check firebase_options.dart
+grep -n "projectId" apps/technician_app/lib/firebase_options.dart
+
+# Expected output:
+# projectId: 'homefix-aa42d'
+```
+
+### 1.3 Verify Backend Configuration
+```bash
+# Check index.ts
+grep -n "admin.initializeApp" functions/src/index.ts
+
+# Expected output:
+# if (!admin.apps.length) {
+#     admin.initializeApp();
+# }
+```
 
 ---
 
-## STEP 2: DEPLOY FIRESTORE RULES
+## PHASE 2: BACKEND DEPLOYMENT
 
-**Why:** Updated rules enforce security and prevent unauthorized writes.
-
+### 2.1 Build Functions
 ```bash
-# Deploy rules
-firebase deploy --only firestore:rules
-
-# Verify rules deployed
-firebase firestore:rules
-```
-
-**Expected Output:**
-```
-✓ Deployed firestore rules
-```
-
-**Rules Verified:**
-- ✅ Customers cannot edit technician services
-- ✅ Customers cannot approve bookings
-- ✅ Technicians cannot modify other services
-- ✅ Technicians cannot approve bookings
-- ✅ Admins pass role validation
-- ✅ All wallet writes blocked (Cloud Functions only)
-- ✅ All booking writes blocked (Cloud Functions only)
-
----
-
-## STEP 3: BUILD CLOUD FUNCTIONS
-
-**Why:** New functions must be compiled before deployment.
-
-```bash
-# Navigate to functions directory
 cd functions
-
-# Install dependencies
-npm install
-
-# Build TypeScript
 npm run build
-
-# Verify build successful
-ls -la lib/
-
-# Expected files:
-# - lib/booking/booking_creation.js
-# - lib/shared/booking_state_machine.js
-# - lib/shared/wallet_safety.js
-# - lib/shared/query_optimization.js
-# - lib/shared/security_audit.js
 ```
 
-**Expected Output:**
+**Expected Output**:
 ```
-✓ Compiled 5 new files
-✓ No TypeScript errors
-✓ All imports resolved
+✔ Compiled successfully
+```
+
+### 2.2 Deploy Functions
+```bash
+firebase deploy --only functions
+```
+
+**Expected Output**:
+```
+✔ functions[addTechnicianService(us-central1)]: Successful update operation.
+✔ functions[updateTechnicianService(us-central1)]: Successful update operation.
+✔ functions[toggleTechnicianServiceStatus(us-central1)]: Successful update operation.
+✔ functions[deleteTechnicianService(us-central1)]: Successful update operation.
+✔ functions[getMyTechnicianServices(us-central1)]: Successful update operation.
+```
+
+### 2.3 Verify Deployment
+```bash
+firebase functions:list
+
+# Expected output:
+# addTechnicianService(us-central1)
+# updateTechnicianService(us-central1)
+# toggleTechnicianServiceStatus(us-central1)
+# deleteTechnicianService(us-central1)
+# getMyTechnicianServices(us-central1)
 ```
 
 ---
 
-## STEP 4: DEPLOY CLOUD FUNCTIONS
+## PHASE 3: FRONTEND VERIFICATION
 
-**Why:** New functions must be deployed to Firebase.
-
+### 3.1 Clean Build
 ```bash
-# Deploy all functions
+cd apps/technician_app
+flutter clean
+flutter pub get
+```
+
+### 3.2 Build APK
+```bash
+flutter build apk --debug
+```
+
+**Expected Output**:
+```
+✔ Built build/app/outputs/flutter-apk/app-debug.apk
+```
+
+### 3.3 Install on Device
+```bash
+flutter install
+```
+
+---
+
+## PHASE 4: RUNTIME TESTING
+
+### 4.1 Start Log Monitoring
+```bash
+# Terminal 1: Monitor backend logs
+firebase functions:log --follow
+```
+
+### 4.2 Trigger Test
+```bash
+# Terminal 2: Run app and trigger addService
+flutter run
+
+# In app:
+# 1. Login with technician account
+# 2. Navigate to Add Service
+# 3. Fill form and submit
+```
+
+### 4.3 Verify Frontend Logs
+```
+# Expected in Flutter console:
+🚀 [ADDSERVICE] Authenticated user: {uid}
+🔥 [ADDSERVICE] ID TOKEN OBTAINED
+🔥 [ADDSERVICE] UID: {uid}
+🔥 [ADDSERVICE] TOKEN LENGTH: {length}
+🔥 [ADDSERVICE] TIMESTAMP: {iso8601}
+🔍 [ADDSERVICE] Validating token claims...
+✅ [ADDSERVICE] Token validation passed
+🚀 [ADDSERVICE] Calling Cloud Function with authenticated user: {uid}
+🚀 [ADDSERVICE] Region: us-central1
+🚀 [ADDSERVICE] Project: homefix-aa42d
+✅ [ADDSERVICE] SUCCESS - Service created
+```
+
+### 4.4 Verify Backend Logs
+```
+# Expected in Firebase console:
+🔥 [FUNCTION START] addTechnicianService triggered
+🔥 [REQUEST TIMESTAMP] {iso8601}
+🔥 [CONTEXT AUTH] { uid: "...", token: {...} }
+🔥 [CONTEXT UID] {uid}
+🔥 [CONTEXT TOKEN] PRESENT
+🔥 [AUTH SUCCESS] Authenticated UID: {uid}
+[TECH STATUS] approved
+[PROFILE COMPLETION] 100
+[SERVICE_ADD] ✅ Service {serviceId} created for technician {uid}
+```
+
+---
+
+## PHASE 5: FAILURE DIAGNOSIS
+
+### If Frontend Shows Error
+```
+❌ [ADDSERVICE] ERROR: {error}
+```
+
+**Action**: Check logs for:
+1. Is user authenticated? (Check `🚀 [ADDSERVICE] Authenticated user`)
+2. Is token obtained? (Check `🔥 [ADDSERVICE] ID TOKEN OBTAINED`)
+3. Is token valid? (Check `✅ [ADDSERVICE] Token validation passed`)
+
+### If Backend Shows Error
+```
+❌ [AUTH FAILED] NO AUTH CONTEXT - Request rejected
+```
+
+**Action**: This means `context.auth` is null. Check:
+1. Is function deployed? (`firebase functions:list`)
+2. Is region correct? (Should be `us-central1`)
+3. Is project correct? (`firebase use`)
+
+### If Token Validation Fails
+```
+❌ Token audience mismatch: expected homefix-aa42d, got {other}
+```
+
+**Action**: Token is for wrong project. Check:
+1. Frontend `firebase_options.dart` projectId
+2. Backend `admin.initializeApp()` project
+3. Run `firebase use homefix-aa42d`
+
+---
+
+## PHASE 6: PRODUCTION DEPLOYMENT
+
+### 6.1 Pre-Production Checklist
+- [ ] All logs show successful auth flow
+- [ ] No UNAUTHENTICATED errors
+- [ ] Token validation passes
+- [ ] Service created successfully
+- [ ] Backend logs show context.auth.uid
+- [ ] No errors in 10+ test runs
+
+### 6.2 Production Deployment
+```bash
+# Deploy to production
 firebase deploy --only functions
 
-# Monitor deployment
-firebase functions:log
-
-# Verify functions deployed
+# Verify
 firebase functions:list
-```
-
-**Expected Output:**
-```
-✓ Deployed createBookingRequest
-✓ Deployed approveBookingByAdmin
-✓ Deployed technicianAcceptBooking
-✓ Deployed startService
-✓ Deployed completeService
-✓ Deployed technicianRejectBooking
-✓ Deployed cancelBooking
-✓ Deployed razorpayWebhookV2
-✓ All functions deployed successfully
-```
-
-**New Functions Deployed:**
-1. `createBookingRequest` - Booking creation with idempotency
-2. `approveBookingByAdmin` - Admin booking approval
-3. `technicianAcceptBooking` - Technician job acceptance
-4. `startService` - Service start
-5. `completeService` - Service completion
-6. `technicianRejectBooking` - Technician job rejection
-7. `cancelBooking` - Booking cancellation
-8. `razorpayWebhookV2` - Payment webhook handler
-
----
-
-## STEP 5: TEST BOOKING CREATION
-
-**Why:** Verify new booking creation function works correctly.
-
-```bash
-# Test booking creation
-firebase functions:shell
-
-# In shell:
-> createBookingRequest({
-    serviceId: 'service123',
-    technicianId: 'tech123',
-    categoryId: 'cat123',
-    categoryName: 'Plumbing',
-    scheduledDate: '2024-01-15',
-    scheduledTime: '10:00 AM',
-    address: { line1: '123 Main St', city: 'Delhi' },
-    price: 500,
-    idempotencyKey: 'test_key_123'
-  })
-
-# Expected response:
-{
-  success: true,
-  bookingId: 'booking_xyz',
-  bookingStatus: 'pending_admin_approval',
-  message: 'Booking created successfully. Awaiting admin approval.'
-}
-```
-
----
-
-## STEP 6: TEST BOOKING STATE TRANSITIONS
-
-**Why:** Verify state machine prevents invalid transitions.
-
-```bash
-# Test valid transition
-firebase functions:shell
-
-# In shell:
-> approveBookingByAdmin({ bookingId: 'booking_xyz' })
-
-# Expected response:
-{
-  success: true,
-  bookingStatus: 'approved_by_admin'
-}
-
-# Test invalid transition (should fail)
-> approveBookingByAdmin({ bookingId: 'booking_xyz' })
-
-# Expected error:
-HttpsError: failed-precondition: Cannot approve booking with status: approved_by_admin
-```
-
----
-
-## STEP 7: TEST PAYMENT WEBHOOK
-
-**Why:** Verify payment webhook idempotency works.
-
-```bash
-# Send test webhook
-curl -X POST https://your-project.cloudfunctions.net/razorpayWebhookV2 \
-  -H "Content-Type: application/json" \
-  -H "X-Razorpay-Signature: <signature>" \
-  -d '{
-    "event": "payment.captured",
-    "payload": {
-      "payment": {
-        "entity": {
-          "id": "pay_123",
-          "order_id": "order_123",
-          "amount": 50000,
-          "currency": "INR",
-          "status": "captured",
-          "captured": true,
-          "created_at": 1234567890
-        }
-      }
-    }
-  }'
-
-# Expected response:
-200 OK
-
-# Send same webhook again (should be idempotent)
-# Expected response:
-200 OK (duplicate safely ignored)
-```
-
----
-
-## STEP 8: TEST WALLET OPERATIONS
-
-**Why:** Verify wallet safety guards work.
-
-```bash
-# Test wallet credit
-firebase functions:shell
-
-# In shell:
-> creditWalletAtomic(
-    'tech123',
-    500,
-    'booking_payout',
-    'booking_xyz',
-    'Payment for booking'
-  )
-
-# Expected response:
-{
-  success: true,
-  transactionId: 'txn_123',
-  newBalance: 500
-}
-
-# Test duplicate credit (should be idempotent)
-> creditWalletAtomic(
-    'tech123',
-    500,
-    'booking_payout',
-    'booking_xyz',
-    'Payment for booking'
-  )
-
-# Expected response:
-{
-  success: true,
-  transactionId: 'txn_123',
-  newBalance: 500
-}
-```
-
----
-
-## STEP 9: TEST ADMIN PANEL QUERIES
-
-**Why:** Verify pagination works for large datasets.
-
-```bash
-# Test paginated bookings
-firebase functions:shell
-
-# In shell:
-> getPaginatedBookings({
-    pageSize: 20,
-    filters: { status: 'pending_admin_approval' }
-  })
-
-# Expected response:
-{
-  items: [...20 bookings...],
-  hasMore: true,
-  nextCursor: DocumentSnapshot
-}
-
-# Test next page
-> getPaginatedBookings({
-    pageSize: 20,
-    cursor: nextCursor,
-    filters: { status: 'pending_admin_approval' }
-  })
-
-# Expected response:
-{
-  items: [...next 20 bookings...],
-  hasMore: true,
-  nextCursor: DocumentSnapshot
-}
-```
-
----
-
-## STEP 10: VERIFY SECURITY AUDIT
-
-**Why:** Ensure security checks are working.
-
-```bash
-# Test admin verification
-firebase functions:shell
-
-# In shell:
-> verifyAdmin('admin_uid')
-
-# Expected response:
-true
-
-# Test non-admin
-> verifyAdmin('customer_uid')
-
-# Expected response:
-false
-
-# Test suspicious activity detection
-> checkSuspiciousActivity('user_uid', 'failed_login', 60)
-
-# Expected response:
-{
-  suspicious: false,
-  count: 0
-}
-```
-
----
-
-## STEP 11: RUN END-TO-END TEST
-
-**Why:** Verify complete user lifecycle works.
-
-```bash
-# 1. Create customer
-firebase functions:shell
-> createCustomer({ name: 'John', phone: '9876543210' })
-
-# 2. Create technician
-> createTechnician({ name: 'Tech', skills: ['plumbing'] })
-
-# 3. Admin approves technician
-> approveTechnician({ uid: 'tech_uid' })
-
-# 4. Technician creates service
-> addTechnicianService({ name: 'Plumbing', price: 500 })
-
-# 5. Admin approves service
-> admin_approveService({ serviceId: 'service_uid' })
-
-# 6. Customer creates booking
-> createBookingRequest({
-    serviceId: 'service_uid',
-    technicianId: 'tech_uid',
-    categoryId: 'cat_uid',
-    categoryName: 'Plumbing',
-    scheduledDate: '2024-01-15',
-    scheduledTime: '10:00 AM',
-    address: { line1: '123 Main St', city: 'Delhi' },
-    price: 500
-  })
-
-# 7. Admin approves booking
-> approveBookingByAdmin({ bookingId: 'booking_uid' })
-
-# 8. Technician accepts job
-> technicianAcceptBooking({ bookingId: 'booking_uid' })
-
-# 9. Technician starts service
-> startService({ bookingId: 'booking_uid' })
-
-# 10. Technician completes service
-> completeService({ bookingId: 'booking_uid' })
-
-# 11. Process payment
-> razorpayWebhookV2(payment_webhook)
-
-# 12. Verify wallet updated
-> getWalletBalance('tech_uid')
-
-# Expected response:
-425 (500 - 15% commission)
-```
-
----
-
-## STEP 12: MONITOR PRODUCTION
-
-**Why:** Ensure system is stable after deployment.
-
-```bash
-# Monitor function logs
-firebase functions:log
-
-# Check for errors
 firebase functions:log --limit 100
-
-# Monitor Firestore usage
-firebase firestore:usage
-
-# Check security audit logs
-firebase firestore:query security_audit_logs --limit 100
-
-# Monitor payment processing
-firebase firestore:query payment_logs --limit 100
 ```
 
----
-
-## ROLLBACK PROCEDURE
-
-If issues occur, follow this rollback procedure:
-
+### 6.3 Monitor Production
 ```bash
-# 1. Revert Cloud Functions
-firebase deploy --only functions --force
+# Watch logs for 24 hours
+firebase functions:log --follow
 
-# 2. Revert Firestore Rules
-firebase deploy --only firestore:rules --force
-
-# 3. Revert Firestore Indexes
-firebase deploy --only firestore:indexes --force
-
-# 4. Verify rollback
-firebase functions:list
-firebase firestore:rules
-firebase firestore:indexes
+# Look for:
+# ✅ Successful service creations
+# ❌ Any UNAUTHENTICATED errors
+# ⚠️ Any token validation failures
 ```
 
 ---
 
-## POST-DEPLOYMENT VERIFICATION
+## PHASE 7: ROLLBACK PLAN
 
-After deployment, verify:
+### If Issues Occur
+```bash
+# Revert to previous version
+git revert HEAD
 
-- [ ] All functions deployed successfully
-- [ ] Firestore rules enforced
-- [ ] Composite indexes created
-- [ ] Booking creation works
-- [ ] State transitions validated
-- [ ] Payment webhook working
-- [ ] Wallet operations atomic
-- [ ] Admin panel queries paginated
-- [ ] Security audit logging
-- [ ] End-to-end flow complete
-- [ ] No errors in logs
-- [ ] Performance acceptable
+# Rebuild and redeploy
+cd functions
+npm run build
+firebase deploy --only functions
+```
 
 ---
 
-## MONITORING CHECKLIST
+## VERIFICATION MATRIX
 
-Daily monitoring tasks:
+| Check | Frontend | Backend | Status |
+|-------|----------|---------|--------|
+| Project ID | homefix-aa42d | admin.initializeApp() | ✅ |
+| Region | us-central1 | us-central1 | ✅ |
+| Auth Context | getIdToken(true) | context.auth | ✅ |
+| Token Validation | JwtTokenValidator | console.log | ✅ |
+| Logging | 🔥 [ADDSERVICE] | 🔥 [FUNCTION START] | ✅ |
+| Error Handling | try/catch | HttpsError | ✅ |
 
-- [ ] Check function error rates
-- [ ] Monitor Firestore read/write usage
-- [ ] Review security audit logs
-- [ ] Check payment processing logs
-- [ ] Monitor wallet operations
-- [ ] Verify query performance
-- [ ] Check for suspicious activity
-- [ ] Review admin actions
+---
+
+## QUICK REFERENCE
+
+### Deploy Backend
+```bash
+cd functions && npm run build && firebase deploy --only functions
+```
+
+### Check Logs
+```bash
+firebase functions:log --follow
+```
+
+### Test Frontend
+```bash
+cd apps/technician_app && flutter run
+```
+
+### Verify Deployment
+```bash
+firebase functions:list
+```
+
+---
+
+## SUCCESS CRITERIA
+
+✅ **All of the following must be true**:
+
+1. Frontend logs show: `✅ [ADDSERVICE] SUCCESS - Service created`
+2. Backend logs show: `🔥 [AUTH SUCCESS] Authenticated UID: {uid}`
+3. No UNAUTHENTICATED errors in logs
+4. Service appears in Firestore `technician_services` collection
+5. Service status is `pending` (awaiting admin approval)
+6. Service `technicianId` matches authenticated user UID
 
 ---
 
 ## SUPPORT
 
-For deployment issues:
+If issues persist:
 
-1. Check `firebase functions:log` for errors
-2. Review `SYSTEM_AUDIT_COMPLETE.md` for architecture
-3. Check `validation_checklist.ts` for test procedures
-4. Review `security_audit.ts` for security checks
+1. Check `ROOT_CAUSE_ANALYSIS.md` for detailed explanation
+2. Review logs using `firebase functions:log`
+3. Verify project alignment with `firebase use`
+4. Check token validation in frontend logs
+5. Verify backend receives context.auth in logs
 
 ---
 
-**Deployment Status:** Ready for Production
+## FINAL CHECKLIST
 
-**Last Updated:** 2024
-
-**Version:** 1.0.0
+- [ ] Backend deployed successfully
+- [ ] Frontend builds without errors
+- [ ] Test run shows success logs
+- [ ] No UNAUTHENTICATED errors
+- [ ] Service created in Firestore
+- [ ] Production deployment approved
+- [ ] Monitoring enabled
+- [ ] Rollback plan ready

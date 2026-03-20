@@ -6,7 +6,7 @@ import { calculateDistance } from '../shared/geoutils';
 
 const db = admin.firestore();
 
-export const updateLocation = functions.https.onCall(async (data, context) => {
+export const updateLocation = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
     const { location, timestamp } = data; // { lat, lng }
@@ -60,7 +60,7 @@ export const updateLocation = functions.https.onCall(async (data, context) => {
     return { success: true };
 });
 
-export const toggleOnlineStatus = functions.https.onCall(async (data, context) => {
+export const toggleOnlineStatus = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
     const { isOnline } = data;

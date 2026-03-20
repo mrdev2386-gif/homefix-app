@@ -95,13 +95,39 @@ interface UpdateServiceInput {
  * Creates service under technicians/{technicianId}/services/{serviceId}
  * DISTRICT-SAFE: District auto-injected from technician profile
  */
-export const addTechnicianService = functions.https.onCall(
+export const addTechnicianService = functions
+  .region('asia-south1')
+  .https.onCall(
   async (data: any, context: functions.https.CallableContext) => {
+    // ============================================
+    // COMPREHENSIVE AUTH VERIFICATION LOGGING
+    // ============================================
+    console.log("🔥 [FUNCTION START] addTechnicianService triggered");
+    console.log("🔥 [REQUEST TIMESTAMP]", new Date().toISOString());
+    
+    // Log full context object
+    console.log("🔥 [CONTEXT AUTH]", JSON.stringify(context.auth, null, 2));
+    console.log("🔥 [CONTEXT UID]", context.auth?.uid);
+    console.log("🔥 [CONTEXT TOKEN]", context.auth?.token ? "PRESENT" : "MISSING");
+    
+    // Log incoming data
+    console.log("🔥 [INCOMING DATA]", JSON.stringify(data, null, 2));
+    
+    // Log request headers if available
+    if ((context as any).rawRequest) {
+      console.log("🔥 [REQUEST HEADERS]", JSON.stringify((context as any).rawRequest.headers, null, 2));
+    }
+
+    // STEP 4: Validate auth
     if (!context.auth) {
-      throw new functions.https.HttpsError("unauthenticated", "Authentication required");
+      console.error("❌ [AUTH FAILED] NO AUTH CONTEXT - Request rejected");
+      throw new functions.https.HttpsError("unauthenticated", "User not authenticated");
     }
 
     const technicianId = context.auth.uid;
+    console.log("🔥 [AUTH SUCCESS] Authenticated UID:", technicianId);
+    console.log("🔥 [AUTH TOKEN CLAIMS]", JSON.stringify(context.auth.token, null, 2));
+
     const { name, price, basePrice, offerPrice, imageUrl, category, description, urgentBooking, nightService } = data;
 
     // SECURITY FIX: Sanitize inputs
@@ -257,7 +283,9 @@ export const addTechnicianService = functions.https.onCall(
  * Only owner can update
  * PROTECTED: Cannot update district, technicianId, or rating fields
  */
-export const updateTechnicianService = functions.https.onCall(
+export const updateTechnicianService = functions
+  .region('asia-south1')
+  .https.onCall(
   async (data: any, context: functions.https.CallableContext) => {
     if (!context.auth) {
       throw new functions.https.HttpsError("unauthenticated", "Authentication required");
@@ -359,7 +387,9 @@ export const updateTechnicianService = functions.https.onCall(
  * Toggle Service Status
  * Flips isActive between true/false
  */
-export const toggleTechnicianServiceStatus = functions.https.onCall(
+export const toggleTechnicianServiceStatus = functions
+  .region('asia-south1')
+  .https.onCall(
   async (data: { serviceId: string }, context: functions.https.CallableContext) => {
     if (!context.auth) {
       throw new functions.https.HttpsError("unauthenticated", "Authentication required");
@@ -408,13 +438,43 @@ export const toggleTechnicianServiceStatus = functions.https.onCall(
  * Delete Service (Soft Delete)
  * Sets isDeleted = true, isActive = false
  */
-export const deleteTechnicianService = functions.https.onCall(
+export const deleteTechnicianService = functions
+  .region('asia-south1')
+  .https.onCall(
   async (data: { serviceId: string }, context: functions.https.CallableContext) => {
+    // ============================================
+    // COMPREHENSIVE AUTH VERIFICATION LOGGING
+    // ============================================
+    console.log("🔥 [FUNCTION START] deleteTechnicianService triggered");
+    console.log("🔥 [REQUEST TIMESTAMP]", new Date().toISOString());
+    
+    // Log full context object
+    console.log("🔥 [CONTEXT AUTH]", JSON.stringify(context.auth, null, 2));
+    console.log("🔥 [CONTEXT UID]", context.auth?.uid);
+    console.log("🔥 [CONTEXT TOKEN]", context.auth?.token ? "PRESENT" : "MISSING");
+    
+    // Log incoming data
+    console.log("🔥 [INCOMING DATA]", JSON.stringify(data, null, 2));
+    
+    // Log request headers if available
+    if ((context as any).rawRequest) {
+      console.log("🔥 [REQUEST HEADERS]", JSON.stringify((context as any).rawRequest.headers, null, 2));
+    }
+
+    console.log("AUTH DEBUG:", context.auth);
+
     if (!context.auth) {
-      throw new functions.https.HttpsError("unauthenticated", "Authentication required");
+      console.error("❌ [AUTH FAILED] NO AUTH CONTEXT - Request rejected");
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'User must be logged in'
+      );
     }
 
     const technicianId = context.auth.uid;
+    console.log("🔥 [AUTH SUCCESS] Authenticated UID:", technicianId);
+    console.log("🔥 [AUTH TOKEN CLAIMS]", JSON.stringify(context.auth.token, null, 2));
+
     const { serviceId } = data;
 
     if (!serviceId) {
@@ -454,7 +514,9 @@ export const deleteTechnicianService = functions.https.onCall(
  * Get My Technician Services
  * Returns all services for the authenticated technician
  */
-export const getMyTechnicianServices = functions.https.onCall(
+export const getMyTechnicianServices = functions
+    .region('asia-south1')
+    .https.onCall(
     async (data: any, context: functions.https.CallableContext) => {
         // 1. Authentication check
         if (!context.auth) {

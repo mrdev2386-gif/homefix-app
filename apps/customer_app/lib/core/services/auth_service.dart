@@ -148,7 +148,8 @@ class AuthService {
     if (!doc.exists) {
       debugPrint('[WRITE GUARD] Direct write blocked in _updateUserData');
       try {
-        final callable = FirebaseFunctions.instance.httpsCallable('createUserProfileCallable');
+        print("CALLING FUNCTION: updateUserProfile");
+        final callable = FirebaseFunctions.instanceFor(region: 'us-central1').httpsCallable('updateUserProfile');
         await callable.call({
           'email': user.email,
           'phone': user.phoneNumber,
@@ -191,7 +192,8 @@ class AuthService {
     
     debugPrint('[WRITE GUARD] Direct write blocked in updateProfile');
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('updateProfileCallable');
+      print("CALLING FUNCTION: updateUserProfile");
+      final callable = FirebaseFunctions.instanceFor(region: 'us-central1').httpsCallable('updateUserProfile');
       await callable.call({
         if (name != null) 'name': name,
         if (photoUrl != null) 'photoUrl': photoUrl,

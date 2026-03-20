@@ -28,7 +28,7 @@ dependencies:
   image: ^4.1.0
   google_sign_in: ^6.2.1
   cloud_functions: ^5.0.0
-  firebase_app_check: ^0.3.2+10
+  firebase_app_check: ^0.3.0+15
   firebase_crashlytics: ^4.3.0
   firebase_performance: ^0.10.0
   firebase_messaging: ^15.0.0

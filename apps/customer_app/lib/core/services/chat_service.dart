@@ -11,6 +11,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/chat.dart';
+import '../firebase/firebase_functions_instance.dart';
 
 class ChatService {
   static final ChatService _instance = ChatService._();
@@ -18,7 +19,7 @@ class ChatService {
   ChatService._();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  FirebaseFunctions get _functions => FirebaseFunctionsInstance.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // Debounce tracker for markMessagesRead

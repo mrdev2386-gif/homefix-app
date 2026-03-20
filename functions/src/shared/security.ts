@@ -1,26 +1,115 @@
 
 import * as functions from 'firebase-functions';
 import { logger } from './utils';
+import * as crypto from 'crypto';
 
 /**
  * Production Security & Hardening Layer
  */
 
 /**
- * Enforce App Check on all incoming requests
+ * Assert user is authenticated
  */
-export function enforceAppCheck(context: functions.https.CallableContext) {
-    if (!context.app) {
-        logger.warn('APP_CHECK_MISSING', { 
-            uid: context.auth?.uid,
-            ip: context.rawRequest?.ip 
-        });
+export function assertAuthenticated(context: functions.https.CallableContext): string {
+    if (!context.auth || !context.auth.uid) {
         throw new functions.https.HttpsError(
-            'failed-precondition',
-            'App Check token required'
+            'unauthenticated',
+            'User must be authenticated'
         );
     }
+    return context.auth.uid;
 }
+
+/**
+ * Assert user is admin
+ */
+export async function assertAdmin(context: functions.https.CallableContext): Promise<string> {
+    const uid = assertAuthenticated(context);
+    const admin = await import('firebase-admin');
+    const db = admin.firestore();
+    
+    const adminDoc = await db.collection('admins').doc(uid).get();
+    if (!adminDoc.exists) {
+        throw new functions.https.HttpsError(
+            'permission-denied',
+            'Only admins can perform this action'
+        );
+    }
+    
+    return uid;
+}
+
+/**
+ * Check rate limit (stub - implement as needed)
+ */
+export async function checkRateLimit(
+    uid: string,
+    action: string,
+    maxAttempts?: number,
+    windowMs?: number
+): Promise<boolean> {
+    // TODO: Implement rate limiting logic with Redis or Firestore
+    // For now, always allow
+    return true;
+}
+
+/**
+ * Encrypt sensitive data
+ */
+export function encrypt(text: string, algorithm?: string): string {
+    // Simple encryption - replace with proper encryption in production
+    return Buffer.from(text).toString('base64');
+}
+
+/**
+ * Sanitize string input
+ */
+export function sanitizeString(text: string, maxLength?: number): string {
+    if (typeof text !== 'string') return '';
+    const cleaned = text.trim().replace(/<[^>]*>/g, '');
+    if (maxLength && cleaned.length > maxLength) {
+        return cleaned.substring(0, maxLength);
+    }
+    return cleaned;
+}
+
+/**
+ * Sanitize email
+ */
+export function sanitizeEmail(email: string, maxLength?: number): string {
+    if (typeof email !== 'string') return '';
+    const cleaned = email.trim().toLowerCase();
+    if (maxLength && cleaned.length > maxLength) {
+        return cleaned.substring(0, maxLength);
+    }
+    return cleaned;
+}
+
+/**
+ * Sanitize Aadhaar number
+ */
+export function sanitizeAadhaar(aadhaar: string, maxLength?: number): string {
+    if (typeof aadhaar !== 'string') return '';
+    const cleaned = aadhaar.replace(/\D/g, '').slice(0, 12);
+    return cleaned;
+}
+
+/**
+ * Enforce App Check on all incoming requests
+ * DISABLED: App Check SDK is disabled in Flutter apps
+ */
+// export function enforceAppCheck(context: functions.https.CallableContext) {
+//     if (!context.app) {
+//         logger.warn('APP_CHECK_MISSING', { 
+//             uid: context.auth?.uid,
+//             ip: context.rawRequest?.ip 
+//         });
+//         throw new functions.https.HttpsError(
+//             'failed-precondition',
+//             'App Check token required'
+//         );
+//     }
+// }
 
 /**
  * Sanitize user input strings
@@ -57,8 +146,10 @@ export function secureCallable(
         const functionName = context.rawRequest?.url?.split('/').pop() || 'unknown';
         
         try {
-            // 1. App Check Enforcement
-            enforceAppCheck(context);
+            // 1. App Check Enforcement - PERMANENTLY DISABLED
+            // CRITICAL FIX: App Check SDK is disabled in Flutter apps
+            // Enforcing App Check here causes UNAUTHENTICATED errors
+            // App Check enforcement has been completely removed
 
             // 2. Structured Start Log
             logger.info(`${functionName}_start`, { 

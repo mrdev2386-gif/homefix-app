@@ -114,7 +114,8 @@ class BookingService {
   /// NEW FLOW: Accept a booking (technician accepts)
   Future<Map<String, dynamic>> acceptBooking(String bookingId, {String? idempotencyKey}) async {
     try {
-      final HttpsCallable callable = _functions.httpsCallable('technicianRespondBooking');
+      print("CALLING FUNCTION: technicianAcceptBooking");
+      final HttpsCallable callable = _functions.httpsCallable('technicianAcceptBooking');
       final payload = {
         'bookingId': bookingId,
         'action': 'accept',
@@ -136,7 +137,8 @@ class BookingService {
   /// NEW FLOW: Reject a booking (technician declines)
   Future<Map<String, dynamic>> rejectBooking(String bookingId, {String? reason, String? idempotencyKey}) async {
     try {
-      final HttpsCallable callable = _functions.httpsCallable('technicianRespondBooking');
+      print("CALLING FUNCTION: technicianRejectBooking");
+      final HttpsCallable callable = _functions.httpsCallable('technicianRejectBooking');
       final payload = {
         'bookingId': bookingId,
         'action': 'reject',
@@ -165,8 +167,10 @@ class BookingService {
     required String time,
     String? note,
   }) async {
-    await _functions.httpsCallable('sendQuote').call({
+    print("CALLING FUNCTION: updateBookingStatusNew");
+    await _functions.httpsCallable('updateBookingStatusNew').call({
       'bookingId': bookingId,
+      'status': 'quote_sent',
       'price': price,
       'scheduledAt': date.toIso8601String(),
       'scheduledTime': time,
@@ -182,7 +186,8 @@ class BookingService {
   }
 
   Future<Map<String, dynamic>> markWorkCompleted(String bookingId) async {
-    final result = await _functions.httpsCallable('markWorkCompleted').call({
+    print("CALLING FUNCTION: completeService");
+    final result = await _functions.httpsCallable('completeService').call({
       'bookingId': bookingId,
     });
     return Map<String, dynamic>.from(result.data);

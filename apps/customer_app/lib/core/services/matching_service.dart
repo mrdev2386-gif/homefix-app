@@ -2,10 +2,11 @@ import 'dart:async';
 import 'dart:developer' as developer;
 import 'package:cloud_functions/cloud_functions.dart';
 import '../models/matched_technician.dart';
+import '../firebase/firebase_functions_instance.dart';
 
 /// Edge case protection for matching operations
 class MatchingService {
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  FirebaseFunctions get _functions => FirebaseFunctionsInstance.instance;
   
   // Prevent duplicate matching requests
   bool _isMatchingInProgress = false;

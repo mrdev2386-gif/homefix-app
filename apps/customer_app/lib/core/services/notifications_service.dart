@@ -200,8 +200,6 @@ class NotificationsService extends ChangeNotifier {
     }
 
     try {
-      await user.getIdToken(true);
-      
       final callable = FirebaseFunctions.instance.httpsCallable('saveFcmToken');
       await callable.call({
         'token': token,

@@ -109,7 +109,18 @@ export const updateService = functions.https.onCall(async (data, context) => {
 /**
  * Delete (soft delete) a service
  */
-export const deleteService = functions.https.onCall(async (data, context) => {
+export const deleteService = functions
+  .region('asia-south1')
+  .https.onCall(async (data, context) => {
+    console.log("AUTH DEBUG:", context.auth);
+
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'User must be logged in'
+      );
+    }
+
     await assertAdmin(context);
 
     const { serviceId } = data;

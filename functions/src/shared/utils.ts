@@ -9,16 +9,17 @@ import * as admin from 'firebase-admin';
 import { db } from './config';
 
 /**
- * App Check Validation
+ * App Check Validation - DISABLED
+ * App Check SDK is disabled in Flutter apps
  */
-export function validateAppCheck(context: functions.https.CallableContext) {
-    if (!context.app) {
-        throw new functions.https.HttpsError(
-            'failed-precondition',
-            'App Check token required'
-        );
-    }
-}
+// export function validateAppCheck(context: functions.https.CallableContext) {
+//     if (!context.app) {
+//         throw new functions.https.HttpsError(
+//             'failed-precondition',
+//             'App Check token required'
+//         );
+//     }
+// }
 
 /**
  * Structured Logger

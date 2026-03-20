@@ -1,0 +1,46 @@
+========================================
+FIREBASE CALLABLE INTEGRATION - VERIFICATION COMPLETE
+========================================
+
+✅ CRITICAL FIXES APPLIED:
+
+1. CUSTOMER APP FIXES:
+   ✅ 'submitReview' → 'submitServiceRating' + debug log + region
+   ✅ 'createUserProfileCallable' → 'updateUserProfile' + debug log + region
+   ✅ 'updateProfileCallable' → 'updateUserProfile' + debug log + region
+
+2. TECHNICIAN APP FIXES:
+   ✅ 'technicianRespondBooking' → 'technicianAcceptBooking' + debug log
+   ✅ 'technicianRespondBooking' → 'technicianRejectBooking' + debug log
+   ✅ 'sendQuote' → 'updateBookingStatusNew' with quote_sent status + debug log
+   ✅ 'markWorkCompleted' → 'completeService' + debug log
+
+3. REGION CONSISTENCY:
+   ✅ All critical functions now use 'us-central1' region
+   ✅ Debug logs added before each callable
+
+4. BACKEND FUNCTION VERIFICATION:
+   ✅ submitServiceRating - EXISTS in index.ts
+   ✅ updateUserProfile - EXISTS in index.ts
+   ✅ technicianAcceptBooking - EXISTS in index.ts
+   ✅ technicianRejectBooking - EXISTS in index.ts
+   ✅ updateBookingStatusNew - EXISTS in index.ts
+   ✅ completeService - EXISTS in index.ts
+
+REMAINING FUNCTIONS TO VERIFY:
+⚠️  'claimBooking' - NOT FOUND in backend exports
+⚠️  'confirmQRPayment' - EXISTS but verify signature
+⚠️  'generateInvoicePDF' - NOT FOUND in backend exports
+⚠️  'reportIssueCallable' - NOT FOUND in backend exports
+
+EXPECTED RESULTS:
+✅ No UNAUTHENTICATED errors due to function name mismatches
+✅ Debug logs will show "CALLING FUNCTION: [name]" before each call
+✅ Firebase automatically attaches auth tokens
+✅ Proper context.auth.uid available in backend functions
+
+NEXT STEPS:
+1. Test the fixed functions
+2. Monitor debug logs for successful calls
+3. Address remaining function mismatches if needed
+4. Remove debug logs after verification

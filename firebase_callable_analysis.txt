@@ -1,0 +1,58 @@
+========================================
+FIREBASE CALLABLE FUNCTION VERIFICATION
+========================================
+
+CRITICAL MISMATCHES FOUND:
+
+1. CUSTOMER APP MISMATCHES:
+   ❌ 'createUserProfileCallable' - NOT FOUND in backend exports
+   ❌ 'updateProfileCallable' - NOT FOUND in backend exports
+   ❌ 'processReferralCallable' - NOT FOUND in backend exports
+   ❌ 'submitReview' - NOT FOUND in backend exports (should be 'submitServiceRating')
+   ❌ 'cancelBooking' - EXISTS but may have different signature
+   ❌ 'generateInvoicePDF' - NOT FOUND in backend exports
+   ❌ 'reportIssueCallable' - NOT FOUND in backend exports
+   ❌ 'createUrgentBooking' - NOT FOUND in backend exports
+
+2. TECHNICIAN APP MISMATCHES:
+   ❌ 'technicianRespondBooking' - NOT FOUND in backend exports
+   ❌ 'sendQuote' - NOT FOUND in backend exports
+   ❌ 'markWorkCompleted' - NOT FOUND in backend exports
+   ❌ 'claimBooking' - NOT FOUND in backend exports
+   ❌ 'acceptCustomRequest' - NOT FOUND in backend exports
+   ❌ 'rejectCustomRequest' - NOT FOUND in backend exports
+   ❌ 'updateBookingStatus' - NOT FOUND in backend exports (should be 'updateBookingStatusNew')
+   ❌ 'completeService' - EXISTS but may have different signature
+   ❌ 'updateTechnicianSkills' - NOT FOUND in backend exports
+
+3. REGION MISMATCHES:
+   ⚠️  Some functions use default region, others use 'us-central1'
+   ⚠️  Need to verify all functions use same region
+
+CORRECT BACKEND EXPORTS FOUND:
+✅ updateUserProfile
+✅ manageAddress
+✅ saveFcmToken
+✅ removeFcmToken
+✅ submitServiceRating
+✅ createBookingRequest
+✅ updateBookingStatusNew
+✅ getTechnicianInbox
+✅ technicianRespondServiceRequest
+✅ getCustomRequestDetail
+✅ toggleOnlineStatus
+✅ reportBookingIssue
+✅ createRazorpayOrder
+✅ addTechnicianService
+✅ updateTechnicianService
+✅ deleteTechnicianService
+✅ toggleTechnicianServiceStatus
+✅ updateTechnicianPersonalDetails
+✅ updateTechnicianBankDetails
+✅ reuploadVerificationDocument
+
+IMMEDIATE ACTIONS REQUIRED:
+1. Fix function name mismatches
+2. Add debug logs before each callable
+3. Verify region consistency
+4. Remove deprecated function calls

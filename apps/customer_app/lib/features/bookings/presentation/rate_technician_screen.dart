@@ -43,9 +43,8 @@ class _RateTechnicianScreenState extends State<RateTechnicianScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not authenticated');
 
-      await user.getIdToken(true);
-
-      final callable = FirebaseFunctions.instance.httpsCallable('submitReview');
+      print("CALLING FUNCTION: submitServiceRating");
+      final callable = FirebaseFunctions.instanceFor(region: 'us-central1').httpsCallable('submitServiceRating');
       await callable.call({
         'bookingId': widget.bookingId,
         'technicianId': widget.technicianId,

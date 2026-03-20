@@ -1,63 +1,54 @@
 import 'package:flutter/foundation.dart';
-import 'package:firebase_app_check/firebase_app_check.dart';
-import 'dart:io';
+// import 'package:firebase_app_check/firebase_app_check.dart'; // DISABLED FOR DEVELOPMENT
 
-/// Initialize Firebase App Check with platform-specific providers
+/// Firebase App Check - DISABLED FOR DEVELOPMENT
 /// 
-/// DEBUG MODE:
-/// - Uses debug provider for both Android and iOS
-/// - Generates and logs debug token for Firebase Console registration
-/// - Handles token generation failures gracefully (CI/CD environments)
+/// App Check has been completely disabled to avoid authentication issues
+/// during local development and testing.
 /// 
-/// PRODUCTION MODE:
-/// - Android: Play Integrity API (requires Google Play Services)
-/// - iOS: Device Check (requires Apple infrastructure)
+/// IMPORTANT:
+/// - NO App Check SDK initialization
+/// - NO debug provider
+/// - NO PlayIntegrity provider
+/// - Firebase Functions will work without App Check enforcement
 /// 
-/// SAFETY:
-/// - Never throws - App Check failures don't crash the app
-/// - Logs all initialization steps for debugging
-/// - Continues app execution even if App Check fails
+/// To re-enable for production:
+/// 1. Uncomment the import above
+/// 2. Uncomment the activation code below
+/// 3. Configure proper providers (PlayIntegrity for Android, DeviceCheck for iOS)
+/// 4. Enable enforcement in Firebase Console
 Future<void> initializeFirebaseAppCheck() async {
+  // DISABLED: App Check initialization commented out for development
+  debugPrint('⚠️ [APP CHECK] DISABLED - App Check is not initialized');
+  debugPrint('   Firebase Functions will work without App Check enforcement');
+  debugPrint('   This is normal for local development');
+  
+  /*
   try {
-    if (kDebugMode) {
-      debugPrint('🔥 [AppCheck] Initializing Firebase App Check (DEBUG mode)...');
-      
-      // Debug build: Use debug provider for both platforms
-      await FirebaseAppCheck.instance.activate(
-        androidProvider: AndroidProvider.debug,
-        appleProvider: AppleProvider.debug, // iOS debug support
-      );
-      debugPrint('✅ [AppCheck] Debug providers activated');
-
-      // Generate and display debug token (non-blocking)
-      _generateDebugToken();
-    } else {
-      // Production build: Use native attestation for maximum security
-      debugPrint('🔥 [AppCheck] Initializing Firebase App Check (PRODUCTION mode)...');
-      
-      if (Platform.isAndroid) {
-        await FirebaseAppCheck.instance.activate(
-          androidProvider: AndroidProvider.playIntegrity,
-        );
-        debugPrint('✅ [AppCheck] Android: Using Play Integrity API');
-      } else if (Platform.isIOS) {
-        await FirebaseAppCheck.instance.activate(
-          appleProvider: AppleProvider.deviceCheck,
-        );
-        debugPrint('✅ [AppCheck] iOS: Using Device Check');
-      } else {
-        debugPrint('⚠️ [AppCheck] Unknown platform - App Check may not be available');
-      }
-    }
+    debugPrint('🔥 [APP CHECK] Initializing Firebase App Check (DEBUG mode)...');
     
-    debugPrint('✅ [AppCheck] Firebase App Check initialized successfully');
+    // CRITICAL: Use debug provider for local/dev testing
+    await FirebaseAppCheck.instance.activate(
+      androidProvider: AndroidProvider.debug,
+    );
+    
+    // Debug log after activation
+    print('[APP CHECK] Debug provider enabled');
+    debugPrint('✅ [APP CHECK] Debug provider activated');
+
+    // Generate and display debug token (non-blocking)
+    _generateDebugToken();
+    
+    debugPrint('✅ [APP CHECK] Firebase App Check initialized successfully');
   } catch (e) {
-    debugPrint('❌ [AppCheck] Initialization failed: $e');
+    debugPrint('❌ [APP CHECK] Initialization failed: $e');
     // Don't throw - App Check failures shouldn't crash the app
     debugPrint('   Continuing without App Check enforcement');
   }
+  */
 }
 
+/*
 /// Generate and log debug token asynchronously
 /// Handles token generation failures gracefully
 Future<void> _generateDebugToken() async {
@@ -66,7 +57,7 @@ Future<void> _generateDebugToken() async {
     if (appCheckToken != null && appCheckToken is String && appCheckToken.isNotEmpty) {
       debugPrint('');
       debugPrint('==============================');
-      debugPrint('🔥 FIREBASE APP CHECK TOKEN');
+      debugPrint('🔥 FIREBASE APP CHECK DEBUG TOKEN');
       debugPrint(appCheckToken);
       debugPrint('==============================');
       debugPrint('For Firebase Console registration:');
@@ -75,10 +66,11 @@ Future<void> _generateDebugToken() async {
       debugPrint('3. Set enforcement to "Not enforced" during development');
       debugPrint('');
     } else {
-      debugPrint('⚠️ [AppCheck] Debug token is empty or null');
+      debugPrint('⚠️ [APP CHECK] Debug token is empty or null');
     }
   } catch (e) {
-    debugPrint('⚠️ [AppCheck] Debug token generation failed: $e');
+    debugPrint('⚠️ [APP CHECK] Debug token generation failed: $e');
     debugPrint('   This is normal in CI/CD environments or if Firebase is not fully initialized.');
   }
 }
+*/

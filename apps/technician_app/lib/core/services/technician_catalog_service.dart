@@ -6,7 +6,8 @@ import '../models/technician_service.dart';
 
 class TechnicianCatalogService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  final FirebaseFunctions _functions = 
+      FirebaseFunctions.instanceFor(region: 'asia-south1');
 
   /// Check if technician is approved to manage services
   Future<bool> canManageServices() async {

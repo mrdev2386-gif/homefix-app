@@ -4,18 +4,30 @@ import 'package:flutter/foundation.dart';
 
 class FunctionsService {
   final FirebaseFunctions _functions =
-      FirebaseFunctions.instanceFor(region: 'us-central1');
+      FirebaseFunctions.instanceFor(region: 'asia-south1');
 
   /// Technician: Get inbox of pending custom requests
   Future<Map<String, dynamic>> getTechnicianInbox({int limit = 20, String? startAfter}) async {
     try {
-      HttpsCallable callable = _functions.httpsCallable('getTechnicianInbox');
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception("User not logged in");
+      }
+      debugPrint('[FunctionsService] getTechnicianInbox: Current user UID: ${user.uid}');
+      await user.getIdToken(true);
+      debugPrint('[FunctionsService] getTechnicianInbox: Token refreshed successfully');
+      
+      final callable = _functions.httpsCallable('getTechnicianInbox');
       final result = await callable.call({
         'limit': limit,
         if (startAfter != null) 'startAfter': startAfter,
       });
       return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[FunctionsService] getTechnicianInbox: FirebaseFunctionsException: ${e.code} - ${e.message}');
+      rethrow;
     } catch (e) {
+      debugPrint('[FunctionsService] getTechnicianInbox: Unexpected error: $e');
       rethrow;
     }
   }
@@ -23,14 +35,26 @@ class FunctionsService {
   /// Technician: Accept or Reject a custom request
   Future<Map<String, dynamic>> technicianRespondServiceRequest(String requestId, String action, {String? reason}) async {
     try {
-      HttpsCallable callable = _functions.httpsCallable('technicianRespondServiceRequest');
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception("User not logged in");
+      }
+      debugPrint('[FunctionsService] technicianRespondServiceRequest: Current user UID: ${user.uid}');
+      await user.getIdToken(true);
+      debugPrint('[FunctionsService] technicianRespondServiceRequest: Token refreshed successfully');
+      
+      final callable = _functions.httpsCallable('technicianRespondServiceRequest');
       final result = await callable.call({
         'requestId': requestId,
         'action': action, // 'accept' or 'reject'
         if (reason != null) 'rejectionReason': reason,
       });
       return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[FunctionsService] technicianRespondServiceRequest: FirebaseFunctionsException: ${e.code} - ${e.message}');
+      rethrow;
     } catch (e) {
+      debugPrint('[FunctionsService] technicianRespondServiceRequest: Unexpected error: $e');
       rethrow;
     }
   }
@@ -38,10 +62,22 @@ class FunctionsService {
   /// Get custom request details
   Future<Map<String, dynamic>> getCustomRequestDetail(String requestId) async {
     try {
-      HttpsCallable callable = _functions.httpsCallable('getCustomRequestDetail');
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception("User not logged in");
+      }
+      debugPrint('[FunctionsService] getCustomRequestDetail: Current user UID: ${user.uid}');
+      await user.getIdToken(true);
+      debugPrint('[FunctionsService] getCustomRequestDetail: Token refreshed successfully');
+      
+      final callable = _functions.httpsCallable('getCustomRequestDetail');
       final result = await callable.call({'requestId': requestId});
       return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[FunctionsService] getCustomRequestDetail: FirebaseFunctionsException: ${e.code} - ${e.message}');
+      rethrow;
     } catch (e) {
+      debugPrint('[FunctionsService] getCustomRequestDetail: Unexpected error: $e');
       rethrow;
     }
   }
@@ -49,11 +85,20 @@ class FunctionsService {
   /// Update technician online status via Cloud Function
   Future<void> updateTechnicianOnlineStatus(bool isOnline) async {
     try {
-      HttpsCallable callable = _functions.httpsCallable('toggleOnlineStatus');
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        debugPrint('[FunctionsService] updateTechnicianOnlineStatus: User not authenticated');
+        throw Exception("User not logged in");
+      }
+      debugPrint('[FunctionsService] updateTechnicianOnlineStatus: Current user UID: ${user.uid}');
+      await user.getIdToken(true);
+      debugPrint('[FunctionsService] updateTechnicianOnlineStatus: Token refreshed successfully');
+      
+      final callable = _functions.httpsCallable('toggleOnlineStatus');
       await callable.call({'isOnline': isOnline});
       debugPrint('[Functions] Online status updated: $isOnline');
     } on FirebaseFunctionsException catch (e) {
-      debugPrint('[Functions] Online status error: ${e.code} - ${e.message}');
+      debugPrint('[Functions] Online status error - Code: ${e.code}, Message: ${e.message}');
       // Silently fail - app should continue working
     } catch (e) {
       debugPrint('[Functions] Online status unexpected error: $e');
@@ -64,13 +109,25 @@ class FunctionsService {
   /// Update booking status via Cloud Function
   Future<void> updateBookingStatus(String bookingId, String status, {String? otp}) async {
     try {
-      HttpsCallable callable = _functions.httpsCallable('updateBookingStatusNew');
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception("User not logged in");
+      }
+      debugPrint('[FunctionsService] updateBookingStatus: Current user UID: ${user.uid}');
+      await user.getIdToken(true);
+      debugPrint('[FunctionsService] updateBookingStatus: Token refreshed successfully');
+      
+      final callable = _functions.httpsCallable('updateBookingStatusNew');
       await callable.call({
         'bookingId': bookingId,
         'status': status,
         if (otp != null) 'otp': otp,
       });
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[FunctionsService] updateBookingStatus: FirebaseFunctionsException - Code: ${e.code}, Message: ${e.message}');
+      rethrow;
     } catch (e) {
+      debugPrint('[FunctionsService] updateBookingStatus: Unexpected error: $e');
       rethrow;
     }
   }
@@ -78,12 +135,24 @@ class FunctionsService {
   /// Report booking issue via Cloud Function
   Future<void> reportBookingIssue(String bookingId, String reason) async {
     try {
-      HttpsCallable callable = _functions.httpsCallable('reportBookingIssue');
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception("User not logged in");
+      }
+      debugPrint('[FunctionsService] reportBookingIssue: Current user UID: ${user.uid}');
+      await user.getIdToken(true);
+      debugPrint('[FunctionsService] reportBookingIssue: Token refreshed successfully');
+      
+      final callable = _functions.httpsCallable('reportBookingIssue');
       await callable.call({
         'bookingId': bookingId,
         'reason': reason,
       });
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[FunctionsService] reportBookingIssue: FirebaseFunctionsException - Code: ${e.code}, Message: ${e.message}');
+      rethrow;
     } catch (e) {
+      debugPrint('[FunctionsService] reportBookingIssue: Unexpected error: $e');
       rethrow;
     }
   }
@@ -94,13 +163,25 @@ class FunctionsService {
     String? notes,
   }) async {
     try {
-      HttpsCallable callable = _functions.httpsCallable('createRazorpayOrder');
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception("User not logged in");
+      }
+      debugPrint('[FunctionsService] createRazorpayOrder: Current user UID: ${user.uid}');
+      await user.getIdToken(true);
+      debugPrint('[FunctionsService] createRazorpayOrder: Token refreshed successfully');
+      
+      final callable = _functions.httpsCallable('createRazorpayOrder');
       final result = await callable.call({
         'amount': amount,
         if (notes != null) 'notes': notes,
       });
       return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[FunctionsService] createRazorpayOrder: FirebaseFunctionsException - Code: ${e.code}, Message: ${e.message}');
+      rethrow;
     } catch (e) {
+      debugPrint('[FunctionsService] createRazorpayOrder: Unexpected error: $e');
       rethrow;
     }
   }
@@ -112,7 +193,6 @@ class FunctionsService {
 
   /// Add a new technician service via Cloud Function
   /// SECURITY: Validates technician approval before service creation
-  /// CRITICAL: Ensures Firebase Auth ID token is refreshed before calling function
   Future<Map<String, dynamic>> addService({
     required String name,
     required double price,
@@ -126,21 +206,16 @@ class FunctionsService {
     Map<String, dynamic>? nightService,
   }) async {
     try {
-      // CRITICAL: Ensure user is authenticated
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         throw Exception('User not authenticated');
       }
-      
-      // CRITICAL: Refresh Firebase ID token BEFORE calling Cloud Function
-      debugPrint('[SERVICE CREATE] Refreshing Firebase ID token for uid=${user.uid}');
+      debugPrint('[FunctionsService] addService: Current user UID: ${user.uid}');
       await user.getIdToken(true);
-      debugPrint('[SERVICE CREATE] Token refreshed successfully');
+      debugPrint('[FunctionsService] addService: Token refreshed successfully');
       
-      debugPrint('[SERVICE CREATE] Writing to technician_services collection');
-      debugPrint('[SERVICE CREATE] categoryId: $category');
+      final callable = _functions.httpsCallable('addTechnicianService');
       
-      HttpsCallable callable = _functions.httpsCallable('addTechnicianService');
       final Map<String, dynamic> data = {
         'name': name,
         'category': category,
@@ -152,18 +227,18 @@ class FunctionsService {
         'description': description ?? 'Professional service provided by experienced technician',
       };
       
-      debugPrint('[SERVICE CREATE] Calling Cloud Function with data: $data');
       final result = await callable.call(data);
-      debugPrint('[SERVICE CREATE] SUCCESS - Service written to technician_services');
       return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[FunctionsService] addService: FirebaseFunctionsException - Code: ${e.code}, Message: ${e.message}');
+      rethrow;
     } catch (e) {
-      debugPrint('[SERVICE CREATE] ERROR: $e');
+      debugPrint('[FunctionsService] addService: Unexpected error: $e');
       rethrow;
     }
   }
 
   /// Update an existing technician service via Cloud Function
-  /// CRITICAL: Ensures Firebase Auth ID token is refreshed before calling function
   Future<Map<String, dynamic>> updateService({
     required String serviceId,
     String? name,
@@ -179,18 +254,15 @@ class FunctionsService {
     Map<String, dynamic>? nightService,
   }) async {
     try {
-      // CRITICAL: Ensure user is authenticated
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         throw Exception('User not authenticated');
       }
-      
-      // CRITICAL: Refresh Firebase ID token BEFORE calling Cloud Function
-      debugPrint('[SERVICE UPDATE] Refreshing Firebase ID token for uid=${user.uid}');
+      debugPrint('[FunctionsService] updateService: Current user UID: ${user.uid}');
       await user.getIdToken(true);
-      debugPrint('[SERVICE UPDATE] Token refreshed successfully');
+      debugPrint('[FunctionsService] updateService: Token refreshed successfully');
       
-      HttpsCallable callable = _functions.httpsCallable('updateTechnicianService');
+      final callable = _functions.httpsCallable('updateTechnicianService');
       final Map<String, dynamic> data = {'serviceId': serviceId};
       
       if (name != null) data['name'] = name;
@@ -207,53 +279,66 @@ class FunctionsService {
 
       final result = await callable.call(data);
       return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[FunctionsService] updateService: FirebaseFunctionsException - Code: ${e.code}, Message: ${e.message}');
+      rethrow;
     } catch (e) {
+      debugPrint('[FunctionsService] updateService: Unexpected error: $e');
       rethrow;
     }
   }
 
   /// Toggle technician service active status via Cloud Function
-  /// CRITICAL: Ensures Firebase Auth ID token is refreshed before calling function
   Future<Map<String, dynamic>> toggleServiceStatus(String serviceId) async {
     try {
-      // CRITICAL: Ensure user is authenticated
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         throw Exception('User not authenticated');
       }
-      
-      // CRITICAL: Refresh Firebase ID token BEFORE calling Cloud Function
-      debugPrint('[SERVICE TOGGLE] Refreshing Firebase ID token for uid=${user.uid}');
+      debugPrint('[FunctionsService] toggleServiceStatus: Current user UID: ${user.uid}');
       await user.getIdToken(true);
-      debugPrint('[SERVICE TOGGLE] Token refreshed successfully');
+      debugPrint('[FunctionsService] toggleServiceStatus: Token refreshed successfully');
       
-      HttpsCallable callable = _functions.httpsCallable('toggleTechnicianServiceStatus');
+      final callable = _functions.httpsCallable('toggleTechnicianServiceStatus');
       final result = await callable.call({'serviceId': serviceId});
       return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[FunctionsService] toggleServiceStatus: FirebaseFunctionsException - Code: ${e.code}, Message: ${e.message}');
+      rethrow;
     } catch (e) {
+      debugPrint('[FunctionsService] toggleServiceStatus: Unexpected error: $e');
       rethrow;
     }
   }
 
   /// Delete (soft delete) a technician service via Cloud Function
-  /// CRITICAL: Ensures Firebase Auth ID token is refreshed before calling function
   Future<Map<String, dynamic>> deleteService(String serviceId) async {
     try {
-      // CRITICAL: Ensure user is authenticated
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         throw Exception('User not authenticated');
       }
       
-      // CRITICAL: Refresh Firebase ID token BEFORE calling Cloud Function
-      debugPrint('[SERVICE DELETE] Refreshing Firebase ID token for uid=${user.uid}');
+      print('[AUTH DEBUG] UID: ${user.uid}');
       await user.getIdToken(true);
-      debugPrint('[SERVICE DELETE] Token refreshed successfully');
+      print('[AUTH DEBUG] TOKEN REFRESHED');
       
-      HttpsCallable callable = _functions.httpsCallable('deleteTechnicianService');
+      debugPrint('[FunctionsService] deleteService: Current user UID: ${user.uid}');
+      debugPrint('[FunctionsService] deleteService: Token refreshed successfully');
+      debugPrint('[FunctionsService] deleteService: Calling deleteTechnicianService with serviceId: $serviceId');
+      
+      final callable = FirebaseFunctions.instanceFor(region: 'asia-south1')
+          .httpsCallable('deleteTechnicianService');
+      
       final result = await callable.call({'serviceId': serviceId});
+      
+      debugPrint('[FunctionsService] deleteService: SUCCESS - ${result.data}');
       return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[FunctionsService] deleteService: FirebaseFunctionsException - Code: ${e.code}, Message: ${e.message}');
+      rethrow;
     } catch (e) {
+      debugPrint('[FunctionsService] deleteService: Unexpected error: $e');
       rethrow;
     }
   }
@@ -273,18 +358,13 @@ class FunctionsService {
     String? alternatePhone,
   }) async {
     try {
-      // 1. Ensure Firebase user exists before calling the function
       final user = FirebaseAuth.instance.currentUser;
-      
       if (user == null) {
         throw Exception('User not logged in');
       }
-      
-      print('[FunctionsService] UID: ${user.uid}');
-      
-      // 2. Force refresh the Firebase ID token before calling the function
+      debugPrint('[FunctionsService] updateTechnicianPersonalDetails: Current user UID: ${user.uid}');
       await user.getIdToken(true);
-      print('[FunctionsService] Token refreshed successfully');
+      debugPrint('[FunctionsService] updateTechnicianPersonalDetails: Token refreshed successfully');
       
       final Map<String, dynamic> updates = {};
       
@@ -298,24 +378,18 @@ class FunctionsService {
       if (bio != null) updates['bio'] = bio;
       if (alternatePhone != null) updates['alternatePhone'] = alternatePhone;
       
-      print('[FunctionsService] Sending updates: $updates');
-      
       if (updates.isEmpty) {
         return {'success': true, 'message': 'No updates provided'};
       }
       
-      // 3. Call the Cloud Function only after token refresh
       final callable = _functions.httpsCallable('updateTechnicianPersonalDetails');
-      
       final result = await callable.call(updates);
-      
-      debugPrint('[FunctionsService] updateTechnicianPersonalDetails success: ${result.data}');
       return Map<String, dynamic>.from(result.data);
     } on FirebaseFunctionsException catch (e) {
-      debugPrint('[FunctionsService] updateTechnicianPersonalDetails error: ${e.code} - ${e.message}');
+      debugPrint('[FunctionsService] updateTechnicianPersonalDetails: FirebaseFunctionsException - Code: ${e.code}, Message: ${e.message}');
       rethrow;
     } catch (e) {
-      debugPrint('[FunctionsService] updateTechnicianPersonalDetails unexpected error: $e');
+      debugPrint('[FunctionsService] updateTechnicianPersonalDetails: Unexpected error: $e');
       rethrow;
     }
   }
@@ -345,7 +419,6 @@ class FunctionsService {
 
   /// Update technician bank details via Cloud Function
   /// Only allows updating bank-related fields
-  /// CRITICAL: Ensures Firebase Auth ID token is refreshed before calling function
   Future<Map<String, dynamic>> updateTechnicianBankDetails({
     required String accountHolderName,
     required String bankName,
@@ -353,68 +426,57 @@ class FunctionsService {
     required String ifscCode,
   }) async {
     try {
-      // CRITICAL: Ensure user is authenticated
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         throw Exception('User not authenticated');
       }
-      
-      // CRITICAL: Refresh Firebase ID token BEFORE calling Cloud Function
-      debugPrint('[BANK UPDATE] Refreshing Firebase ID token for uid=${user.uid}');
+      debugPrint('[FunctionsService] updateTechnicianBankDetails: Current user UID: ${user.uid}');
       await user.getIdToken(true);
-      debugPrint('[BANK UPDATE] Token refreshed successfully');
+      debugPrint('[FunctionsService] updateTechnicianBankDetails: Token refreshed successfully');
       
-      debugPrint('[FunctionsService] Calling updateTechnicianBankDetails');
-      HttpsCallable callable = _functions.httpsCallable('updateTechnicianBankDetails');
+      final callable = _functions.httpsCallable('updateTechnicianBankDetails');
       final result = await callable.call({
         'accountHolderName': accountHolderName,
         'bankName': bankName,
         'accountNumber': accountNumber,
         'ifscCode': ifscCode.toUpperCase(),
       });
-      debugPrint('[FunctionsService] updateTechnicianBankDetails success');
       return Map<String, dynamic>.from(result.data);
     } on FirebaseFunctionsException catch (e) {
-      debugPrint('[FunctionsService] updateTechnicianBankDetails error: ${e.code} - ${e.message}');
+      debugPrint('[FunctionsService] updateTechnicianBankDetails: FirebaseFunctionsException - Code: ${e.code}, Message: ${e.message}');
       rethrow;
     } catch (e) {
-      debugPrint('[FunctionsService] updateTechnicianBankDetails unexpected error: $e');
+      debugPrint('[FunctionsService] updateTechnicianBankDetails: Unexpected error: $e');
       rethrow;
     }
   }
 
   /// Re-upload verification document via Cloud Function
   /// Allows re-upload if status is "missing" or "rejected"
-  /// CRITICAL: Ensures Firebase Auth ID token is refreshed before calling function
   Future<Map<String, dynamic>> reuploadVerificationDocument({
     required String documentType,
     required String documentUrl,
   }) async {
     try {
-      // CRITICAL: Ensure user is authenticated
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         throw Exception('User not authenticated');
       }
-      
-      // CRITICAL: Refresh Firebase ID token BEFORE calling Cloud Function
-      debugPrint('[DOC REUPLOAD] Refreshing Firebase ID token for uid=${user.uid}');
+      debugPrint('[FunctionsService] reuploadVerificationDocument: Current user UID: ${user.uid}');
       await user.getIdToken(true);
-      debugPrint('[DOC REUPLOAD] Token refreshed successfully');
+      debugPrint('[FunctionsService] reuploadVerificationDocument: Token refreshed successfully');
       
-      debugPrint('[FunctionsService] Calling reuploadVerificationDocument');
-      HttpsCallable callable = _functions.httpsCallable('reuploadVerificationDocument');
+      final callable = _functions.httpsCallable('reuploadVerificationDocument');
       final result = await callable.call({
         'documentType': documentType,
         'documentUrl': documentUrl,
       });
-      debugPrint('[FunctionsService] reuploadVerificationDocument success');
       return Map<String, dynamic>.from(result.data);
     } on FirebaseFunctionsException catch (e) {
-      debugPrint('[FunctionsService] reuploadVerificationDocument error: ${e.code} - ${e.message}');
+      debugPrint('[FunctionsService] reuploadVerificationDocument: FirebaseFunctionsException - Code: ${e.code}, Message: ${e.message}');
       rethrow;
     } catch (e) {
-      debugPrint('[FunctionsService] reuploadVerificationDocument unexpected error: $e');
+      debugPrint('[FunctionsService] reuploadVerificationDocument: Unexpected error: $e');
       rethrow;
     }
   }

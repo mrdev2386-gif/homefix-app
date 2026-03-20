@@ -72,7 +72,7 @@ interface CreateCustomRequestData {
   idempotencyKey: string;
 }
 
-export const createCustomServiceRequest = functions.https.onCall(
+export const createCustomServiceRequest = functions.region('asia-south1').https.onCall(
   secureCallable(async (data: CreateCustomRequestData, context: functions.https.CallableContext) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
 
@@ -158,7 +158,7 @@ interface AdminApproveData {
   rejectionReason?: string;
 }
 
-export const adminApproveServiceRequest = functions.https.onCall(
+export const adminApproveServiceRequest = functions.region('asia-south1').https.onCall(
   secureCallable(async (data: AdminApproveData, context: functions.https.CallableContext) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Unauthenticated');
   if (!(await isAdmin(context.auth.uid))) throw new functions.https.HttpsError('permission-denied', 'Admin access required');
@@ -228,7 +228,7 @@ interface TechnicianRespondData {
   rejectionReason?: string;
 }
 
-export const technicianRespondServiceRequest = functions.https.onCall(
+export const technicianRespondServiceRequest = functions.region('asia-south1').https.onCall(
   secureCallable(async (data: TechnicianRespondData, context: functions.https.CallableContext) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Unauthenticated');
   const technicianId = context.auth.uid;
@@ -271,7 +271,7 @@ interface CustomerPaymentData {
   paymentMethod: 'now' | 'after_service';
 }
 
-export const customerConfirmServicePayment = functions.https.onCall(
+export const customerConfirmServicePayment = functions.region('asia-south1').https.onCall(
   secureCallable(async (data: CustomerPaymentData, context: functions.https.CallableContext) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Unauthenticated');
   const customerId = context.auth.uid;
@@ -312,7 +312,7 @@ export const customerConfirmServicePayment = functions.https.onCall(
 /**
  * Technician: Get inbox of assigned custom requests
  */
-export const getTechnicianInbox = functions.https.onCall(
+export const getTechnicianInbox = functions.region('asia-south1').https.onCall(
   secureCallable(async (data: { limit?: number; startAfter?: string }, context: functions.https.CallableContext) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Unauthenticated');
   const technicianId = context.auth.uid;
@@ -344,7 +344,7 @@ export const getTechnicianInbox = functions.https.onCall(
 /**
  * Get details of a single custom request
  */
-export const getCustomRequestDetail = functions.https.onCall(
+export const getCustomRequestDetail = functions.region('asia-south1').https.onCall(
   secureCallable(async (data: { requestId: string }, context: functions.https.CallableContext) => {
   if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Unauthenticated');
   const uid = context.auth.uid;

@@ -1,11 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../models/booking.dart';
+import '../firebase/firebase_functions_instance.dart';
 
 class BookingService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  // CRITICAL: Use GLOBAL instance - NO local instances
+  FirebaseFunctions get _functions => FirebaseFunctionsInstance.instance;
 
   FirebaseFirestore get db => _db;
 
@@ -74,7 +77,18 @@ class BookingService {
         payload['paymentMode'] = paymentMode;
       }
       
+      // CRITICAL: Ensure auth is ready before ANY function call
+      await FirebaseFunctionsInstance.ensureAuthReady();
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // CRITICAL: Force refresh auth token before EVERY call
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception("User not logged in");
+      await user.getIdToken(true);
+      
       // Debug logging
+      print('[AUTH DEBUG] UID: ${user.uid}');
+      print('[AUTH DEBUG] Token: ${await user.getIdToken()}');
       print('[BOOKING_FLOW] Sending booking payload: $payload');
       
       final HttpsCallable callable = _functions.httpsCallable('createBookingRequest');
@@ -117,6 +131,13 @@ class BookingService {
   /// Cancel a booking
   Future<void> cancelBooking(String bookingId, String reason) async {
     try {
+      await FirebaseFunctionsInstance.ensureAuthReady();
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception("User not logged in");
+      await user.getIdToken(true);
+      
       final HttpsCallable callable = _functions.httpsCallable('updateBookingStatusNew');
       await callable.call({
         'bookingId': bookingId,
@@ -139,6 +160,13 @@ class BookingService {
     Map<String, dynamic>? paymentDetails,
   }) async {
     try {
+      await FirebaseFunctionsInstance.ensureAuthReady();
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception("User not logged in");
+      await user.getIdToken(true);
+      
       final HttpsCallable callable = _functions.httpsCallable('customerConfirmPayment');
       final results = await callable.call({
         'bookingId': bookingId,

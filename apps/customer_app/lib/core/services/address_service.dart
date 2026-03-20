@@ -4,12 +4,13 @@ import 'package:flutter/foundation.dart';
 import '../models/address.dart';
 import 'address_cache_service.dart';
 import 'category_service.dart';
+import '../firebase/firebase_functions_instance.dart';
 
 /// Production-grade Address Service
 /// Handles all address-related Firestore operations securely
 class AddressService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  FirebaseFunctions get _functions => FirebaseFunctionsInstance.instance;
   final CategoryService categoryService;
 
   AddressService(this.categoryService);
