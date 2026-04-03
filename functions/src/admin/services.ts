@@ -20,7 +20,7 @@ import { Service, SubService, PriceHistoryEntry, PricingConfig } from '../shared
 /**
  * Create a new service category
  */
-export const createService = functions.https.onCall(async (data, context) => {
+export const createService = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { name, slug, category, icon, imageUrl, description, requiresInspection, inspectionCharge, inspectionDuration, isFeatured, order } = data;
@@ -75,7 +75,7 @@ export const createService = functions.https.onCall(async (data, context) => {
 /**
  * Update an existing service
  */
-export const updateService = functions.https.onCall(async (data, context) => {
+export const updateService = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { serviceId, updates } = data;
@@ -161,7 +161,7 @@ export const deleteService = functions
 /**
  * Create a new sub-service with fixed pricing
  */
-export const createSubService = functions.https.onCall(async (data, context) => {
+export const createSubService = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const {
@@ -261,7 +261,7 @@ export const createSubService = functions.https.onCall(async (data, context) => 
 /**
  * Update sub-service (including price changes with audit trail)
  */
-export const updateSubService = functions.https.onCall(async (data, context) => {
+export const updateSubService = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { subServiceId, updates } = data;
@@ -318,7 +318,7 @@ export const updateSubService = functions.https.onCall(async (data, context) => 
 /**
  * Delete (soft delete) a sub-service
  */
-export const deleteSubService = functions.https.onCall(async (data, context) => {
+export const deleteSubService = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { subServiceId } = data;
@@ -359,7 +359,7 @@ export const deleteSubService = functions.https.onCall(async (data, context) => 
 /**
  * Update global pricing configuration
  */
-export const updatePricingConfig = functions.https.onCall(async (data, context) => {
+export const updatePricingConfig = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { updates } = data;
@@ -394,7 +394,7 @@ export const updatePricingConfig = functions.https.onCall(async (data, context) 
 /**
  * Get pricing configuration
  */
-export const getPricingConfig = functions.https.onCall(async (data, context) => {
+export const getPricingConfig = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const configDoc = await db.collection('app_config').doc('pricing').get();
@@ -413,7 +413,7 @@ export const getPricingConfig = functions.https.onCall(async (data, context) => 
 /**
  * Bulk update prices (e.g., apply percentage increase/decrease)
  */
-export const bulkUpdatePrices = functions.https.onCall(async (data, context) => {
+export const bulkUpdatePrices = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { serviceId, adjustmentType, adjustmentValue, reason } = data;
@@ -482,7 +482,7 @@ export const bulkUpdatePrices = functions.https.onCall(async (data, context) => 
 /**
  * Get price history for a sub-service
  */
-export const getSubServicePriceHistory = functions.https.onCall(async (data, context) => {
+export const getSubServicePriceHistory = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { subServiceId } = data;
@@ -510,7 +510,7 @@ export const getSubServicePriceHistory = functions.https.onCall(async (data, con
 /**
  * Dispatcher for service management (backward compatibility with frontend)
  */
-export const manageService = functions.https.onCall(async (data, context) => {
+export const manageService = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
     const { action, serviceId, payload } = data;
 
@@ -550,7 +550,7 @@ export const manageService = functions.https.onCall(async (data, context) => {
  * - Add migratedAt timestamp
  * - Idempotent (safe to run multiple times)
  */
-export const migrateServicesToNested = functions.https.onCall(async (data, context) => {
+export const migrateServicesToNested = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
     
     const DRY_RUN = data.dryRun ?? false;

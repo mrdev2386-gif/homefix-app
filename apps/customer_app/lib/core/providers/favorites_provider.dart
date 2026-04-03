@@ -62,6 +62,14 @@ class FavoritesProvider with ChangeNotifier {
       print('❌ [FavoritesProvider.toggleFavorite] userId is null!');
       return;
     }
+    if (serviceId.isEmpty) {
+      print('❌ [FavoritesProvider.toggleFavorite] serviceId is empty, aborting');
+      return;
+    }
+    if (categoryId.isEmpty) {
+      print('❌ [FavoritesProvider.toggleFavorite] categoryId is empty, aborting — backend requires it');
+      return;
+    }
     
     final wasFavorite = _favoriteServices.containsKey(serviceId);
     print('❤️ [FavoritesProvider.toggleFavorite] wasFavorite=$wasFavorite');

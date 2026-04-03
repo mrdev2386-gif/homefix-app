@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import '../models/booking.dart';
 import '../models/service.dart';
@@ -15,6 +17,26 @@ import '../utils/firestore_guards.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseFunctions functions = FirebaseFunctions.instanceFor(region: 'asia-south1');
+
+  // --- Authentication Helper ---
+  /// Ensures user is authenticated and token is fresh with stability delay
+  Future<void> ensureAuthenticated() async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      throw Exception("User not logged in");
+    }
+
+    // Wait for stable auth state
+    await FirebaseAuth.instance.authStateChanges().first;
+
+    // Force token refresh
+    await user.getIdToken(true);
+
+    // ADD DELAY (CRITICAL FIX)
+    await Future.delayed(const Duration(milliseconds: 500));
+  }
 
   // --- Stream Resilience Helper ---
   /// Wraps a stream with retry logic for network failures (UNAVAILABLE, DNS, timeouts)
@@ -150,7 +172,6 @@ class FirestoreService {
   Future<void> saveAddress(String userId, Address address) async {
     debugPrint('[ADDRESS_SAVE] Starting save for user $userId, isDefault: ${address.isDefault}');
     
-    // If this is being set as default, first clear any existing default addresses
     if (address.isDefault) {
       try {
         final existingDefaults = await _db
@@ -160,9 +181,8 @@ class FirestoreService {
             .where('isDefault', isEqualTo: true)
             .get();
         
-        // Clear existing defaults
         for (final doc in existingDefaults.docs) {
-          if (doc.id != address.id) { // Don't clear if editing the same address
+          if (doc.id != address.id) {
             await doc.reference.update({'isDefault': false});
           }
         }
@@ -172,9 +192,13 @@ class FirestoreService {
       }
     }
     
-    // Save address via Cloud Function
-    final callable = FirebaseFunctions.instance.httpsCallable('manageAddress');
-    await callable.call({
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('User not logged in');
+    await user.getIdToken(true);
+    
+    
+    final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('manageAddress');
+    final data = {
       'action': address.id.isEmpty ? 'add' : 'edit',
       if (address.id.isNotEmpty) 'addressId': address.id,
       'label': address.label,
@@ -189,9 +213,21 @@ class FirestoreService {
       'latitude': address.latitude,
       'longitude': address.longitude,
       'isDefault': address.isDefault,
-    });
+    };
     
-    // If this is set as primary/default, also update user profile
+    try {
+      await callable.call(data);
+    } catch (e) {
+      if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
+        await user.getIdToken(true);
+        
+        final retryCallable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('manageAddress');
+        await retryCallable.call(data);
+      } else {
+        rethrow;
+      }
+    }
+    
     if (address.isDefault) {
       await savePrimaryAddressToProfile(
         userId: userId,
@@ -205,19 +241,49 @@ class FirestoreService {
   }
 
   Future<void> deleteAddress(String userId, String addressId) async {
-    final callable = FirebaseFunctions.instance.httpsCallable('manageAddress');
-    await callable.call({
-      'action': 'delete',
-      'addressId': addressId,
-    });
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('User not logged in');
+    await user.getIdToken(true);
+    
+    
+    final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('manageAddress');
+    final data = {'action': 'delete', 'addressId': addressId};
+    
+    try {
+      await callable.call(data);
+    } catch (e) {
+      if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
+        await user.getIdToken(true);
+        
+        final retryCallable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('manageAddress');
+        await retryCallable.call(data);
+      } else {
+        rethrow;
+      }
+    }
   }
 
   Future<void> setDefaultAddress(String userId, String addressId) async {
-    final callable = FirebaseFunctions.instance.httpsCallable('manageAddress');
-    await callable.call({
-      'action': 'setDefault',
-      'addressId': addressId,
-    });
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('User not logged in');
+    await user.getIdToken(true);
+    
+    
+    final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('manageAddress');
+    final data = {'action': 'setDefault', 'addressId': addressId};
+    
+    try {
+      await callable.call(data);
+    } catch (e) {
+      if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
+        await user.getIdToken(true);
+        
+        final retryCallable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('manageAddress');
+        await retryCallable.call(data);
+      } else {
+        rethrow;
+      }
+    }
   }
 
   /// Set primary address - alias for setDefaultAddress for backward compatibility
@@ -225,7 +291,6 @@ class FirestoreService {
     await setDefaultAddress(userId, addressId);
   }
 
-  /// Save primary address to user profile in Firestore
   Future<void> savePrimaryAddressToProfile({
     required String userId,
     required String address,
@@ -236,20 +301,34 @@ class FirestoreService {
       debugPrint('[PATH GUARD] blocked empty id in savePrimaryAddressToProfile');
       return;
     }
-
+    
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('User not logged in');
+    await user.getIdToken(true);
+    
+    
+    final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('updateUserProfile');
+    final data = {
+      'primaryAddress': address,
+      'district': district.toLowerCase(),
+      'state': state.toLowerCase(),
+      'profileCompleted': true,
+      'isOnboarded': true,
+    };
+    
     try {
-      await _db.collection('customers').doc(userId).set({
-        'primaryAddress': address,
-        'district': district.toLowerCase(),
-        'state': state.toLowerCase(),
-        'addressUpdatedAt': FieldValue.serverTimestamp(),
-        'profileCompleted': true,
-      }, SetOptions(merge: true));
-      
-      debugPrint('✅ [Address] Primary address saved to user profile');
+      await callable.call(data);
+      debugPrint('✅ [Address] Primary address saved to user profile via callable');
     } catch (e) {
-      debugPrint('❌ [Address] Failed to save primary address to profile: $e');
-      rethrow;
+      if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
+        await user.getIdToken(true);
+        
+        final retryCallable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('updateUserProfile');
+        await retryCallable.call(data);
+      } else {
+        debugPrint('❌ [Address] Failed to save primary address to profile: $e');
+        rethrow;
+      }
     }
   }
 
@@ -372,95 +451,133 @@ class FirestoreService {
   }
 
   Future<void> addToCart(String userId, CartItem item) async {
-    print('🛒 [FirestoreService.addToCart] Called with userId=$userId, item=${item.serviceName}');
+    print('📡 [addToCart] Starting function call');
+    
+    // CRITICAL: Ensure authentication with delay
+    await ensureAuthenticated();
+    
+    final user = FirebaseAuth.instance.currentUser!;
+    print('🔑 [addToCart] AUTH UID: ${user.uid}');
+    
+    // Validate all required fields before sending
     if (!FirestoreGuards.isValidDocumentId(userId)) {
-      print('❌ [FirestoreService.addToCart] Invalid userId');
-      debugPrint('[CART] Invalid userId, aborting add');
+      print('❌ [addToCart] Invalid userId');
       throw Exception('Invalid user ID');
     }
+    if (item.serviceId.isEmpty) throw Exception('serviceId is mandatory');
+    if (item.categoryId.isEmpty) throw Exception('categoryId is mandatory');
+    if (item.technicianId == null || item.technicianId!.isEmpty) throw Exception('technicianId is mandatory');
+    if (item.finalPriceSnapshot <= 0) throw Exception('finalPriceSnapshot must be > 0');
+    if (item.price <= 0) throw Exception('price must be > 0');
+
+    final callable = functions.httpsCallable('addToCartCallable');
     
-    // DEV ASSERT: Validate critical fields before writing
-    assert(item.serviceId.isNotEmpty, 'serviceId is mandatory for cart item');
-    assert(item.technicianId != null && item.technicianId!.isNotEmpty, 'technicianId is mandatory for cart item');
-    assert(item.categoryId.isNotEmpty, 'categoryId is mandatory for cart item');
-    assert(item.categoryName.isNotEmpty, 'categoryName is mandatory for cart item');
-    assert(item.finalPriceSnapshot > 0, 'finalPriceSnapshot must be valid');
-    
+    // CRITICAL: Ensure payload is never null/undefined
+    final payload = item.toMap();
+    print('📦 [addToCart] CALL DATA: $payload');
+    print('🔑 [addToCart] AUTH UID: ${user.uid}');
+
     try {
-      print('🛒 [FirestoreService.addToCart] Calling Cloud Function addToCartCallable');
-      if (kDebugMode) debugPrint('[CART] Adding item via callable...');
-      final callable = FirebaseFunctions.instance.httpsCallable('addToCartCallable');
-      await callable.call(item.toMap());
-      print('✅ [FirestoreService.addToCart] Cloud Function succeeded');
-      if (kDebugMode) debugPrint('✅ [CART] Item added successfully');
+      // CRITICAL: Pass data object, never null
+      final result = await callable.call(payload);
+      print('✅ [addToCart] Success: ${result.data}');
     } catch (e) {
-      print('❌ [FirestoreService.addToCart] Cloud Function error: $e');
-      if (kDebugMode) debugPrint('❌ [CART] Add failed: $e');
-      rethrow;
+      print('❌ [addToCart] Error: $e');
+      if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
+        print('🔁 [addToCart] Retrying with fresh authentication...');
+        await ensureAuthenticated();
+        final retryCallable = functions.httpsCallable('addToCartCallable');
+        final result = await retryCallable.call(payload);
+        print('✅ [addToCart] Success (after retry): ${result.data}');
+      } else {
+        rethrow;
+      }
     }
   }
 
   Future<void> updateCartItemQuantity(String userId, String itemId, int quantity) async {
-    if (!FirestoreGuards.isValidDocumentId(userId)) {
-      debugPrint('[CART] Invalid userId, aborting update');
-      throw Exception('Invalid user ID');
+    if (!FirestoreGuards.isValidDocumentId(userId) || !FirestoreGuards.isValidDocumentId(itemId)) {
+      throw Exception('Invalid user ID or item ID');
     }
     
-    if (!FirestoreGuards.isValidDocumentId(itemId)) {
-      debugPrint('[CART] Invalid itemId, aborting update');
-      throw Exception('Invalid item ID');
-    }
+    // CRITICAL: Ensure authentication with delay
+    await ensureAuthenticated();
+    
+    final user = FirebaseAuth.instance.currentUser!;
+    print('🔑 [updateCartQuantity] AUTH UID: ${user.uid}');
+    
+    final callable = functions.httpsCallable('updateCartQuantityCallable');
+    final data = {'itemId': itemId, 'quantity': quantity};
+    
+    print('📦 [updateCartQuantity] CALL DATA: $data');
     
     try {
-      if (kDebugMode) debugPrint('[CART] Updating quantity via callable...');
-      final callable = FirebaseFunctions.instance.httpsCallable('updateCartQuantityCallable');
-      await callable.call({
-        'itemId': itemId,
-        'quantity': quantity,
-      });
-      if (kDebugMode) debugPrint('✅ [CART] Quantity updated successfully');
+      await callable.call(data);
     } catch (e) {
-      if (kDebugMode) debugPrint('❌ [CART] Update failed: $e');
-      rethrow;
+      if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
+        await ensureAuthenticated();
+        final retryCallable = functions.httpsCallable('updateCartQuantityCallable');
+        await retryCallable.call(data);
+      } else {
+        rethrow;
+      }
     }
   }
 
   Future<void> removeFromCart(String userId, String itemId) async {
-    if (!FirestoreGuards.isValidDocumentId(userId)) {
-      debugPrint('[CART] Invalid userId, aborting remove');
-      throw Exception('Invalid user ID');
+    if (!FirestoreGuards.isValidDocumentId(userId) || !FirestoreGuards.isValidDocumentId(itemId)) {
+      throw Exception('Invalid user ID or item ID');
     }
     
-    if (!FirestoreGuards.isValidDocumentId(itemId)) {
-      debugPrint('[CART] Invalid itemId, aborting remove');
-      throw Exception('Invalid item ID');
-    }
+    // CRITICAL: Ensure authentication with delay
+    await ensureAuthenticated();
+    
+    final user = FirebaseAuth.instance.currentUser!;
+    print('🔑 [removeFromCart] AUTH UID: ${user.uid}');
+    
+    final callable = functions.httpsCallable('removeFromCartCallable');
+    final data = {'itemId': itemId};
+    
+    print('📦 [removeFromCart] CALL DATA: $data');
     
     try {
-      if (kDebugMode) debugPrint('[CART] Removing item via callable...');
-      final callable = FirebaseFunctions.instance.httpsCallable('removeFromCartCallable');
-      await callable.call({'itemId': itemId});
-      if (kDebugMode) debugPrint('✅ [CART] Item removed successfully');
+      await callable.call(data);
     } catch (e) {
-      if (kDebugMode) debugPrint('❌ [CART] Remove failed: $e');
-      rethrow;
+      if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
+        await ensureAuthenticated();
+        final retryCallable = functions.httpsCallable('removeFromCartCallable');
+        await retryCallable.call(data);
+      } else {
+        rethrow;
+      }
     }
   }
 
   Future<void> clearCart(String userId) async {
     if (!FirestoreGuards.isValidDocumentId(userId)) {
-      debugPrint('[CART] Invalid userId, aborting clear');
       throw Exception('Invalid user ID');
     }
     
+    // CRITICAL: Ensure authentication with delay
+    await ensureAuthenticated();
+    
+    final user = FirebaseAuth.instance.currentUser!;
+    print('🔑 [clearCart] AUTH UID: ${user.uid}');
+    
+    final callable = functions.httpsCallable('clearCartCallable');
+    
+    print('📦 [clearCart] CALL DATA: {}');
+    
     try {
-      if (kDebugMode) debugPrint('[CART] Clearing cart via callable...');
-      final callable = FirebaseFunctions.instance.httpsCallable('clearCartCallable');
-      await callable.call();
-      if (kDebugMode) debugPrint('✅ [CART] Cart cleared successfully');
+      await callable.call({});
     } catch (e) {
-      if (kDebugMode) debugPrint('❌ [CART] Clear failed: $e');
-      rethrow;
+      if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
+        await ensureAuthenticated();
+        final retryCallable = functions.httpsCallable('clearCartCallable');
+        await retryCallable.call({});
+      } else {
+        rethrow;
+      }
     }
   }
 
@@ -492,16 +609,32 @@ class FirestoreService {
             .toList());
   }
 
-  // --- Proposals (Quotes) --- Harden: Moved to Cloud Functions
   Future<void> acceptProposal(Proposal proposal, ServiceRequest request) async {
-    final callable = FirebaseFunctions.instance.httpsCallable('acceptProposal');
-    await callable.call({
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('User not logged in');
+    await user.getIdToken(true);
+    
+    
+    final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('acceptProposal');
+    final data = {
       'proposalId': proposal.id,
       'requestId': request.id,
-    });
+    };
+    
+    try {
+      await callable.call(data);
+    } catch (e) {
+      if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
+        await user.getIdToken(true);
+        
+        final retryCallable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('acceptProposal');
+        await retryCallable.call(data);
+      } else {
+        rethrow;
+      }
+    }
   }
 
-  // --- Referrals ---
   Future<void> processReferral(String currentUserId, String referralCode) async {
     if (currentUserId.isEmpty || referralCode.isEmpty) {
       if (kDebugMode) debugPrint('[PATH GUARD] blocked empty id in processReferral');
@@ -509,15 +642,28 @@ class FirestoreService {
     }
     
     if (kDebugMode) debugPrint('[WRITE GUARD] Direct write blocked in processReferral');
+    
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('User not logged in');
+    await user.getIdToken(true);
+    
+    
+    final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('processReferralCallable');
+    final data = {'referralCode': referralCode};
+    
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('processReferralCallable');
-      await callable.call({
-        'referralCode': referralCode,
-      });
+      await callable.call(data);
       if (kDebugMode) debugPrint('✅ [Referral] Processed via callable');
     } catch (e) {
-      if (kDebugMode) debugPrint('❌ [Referral] Process failed: $e');
-      rethrow;
+      if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
+        await user.getIdToken(true);
+        
+        final retryCallable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('processReferralCallable');
+        await retryCallable.call(data);
+      } else {
+        if (kDebugMode) debugPrint('❌ [Referral] Process failed: $e');
+        rethrow;
+      }
     }
   }
 
@@ -574,13 +720,27 @@ class FirestoreService {
       return;
     }
     if (kDebugMode) debugPrint('[WRITE GUARD] Direct write blocked in updateUserProfile');
+    
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('User not logged in');
+    await user.getIdToken(true);
+    
+    
+    final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('updateUserProfile');
+    
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('updateUserProfile');
       await callable.call(data);
       if (kDebugMode) debugPrint('✅ [Profile] Updated via callable');
     } catch (e) {
-      if (kDebugMode) debugPrint('❌ [Profile] Update failed: $e');
-      rethrow;
+      if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
+        await user.getIdToken(true);
+        
+        final retryCallable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('updateUserProfile');
+        await retryCallable.call(data);
+      } else {
+        if (kDebugMode) debugPrint('❌ [Profile] Update failed: $e');
+        rethrow;
+      }
     }
   }
 
@@ -590,37 +750,79 @@ class FirestoreService {
       return;
     }
     if (kDebugMode) debugPrint('[WRITE GUARD] Direct write blocked in becomeTechnician');
+    
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('User not logged in');
+    await user.getIdToken(true);
+    
+    
+    final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('submitPartnerApplication');
+    
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('submitPartnerApplication');
       await callable.call(data);
       if (kDebugMode) debugPrint('✅ [Technician] Application submitted via callable');
     } catch (e) {
-      if (kDebugMode) debugPrint('❌ [Technician] Submission failed: $e');
-      rethrow;
+      if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
+        await user.getIdToken(true);
+        
+        final retryCallable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('submitPartnerApplication');
+        await retryCallable.call(data);
+      } else {
+        if (kDebugMode) debugPrint('❌ [Technician] Submission failed: $e');
+        rethrow;
+      }
     }
   }
 
-  // --- Favorites --- Harden: Added categoryId to ensure correct service lookup in nested structure
   Future<void> toggleFavorite(String userId, String categoryId, String serviceId, bool isFavorite) async {
-    print('❤️ [FirestoreService.toggleFavorite] Called with userId=$userId, serviceId=$serviceId, isFavorite=$isFavorite');
-    if (userId.isEmpty || serviceId.isEmpty) {
-      print('❌ [FirestoreService.toggleFavorite] Empty userId or serviceId');
-      return;
+    print('📡 [toggleFavorite] Starting function call');
+
+    // CRITICAL: Ensure authentication with delay
+    await ensureAuthenticated();
+    
+    final user = FirebaseAuth.instance.currentUser!;
+    print('🔑 [toggleFavorite] AUTH UID: ${user.uid}');
+
+    // Validate all required fields before sending
+    if (userId.isEmpty) {
+      print('❌ [toggleFavorite] Empty userId');
+      throw Exception('userId is required');
     }
+    if (serviceId.isEmpty) {
+      print('❌ [toggleFavorite] Empty serviceId');
+      throw Exception('serviceId is required');
+    }
+    if (categoryId.isEmpty) {
+      print('❌ [toggleFavorite] Empty categoryId');
+      throw Exception('categoryId is required');
+    }
+
+    final callable = functions.httpsCallable('toggleFavoriteCallable');
+
+    // CRITICAL: Ensure payload is never null/undefined
+    final data = {
+      'serviceId': serviceId,
+      'categoryId': categoryId,
+      'isFavorite': isFavorite,
+    };
+    print('📦 [toggleFavorite] CALL DATA: $data');
+    print('🔑 [toggleFavorite] AUTH UID: ${user.uid}');
+
     try {
-      print('❤️ [FirestoreService.toggleFavorite] Calling Cloud Function toggleFavoriteCallable');
-      final callable = FirebaseFunctions.instance.httpsCallable('toggleFavoriteCallable');
-      await callable.call({
-        'serviceId': serviceId,
-        'categoryId': categoryId,
-        'isFavorite': isFavorite,
-      });
-      print('✅ [FirestoreService.toggleFavorite] Cloud Function succeeded');
-      debugPrint('✅ [Favorite] Toggled via callable (status: $isFavorite)');
+      // CRITICAL: Pass data object, never null
+      final result = await callable.call(data);
+      print('✅ [toggleFavorite] Success: ${result.data}');
     } catch (e) {
-      print('❌ [FirestoreService.toggleFavorite] Cloud Function error: $e');
-      debugPrint('❌ [Favorite] Toggle failed: $e');
-      rethrow;
+      print('❌ [toggleFavorite] Error: $e');
+      if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
+        print('🔁 [toggleFavorite] Retrying with fresh authentication...');
+        await ensureAuthenticated();
+        final retryCallable = functions.httpsCallable('toggleFavoriteCallable');
+        final result = await retryCallable.call(data);
+        print('✅ [toggleFavorite] Success (after retry): ${result.data}');
+      } else {
+        rethrow;
+      }
     }
   }
 
@@ -946,3 +1148,4 @@ class FirestoreService {
             snapshot.docs.map((doc) => {...doc.data(), "id": doc.id}).toList());
   }
 }
+

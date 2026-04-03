@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import { secureCallable } from '../shared/security';
 
 const db = admin.firestore();
 
@@ -7,14 +8,16 @@ const db = admin.firestore();
  * Set Primary Address with Transaction Safety
  * Ensures only one primary address exists at any time
  */
-export const setPrimaryAddress = functions.https.onCall(async (request, context) => {
+export const setPrimaryAddress = functions
+  .region('asia-south1')
+  .https.onCall(secureCallable(async (data: any, context: any) => {
   const auth = context.auth;
 
   if (!auth) {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
 
-  const { addressId } = request.data;
+  const { addressId } = data;
   if (!addressId) {
     throw new functions.https.HttpsError('invalid-argument', 'addressId is required');
   }
@@ -53,16 +56,18 @@ export const setPrimaryAddress = functions.https.onCall(async (request, context)
     console.error('setPrimaryAddress error:', error);
     throw new functions.https.HttpsError('internal', error.message);
   }
-});
+}));
 
-export const manageAddress = functions.https.onCall(async (request, context) => {
+export const manageAddress = functions
+  .region('asia-south1')
+  .https.onCall(secureCallable(async (data: any, context: any) => {
   const auth = context.auth;
 
   if (!auth) {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
   }
 
-  const { action, addressId, addressData, setAsPrimary } = request.data;
+  const { action, addressId, addressData, setAsPrimary } = data;
   const userId = auth.uid;
 
   try {
@@ -168,10 +173,12 @@ export const manageAddress = functions.https.onCall(async (request, context) => 
     console.error('manageAddress error:', error);
     throw new functions.https.HttpsError('internal', error.message);
   }
-});
+}));
 
-export const validateAddressForBooking = functions.https.onCall(async (request) => {
-  const { auth, data } = request;
+export const validateAddressForBooking = functions
+  .region('asia-south1')
+  .https.onCall(secureCallable(async (data: any, context: any) => {
+  const auth = context.auth;
 
   if (!auth) {
     throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
@@ -212,4 +219,4 @@ export const validateAddressForBooking = functions.https.onCall(async (request) 
     console.error('validateAddressForBooking error:', error);
     throw new functions.https.HttpsError('internal', error.message);
   }
-});
+}));

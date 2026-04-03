@@ -4,7 +4,7 @@ import { db } from '../shared/config';
 import { assertAdmin } from './utils';
 import { secureCallable } from '../shared/security';
 
-export const getDashboardStats = functions.https.onCall(
+export const getDashboardStats = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);

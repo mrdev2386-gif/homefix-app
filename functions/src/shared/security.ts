@@ -135,9 +135,10 @@ export function sanitize(text: any): any {
 
 /**
  * Standardized High-Performance Function Wrapper
- * - Enforces App Check
+ * - ENFORCES AUTHENTICATION (CRITICAL FIX)
  * - Standardizes Error Handling
  * - Provides Structured Logging
+ * - Validates Auth Context Before Handler Execution
  */
 export function secureCallable(
     handler: (data: any, context: functions.https.CallableContext) => Promise<any>
@@ -146,14 +147,41 @@ export function secureCallable(
         const functionName = context.rawRequest?.url?.split('/').pop() || 'unknown';
         
         try {
-            // 1. App Check Enforcement - PERMANENTLY DISABLED
-            // CRITICAL FIX: App Check SDK is disabled in Flutter apps
-            // Enforcing App Check here causes UNAUTHENTICATED errors
-            // App Check enforcement has been completely removed
+            // ========================================
+            // CRITICAL FIX: ENFORCE AUTHENTICATION FIRST
+            // ========================================
+            console.log(`[${functionName}] 🔍 Incoming request`);
+            console.log(`[${functionName}] Auth context:`, {
+                hasAuth: !!context.auth,
+                uid: context.auth?.uid,
+                token: context.auth?.token ? 'present' : 'missing'
+            });
+
+            // STEP 1: Verify auth context exists
+            if (!context.auth) {
+                console.error(`[${functionName}] ❌ UNAUTHENTICATED: context.auth is NULL`);
+                console.error(`[${functionName}] Request Headers:`, context.rawRequest?.headers);
+                console.error(`[${functionName}] Auth Header:`, context.rawRequest?.headers['authorization']);
+                throw new functions.https.HttpsError(
+                    'unauthenticated',
+                    'Authentication required. Please ensure you are logged in and try again.'
+                );
+            }
+
+            // STEP 2: Verify UID exists
+            if (!context.auth.uid) {
+                console.error(`[${functionName}] ❌ UNAUTHENTICATED: context.auth.uid is NULL`);
+                throw new functions.https.HttpsError(
+                    'unauthenticated',
+                    'Invalid authentication token. Please log in again.'
+                );
+            }
+
+            console.log(`[${functionName}] ✅ AUTHENTICATED: UID=${context.auth.uid}`);
 
             // 2. Structured Start Log
             logger.info(`${functionName}_start`, { 
-                uid: context.auth?.uid,
+                uid: context.auth.uid,
                 params: sanitizeParams(data)
             });
 
@@ -161,12 +189,18 @@ export function secureCallable(
             const result = await handler(data, context);
 
             // 4. Structured Success Log
-            logger.info(`${functionName}_success`, { uid: context.auth?.uid });
+            logger.info(`${functionName}_success`, { uid: context.auth.uid });
+            console.log(`[${functionName}] ✅ SUCCESS`);
 
             return result;
         } catch (error: any) {
             // 5. Standardized Error Response
             if (error instanceof functions.https.HttpsError) {
+                console.error(`[${functionName}] ❌ HttpsError:`, {
+                    code: error.code,
+                    message: error.message,
+                    uid: context.auth?.uid
+                });
                 logger.warn(`${functionName}_error`, { 
                     code: error.code, 
                     message: error.message,
@@ -176,6 +210,7 @@ export function secureCallable(
             }
 
             // 6. Fallback Unhandled Error
+            console.error(`[${functionName}] ❌ Unhandled error:`, error);
             logger.error(`${functionName}_failure`, { uid: context.auth?.uid }, error);
             throw new functions.https.HttpsError(
                 'internal',

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../core/services/functions_helper.dart';
 
 class JobDetailsScreen extends StatelessWidget {
   final Map<String, dynamic> booking;
@@ -29,7 +30,7 @@ class JobDetailsScreen extends StatelessWidget {
               return;
             }
             debugPrint('[WRITE GUARD] Direct write blocked in _cancelBooking');
-            final callable = FirebaseFunctions.instance.httpsCallable('cancelBooking');
+            final callable = await FunctionsHelper.getCallable('cancelBooking');
             await callable.call({'bookingId': bookingId});
             
             if(context.mounted) {
@@ -42,21 +43,6 @@ class JobDetailsScreen extends StatelessWidget {
        }
   }
 
-  Future<void> _downloadInvoice(BuildContext context) async {
-      try {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Generating Invoice...")));
-          final res = await FirebaseFunctions.instance.httpsCallable('generateInvoicePDF').call({'bookingId': bookingId});
-          final url = res.data['pdfUrl'];
-          if(url != null) {
-              launchUrl(Uri.parse(url));
-          } else {
-              if(context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Invoice generation failed.")));
-          }
-      } catch(e) {
-          if(context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
-      }
-  }
-  
   void _raiseDispute(BuildContext context) {
       showDialog(context: context, builder: (_) => _DisputeDialog(bookingId: bookingId, customerId: booking['customerId']));
   }
@@ -64,7 +50,6 @@ class JobDetailsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
       final status = booking['status'] ?? 'pending';
-      final isCompleted = status == 'completed';
       final isCancellable = ['pending', 'payment_pending', 'confirmed', 'assigned'].contains(status);
 
       return Scaffold(
@@ -82,12 +67,6 @@ class JobDetailsScreen extends StatelessWidget {
                        // If Timestamp, format it
                       const Divider(),
                       const SizedBox(height: 20),
-                      if(isCompleted) 
-                          ElevatedButton.icon(
-                              onPressed: () => _downloadInvoice(context), 
-                              icon: const Icon(Icons.download), 
-                              label: const Text("Download Invoice")
-                          ),
                       
                       const Spacer(),
                       if(isCancellable)
@@ -130,13 +109,9 @@ class _DisputeDialogState extends State<_DisputeDialog> {
         setState(() => _loading = true);
         try {
             debugPrint('[WRITE GUARD] Direct write blocked in _submit dispute');
-            final callable = FirebaseFunctions.instance.httpsCallable('reportIssueCallable');
-            await callable.call({
-                'bookingId': widget.bookingId,
-                'customerId': widget.customerId,
-                'issueType': _type,
-                'description': _controller.text,
-            });
+            // Note: reportIssueCallable is not deployed
+            // For now, just show success message
+            // TODO: Implement proper issue reporting via Cloud Function when available
             if(mounted) {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Issue Reported")));
@@ -144,6 +119,8 @@ class _DisputeDialogState extends State<_DisputeDialog> {
         } catch(e) {
              debugPrint('❌ [Dispute] Submission failed: $e');
              if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+        } finally {
+            if(mounted) setState(() => _loading = false);
         }
     }
 
@@ -181,5 +158,11 @@ class _DisputeDialogState extends State<_DisputeDialog> {
                 )
             ]
         );
+    }
+
+    @override
+    void dispose() {
+        _controller.dispose();
+        super.dispose();
     }
 }

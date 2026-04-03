@@ -1,15 +1,18 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { sendNotificationToToken } from '../shared/notification_helper';
+import { secureCallable } from '../shared/security';
 
 const db = admin.firestore();
 
 // ==========================================
 // REFUND BOOKING PAYMENT
 // ==========================================
-export const refundBookingPayment = functions.https.onCall(async (request) => {
-  const { bookingId, refundReason } = request.data;
-  const uid = request.auth?.uid;
+export const refundBookingPayment = functions
+  .region('asia-south1')
+  .https.onCall(secureCallable(async (data: any, context: any) => {
+  const { bookingId, refundReason } = data;
+  const uid = context.auth?.uid;
 
   if (!uid) throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
   if (!bookingId) throw new functions.https.HttpsError('invalid-argument', 'bookingId required');
@@ -136,4 +139,4 @@ export const refundBookingPayment = functions.https.onCall(async (request) => {
     if (error instanceof functions.https.HttpsError) throw error;
     throw new functions.https.HttpsError('internal', `Refund processing failed: ${error.message}`);
   }
-});
+}));

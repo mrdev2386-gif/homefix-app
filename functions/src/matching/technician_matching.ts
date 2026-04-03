@@ -90,7 +90,7 @@ interface MatchingResponse {
  * Main function to find and rank technicians for a service request.
  * Called by the app when customer selects a service.
  */
-export const matchTechnicians = functions.https.onCall(
+export const matchTechnicians = functions.region('asia-south1').https.onCall(
   async (
     data: { 
       serviceId: string; 
@@ -460,7 +460,7 @@ interface ScoredTechnician {
  * Update technician's lastAssignedAt after successful assignment.
  * Called by the booking assignment function.
  */
-export const updateTechnicianAssignment = functions.https.onCall(
+export const updateTechnicianAssignment = functions.region('asia-south1').https.onCall(
   async (data: { technicianId: string; bookingId: string }, context) => {
     if (!context.auth) {
       throw new functions.https.HttpsError('unauthenticated', 'Auth required');

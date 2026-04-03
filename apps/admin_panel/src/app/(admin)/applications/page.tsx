@@ -37,7 +37,6 @@ export default function ApplicationsPage() {
   const fetchApplications = async () => {
     try {
       setLoading(true);
-      // FIXED: Query only pending technician applications, not all technicians
       const techQuery = query(
         collection(db, 'technicians'),
         where('status', '==', 'pending'),
@@ -59,18 +58,15 @@ export default function ApplicationsPage() {
 
   const filterApplications = () => {
     let filtered = [...applications];
-
     if (statusFilter !== 'all') {
       filtered = filtered.filter(a => a.status === statusFilter);
     }
-
     if (searchTerm) {
-      filtered = filtered.filter(a => 
+      filtered = filtered.filter(a =>
         a.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         a.phone?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
-
     setFilteredApplications(filtered);
   };
 
@@ -132,60 +128,60 @@ export default function ApplicationsPage() {
   };
 
   const columns: Column[] = [
-    { 
-      key: 'name', 
+    {
+      key: 'name',
       label: 'Technician Name',
       sortable: true,
       render: (item) => (
-        <span className="text-sm font-medium text-gray-900">{item.name || 'N/A'}</span>
+        <span className="text-sm font-medium text-[#E5E7EB]">{item.name || 'N/A'}</span>
       )
     },
-    { 
-      key: 'phone', 
+    {
+      key: 'phone',
       label: 'Phone Number',
       render: (item) => (
-        <span className="text-sm text-gray-900">{item.phone || 'N/A'}</span>
+        <span className="text-sm text-[#E5E7EB]">{item.phone || 'N/A'}</span>
       )
     },
-    { 
-      key: 'skills', 
+    {
+      key: 'skills',
       label: 'Service Category',
       render: (item) => (
-        <span className="text-sm text-gray-600">
+        <span className="text-sm text-[#9CA3AF]">
           {Array.isArray(item.skills) ? item.skills.join(', ') : item.skills || 'N/A'}
         </span>
       )
     },
-    { 
-      key: 'city', 
+    {
+      key: 'city',
       label: 'City',
       render: (item) => (
-        <span className="text-sm text-gray-600">{item.city || item.district || 'N/A'}</span>
+        <span className="text-sm text-[#9CA3AF]">{item.city || item.district || 'N/A'}</span>
       )
     },
-    { 
-      key: 'experience', 
+    {
+      key: 'experience',
       label: 'Experience',
       render: (item) => (
-        <span className="text-sm text-gray-600">{item.experience || 'N/A'}</span>
+        <span className="text-sm text-[#9CA3AF]">{item.experience || 'N/A'}</span>
       )
     },
-    { 
-      key: 'createdAt', 
+    {
+      key: 'createdAt',
       label: 'Application Date',
       render: (item) => {
-        const date = item.createdAt instanceof Timestamp 
+        const date = item.createdAt instanceof Timestamp
           ? item.createdAt.toDate().toLocaleDateString()
           : 'N/A';
-        return <span className="text-sm text-gray-600">{date}</span>;
+        return <span className="text-sm text-[#9CA3AF]">{date}</span>;
       }
     },
     {
       key: 'status',
       label: 'Status',
       render: (item) => (
-        <StatusBadge 
-          status={formatStatus(item.status || 'pending')} 
+        <StatusBadge
+          status={formatStatus(item.status || 'pending')}
           variant={getStatusVariant(item.status || 'pending')}
         />
       )
@@ -198,7 +194,7 @@ export default function ApplicationsPage() {
         <div className="flex items-center gap-2 justify-end">
           <button
             onClick={() => handleViewDetails(item)}
-            className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+            className="px-3 py-1 text-xs bg-[#1F2937] text-[#9CA3AF] rounded-lg hover:bg-[#374151] hover:text-[#E5E7EB] transition-colors"
           >
             View
           </button>
@@ -231,35 +227,33 @@ export default function ApplicationsPage() {
       />
 
       {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <div className="bg-[#111827] rounded-xl p-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Search */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" size={16} />
             <input
               type="text"
               placeholder="Search by name or phone..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="w-full pl-9 pr-4 py-2 bg-[#1F2937] border border-[#374151] text-[#E5E7EB] placeholder-[#6B7280] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:border-transparent"
             />
             {searchTerm && (
               <button
                 onClick={() => setSearchTerm('')}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-[#9CA3AF]"
               >
-                <X size={18} />
+                <X size={14} />
               </button>
             )}
           </div>
 
-          {/* Status Filter */}
           <div className="relative">
-            <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" size={16} />
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent appearance-none bg-white"
+              className="w-full pl-9 pr-4 py-2 bg-[#1F2937] border border-[#374151] text-[#E5E7EB] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:border-transparent appearance-none"
             >
               <option value="all">All Status</option>
               <option value="pending">Pending</option>
@@ -268,17 +262,16 @@ export default function ApplicationsPage() {
             </select>
           </div>
 
-          {/* Results Count */}
           <div className="flex items-center justify-end">
-            <span className="text-sm text-gray-600">
-              Showing {filteredApplications.length} of {applications.length} applications
+            <span className="text-sm text-[#6B7280]">
+              {filteredApplications.length} of {applications.length} applications
             </span>
           </div>
         </div>
       </div>
 
       {/* Applications Table */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="admin-card p-6">
         <DataTable
           columns={columns}
           data={filteredApplications}
@@ -289,38 +282,36 @@ export default function ApplicationsPage() {
 
       {/* Technician Details Modal */}
       {showDetailsModal && selectedApplication && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-900">Technician Application Details</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#111827] border border-[#1F2937] rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-[#111827] border-b border-[#1F2937] px-6 py-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-[#E5E7EB]">Application Details</h2>
               <button
                 onClick={() => setShowDetailsModal(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="p-1.5 text-[#6B7280] hover:text-[#E5E7EB] hover:bg-[#1F2937] rounded-lg transition-colors"
               >
-                <X size={24} />
+                <X size={18} />
               </button>
             </div>
             <div className="p-6 space-y-6">
               {/* Basic Information */}
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
+                <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider mb-3">Basic Information</p>
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-600">Full Name</p>
-                    <p className="text-sm font-medium text-gray-900">{selectedApplication.name || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Phone Number</p>
-                    <p className="text-sm font-medium text-gray-900">{selectedApplication.phone || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Email</p>
-                    <p className="text-sm font-medium text-gray-900">{selectedApplication.email || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Status</p>
-                    <StatusBadge 
-                      status={formatStatus(selectedApplication.status || 'pending')} 
+                  {[
+                    { label: 'Full Name', value: selectedApplication.name },
+                    { label: 'Phone Number', value: selectedApplication.phone },
+                    { label: 'Email', value: selectedApplication.email },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="bg-[#0F172A] rounded-lg p-3">
+                      <p className="text-xs text-[#6B7280] mb-1">{label}</p>
+                      <p className="text-sm font-medium text-[#E5E7EB]">{value || 'N/A'}</p>
+                    </div>
+                  ))}
+                  <div className="bg-[#0F172A] rounded-lg p-3">
+                    <p className="text-xs text-[#6B7280] mb-1">Status</p>
+                    <StatusBadge
+                      status={formatStatus(selectedApplication.status || 'pending')}
                       variant={getStatusVariant(selectedApplication.status || 'pending')}
                     />
                   </div>
@@ -329,60 +320,51 @@ export default function ApplicationsPage() {
 
               {/* Service Information */}
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Service Information</h3>
+                <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider mb-3">Service Information</p>
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-600">Service Category</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {Array.isArray(selectedApplication.skills) 
-                        ? selectedApplication.skills.join(', ') 
-                        : selectedApplication.skills || 'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Experience</p>
-                    <p className="text-sm font-medium text-gray-900">{selectedApplication.experience || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">City</p>
-                    <p className="text-sm font-medium text-gray-900">{selectedApplication.city || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">District</p>
-                    <p className="text-sm font-medium text-gray-900">{selectedApplication.district || 'N/A'}</p>
-                  </div>
+                  {[
+                    { label: 'Service Category', value: Array.isArray(selectedApplication.skills) ? selectedApplication.skills.join(', ') : selectedApplication.skills },
+                    { label: 'Experience', value: selectedApplication.experience },
+                    { label: 'City', value: selectedApplication.city },
+                    { label: 'District', value: selectedApplication.district },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="bg-[#0F172A] rounded-lg p-3">
+                      <p className="text-xs text-[#6B7280] mb-1">{label}</p>
+                      <p className="text-sm font-medium text-[#E5E7EB]">{value || 'N/A'}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
 
               {/* Documents */}
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Verification Documents</h3>
+                <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider mb-3">Verification Documents</p>
                 <div className="grid grid-cols-3 gap-4">
-                  <div className="border border-gray-200 rounded-lg p-4">
-                    <div className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center mb-2">
+                  <div className="bg-[#0F172A] rounded-lg p-4">
+                    <div className="aspect-square bg-[#1F2937] rounded-lg flex items-center justify-center mb-2">
                       {selectedApplication.profileImageUrl ? (
-                        <img 
-                          src={selectedApplication.profileImageUrl} 
-                          alt="Profile" 
+                        <img
+                          src={selectedApplication.profileImageUrl}
+                          alt="Profile"
                           className="w-full h-full object-cover rounded-lg"
                         />
                       ) : (
-                        <User className="text-gray-400" size={48} />
+                        <User className="text-[#374151]" size={40} />
                       )}
                     </div>
-                    <p className="text-xs text-center text-gray-600">Profile Photo</p>
+                    <p className="text-xs text-center text-[#6B7280]">Profile Photo</p>
                   </div>
-                  <div className="border border-gray-200 rounded-lg p-4">
-                    <div className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center mb-2">
-                      <FileText className="text-gray-400" size={48} />
+                  <div className="bg-[#0F172A] rounded-lg p-4">
+                    <div className="aspect-square bg-[#1F2937] rounded-lg flex items-center justify-center mb-2">
+                      <FileText className="text-[#374151]" size={40} />
                     </div>
-                    <p className="text-xs text-center text-gray-600">Government ID</p>
+                    <p className="text-xs text-center text-[#6B7280]">Government ID</p>
                   </div>
-                  <div className="border border-gray-200 rounded-lg p-4">
-                    <div className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center mb-2">
-                      <ImageIcon className="text-gray-400" size={48} />
+                  <div className="bg-[#0F172A] rounded-lg p-4">
+                    <div className="aspect-square bg-[#1F2937] rounded-lg flex items-center justify-center mb-2">
+                      <ImageIcon className="text-[#374151]" size={40} />
                     </div>
-                    <p className="text-xs text-center text-gray-600">Work Certificate</p>
+                    <p className="text-xs text-center text-[#6B7280]">Work Certificate</p>
                   </div>
                 </div>
               </div>
@@ -390,8 +372,8 @@ export default function ApplicationsPage() {
               {/* Application Notes */}
               {selectedApplication.notes && (
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Application Notes</h3>
-                  <p className="text-sm text-gray-700 bg-gray-50 p-4 rounded-lg">
+                  <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider mb-3">Application Notes</p>
+                  <p className="text-sm text-[#9CA3AF] bg-[#0F172A] p-4 rounded-lg leading-relaxed">
                     {selectedApplication.notes}
                   </p>
                 </div>
@@ -399,13 +381,13 @@ export default function ApplicationsPage() {
 
               {/* Action Buttons */}
               {selectedApplication.status === 'pending' && (
-                <div className="flex items-center gap-3 pt-4 border-t border-gray-200">
+                <div className="flex items-center gap-3 pt-2">
                   <button
                     onClick={() => {
                       setShowDetailsModal(false);
                       handleApprove(selectedApplication.id);
                     }}
-                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                    className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
                   >
                     Approve Application
                   </button>
@@ -414,7 +396,7 @@ export default function ApplicationsPage() {
                       setShowDetailsModal(false);
                       handleReject(selectedApplication.id);
                     }}
-                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                    className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
                   >
                     Reject Application
                   </button>
@@ -425,7 +407,6 @@ export default function ApplicationsPage() {
         </div>
       )}
 
-      {/* Confirm Dialog */}
       <ConfirmDialog
         isOpen={confirmDialog.isOpen}
         title={confirmDialog.title}

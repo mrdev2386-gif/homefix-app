@@ -5,7 +5,7 @@ import { assertAdmin, logAdminAction } from './utils';
 // Helper to generate random ID
 const generateId = () => Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 
-export const uploadServiceImage = functions.https.onCall(async (data, context) => {
+export const uploadServiceImage = functions.region('asia-south1').https.onCall(async (data, context) => {
     try {
         await assertAdmin(context);
 

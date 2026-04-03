@@ -7,7 +7,7 @@ import { secureCallable, sanitize } from '../shared/security';
 /**
  * Get paginated and filtered list of users
  */
-export const getUsers = functions.https.onCall(
+export const getUsers = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
@@ -62,7 +62,7 @@ export const getUsers = functions.https.onCall(
 /**
  * Get full details of a single user
  */
-export const getUserById = functions.https.onCall(
+export const getUserById = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
@@ -108,7 +108,7 @@ export const getUserById = functions.https.onCall(
 /**
  * Update user fields (Name, Role, Status)
  */
-export const updateUser = functions.https.onCall(
+export const updateUser = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
@@ -148,7 +148,7 @@ export const updateUser = functions.https.onCall(
 /**
  * Block or Unblock a user
  */
-export const blockUser = functions.https.onCall(
+export const blockUser = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
@@ -177,7 +177,7 @@ export const blockUser = functions.https.onCall(
 );
 
 // Keep legacy manageUser for backward compatibility if needed, but we'll use the new ones
-export const manageUser = functions.https.onCall(
+export const manageUser = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);

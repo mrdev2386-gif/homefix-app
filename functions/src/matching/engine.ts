@@ -112,7 +112,7 @@ export const onBookingCreated = functions.firestore.document('bookings/{bookingI
 
 // --- TECH RESPONSE ---
 
-export const respondToBooking = functions.https.onCall(async (data, context) => {
+export const respondToBooking = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const techId = context.auth!.uid;
     const { bookingId, action } = data; // 'accept' | 'reject'
@@ -180,7 +180,7 @@ export const respondToBooking = functions.https.onCall(async (data, context) => 
  * Helper to fetch technicians eligible for a specific service
  * Security: Requires authentication
  */
-export const getEligibleTechnicians = functions.https.onCall(async (data, context) => {
+export const getEligibleTechnicians = functions.region('asia-south1').https.onCall(async (data, context) => {
     // 1. Security Check
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'Authentication required to fetch technicians.');

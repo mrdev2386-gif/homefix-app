@@ -23,12 +23,9 @@ class _OtpScreenState extends State<OtpScreen> {
       final authService = Provider.of<AuthService>(context, listen: false);
       await authService.signInWithOtp(widget.verificationId, _otpController.text);
       
-      // Navigate to district selection - user MUST select district before proceeding
+      // Navigate to onboarding - user MUST complete onboarding before proceeding
       if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const DistrictSelectionScreen()),
-          (route) => false, // Remove all previous routes
-        );
+        Navigator.of(context).pushReplacementNamed('/onboarding');
       }
     } catch (e) {
       if (mounted) {

@@ -11,6 +11,7 @@ import '../services/onboarding_service.dart';
 import '../utils/image_size_guard.dart';
 import '../models/technician.dart';
 import '../utils/app_logger.dart';
+import '../firebase/firebase_functions.dart';
 
 class TechnicianProvider extends ChangeNotifier {
   final TechnicianService _techService = TechnicianService();
@@ -547,7 +548,7 @@ class TechnicianProvider extends ChangeNotifier {
     }
 
     try {
-      final functions = FirebaseFunctions.instance;
+      final functions = FirebaseFunctionsService.instance;
       final callable = functions.httpsCallable('evaluateTechnicianKyc');
       
       final result = await callable.call().timeout(
@@ -581,7 +582,7 @@ class TechnicianProvider extends ChangeNotifier {
     }
 
     try {
-      final functions = FirebaseFunctions.instance;
+      final functions = FirebaseFunctionsService.instance;
       final callable = functions.httpsCallable('checkKycStatus');
       
       final result = await callable.call().timeout(

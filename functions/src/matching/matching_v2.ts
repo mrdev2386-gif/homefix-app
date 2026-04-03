@@ -382,7 +382,7 @@ export const onBookingCreatedMatch = functions.firestore
     });
 
 // Handle Acceptance/Rejection of Assignment
-export const handleAssignmentResponse = functions.https.onCall(async (data, context) => {
+export const handleAssignmentResponse = functions.region('asia-south1').https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
     const { assignmentId, action } = data; // action: 'accept' | 'reject'
 

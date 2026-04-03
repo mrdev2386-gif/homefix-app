@@ -6,7 +6,7 @@ import { sendPushNotification } from '../shared/notifications';
 
 const db = admin.firestore();
 
-export const approveKYC = functions.https.onCall(async (data, context) => {
+export const approveKYC = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
     const { technicianId, approved, reason } = data;
 
@@ -50,7 +50,7 @@ export const approveKYC = functions.https.onCall(async (data, context) => {
     return { success: true };
 });
 
-export const approveTechnician = functions.https.onCall(async (data, context) => {
+export const approveTechnician = functions.region('asia-south1').https.onCall(async (data, context) => {
     try {
         console.log('[ADMIN APPROVAL] Raw incoming data:', JSON.stringify(data));
         console.log('[ADMIN APPROVAL] Context auth:', context.auth?.uid);
@@ -161,7 +161,7 @@ export const approveTechnician = functions.https.onCall(async (data, context) =>
     }
 });
 
-export const suspendTechnician = functions.https.onCall(async (data, context) => {
+export const suspendTechnician = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
     const { technicianId, reason } = data;
 

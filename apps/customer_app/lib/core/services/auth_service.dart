@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import '../models/user_model.dart';
+import '../firebase/functions_instance.dart';
 import 'dart:math';
 
 class AuthService {
@@ -148,8 +149,12 @@ class AuthService {
     if (!doc.exists) {
       debugPrint('[WRITE GUARD] Direct write blocked in _updateUserData');
       try {
-        print("CALLING FUNCTION: updateUserProfile");
-        final callable = FirebaseFunctions.instanceFor(region: 'us-central1').httpsCallable('updateUserProfile');
+        final user = _auth.currentUser;
+        if (user == null) return;
+        await user.getIdToken(true);
+        
+        
+        final callable = FunctionsService.instance.httpsCallable('updateUserProfile');
         await callable.call({
           'email': user.email,
           'phone': user.phoneNumber,
@@ -192,8 +197,10 @@ class AuthService {
     
     debugPrint('[WRITE GUARD] Direct write blocked in updateProfile');
     try {
-      print("CALLING FUNCTION: updateUserProfile");
-      final callable = FirebaseFunctions.instanceFor(region: 'us-central1').httpsCallable('updateUserProfile');
+      await user.getIdToken(true);
+      
+      
+      final callable = FunctionsService.instance.httpsCallable('updateUserProfile');
       await callable.call({
         if (name != null) 'name': name,
         if (photoUrl != null) 'photoUrl': photoUrl,

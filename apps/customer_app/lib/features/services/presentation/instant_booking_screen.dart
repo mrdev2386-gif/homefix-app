@@ -7,6 +7,7 @@ import 'package:customer_app/core/theme/app_theme.dart';
 import '../../../core/providers/location_provider.dart';
 import 'package:customer_app/core/models/category.dart';
 import 'package:customer_app/core/services/category_service.dart';
+import '../../../core/services/functions_helper.dart';
 
 import '../../custom_request/presentation/custom_request_screen.dart';
 
@@ -183,8 +184,7 @@ class _InstantBookingScreenState extends State<InstantBookingScreen> {
   }
 
   Future<Map<String, dynamic>> _callGetInstantServices(Map<String, dynamic> request) async {
-    final functions = FirebaseFunctions.instance;
-    final callable = functions.httpsCallable('getInstantServices');
+    final callable = await FunctionsHelper.getCallable('getInstantServices');
     final result = await callable.call(request);
     
     if (result.data == null) {

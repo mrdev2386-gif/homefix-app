@@ -182,12 +182,12 @@ export default function TechnicianApprovalsPage() {
                     </p>
                     <div className="flex flex-wrap gap-1 mt-2">
                       {technician.skills.slice(0, 3).map((skill) => (
-                        <Badge key={skill} variant="secondary" size="sm">
+                        <Badge key={skill} variant="secondary">
                           {skill}
                         </Badge>
                       ))}
                       {technician.skills.length > 3 && (
-                        <Badge variant="secondary" size="sm">
+                        <Badge variant="secondary">
                           +{technician.skills.length - 3} more
                         </Badge>
                       )}
@@ -212,14 +212,12 @@ export default function TechnicianApprovalsPage() {
                 <div className="flex space-x-2">
                   <Button
                     variant="outline"
-                    size="sm"
                     onClick={() => openDetailsModal(technician)}
                   >
                     View Details
                   </Button>
                   <Button
                     variant="outline"
-                    size="sm"
                     onClick={() => openRejectDialog(technician)}
                     disabled={processingId === technician.id}
                     className="text-red-600 border-red-200 hover:bg-red-50"
@@ -227,7 +225,6 @@ export default function TechnicianApprovalsPage() {
                     Reject
                   </Button>
                   <Button
-                    size="sm"
                     onClick={() => openApproveDialog(technician)}
                     disabled={processingId === technician.id}
                     className="bg-green-600 hover:bg-green-700"

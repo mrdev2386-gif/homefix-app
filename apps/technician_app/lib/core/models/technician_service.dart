@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 /// Technician Service Model
 /// Represents a YouTube-style service listing created by a technician
@@ -77,10 +78,18 @@ class TechnicianService {
       }
     }
 
+    // Fallback migration: assign 'uncategorized' if categoryId is missing
+    final categoryId = (data['categoryId'] as String?)?.isNotEmpty == true
+        ? data['categoryId'] as String
+        : 'uncategorized';
+    if (data['categoryId'] == null || (data['categoryId'] as String?)?.isEmpty == true) {
+      debugPrint('[TechnicianService] WARNING: Missing categoryId for doc ${doc.id}, assigned "uncategorized"');
+    }
+
     return TechnicianService(
       id: data['id'] ?? doc.id,
       technicianId: data['technicianId'] ?? '',
-      categoryId: data['categoryId'] ?? '',
+      categoryId: categoryId,
       subcategoryId: data['subcategoryId'] ?? '',
       title: data['title'] ?? '',
       description: data['description'] ?? '',
@@ -226,30 +235,19 @@ class CreateTechnicianServiceInput {
     };
   }
 
-  /// Validate the input (client-side validation before sending to Cloud Function)
+  /// Validate the input — returns error message string or null if valid.
+  /// Throws ArgumentError for categoryId since it must never be empty on new writes.
   String? validate() {
     if (categoryId.isEmpty) {
-      return 'Please select a category';
+      throw ArgumentError('categoryId is required and cannot be empty');
     }
-    if (subcategoryId.isEmpty) {
-      return 'Please select a subcategory';
-    }
-    if (title.trim().length < 3) {
-      return 'Title must be at least 3 characters';
-    }
-    if (description.trim().length < 20) {
-      return 'Description must be at least 20 characters';
-    }
-    if (price <= 0) {
-      return 'Price must be greater than 0';
-    }
-    if (durationMinutes <= 0) {
-      return 'Duration must be greater than 0';
-    }
-    if (imageUrl.isEmpty) {
-      return 'Please upload a service image';
-    }
-    return null; // Valid
+    if (subcategoryId.isEmpty) return 'Please select a subcategory';
+    if (title.trim().length < 3) return 'Title must be at least 3 characters';
+    if (description.trim().length < 20) return 'Description must be at least 20 characters';
+    if (price <= 0) return 'Price must be greater than 0';
+    if (durationMinutes <= 0) return 'Duration must be greater than 0';
+    if (imageUrl.isEmpty) return 'Please upload a service image';
+    return null;
   }
 }
 

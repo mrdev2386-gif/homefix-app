@@ -4,7 +4,7 @@ import { db } from '../shared/config';
 import { assertAdmin, logAdminAction } from './utils';
 import { calculateDistance } from '../shared/geoutils';
 
-export const admin_manageProfessionalVideos = functions.https.onCall(async (data, context) => {
+export const admin_manageProfessionalVideos = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
     const { action, videoId, videoData } = data; // action: 'add' | 'update' | 'delete' | 'reorder'
 
@@ -57,7 +57,7 @@ export const admin_manageProfessionalVideos = functions.https.onCall(async (data
     throw new functions.https.HttpsError('invalid-argument', 'Invalid action');
 });
 
-export const admin_manageCleaningEssentials = functions.https.onCall(async (data, context) => {
+export const admin_manageCleaningEssentials = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
     const { action, categoryId, categoryData } = data;
 
@@ -105,7 +105,7 @@ export const admin_manageCleaningEssentials = functions.https.onCall(async (data
     throw new functions.https.HttpsError('invalid-argument', 'Invalid action');
 });
 
-export const findEligibleTechniciansCount = functions.https.onCall(async (data, context) => {
+export const findEligibleTechniciansCount = functions.region('asia-south1').https.onCall(async (data, context) => {
     const { categoryId, userLocation } = data; // userLocation: {latitude, longitude}
 
     if (!categoryId || !userLocation || userLocation.latitude === undefined || userLocation.longitude === undefined) {
@@ -158,7 +158,7 @@ export const findEligibleTechniciansCount = functions.https.onCall(async (data, 
     };
 });
 
-export const admin_manageServiceBanners = functions.https.onCall(async (data, context) => {
+export const admin_manageServiceBanners = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
     const { action, bannerId, bannerData } = data; // action: 'add' | 'update' | 'delete' | 'reorder'
 
@@ -211,7 +211,7 @@ export const admin_manageServiceBanners = functions.https.onCall(async (data, co
     throw new functions.https.HttpsError('invalid-argument', 'Invalid action');
 });
 
-export const admin_initializeHomeContent = functions.https.onCall(async (data, context) => {
+export const admin_initializeHomeContent = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const collections = [
@@ -401,7 +401,7 @@ function getSeedData(collName: string): any[] {
 }
 // ... (existing content)
 
-export const admin_manageCategories = functions.https.onCall(async (data, context) => {
+export const admin_manageCategories = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
     const { action, categoryId, categoryData } = data;
 
@@ -448,7 +448,7 @@ export const admin_manageCategories = functions.https.onCall(async (data, contex
     throw new functions.https.HttpsError('invalid-argument', 'Invalid action');
 });
 
-export const admin_manageServices = functions.https.onCall(async (data, context) => {
+export const admin_manageServices = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
     const { action, subCategoryId, subCategoryData } = data;
 
@@ -499,7 +499,7 @@ export const admin_manageServices = functions.https.onCall(async (data, context)
 // HOME SECTIONS MANAGEMENT (Dynamic Home Screen Control)
 // ============================================================================
 
-export const admin_manageHomeSections = functions.https.onCall(async (data, context) => {
+export const admin_manageHomeSections = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { action, sectionId, sectionData, orders } = data;
@@ -603,7 +603,7 @@ export const admin_manageHomeSections = functions.https.onCall(async (data, cont
 // CATEGORY MANAGEMENT (Under categories collection)
 // ============================================================================
 
-export const admin_manageCategory = functions.https.onCall(async (data, context) => {
+export const admin_manageCategory = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { action, categoryId, categoryData, orders } = data;
@@ -715,7 +715,7 @@ export const admin_manageCategory = functions.https.onCall(async (data, context)
 // SERVICE MANAGEMENT (Under categories/{categoryId}/services)
 // ============================================================================
 
-export const admin_manageNestedService = functions.https.onCall(async (data, context) => {
+export const admin_manageNestedService = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { action, categoryId, serviceId, serviceData, orders } = data;
@@ -831,7 +831,7 @@ export const admin_manageNestedService = functions.https.onCall(async (data, con
 // SUBSERVICE MANAGEMENT (Under categories/{categoryId}/services/{serviceId}/subServices)
 // ============================================================================
 
-export const admin_manageNestedSubService = functions.https.onCall(async (data, context) => {
+export const admin_manageNestedSubService = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { action, categoryId, serviceId, subServiceId, subServiceData, orders } = data;

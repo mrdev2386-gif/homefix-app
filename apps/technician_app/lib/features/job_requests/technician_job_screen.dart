@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:cloud_functions/cloud_functions.dart';
+import 'package:cloud_functions/cloud_functions.dart';`nimport '../../core/firebase/firebase_functions.dart';
 import '../../core/models/booking.dart';
 
 class TechnicianJobScreen extends StatefulWidget {
@@ -14,7 +14,7 @@ class TechnicianJobScreen extends StatefulWidget {
 }
 
 class _TechnicianJobScreenState extends State<TechnicianJobScreen> {
-  final _functions = FirebaseFunctions.instance;
+  final _functions = FirebaseFunctionsService.instance;
   bool _isLoading = false;
 
   @override
@@ -610,3 +610,4 @@ class _TechnicianJobScreenState extends State<TechnicianJobScreen> {
     }
   }
 }
+

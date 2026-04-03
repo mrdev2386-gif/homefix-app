@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
@@ -34,7 +37,6 @@ import 'features/custom_request/presentation/custom_request_screen.dart';
 import 'features/profile/presentation/saved_addresses_screen.dart';
 import 'core/models/user_model.dart';
 import 'firebase_options.dart';
-import 'core/firebase/firebase_init.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -46,15 +48,36 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase first
+  // STEP 1: Initialize Firebase FIRST
+  print('🔥 Initializing Firebase...');
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  AppLogger.firebase('Init', 'Firebase initialized');
+  print('✅ Firebase initialized successfully');
 
-  // Initialize App Check immediately after Firebase
-  await initializeFirebaseAppCheck();
+  // DISABLED FOR DEBUG (fix unauthenticated issue)
+  // await FirebaseAppCheck.instance.activate(
+  //   androidProvider: AndroidProvider.debug,
+  // );
 
+  // STEP 3: Wait for Firebase Auth to be ready
+  print('🔑 Waiting for Firebase Auth to initialize...');
+  final currentUser = FirebaseAuth.instance.currentUser;
+  print('🔑 Current User: ${currentUser?.uid ?? "null (not logged in)"}');
+  print('🔑 Current User Email: ${currentUser?.email ?? "N/A"}');
+  print('🔑 Current User Phone: ${currentUser?.phoneNumber ?? "N/A"}');
+  
+  await FirebaseAuth.instance.authStateChanges().first.timeout(
+    const Duration(seconds: 5),
+    onTimeout: () {
+      print('⚠️ Auth initialization timeout (no user logged in)');
+      return null;
+    },
+  );
+  print('✅ Firebase Auth ready');
+  print('✅ FirebaseAuth.instance is accessible: ${FirebaseAuth.instance != null}');
+
+  print('🚀 Starting HomeFix App...');
   runApp(const HomeFixApp());
 }
 
@@ -114,6 +137,8 @@ class HomeFixApp extends StatelessWidget {
                 GlobalCupertinoLocalizations.delegate,
               ],
               routes: {
+                '/onboarding': (context) => const OnboardingScreen(),
+                '/home': (context) => const MainWrapperScreen(),
                 '/customRequest': (context) => const CustomRequestScreen(),
                 '/addresses': (context) => const SavedAddressesScreen(),
               },
@@ -135,7 +160,6 @@ class AuthWrapper extends StatefulWidget {
 
 class _AuthWrapperState extends State<AuthWrapper> {
   bool _isInitialized = false;
-  // FIX: Store subscription references to prevent memory leaks
   StreamSubscription? _authSubscription;
   StreamSubscription? _userDataSubscription;
 
@@ -147,7 +171,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
   @override
   void dispose() {
-    // FIX: Cancel all subscriptions on dispose to prevent setState-after-dispose
     _authSubscription?.cancel();
     _userDataSubscription?.cancel();
     super.dispose();
@@ -159,7 +182,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
     final localeProvider = Provider.of<LocaleProvider>(context, listen: false);
 
     _authSubscription = authService.authStateChanges.listen((user) async {
-      // FIX: Cancel previous user data subscription before creating new one
       _userDataSubscription?.cancel();
       _userDataSubscription = null;
 
@@ -167,85 +189,135 @@ class _AuthWrapperState extends State<AuthWrapper> {
         localeProvider.setUserId(user.uid);
         await localeProvider.initialize(user.uid);
 
-        _userDataSubscription = firestoreService.streamUserModel(user.uid).listen((userData) {
-          if (mounted) {
-            setState(() {
-              _isInitialized = true;
-            });
-          }
-        }, onError: (e) {
-          // FIX: Handle stream errors — prevent stuck splash screen
-          AppLogger.error('AuthWrapper', 'User data stream error', e);
-          if (mounted) {
-            setState(() {
-              _isInitialized = true;
-            });
-          }
-        });
+        _userDataSubscription = firestoreService.streamUserModel(user.uid).listen(
+          (_) {
+            if (mounted) setState(() => _isInitialized = true);
+          },
+          onError: (e) {
+            AppLogger.error('AuthWrapper', 'User data stream error', e);
+            if (mounted) setState(() => _isInitialized = true);
+          },
+        );
       } else {
-        if (mounted) {
-          setState(() {
-            _isInitialized = true;
-          });
-        }
+        if (mounted) setState(() => _isInitialized = true);
       }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    // Show splash while initializing
-    if (!_isInitialized) {
-      return const SplashScreen();
-    }
+    if (!_isInitialized) return const SplashScreen();
 
     final authService = Provider.of<AuthService>(context, listen: false);
     final user = authService.currentUser;
 
-    if (user == null) {
-      return const LoginScreen();
-    }
+    if (user == null) return const LoginScreen();
 
-    // Initialize services with user ID
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<LocationProvider>(context, listen: false).initialize(user.uid);
     });
 
-    // Check if user data is loaded - with ROOT PROFILE GUARD
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
     return StreamBuilder<UserModel>(
       stream: firestoreService.streamUserModel(user.uid),
       builder: (context, snapshot) {
-        // Show splash while loading user data
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SplashScreen();
         }
-        
-        // FIX: Handle errors gracefully — don't get stuck on splash
+
+        // On stream error: do a direct Firestore fetch as fallback
+        // instead of blindly routing to OnboardingScreen
         if (snapshot.hasError) {
-          AppLogger.error('AuthWrapper', 'StreamBuilder error', snapshot.error);
-          // Still allow access to app — onboarding can handle missing data
-          return const OnboardingScreen();
+          AppLogger.error('AuthWrapper', 'StreamBuilder error — falling back to direct fetch', snapshot.error);
+          return _ProfileFallbackLoader(uid: user.uid);
         }
-        
+
         final userData = snapshot.data;
-        
-        // ROOT PROFILE GUARD - Check profile completion before allowing access
+
         if (kDebugMode) {
-          AppLogger.debug('AuthWrapper', 'profileCompleted: ${userData?.profileCompleted}, district: ${userData?.district}');
+          AppLogger.debug('AuthWrapper',
+              'profileCompleted=${userData?.profileCompleted}, '
+              'isOnboarded=${userData?.isOnboarded}, '
+              'district=${userData?.district}');
         }
-        
-        // Check if profile is completed with district
-        if (userData == null) {
-          return const OnboardingScreen();
-        }
-        
-        if (!userData.profileCompleted || userData.district == null || userData.district!.isEmpty) {
-          return const OnboardingScreen();
-        }
-        
-        return const MainWrapperScreen();
+
+        return _routeFromProfile(userData);
       },
     );
   }
+
+  /// Central routing logic — Firestore is the single source of truth.
+  /// Requires BOTH profileCompleted AND isOnboarded AND non-empty district.
+  static Widget _routeFromProfile(UserModel? userData) {
+    if (userData == null) {
+      AppLogger.debug('AuthWrapper', 'userData is null, routing to OnboardingScreen');
+      return const OnboardingScreen();
+    }
+
+    final bool ready = userData.profileCompleted &&
+        userData.isOnboarded &&
+        (userData.district?.isNotEmpty ?? false);
+
+    AppLogger.debug('AuthWrapper', 
+        'profileCompleted=${userData.profileCompleted}, '
+        'isOnboarded=${userData.isOnboarded}, '
+        'district=${userData.district}, '
+        'ready=$ready');
+
+    return ready ? const MainWrapperScreen() : const OnboardingScreen();
+  }
+}
+
+/// Fallback widget: performs a single direct Firestore .get() when the
+/// stream errors (e.g. temporary permission delay on first login).
+/// Retries once after 500 ms before giving up.
+class _ProfileFallbackLoader extends StatefulWidget {
+  final String uid;
+  const _ProfileFallbackLoader({required this.uid});
+
+  @override
+  State<_ProfileFallbackLoader> createState() => _ProfileFallbackLoaderState();
+}
+
+class _ProfileFallbackLoaderState extends State<_ProfileFallbackLoader> {
+  @override
+  void initState() {
+    super.initState();
+    _fetchWithRetry();
+  }
+
+  Future<void> _fetchWithRetry() async {
+    UserModel? userData;
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('customers')
+          .doc(widget.uid)
+          .get();
+      final data = doc.data() ?? {};
+      userData = doc.exists ? UserModel.fromFirestore(doc) : null;
+      AppLogger.firebase('FallbackLoader', 'Direct fetch succeeded — profileCompleted=${data["profileCompleted"]}');
+    } catch (e) {
+      AppLogger.error('FallbackLoader', 'First fetch failed, retrying in 500ms', e);
+      await Future.delayed(const Duration(milliseconds: 500));
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('customers')
+            .doc(widget.uid)
+            .get();
+        userData = doc.exists ? UserModel.fromFirestore(doc) : null;
+      } catch (e2) {
+        AppLogger.error('FallbackLoader', 'Retry also failed — showing onboarding', e2);
+      }
+    }
+
+    if (!mounted) return;
+    final dest = _AuthWrapperState._routeFromProfile(userData);
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => dest),
+      (route) => false,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => const SplashScreen();
 }

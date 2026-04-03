@@ -48,7 +48,7 @@ async function storeIdempotency(key: string, result: any): Promise<void> {
 // FIX 2 & 3: ATOMIC BOOKING ACTIONS
 // ============================================
 
-export const technicianRespondBooking = functions.https.onCall(async (data, context) => {
+export const technicianRespondBooking = functions.region('asia-south1').https.onCall(async (data, context) => {
   // Auth check
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated');
@@ -153,7 +153,7 @@ export const technicianRespondBooking = functions.https.onCall(async (data, cont
 // FIX 2: ATOMIC WALLET TRANSACTION
 // ============================================
 
-export const updateBookingStatusNew = functions.https.onCall(async (data, context) => {
+export const updateBookingStatusNew = functions.region('asia-south1').https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated');
   }
@@ -457,7 +457,7 @@ async function checkRateLimit(userId: string, action: string): Promise<void> {
 }
 
 // Apply rate limiting to critical functions
-export const technicianRespondBookingRateLimited = functions.https.onCall(async (data, context) => {
+export const technicianRespondBookingRateLimited = functions.region('asia-south1').https.onCall(async (data, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated');
   }

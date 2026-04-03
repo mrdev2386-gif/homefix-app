@@ -9,7 +9,7 @@ async function assertAdmin(context: functions.https.CallableContext) {
     if (!adminDoc.exists) throw new functions.https.HttpsError('permission-denied', 'Admin access required');
 }
 
-export const manageReview = functions.https.onCall(async (data, context) => {
+export const manageReview = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
     const { reviewId, action, reason } = data;
     if (!reviewId || !action) throw new functions.https.HttpsError('invalid-argument', 'Missing reviewId or action');

@@ -2,7 +2,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/models/booking.dart';
+import '../../../core/services/functions_helper.dart';
 
 class RatingScreen extends StatefulWidget {
   final Booking booking;
@@ -69,7 +71,10 @@ class _RatingScreenState extends State<RatingScreen> {
     setState(() => _isSubmitting = true);
 
     try {
-      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('submitServiceRating');
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('User not authenticated');
+      
+      final callable = await FunctionsHelper.getCallable('submitServiceRating');
       await callable.call({
         'bookingId': widget.booking.id,
         'rating': _rating,
@@ -134,7 +139,8 @@ class _RatingScreenState extends State<RatingScreen> {
             const SizedBox(height: 32),
 
             // Sentiment Section
-            if (_rating > 0) ...[
+            if (_rating > 0) ...
+            [
               Text(
                 _sentimentEmoji,
                 style: const TextStyle(fontSize: 48),
@@ -186,7 +192,8 @@ class _RatingScreenState extends State<RatingScreen> {
             ),
             const SizedBox(height: 40),
 
-            if (_rating > 0) ...[
+            if (_rating > 0) ...
+            [
               // Question
               Text(
                 _rating < 4 ? 'What went wrong?' : 'What did you like?',

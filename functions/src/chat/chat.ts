@@ -213,9 +213,15 @@ async function sendChatNotification(
 // CALLABLE: getOrCreateChat
 // ==========================================
 
-export const getOrCreateChat = functions.https.onCall(async (data, context) => {
+export const getOrCreateChat = functions
+  .region('asia-south1')
+  .https.onCall(async (data, context) => {
+  console.log('✅ [getOrCreateChat] Auth UID:', context.auth?.uid);
+  console.log('✅ [getOrCreateChat] Context:', JSON.stringify({ auth: context.auth }, null, 2));
+  
   // 1. Verify authentication
   if (!context.auth) {
+    console.error('❌ [getOrCreateChat] context.auth is NULL');
     throw new functions.https.HttpsError(
       'unauthenticated',
       'User must be authenticated'
@@ -348,9 +354,14 @@ export const getOrCreateChat = functions.https.onCall(async (data, context) => {
 // CALLABLE: sendChatMessage
 // ==========================================
 
-export const sendChatMessage = functions.https.onCall(async (data, context) => {
+export const sendChatMessage = functions
+  .region('asia-south1')
+  .https.onCall(async (data, context) => {
+  console.log('✅ [sendChatMessage] Auth UID:', context.auth?.uid);
+  
   // 1. Verify authentication
   if (!context.auth) {
+    console.error('❌ [sendChatMessage] context.auth is NULL');
     throw new functions.https.HttpsError(
       'unauthenticated',
       'User must be authenticated'
@@ -512,9 +523,14 @@ export const sendChatMessage = functions.https.onCall(async (data, context) => {
 // CALLABLE: markMessagesRead
 // ==========================================
 
-export const markMessagesRead = functions.https.onCall(async (data, context) => {
+export const markMessagesRead = functions
+  .region('asia-south1')
+  .https.onCall(async (data, context) => {
+  console.log('✅ [markMessagesRead] Auth UID:', context.auth?.uid);
+  
   // 1. Verify authentication
   if (!context.auth) {
+    console.error('❌ [markMessagesRead] context.auth is NULL');
     throw new functions.https.HttpsError(
       'unauthenticated',
       'User must be authenticated'
@@ -600,9 +616,14 @@ export const markMessagesRead = functions.https.onCall(async (data, context) => 
 // CALLABLE: getChatDetails
 // ==========================================
 
-export const getChatDetails = functions.https.onCall(async (data, context) => {
+export const getChatDetails = functions
+  .region('asia-south1')
+  .https.onCall(async (data, context) => {
+  console.log('✅ [getChatDetails] Auth UID:', context.auth?.uid);
+  
   // 1. Verify authentication
   if (!context.auth) {
+    console.error('❌ [getChatDetails] context.auth is NULL');
     throw new functions.https.HttpsError(
       'unauthenticated',
       'User must be authenticated'

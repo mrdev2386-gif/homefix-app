@@ -11,7 +11,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/chat.dart';
-import '../firebase/firebase_functions_instance.dart';
+import 'functions_helper.dart';
 
 class ChatService {
   static final ChatService _instance = ChatService._();
@@ -19,7 +19,6 @@ class ChatService {
   ChatService._();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  FirebaseFunctions get _functions => FirebaseFunctionsInstance.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // Debounce tracker for markMessagesRead
@@ -42,7 +41,7 @@ class ChatService {
   /// - 'permission-denied' if user is not a participant
   Future<ChatResult> getOrCreateChat(String bookingId) async {
     try {
-      final callable = _functions.httpsCallable('getOrCreateChat');
+      final callable = await FunctionsHelper.getCallable('getOrCreateChat');
       final result = await callable.call({'bookingId': bookingId});
       
       final data = result.data as Map<String, dynamic>;
@@ -65,7 +64,7 @@ class ChatService {
   /// - 'permission-denied' if user not a participant
   Future<String> sendMessage(String chatId, String text, {String? imageUrl}) async {
     try {
-      final callable = _functions.httpsCallable('sendChatMessage');
+      final callable = await FunctionsHelper.getCallable('sendChatMessage');
       final result = await callable.call({
         'chatId': chatId,
         'text': text,
@@ -98,7 +97,7 @@ class ChatService {
     _readDebounceMap[chatId] = now;
     
     try {
-      final callable = _functions.httpsCallable('markMessagesRead');
+      final callable = await FunctionsHelper.getCallable('markMessagesRead');
       final result = await callable.call({'chatId': chatId});
       
       final data = result.data as Map<String, dynamic>;
@@ -115,7 +114,7 @@ class ChatService {
   /// Gets chat details including booking info.
   Future<Map<String, dynamic>> getChatDetails(String chatId) async {
     try {
-      final callable = _functions.httpsCallable('getChatDetails');
+      final callable = await FunctionsHelper.getCallable('getChatDetails');
       final result = await callable.call({'chatId': chatId});
       
       return result.data as Map<String, dynamic>;

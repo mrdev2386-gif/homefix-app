@@ -31,7 +31,7 @@ import { sendPushNotification } from '../shared/notifications';
  * - payment.status = 'paid'
  * - payout.status = 'pending'
  */
-export const getPendingPayouts = functions.https.onCall(async (data, context) => {
+export const getPendingPayouts = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { limit = 50, startAfter } = data;
@@ -74,7 +74,7 @@ export const getPendingPayouts = functions.https.onCall(async (data, context) =>
 /**
  * Get payout history
  */
-export const getPayoutHistory = functions.https.onCall(async (data, context) => {
+export const getPayoutHistory = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { technicianId, status, limit = 50, startAfter } = data;
@@ -127,7 +127,7 @@ export const getPayoutHistory = functions.https.onCall(async (data, context) => 
 /**
  * Get payout summary by technician
  */
-export const getPayoutSummary = functions.https.onCall(async (data, context) => {
+export const getPayoutSummary = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { technicianId, startDate, endDate } = data;
@@ -196,7 +196,7 @@ export const getPayoutSummary = functions.https.onCall(async (data, context) => 
  * 
  * Admin marks that they have transferred money to technician
  */
-export const markPayoutPaid = functions.https.onCall(async (data, context) => {
+export const markPayoutPaid = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { bookingId, paymentMethod, transactionId, notes } = data;
@@ -284,7 +284,7 @@ export const markPayoutPaid = functions.https.onCall(async (data, context) => {
  * 
  * Admin can put payout on hold (e.g., dispute, quality issue)
  */
-export const putPayoutOnHold = functions.https.onCall(async (data, context) => {
+export const putPayoutOnHold = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { bookingId, reason } = data;
@@ -327,7 +327,7 @@ export const putPayoutOnHold = functions.https.onCall(async (data, context) => {
 /**
  * Release payout from hold
  */
-export const releasePayoutFromHold = functions.https.onCall(async (data, context) => {
+export const releasePayoutFromHold = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { bookingId } = data;
@@ -371,7 +371,7 @@ export const releasePayoutFromHold = functions.https.onCall(async (data, context
  * 
  * Admin can mark multiple payouts as paid at once
  */
-export const bulkMarkPayoutsPaid = functions.https.onCall(async (data, context) => {
+export const bulkMarkPayoutsPaid = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { bookingIds, paymentMethod, notes } = data;
@@ -463,7 +463,7 @@ export const bulkMarkPayoutsPaid = functions.https.onCall(async (data, context) 
 /**
  * Get payout analytics
  */
-export const getPayoutAnalytics = functions.https.onCall(async (data, context) => {
+export const getPayoutAnalytics = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { startDate, endDate } = data;

@@ -4,7 +4,7 @@ import { db } from '../shared/config';
 import { assertAdmin, logAdminAction } from './utils';
 import { secureCallable, sanitize } from '../shared/security';
 
-export const adminApproveTechnician = functions.https.onCall(
+export const adminApproveTechnician = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
@@ -67,7 +67,7 @@ export const adminApproveTechnician = functions.https.onCall(
   })
 );
 
-export const approveTechnician = functions.https.onCall(
+export const approveTechnician = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
@@ -135,7 +135,7 @@ export const approveTechnician = functions.https.onCall(
   })
 );
 
-export const toggleTechAvailability = functions.https.onCall(
+export const toggleTechAvailability = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
@@ -165,7 +165,7 @@ export const toggleTechAvailability = functions.https.onCall(
 /**
  * Update technician services
  */
-export const updateTechServices = functions.https.onCall(
+export const updateTechServices = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
@@ -195,7 +195,7 @@ export const updateTechServices = functions.https.onCall(
 /**
  * Get paginated and filtered list of technicians
  */
-export const getTechnicians = functions.https.onCall(
+export const getTechnicians = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
@@ -252,7 +252,7 @@ export const getTechnicians = functions.https.onCall(
 /**
  * Get full details of a technician
  */
-export const getTechnicianById = functions.https.onCall(
+export const getTechnicianById = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);
@@ -316,7 +316,7 @@ export const getTechnicianById = functions.https.onCall(
 /**
  * Update technician profile
  */
-export const updateTechnician = functions.https.onCall(
+export const updateTechnician = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
     try {
         await assertAdmin(context);

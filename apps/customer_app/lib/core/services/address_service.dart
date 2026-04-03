@@ -1,16 +1,16 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../models/address.dart';
+import '../firebase/functions_instance.dart';
 import 'address_cache_service.dart';
 import 'category_service.dart';
-import '../firebase/firebase_functions_instance.dart';
 
 /// Production-grade Address Service
 /// Handles all address-related Firestore operations securely
 class AddressService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  FirebaseFunctions get _functions => FirebaseFunctionsInstance.instance;
   final CategoryService categoryService;
 
   AddressService(this.categoryService);
@@ -63,7 +63,6 @@ class AddressService {
       return '';
     }
     
-    // Check if this is the first address
     final existingAddresses = await _db
         .collection('users')
         .doc(userId)
@@ -73,22 +72,26 @@ class AddressService {
     final isFirstAddress = existingAddresses.docs.isEmpty;
     
     debugPrint('[WRITE GUARD] Direct write blocked in saveAddress');
-    final callable = _functions.httpsCallable('manageAddress');
+    
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('User not logged in');
+    await user.getIdToken(true);
+    
+    
+    final callable = FunctionsService.instance.httpsCallable('manageAddress');
     final result = await callable.call({
       'action': address.id.isEmpty ? 'add' : 'edit',
       'addressId': address.id.isEmpty ? null : address.id,
       'addressData': address.toMap(),
-      'setAsPrimary': isFirstAddress, // Auto-set first address as primary
+      'setAsPrimary': isFirstAddress,
     });
 
     final addressId = result.data['addressId'] as String? ?? '';
     
-    // If first address, set as primary
     if (isFirstAddress && addressId.isNotEmpty) {
       await setPrimaryAddress(userId, addressId);
     }
 
-    // Clear location cache after saving address
     categoryService.clearLocationCache();
 
     return addressId;
@@ -101,7 +104,6 @@ class AddressService {
       return;
     }
     
-    // Check if deleting primary address
     final addressDoc = await _db
         .collection('users')
         .doc(userId)
@@ -112,13 +114,18 @@ class AddressService {
     final wasPrimary = addressDoc.data()?['isPrimary'] == true;
     
     debugPrint('[WRITE GUARD] Direct write blocked in deleteAddress');
-    final callable = _functions.httpsCallable('manageAddress');
+    
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('User not logged in');
+    await user.getIdToken(true);
+    
+    
+    final callable = FunctionsService.instance.httpsCallable('manageAddress');
     await callable.call({
       'action': 'delete',
       'addressId': addressId,
     });
     
-    // If deleted address was primary, set next available as primary
     if (wasPrimary) {
       final remainingAddresses = await _db
           .collection('users')
@@ -132,7 +139,6 @@ class AddressService {
       }
     }
     
-    // Clear location cache after deleting address
     categoryService.clearLocationCache();
   }
 
@@ -258,13 +264,15 @@ class AddressService {
     }
     debugPrint('[WRITE GUARD] Direct write blocked in updateSelectedAddress');
     try {
-      final callable = _functions.httpsCallable('updateUserProfile');
-      await callable.call({
-        'selectedAddressId': addressId,
-      });
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('User not logged in');
+      await user.getIdToken(true);
+      
+      
+      final callable = FunctionsService.instance.httpsCallable('updateUserProfile');
+      await callable.call({'selectedAddressId': addressId});
       debugPrint('✅ [Address] Selected address updated via callable');
       
-      // Clear location cache after updating selected address
       categoryService.clearLocationCache();
     } catch (e) {
       debugPrint('❌ [Address] Update failed: $e');

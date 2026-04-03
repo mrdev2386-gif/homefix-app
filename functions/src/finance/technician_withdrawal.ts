@@ -37,7 +37,7 @@ async function assertAdmin(context: any): Promise<void> {
     }
 }
 
-export const requestWithdrawal = functions.https.onCall(async (data, context) => {
+export const requestWithdrawal = functions.region('asia-south1').https.onCall(async (data, context) => {
     if (!context.auth) {
         console.error(`${LOG_PREFIX} request_created - Auth required`);
         throw new functions.https.HttpsError('unauthenticated', 'Auth required');
@@ -174,7 +174,7 @@ export const requestWithdrawal = functions.https.onCall(async (data, context) =>
     };
 });
 
-export const approveWithdrawal = functions.https.onCall(async (data, context) => {
+export const approveWithdrawal = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { requestId, adminNotes } = data;
@@ -255,7 +255,7 @@ export const approveWithdrawal = functions.https.onCall(async (data, context) =>
     };
 });
 
-export const rejectWithdrawal = functions.https.onCall(async (data, context) => {
+export const rejectWithdrawal = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
 
     const { requestId, reason } = data;
@@ -294,7 +294,7 @@ export const rejectWithdrawal = functions.https.onCall(async (data, context) => 
     };
 });
 
-export const getWithdrawalRequests = functions.https.onCall(async (data, context) => {
+export const getWithdrawalRequests = functions.region('asia-south1').https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'Auth required');
     }
@@ -345,7 +345,7 @@ export const getWithdrawalRequests = functions.https.onCall(async (data, context
     return { requests };
 });
 
-export const getTransactionHistory = functions.https.onCall(async (data, context) => {
+export const getTransactionHistory = functions.region('asia-south1').https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'Auth required');
     }
@@ -388,7 +388,7 @@ export const getTransactionHistory = functions.https.onCall(async (data, context
     return { transactions };
 });
 
-export const getPayoutHistory = functions.https.onCall(async (data, context) => {
+export const getPayoutHistory = functions.region('asia-south1').https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'Auth required');
     }
@@ -420,7 +420,7 @@ export const getPayoutHistory = functions.https.onCall(async (data, context) => 
     return { payouts };
 });
 
-export const generateBookingQR = functions.https.onCall(async (data, context) => {
+export const generateBookingQR = functions.region('asia-south1').https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'Auth required');
     }
@@ -507,7 +507,7 @@ export const generateBookingQR = functions.https.onCall(async (data, context) =>
     };
 });
 
-export const getPendingWithdrawalRequests = functions.https.onCall(async (data, context) => {
+export const getPendingWithdrawalRequests = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
     
     const { limit = 50 } = data;

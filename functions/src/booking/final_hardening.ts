@@ -395,7 +395,7 @@ async function sendAdminFCMNotification(
 /**
  * Acknowledge admin alert
  */
-export const acknowledgeAdminAlert = functions.https.onCall(
+export const acknowledgeAdminAlert = functions.region('asia-south1').https.onCall(
   async (
     data: { alertId: string },
     context
@@ -715,7 +715,7 @@ export const runPayoutIntegrityCheck = functions.pubsub
 /**
  * Manual payout integrity check
  */
-export const manualPayoutCheck = functions.https.onCall(
+export const manualPayoutCheck = functions.region('asia-south1').https.onCall(
   async (data: { technicianId?: string; startDate?: string; endDate?: string }, context) => {
     if (!context.auth) {
       throw new functions.https.HttpsError('unauthenticated', 'Auth required');
@@ -755,7 +755,7 @@ export const manualPayoutCheck = functions.https.onCall(
 /**
  * Get admin dashboard data
  */
-export const getAdminDashboard = functions.https.onCall(
+export const getAdminDashboard = functions.region('asia-south1').https.onCall(
   async (data: any, context) => {
     if (!context.auth) {
       throw new functions.https.HttpsError('unauthenticated', 'Auth required');

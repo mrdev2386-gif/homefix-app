@@ -67,10 +67,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         });
         
         if (!mounted) return;
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const MainWrapperScreen()),
-          (route) => false,
-        );
+        Navigator.of(context).pushReplacementNamed('/home');
       }
     } catch (e) {
       if (!mounted) return;

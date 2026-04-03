@@ -1,0 +1,30 @@
+# QUICK DEPLOYMENT COMMANDS
+
+## STEP 1: Delete Old Functions & Deploy New Ones
+cd c:\Users\yash\projects\homefix\functions
+delete_and_deploy.bat
+
+## STEP 2: Test Authentication
+node testAuth.js
+
+## STEP 3: Verify Deployment
+firebase functions:list
+
+## Expected Output:
+All functions should show (asia-south1) region
+
+## If Deployment Fails:
+1. Check Firebase Console for errors
+2. Verify you have permissions
+3. Try deploying one function at a time:
+   firebase deploy --only functions:saveFcmToken
+
+## Manual Cleanup (if needed):
+firebase functions:delete functionName --region us-central1 --force
+
+## Monitor Logs:
+firebase functions:log --only functionName
+
+## Test Individual Function:
+firebase functions:shell
+> saveFcmToken({token: 'test', platform: 'android'})

@@ -27,7 +27,7 @@ const db = admin.firestore();
  * - services selected (at least 1)
  * - bank details (if payout enabled)
  */
-export const evaluateTechnicianKyc = functions.https.onCall(
+export const evaluateTechnicianKyc = functions.region('asia-south1').https.onCall(
     async (data: any, context: functions.https.CallableContext) => {
         try {
             // 1. Authentication check
@@ -148,7 +148,7 @@ export const evaluateTechnicianKyc = functions.https.onCall(
  * Check if technician KYC is complete (read-only verification)
  * Client can call this to check current KYC status without modifying anything
  */
-export const checkKycStatus = functions.https.onCall(
+export const checkKycStatus = functions.region('asia-south1').https.onCall(
     async (data: any, context: functions.https.CallableContext) => {
         try {
             if (!context.auth) {

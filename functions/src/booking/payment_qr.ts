@@ -9,7 +9,9 @@ const db = admin.firestore();
 // GENERATE TECHNICIAN QR CODE
 // ==========================================
 
-export const generateTechnicianQR = functions.https.onCall(
+export const generateTechnicianQR = functions
+  .region('asia-south1')
+  .https.onCall(
     async (data, context) => {
         if (!context.auth) {
             throw new functions.https.HttpsError('unauthenticated', 'Auth required');
@@ -39,7 +41,9 @@ export const generateTechnicianQR = functions.https.onCall(
 // CONFIRM QR PAYMENT (Called by Technician after scanning)
 // ==========================================
 
-export const confirmQRPayment = functions.https.onCall(
+export const confirmQRPayment = functions
+  .region('asia-south1')
+  .https.onCall(
     async (data: { bookingId: string, customerId: string, amount: number }, context) => {
         if (!context.auth) {
             throw new functions.https.HttpsError('unauthenticated', 'Auth required');

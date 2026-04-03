@@ -23,7 +23,7 @@ import * as notify from '../shared/notification_helper';
 /**
  * Admin triggers manual payout for a technician
  */
-export const triggerTechnicianPayout = functions.https.onCall(async (data: any, context: functions.https.CallableContext) => {
+export const triggerTechnicianPayout = functions.region('asia-south1').https.onCall(async (data: any, context: functions.https.CallableContext) => {
     await assertAdmin(context);
     const { technicianId, amount } = data;
 
@@ -203,7 +203,7 @@ export const razorpayPayoutWebhook = functions.https.onRequest(async (req, res) 
 /**
  * Admin settles pending balance into available balance
  */
-export const settleTechnicianBalance = functions.https.onCall(async (data, context) => {
+export const settleTechnicianBalance = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
     const { technicianId } = data;
 

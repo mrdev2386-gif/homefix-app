@@ -1,436 +1,302 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
     // ==========================================
     // HELPER FUNCTIONS
     // ==========================================
-    
-    // Check if user is authenticated
-    function isAuthenticated() {
+
+    function isSignedIn() {
       return request.auth != null;
     }
-    
-    // Check if user is admin
-    function isAdmin() {
-      return isAuthenticated() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
-    }
-    
-    // Check if user owns the document
+
     function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+      return isSignedIn() && request.auth.uid == userId;
     }
-    
-    // Check if field is being modified
-    function isFieldModified(field) {
-      return field in request.resource.data.diff(resource.data).affectedKeys();
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
-    
-    // Check if any protected field is being modified
+
     function isProtectedFieldModified(protectedFields) {
       return request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedFields);
     }
-    
+
     // ==========================================
     // ADMINS COLLECTION
     // ==========================================
-    
+
     match /admins/{adminId} {
-      // Only admins can read admin collection
       allow read: if isAdmin();
-      // No one can write to admins collection (managed by super admin)
       allow write: if false;
     }
-    
+
+    // ==========================================
+    // CUSTOMERS COLLECTION
+    // ==========================================
+
+    match /customers/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId)
+        && !isProtectedFieldModified([
+          'walletBalance', 'referralCode', 'referralRewardClaimed',
+          'isSuspended', 'suspendedAt', 'suspensionReason'
+        ]);
+      allow update: if isAdmin();
+      allow delete: if false;
+
+      match /cart/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /favorites/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /addresses/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /payment_methods/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /wallet_transactions/{docId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+
+      match /fcmTokens/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /notifications/{docId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+    }
+
     // ==========================================
     // TECHNICIANS COLLECTION
     // ==========================================
-    
+
     match /technicians/{technicianId} {
-      // Protected fields that only admins can modify
-      function protectedTechnicianFields() {
-        return [
-          'verificationStatus',
-          'profileCompletion',
-          'approvedAt',
-          'approvedBy',
-          'rejectionReason',
-          'isApproved',
-          'isKycComplete',
-          'kycSubmittedAt',
-          'isSuspended',
-          'suspendedAt',
-          'suspendedBy',
-          'suspensionReason',
-          'avgRating',
-          'totalRatings',
-          'totalJobs',
-          'walletBalance'
-        ];
-      }
-      
-      // Technicians can read their own document
       allow read: if isOwner(technicianId) || isAdmin();
-      
-      // Technicians can create their own document (during signup)
       allow create: if isOwner(technicianId);
-      
-      // Technicians can update their own document (but not protected fields)
-      allow update: if isOwner(technicianId) 
-        && !isProtectedFieldModified(protectedTechnicianFields())
-        // Prevent self-approval attack
+      allow update: if isOwner(technicianId)
+        && !isProtectedFieldModified([
+          'verificationStatus', 'profileCompletion', 'approvedAt', 'approvedBy',
+          'rejectionReason', 'isApproved', 'isKycComplete', 'kycSubmittedAt',
+          'isSuspended', 'suspendedAt', 'suspendedBy', 'suspensionReason',
+          'avgRating', 'totalRatings', 'totalJobs', 'walletBalance'
+        ])
         && !(request.resource.data.verificationStatus == 'approved');
-      
-      // Only admins can update protected fields
       allow update: if isAdmin();
-      
-      // No one can delete technician documents
       allow delete: if false;
-      
-      // Technician FCM tokens for push notifications
+
       match /fcmTokens/{tokenId} {
         allow read, write: if isOwner(technicianId);
       }
-      
-      // Technician notifications
+
       match /notifications/{notificationId} {
         allow read: if isOwner(technicianId);
         allow write: if false;
       }
     }
-    
+
     // ==========================================
     // TECHNICIAN SERVICES COLLECTION
     // ==========================================
-    
+
     match /technician_services/{serviceId} {
-      // Protected fields that only admins can modify
-      function protectedServiceFields() {
-        return [
-          'status',
-          'approvedAt',
-          'approvedBy',
-          'rejectedAt',
-          'rejectedBy',
-          'rejectionReason',
-          'moderationNotes'
-        ];
-      }
-      
-      // Anyone can read approved services
-      allow read: if resource.data.status == 'approved' || isAdmin();
-      
-      // Technicians can read their own services
-      allow read: if isAuthenticated() && resource.data.technicianId == request.auth.uid;
-      
-      // Technicians can create services (status defaults to 'pending')
-      allow create: if isAuthenticated() 
-        && request.resource.data.technicianId == request.auth.uid
-        && request.resource.data.status == 'pending';
-      
-      // Technicians can update their own services (but not protected fields)
-      allow update: if isAuthenticated() 
+      // Any authenticated user can read (needed for home screen, service discovery)
+      allow read: if isSignedIn();
+
+      // Technicians create via Cloud Function — no status check on client
+      allow create: if isSignedIn()
+        && request.resource.data.technicianId == request.auth.uid;
+
+      // Technicians update their own non-moderation fields
+      allow update: if isSignedIn()
         && resource.data.technicianId == request.auth.uid
-        && !isProtectedFieldModified(protectedServiceFields())
-        // Prevent self-approval
+        && !isProtectedFieldModified([
+          'status', 'approvedAt', 'approvedBy', 'rejectedAt',
+          'rejectedBy', 'rejectionReason', 'moderationNotes'
+        ])
         && !(request.resource.data.status == 'approved');
-      
-      // Only admins can approve/reject services
+
+      // Admins can update any field (moderation)
       allow update: if isAdmin();
-      
-      // Technicians can delete their own pending/rejected services
-      allow delete: if isAuthenticated() 
+
+      // Technicians delete their own pending/rejected services
+      allow delete: if isSignedIn()
         && resource.data.technicianId == request.auth.uid
         && resource.data.status in ['pending', 'rejected'];
-      
-      // Admins can delete any service
+
       allow delete: if isAdmin();
     }
-    
-    // ==========================================
-    // USERS COLLECTION (Customers)
-    // ==========================================
-    
-    match /users/{customerId} {
-      // Protected fields that only admins or Cloud Functions can modify
-      function protectedCustomerFields() {
-        return [
-          'walletBalance',
-          'referralCode',
-          'referralRewardClaimed',
-          'isSuspended',
-          'suspendedAt',
-          'suspensionReason'
-        ];
-      }
-      
-      // Customers can read their own document
-      allow read: if isOwner(customerId) || isAdmin();
-      
-      // Customers can create their own document
-      allow create: if isOwner(customerId);
-      
-      // Customers can update their own document (but not protected fields)
-      allow update: if isOwner(customerId) 
-        && !isProtectedFieldModified(protectedCustomerFields());
-      
-      // Admins can update any field
-      allow update: if isAdmin();
-      
-      // No one can delete customer documents
-      allow delete: if false;
-      
-      // Subcollections
-      match /addresses/{addressId} {
-        allow read, write: if isOwner(customerId);
-      }
-      
-      match /payment_methods/{methodId} {
-        allow read, write: if isOwner(customerId);
-      }
-      
-      match /wallet_transactions/{transactionId} {
-        // Read-only for customers
-        allow read: if isOwner(customerId);
-        // Only Cloud Functions can write
-        allow write: if false;
-      }
-      
-      match /fcmTokens/{tokenId} {
-        // Customers can read/write their own FCM tokens
-        allow read, write: if isOwner(customerId);
-      }
-      
-      match /notifications/{notificationId} {
-        // Customers can read their own notifications
-        allow read: if isOwner(customerId);
-        // Only Cloud Functions can create/write notifications
-        allow write: if false;
-      }
-    }
-    
+
     // ==========================================
     // BOOKINGS COLLECTION
     // ==========================================
-    
+
     match /bookings/{bookingId} {
-      // Protected fields that only Cloud Functions can modify
-      function protectedBookingFields() {
-        return [
-          'status',
-          'paymentStatus',
-          'adminApproval',
-          'finalAmount',
-          'refundAmount',
-          'cancelledBy',
-          'cancellationReason',
-          'completedAt',
-          'startedAt',
-          'technicianPayout',
-          'platformCommission'
-        ];
-      }
-      
-      // Customers and Technicians can read their own/assigned bookings
-      allow read: if isAuthenticated() 
-        && (resource.data.customerId == request.auth.uid 
+      allow read: if isSignedIn()
+        && (resource.data.customerId == request.auth.uid
             || resource.data.technicianId == request.auth.uid
             || isAdmin());
-      
-      // Customers can create bookings
-      allow create: if isAuthenticated() 
+
+      allow create: if isSignedIn()
         && request.resource.data.customerId == request.auth.uid
         && request.resource.data.status in ['pending', 'pending_admin_review'];
-      
-      // NO ONE can update booking status directly (must use Cloud Functions)
+
+      // Status updates go through Cloud Functions only
       allow update: if false;
-      
-      // Admins can read all bookings
-      allow read: if isAdmin();
-      
-      // No one can delete bookings
       allow delete: if false;
     }
 
     // ==========================================
-    // ROOT WALLET SYSTEM (Ledger-based)
+    // CUSTOM REQUESTS COLLECTION
+    // ==========================================
+
+    match /custom_requests/{id} {
+      allow read: if isSignedIn()
+        && (resource.data.customerId == request.auth.uid
+            || resource.data.technicianId == request.auth.uid
+            || isAdmin());
+      allow create: if isSignedIn()
+        && request.resource.data.customerId == request.auth.uid;
+      allow update: if isSignedIn()
+        && (resource.data.customerId == request.auth.uid
+            || resource.data.technicianId == request.auth.uid);
+      allow delete: if false;
+    }
+
+    // ==========================================
+    // SERVICE REQUESTS COLLECTION
+    // ==========================================
+
+    match /service_requests/{requestId} {
+      allow read: if isSignedIn()
+        && (resource.data.customerId == request.auth.uid
+            || isAdmin()
+            || (request.auth.token.role == 'technician'
+                && request.auth.token.district == resource.data.district));
+      allow create: if isSignedIn()
+        && request.resource.data.customerId == request.auth.uid;
+      allow update: if false;
+      allow delete: if isSignedIn()
+        && resource.data.customerId == request.auth.uid
+        && resource.data.status in ['pending', 'pending_admin'];
+    }
+
+    // ==========================================
+    // WALLET SYSTEM
     // ==========================================
 
     match /wallets/{userId} {
-      // Users can only read their own wallet balance
       allow read: if isOwner(userId) || isAdmin();
-      // No one can write to wallets directly (Cloud Functions only)
       allow write: if false;
     }
 
     match /walletTransactions/{txnId} {
-      // Users can read their own transactions
-      allow read: if isAuthenticated() 
+      allow read: if isSignedIn()
         && (resource.data.userId == request.auth.uid || isAdmin());
-      // No one can write to transactions directly
       allow write: if false;
     }
-    
+
     // ==========================================
-    // SERVICES COLLECTION (Service Catalog)
+    // SERVICE CATALOG (read-only for users)
     // ==========================================
-    
+
     match /services/{serviceId} {
-      // Anyone can read services
-      allow read: if true;
-      
-      // Only admins can write to service catalog
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
-    
-    // ==========================================
-    // CATEGORIES COLLECTION
-    // ==========================================
-    
+
     match /categories/{categoryId} {
-      // Anyone can read categories
-      allow read: if true;
-      
-      // Only admins can write categories
+      allow read: if isSignedIn();
       allow write: if isAdmin();
     }
-    
+
     // ==========================================
     // REVIEWS COLLECTION
     // ==========================================
-    
+
     match /reviews/{reviewId} {
-      // Anyone can read reviews
-      allow read: if true;
-      
-      // Customers can create reviews for their completed bookings
-      allow create: if isAuthenticated() 
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
         && request.resource.data.customerId == request.auth.uid;
-      
-      // Reviews are immutable after creation
       allow update, delete: if false;
     }
-    
+
     // ==========================================
     // COUPONS COLLECTION
     // ==========================================
-    
+
     match /coupons/{couponId} {
-      // Anyone can read active coupons
-      allow read: if resource.data.isActive == true;
-      
-      // Only admins can manage coupons
+      allow read: if isSignedIn() && resource.data.isActive == true;
       allow write: if isAdmin();
     }
-    
+
     // ==========================================
     // NOTIFICATIONS COLLECTION
     // ==========================================
-    
+
     match /notifications/{notificationId} {
-      // Users can read their own notifications
-      allow read: if isAuthenticated() 
+      allow read: if isSignedIn()
         && resource.data.userId == request.auth.uid;
-      
-      // Users can mark their own notifications as read
-      allow update: if isAuthenticated() 
+      allow update: if isSignedIn()
         && resource.data.userId == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
-      
-      // Only Cloud Functions can create notifications
       allow create, delete: if false;
     }
-    
+
     // ==========================================
     // SUPPORT TICKETS COLLECTION
     // ==========================================
-    
+
     match /support_tickets/{ticketId} {
-      // Users can read their own tickets
-      allow read: if isAuthenticated() 
+      allow read: if isSignedIn()
         && resource.data.userId == request.auth.uid;
-      
-      // Users can create tickets
-      allow create: if isAuthenticated() 
+      allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid;
-      
-      // Only admins can update tickets
       allow update: if isAdmin();
-      
-      // No one can delete tickets
       allow delete: if false;
     }
-    
+
     // ==========================================
     // REFERRALS COLLECTION
     // ==========================================
-    
+
     match /referrals/{referralId} {
-      // Users can read their own referrals
-      allow read: if isAuthenticated() 
-        && (resource.data.referrerId == request.auth.uid 
+      allow read: if isSignedIn()
+        && (resource.data.referrerId == request.auth.uid
             || resource.data.referredUserId == request.auth.uid);
-      
-      // Only Cloud Functions can manage referrals
       allow write: if false;
     }
-    
+
     // ==========================================
     // DISPUTES COLLECTION
     // ==========================================
-    
+
     match /disputes/{disputeId} {
-      // Users can read disputes they're involved in
-      allow read: if isAuthenticated() 
-        && (resource.data.customerId == request.auth.uid 
+      allow read: if isSignedIn()
+        && (resource.data.customerId == request.auth.uid
             || resource.data.technicianId == request.auth.uid
             || isAdmin());
-      
-      // Users can create disputes
-      allow create: if isAuthenticated() 
-        && (request.resource.data.customerId == request.auth.uid 
+      allow create: if isSignedIn()
+        && (request.resource.data.customerId == request.auth.uid
             || request.resource.data.technicianId == request.auth.uid);
-      
-      // Only admins can update disputes
       allow update: if isAdmin();
-      
-      // No one can delete disputes
       allow delete: if false;
     }
-    
-    // ==========================================
-    // SERVICE REQUESTS COLLECTION
-    // ==========================================
-    
-    match /service_requests/{requestId} {
-      // Allow read ONLY if owner, admin, or technician in same district
-      allow read: if isAuthenticated() && (
-        resource.data.customerId == request.auth.uid || 
-        isAdmin() ||
-        (
-          request.auth.token.role == 'technician' && 
-          request.auth.token.district == resource.data.district
-        )
-      );
-      
-      // Customers can create requests
-      allow create: if isAuthenticated() 
-        && request.resource.data.customerId == request.auth.uid;
-      
-      // Only Cloud Functions can update request status
-      allow update: if false;
-      
-      // Customers can delete their pending requests
-      allow delete: if isAuthenticated() 
-        && resource.data.customerId == request.auth.uid
-        && resource.data.status in ['pending', 'pending_admin'];
-    }
-    
+
     // ==========================================
     // DEFAULT DENY ALL
     // ==========================================
-    
-    // Deny all other access unless explicitly allowed above
+
     match /{document=**} {
       allow read, write: if false;
     }

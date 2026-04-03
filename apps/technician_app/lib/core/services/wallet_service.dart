@@ -6,6 +6,7 @@ import '../models/wallet_transaction.dart';
 import '../models/payout.dart';
 import '../models/booking_payment.dart';
 import 'functions_service.dart';
+import '../firebase/firebase_functions.dart';
 
 /// Wallet Service - Secure Bridge to Cloud Functions
 /// 
@@ -56,7 +57,7 @@ class WalletService {
       final idempotencyKey = '${technicianId}_${DateTime.now().millisecondsSinceEpoch}';
       
       // Call Cloud Function
-      final callable = FirebaseFunctions.instance
+      final callable = FirebaseFunctionsService.instance
           .httpsCallable('requestWithdrawal');
       
       final result = await callable.call({
@@ -85,7 +86,7 @@ class WalletService {
     }
 
     try {
-      final callable = FirebaseFunctions.instance
+      final callable = FirebaseFunctionsService.instance
           .httpsCallable('getTransactionHistory');
       
       final result = await callable.call({
@@ -113,7 +114,7 @@ class WalletService {
     }
 
     try {
-      final callable = FirebaseFunctions.instance
+      final callable = FirebaseFunctionsService.instance
           .httpsCallable('getTechnicianPayoutHistory');
       
       final result = await callable.call({
@@ -140,7 +141,7 @@ class WalletService {
     }
 
     try {
-      final callable = FirebaseFunctions.instance
+      final callable = FirebaseFunctionsService.instance
           .httpsCallable('generateBookingQR');
       
       final result = await callable.call({

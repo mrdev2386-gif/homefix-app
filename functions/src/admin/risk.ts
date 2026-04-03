@@ -4,7 +4,7 @@ import { secureCallable, sanitize } from '../shared/security';
 
 const db = admin.firestore();
 
-export const manageRiskProfile = functions.https.onCall(
+export const manageRiskProfile = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
 

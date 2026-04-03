@@ -187,9 +187,9 @@ export async function getPaginatedBookings(
       serviceIds.length > 0 ? getDocs(query(collection(db, 'services'), where('__name__', 'in', serviceIds))) : Promise.resolve({ docs: [] })
     ]);
 
-    const usersMap = new Map(usersSnap.docs.map(d => [d.id, d.data()]));
-    const techniciansMap = new Map(techniciansSnap.docs.map(d => [d.id, d.data()]));
-    const servicesMap = new Map(servicesSnap.docs.map(d => [d.id, d.data()]));
+    const usersMap = new Map<string, any>(usersSnap.docs.map(d => [d.id, d.data()] as [string, any]));
+    const techniciansMap = new Map<string, any>(techniciansSnap.docs.map(d => [d.id, d.data()] as [string, any]));
+    const servicesMap = new Map<string, any>(servicesSnap.docs.map(d => [d.id, d.data()] as [string, any]));
 
     const bookings = docs.map((bookingDoc) => {
       const data = bookingDoc.data();
@@ -269,9 +269,9 @@ export function subscribeToBookings(
         serviceIds.length > 0 ? getDocs(query(collection(db, 'services'), where('__name__', 'in', serviceIds))) : Promise.resolve({ docs: [] })
       ]);
 
-      const usersMap = new Map(usersSnap.docs.map(d => [d.id, d.data()]));
-      const techniciansMap = new Map(techniciansSnap.docs.map(d => [d.id, d.data()]));
-      const servicesMap = new Map(servicesSnap.docs.map(d => [d.id, d.data()]));
+      const usersMap = new Map<string, any>(usersSnap.docs.map(d => [d.id, d.data()] as [string, any]));
+      const techniciansMap = new Map<string, any>(techniciansSnap.docs.map(d => [d.id, d.data()] as [string, any]));
+      const servicesMap = new Map<string, any>(servicesSnap.docs.map(d => [d.id, d.data()] as [string, any]));
 
       const bookings = docs.map((bookingDoc) => {
         const data = bookingDoc.data();

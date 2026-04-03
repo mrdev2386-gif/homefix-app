@@ -93,8 +93,9 @@ class CartItem {
       'categoryId': categoryId,
       'categoryName': categoryName,
       'serviceId': serviceId,
-      'subServiceId': subServiceId ?? '',
-      'subServiceName': subServiceName ?? '',
+      // BUG FIX: send null (not '') so backend itemId generation works correctly
+      'subServiceId': subServiceId?.isNotEmpty == true ? subServiceId : null,
+      'subServiceName': subServiceName?.isNotEmpty == true ? subServiceName : null,
       'serviceName': serviceName,
       'serviceImage': serviceImage,
       'price': price,
@@ -102,7 +103,8 @@ class CartItem {
       'totalPrice': totalPrice,
       'technicianId': technicianId ?? '',
       'finalPriceSnapshot': finalPriceSnapshot,
-      'scheduledAt': scheduledAt != null ? Timestamp.fromDate(scheduledAt!) : null,
+      // BUG FIX: Timestamp is not serializable over callable wire — send epoch ms instead
+      'scheduledAt': scheduledAt?.millisecondsSinceEpoch,
     };
   }
 
@@ -119,6 +121,8 @@ class CartItem {
     int? quantity,
     double? totalPrice,
     String? technicianId,
+    // BUG FIX: finalPriceSnapshot was missing from copyWith params
+    double? finalPriceSnapshot,
     DateTime? scheduledAt,
   }) {
     return CartItem(
@@ -134,7 +138,7 @@ class CartItem {
       quantity: quantity ?? this.quantity,
       totalPrice: totalPrice ?? this.totalPrice,
       technicianId: technicianId ?? this.technicianId,
-      finalPriceSnapshot: finalPriceSnapshot ?? finalPriceSnapshot,
+      finalPriceSnapshot: finalPriceSnapshot ?? this.finalPriceSnapshot,
       scheduledAt: scheduledAt ?? this.scheduledAt,
     );
   }

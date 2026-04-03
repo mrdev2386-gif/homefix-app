@@ -10,9 +10,16 @@ import { logger } from './shared/utils';
 // REFERRAL SYSTEM
 // ==========================================
 
-export const validateReferralCode = functions.https.onCall(
+export const validateReferralCode = functions
+  .region('asia-south1')
+  .https.onCall(
     secureCallable(async (data: any, context: any) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+    console.log('✅ [validateReferralCode] Auth UID:', context.auth?.uid);
+    
+    if (!context.auth) {
+      console.error('❌ [validateReferralCode] context.auth is NULL');
+      throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+    }
     const { code } = data;
 
     if (!code) throw new functions.https.HttpsError('invalid-argument', 'Referral code is required');
@@ -38,7 +45,9 @@ export const validateReferralCode = functions.https.onCall(
 );
 
 // Trigger referral award on first successful booking completion
-export const onBookingCompletedAwardReferral = functions.firestore.document('bookings/{bookingId}')
+export const onBookingCompletedAwardReferral = functions
+  .region('asia-south1')
+  .firestore.document('bookings/{bookingId}')
     .onUpdate(async (change, context) => {
         const before = change.before.data();
         const after = change.after.data();
@@ -99,9 +108,16 @@ export const onBookingCompletedAwardReferral = functions.firestore.document('boo
 // BOOKING CANCELLATION
 // ==========================================
 
-export const cancelBooking = functions.https.onCall(
+export const cancelBooking = functions
+  .region('asia-south1')
+  .https.onCall(
     secureCallable(async (data: any, context: any) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+    console.log('✅ [cancelBooking] Auth UID:', context.auth?.uid);
+    
+    if (!context.auth) {
+      console.error('❌ [cancelBooking] context.auth is NULL');
+      throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+    }
     const { bookingId, reason } = data;
 
     const bookingRef = db.collection('bookings').doc(bookingId);
@@ -168,9 +184,16 @@ import { sendPushNotification } from './shared/notifications';
 
 // ... (skipping referral and cancellation for now, targeting submitServiceRating)
 
-export const submitServiceRating = functions.https.onCall(
+export const submitServiceRating = functions
+  .region('asia-south1')
+  .https.onCall(
     secureCallable(async (data: any, context: any) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+    console.log('✅ [submitServiceRating] Auth UID:', context.auth?.uid);
+    
+    if (!context.auth) {
+      console.error('❌ [submitServiceRating] context.auth is NULL');
+      throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+    }
     const { bookingId, rating, comment, tags } = data; // tags is string[]
     const customerId = context.auth.uid;
 
@@ -311,9 +334,16 @@ export const submitServiceRating = functions.https.onCall(
 // SUPPORT / ASSISTANCE
 // ==========================================
 
-export const submitSupportRequest = functions.https.onCall(
+export const submitSupportRequest = functions
+  .region('asia-south1')
+  .https.onCall(
     secureCallable(async (data: any, context: any) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+    console.log('✅ [submitSupportRequest] Auth UID:', context.auth?.uid);
+    
+    if (!context.auth) {
+      console.error('❌ [submitSupportRequest] context.auth is NULL');
+      throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+    }
     const { category, message } = data;
 
     if (!category || !message) {
@@ -341,9 +371,17 @@ export const submitSupportRequest = functions.https.onCall(
 // ACCOUNT & PROFILE MANAGEMENT
 // ==========================================
 
-export const updateUserProfile = functions.https.onCall(
+export const updateUserProfile = functions
+  .region('asia-south1')
+  .https.onCall(
     secureCallable(async (data: any, context: functions.https.CallableContext) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+    console.log('[updateUserProfile] Called', { uid: context.auth?.uid, data });
+    console.log('✅ [updateUserProfile] Auth UID:', context.auth?.uid);
+    
+    if (!context.auth) {
+      console.error('❌ [updateUserProfile] context.auth is NULL');
+      throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+    }
 
     const uid = context.auth.uid;
     await checkRateLimit(uid, 'update_profile', 10, 60);
@@ -471,9 +509,16 @@ export const updateUserProfile = functions.https.onCall(
 );
 
 
-export const updateTechnicianProfile = functions.https.onCall(
+export const updateTechnicianProfile = functions
+  .region('asia-south1')
+  .https.onCall(
     secureCallable(async (data: any, context: functions.https.CallableContext) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+    console.log('✅ [updateTechnicianProfile] Auth UID:', context.auth?.uid);
+    
+    if (!context.auth) {
+      console.error('❌ [updateTechnicianProfile] context.auth is NULL');
+      throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+    }
 
     const uid = context.auth.uid;
 
@@ -506,9 +551,16 @@ export const updateTechnicianProfile = functions.https.onCall(
   })
 );
 
-export const deleteAccount = functions.https.onCall(
+export const deleteAccount = functions
+  .region('asia-south1')
+  .https.onCall(
     secureCallable(async (data: any, context: any) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+    console.log('✅ [deleteAccount] Auth UID:', context.auth?.uid);
+    
+    if (!context.auth) {
+      console.error('❌ [deleteAccount] context.auth is NULL');
+      throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+    }
     const uid = context.auth.uid;
 
     // 1. Delete Firestore Data
@@ -520,9 +572,16 @@ export const deleteAccount = functions.https.onCall(
   })
 );
 
-export const manageAddress = functions.https.onCall(
+export const manageAddress = functions
+  .region('asia-south1')
+  .https.onCall(
     secureCallable(async (data: any, context: any) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+    console.log('✅ [manageAddress] Auth UID:', context.auth?.uid);
+    
+    if (!context.auth) {
+      console.error('❌ [manageAddress] context.auth is NULL');
+      throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+    }
     const uid = context.auth.uid;
     const { action, addressId, addressData } = data; // action: 'add', 'edit', 'delete', 'setDefault'
 
@@ -554,9 +613,16 @@ export const manageAddress = functions.https.onCall(
 );
 
 
-export const managePaymentMethod = functions.https.onCall(
+export const managePaymentMethod = functions
+  .region('asia-south1')
+  .https.onCall(
     secureCallable(async (data: any, context: any) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+    console.log('✅ [managePaymentMethod] Auth UID:', context.auth?.uid);
+    
+    if (!context.auth) {
+      console.error('❌ [managePaymentMethod] context.auth is NULL');
+      throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+    }
     const uid = context.auth.uid;
     const { action, methodId, methodData } = data;
 
@@ -578,9 +644,16 @@ export const managePaymentMethod = functions.https.onCall(
   })
 );
 
-export const updatePrivacySettings = functions.https.onCall(
+export const updatePrivacySettings = functions
+  .region('asia-south1')
+  .https.onCall(
     secureCallable(async (data: any, context: any) => {
-    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+    console.log('✅ [updatePrivacySettings] Auth UID:', context.auth?.uid);
+    
+    if (!context.auth) {
+      console.error('❌ [updatePrivacySettings] context.auth is NULL');
+      throw new functions.https.HttpsError('unauthenticated', 'Auth required');
+    }
     const uid = context.auth.uid;
     await db.collection('customers').doc(uid).set({ privacy: data }, { merge: true });
     return { success: true };

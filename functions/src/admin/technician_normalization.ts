@@ -12,7 +12,7 @@ const db = admin.firestore();
  * 3. Recalculating profile completion from normalized fields
  * 4. Removing legacy keys completely
  */
-export const normalizeTechnicianData = functions.https.onCall(async (data, context) => {
+export const normalizeTechnicianData = functions.region('asia-south1').https.onCall(async (data, context) => {
     // Admin only function
     if (!context.auth || !context.auth.token.admin) {
         throw new functions.https.HttpsError(
@@ -151,7 +151,7 @@ export const normalizeTechnicianData = functions.https.onCall(async (data, conte
  * 
  * Checks all technician documents to verify normalization was successful
  */
-export const verifyTechnicianNormalization = functions.https.onCall(async (data, context) => {
+export const verifyTechnicianNormalization = functions.region('asia-south1').https.onCall(async (data, context) => {
     // Admin only function
     if (!context.auth || !context.auth.token.admin) {
         throw new functions.https.HttpsError(

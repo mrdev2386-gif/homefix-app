@@ -17,7 +17,7 @@ function calculateAge(dob: Date): number {
 
 // --- ONBOARDING FUNCTIONS ---
 
-export const initiatePhoneVerification = functions.https.onCall(async (data, context) => {
+export const initiatePhoneVerification = functions.region('asia-south1').https.onCall(async (data, context) => {
     // 1. Rate Limiting
     // We limit by IP or some identifier if not auth'd, but usually phone auth happens on client.
     // This function might be for logging the attempt or pre-check.
@@ -60,7 +60,7 @@ export const initiatePhoneVerification = functions.https.onCall(async (data, con
     return { success: true };
 });
 
-export const savePersonalDetails = functions.https.onCall(async (data, context) => {
+export const savePersonalDetails = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
     const { name, dob, gender, photoUrl, address, city, serviceRadius, coordinates } = data;
@@ -99,7 +99,7 @@ export const savePersonalDetails = functions.https.onCall(async (data, context) 
     return { success: true, nextStep: 3 };
 });
 
-export const submitKYC = functions.https.onCall(async (data, context) => {
+export const submitKYC = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
     const { idType, frontUrl, backUrl, selfieUrl, fullName, aadharNumber, panNumber } = data;
@@ -144,7 +144,7 @@ export const submitKYC = functions.https.onCall(async (data, context) => {
 });
 
 
-export const saveSkillSelection = functions.https.onCall(async (data, context) => {
+export const saveSkillSelection = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
     const { selectedSkills } = data;
@@ -188,7 +188,7 @@ export const saveSkillSelection = functions.https.onCall(async (data, context) =
     return { success: true, nextStep: 5 };
 });
 
-export const saveExperienceDetails = functions.https.onCall(async (data, context) => {
+export const saveExperienceDetails = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
     const { experience } = data; // { serviceId: { years, tools:[], brands:[] } }
@@ -210,7 +210,7 @@ export const saveExperienceDetails = functions.https.onCall(async (data, context
     return { success: true, nextStep: 6 };
 });
 
-export const saveAvailability = functions.https.onCall(async (data, context) => {
+export const saveAvailability = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
     const { workingDays, startTime, endTime, emergencyAvailable, nightShift } = data;
@@ -234,7 +234,7 @@ export const saveAvailability = functions.https.onCall(async (data, context) => 
     return { success: true, nextStep: 7 };
 });
 
-export const saveServiceArea = functions.https.onCall(async (data, context) => {
+export const saveServiceArea = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
     const { pinCodes, radius, coordinates } = data;
@@ -259,7 +259,7 @@ export const saveServiceArea = functions.https.onCall(async (data, context) => {
     return { success: true, nextStep: 8 };
 });
 
-export const saveBankDetails = functions.https.onCall(async (data, context) => {
+export const saveBankDetails = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
     const { accountNumber, ifsc, holderName, upiId } = data;
@@ -291,7 +291,7 @@ export const saveBankDetails = functions.https.onCall(async (data, context) => {
     return { success: true, nextStep: 9 };
 });
 
-export const completeTraining = functions.https.onCall(async (data, context) => {
+export const completeTraining = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
     const { videoWatched, rulesAccepted, durationWatched } = data;
@@ -318,7 +318,7 @@ export const completeTraining = functions.https.onCall(async (data, context) => 
     return { success: true, nextStep: 10 };
 });
 
-export const submitApplication = functions.https.onCall(async (data, context) => {
+export const submitApplication = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
 
@@ -391,7 +391,7 @@ export const submitApplication = functions.https.onCall(async (data, context) =>
     return { success: true, message: 'Application submitted successfully.' };
 });
 
-export const submitTechnicianApplication = functions.https.onCall(async (data, context) => {
+export const submitTechnicianApplication = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
     const {

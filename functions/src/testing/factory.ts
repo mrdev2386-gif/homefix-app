@@ -6,7 +6,7 @@ import { db } from '../shared/config';
 // Helper to create a random string
 const randomString = (length: number) => Math.random().toString(36).substring(2, 2 + length);
 
-export const createTestCustomer = functions.https.onCall(async (data, context) => {
+export const createTestCustomer = functions.region('asia-south1').https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
 
     const { name, email, phone } = data;
@@ -38,7 +38,7 @@ export const createTestCustomer = functions.https.onCall(async (data, context) =
     }
 });
 
-export const createTestTechnician = functions.https.onCall(async (data, context) => {
+export const createTestTechnician = functions.region('asia-south1').https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
 
     const { name, email, phone, skills } = data;
@@ -91,7 +91,7 @@ export const createTestTechnician = functions.https.onCall(async (data, context)
     }
 });
 
-export const generateTestBooking = functions.https.onCall(async (data, context) => {
+export const generateTestBooking = functions.region('asia-south1').https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
 
     const { customerId, technicianId, serviceId, serviceTitle } = data;

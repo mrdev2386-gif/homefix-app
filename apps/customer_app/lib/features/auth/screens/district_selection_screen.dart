@@ -52,10 +52,7 @@ class _DistrictSelectionScreenState extends State<DistrictSelectionScreen> {
           debugPrint('Could not clear location cache: $e');
         }
         
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          '/home',
-          (route) => false,
-        );
+        Navigator.of(context).pushReplacementNamed('/home');
       }
     } catch (e) {
       if (mounted) {

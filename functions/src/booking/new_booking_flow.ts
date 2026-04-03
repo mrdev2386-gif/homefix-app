@@ -131,7 +131,7 @@ interface CreateBookingRequestResponse {
     error?: string;
 }
 
-export const createBookingRequest = functions.https.onCall(
+export const createBookingRequest = functions.region('asia-south1').https.onCall(
     async (data: CreateBookingRequestData, context: functions.https.CallableContext): Promise<CreateBookingRequestResponse> => {
 
         // 1. Authentication guard
@@ -470,7 +470,7 @@ interface AdminApproveResponse {
     error?: string;
 }
 
-export const adminApproveBooking = functions.https.onCall(
+export const adminApproveBooking = functions.region('asia-south1').https.onCall(
     async (data: AdminApproveData, context: functions.https.CallableContext): Promise<AdminApproveResponse> => {
 
         // 1. Authentication + Admin check
@@ -590,7 +590,7 @@ interface TechnicianRespondResponse {
     error?: string;
 }
 
-export const technicianRespondBooking = functions.https.onCall(
+export const technicianRespondBooking = functions.region('asia-south1').https.onCall(
     async (data: TechnicianRespondData, context: functions.https.CallableContext): Promise<TechnicianRespondResponse> => {
 
         // 1. Authentication
@@ -726,7 +726,7 @@ interface CustomerConfirmPaymentResponse {
     error?: string;
 }
 
-export const customerConfirmPayment = functions.https.onCall(
+export const customerConfirmPayment = functions.region('asia-south1').https.onCall(
     async (data: CustomerConfirmPaymentData, context: functions.https.CallableContext): Promise<CustomerConfirmPaymentResponse> => {
 
         // 1. Authentication
@@ -842,7 +842,7 @@ export const customerConfirmPayment = functions.https.onCall(
 // 4.5. MARK WORK COMPLETED (Dedicated)
 // ==========================================
 
-export const markWorkCompleted = functions.https.onCall(
+export const markWorkCompleted = functions.region('asia-south1').https.onCall(
     async (data: { bookingId: string }, context: functions.https.CallableContext) => {
         if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
 
@@ -922,7 +922,7 @@ interface UpdateBookingStatusResponse {
     error?: string;
 }
 
-export const updateBookingStatusGeneric = functions.https.onCall(
+export const updateBookingStatusGeneric = functions.region('asia-south1').https.onCall(
     async (data: UpdateBookingStatusData, context: functions.https.CallableContext): Promise<UpdateBookingStatusResponse> => {
 
         // This is a generic status update for completed/cancelled

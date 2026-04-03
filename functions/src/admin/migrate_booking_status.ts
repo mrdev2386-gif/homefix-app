@@ -11,7 +11,7 @@ const db = admin.firestore();
  * 
  * Usage: Call this function once to migrate existing data
  */
-export const migrateBookingStatus = functions.https.onCall(
+export const migrateBookingStatus = functions.region('asia-south1').https.onCall(
     async (data, context) => {
         // Admin authentication required
         if (!context.auth) {
@@ -82,7 +82,7 @@ export const migrateBookingStatus = functions.https.onCall(
  * 
  * This function provides a summary of booking statuses to verify migration
  */
-export const verifyBookingStatuses = functions.https.onCall(
+export const verifyBookingStatuses = functions.region('asia-south1').https.onCall(
     async (data, context) => {
         // Admin authentication required
         if (!context.auth) {

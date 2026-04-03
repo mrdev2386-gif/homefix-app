@@ -5,6 +5,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:provider/provider.dart';
 import 'package:technician_app/core/services/auth_service.dart';
 import 'package:technician_app/core/theme/app_theme.dart';
+import 'package:technician_app/core/firebase/firebase_functions.dart';
 
 class CustomRequestsScreen extends StatefulWidget {
   const CustomRequestsScreen({super.key});
@@ -15,7 +16,7 @@ class CustomRequestsScreen extends StatefulWidget {
 
 class _CustomRequestsScreenState extends State<CustomRequestsScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  final FirebaseFunctions _functions = FirebaseFunctionsService.instance;
 
   @override
   Widget build(BuildContext context) {

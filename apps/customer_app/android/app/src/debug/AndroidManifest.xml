@@ -6,8 +6,9 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     
     <application>
+        <!-- App Check Debug Token Provider for development -->
         <meta-data
-            android:name="firebase_app_check_debug_token"
-            android:value="true" />
+            android:name="com.google.firebase.app_check_debug_token"
+            android:value="@string/firebase_app_check_debug_token" />
     </application>
 </manifest>

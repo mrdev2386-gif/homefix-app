@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:cloud_functions/cloud_functions.dart' as functions;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../models/technician.dart';
+import '../firebase/firebase_functions.dart';
 
 /// Service for managing technician onboarding state
 /// 
@@ -17,7 +18,7 @@ class OnboardingService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   
   // Cloud Functions instance
-  FirebaseFunctions get _functions => FirebaseFunctions.instance;
+  FirebaseFunctions get _functions => FirebaseFunctionsService.instance;
 
   /// Helper to call Cloud Functions with error handling
   Future<Map<String, dynamic>> _callFunction(

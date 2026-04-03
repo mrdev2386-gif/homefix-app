@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 const menuItems = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
   { name: 'Bookings', href: '/bookings', icon: Calendar },
   { name: 'Booking Approvals', href: '/booking-approvals', icon: ClipboardList },
   { name: 'Custom Requests', href: '/custom-requests', icon: FileText },
@@ -39,11 +39,11 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     <aside className={`fixed left-0 top-0 h-screen bg-[#0F172A] border-r border-[#1F2937] transition-all duration-300 z-20 ${collapsed ? 'w-20' : 'w-64'}`}>
       <div className="flex items-center justify-center h-16 px-4 border-b border-[#1F2937]">
         {collapsed ? (
-          <Link href="/dashboard" className="w-10 h-10 bg-gradient-to-br from-[#6366F1] to-[#7C3AED] rounded-lg flex items-center justify-center hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-300 cursor-pointer">
+          <Link href="/admin" className="w-10 h-10 bg-gradient-to-br from-[#6366F1] to-[#7C3AED] rounded-lg flex items-center justify-center hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-300 cursor-pointer">
             <Wrench size={20} className="text-white" />
           </Link>
         ) : (
-          <Link href="/dashboard" className="hover:opacity-80 transition-opacity cursor-pointer flex items-center gap-2">
+          <Link href="/admin" className="hover:opacity-80 transition-opacity cursor-pointer flex items-center gap-2">
             <div className="w-8 h-8 bg-gradient-to-br from-[#6366F1] to-[#7C3AED] rounded-lg flex items-center justify-center">
               <Wrench size={16} className="text-white" />
             </div>
@@ -55,7 +55,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       <nav className="p-3 space-y-1 overflow-y-auto h-[calc(100vh-4rem)] scrollbar-thin scrollbar-thumb-[#1F2937] scrollbar-track-transparent">
         {menuItems.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
+          const isActive = pathname === item.href || (item.href !== '/admin' && pathname.startsWith(item.href));
           
           return (
             <Link

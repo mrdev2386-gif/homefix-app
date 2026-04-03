@@ -1,0 +1,3 @@
+export const PAGINATION = {
+  WITHDRAWALS_PER_PAGE: 20
+};

@@ -13,7 +13,7 @@ const db = admin.firestore();
  * - Writes to technician_applications collection
  * - Sends notification to admin
  */
-export const submitPartnerApplication = functions.https.onCall(async (data, context) => {
+export const submitPartnerApplication = functions.region('asia-south1').https.onCall(async (data, context) => {
   try {
     // V1: Auth is in context.auth
     const auth = context.auth;

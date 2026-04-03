@@ -1,10 +1,10 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import '../firebase/firebase_functions.dart';
 
 class FunctionsService {
-  final FirebaseFunctions _functions =
-      FirebaseFunctions.instanceFor(region: 'asia-south1');
+  final FirebaseFunctions _functions = FirebaseFunctionsService.instance;
 
   /// Technician: Get inbox of pending custom requests
   Future<Map<String, dynamic>> getTechnicianInbox({int limit = 20, String? startAfter}) async {
@@ -327,7 +327,7 @@ class FunctionsService {
       debugPrint('[FunctionsService] deleteService: Token refreshed successfully');
       debugPrint('[FunctionsService] deleteService: Calling deleteTechnicianService with serviceId: $serviceId');
       
-      final callable = FirebaseFunctions.instanceFor(region: 'asia-south1')
+      final callable = FirebaseFunctionsService.instance
           .httpsCallable('deleteTechnicianService');
       
       final result = await callable.call({'serviceId': serviceId});

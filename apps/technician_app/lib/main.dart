@@ -40,7 +40,7 @@ void main() async {
   
   // CRITICAL: Initialize Firebase with App Check FIRST
   await FirebaseInit.init();
-  AppLogger.info('MAIN', 'Firebase initialization complete');
+  AppLogger.info('MAIN', 'Firebase initialization complete | package: com.homefix.technician');
   
   // Initialize Crashlytics & Performance AFTER App Check
   FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
@@ -195,7 +195,7 @@ class _ErrorBoundaryState extends State<ErrorBoundary> {
   }
 }
 
-/// Error body widget with surgical layout
+/// Error body widget with safe layout
 class _ErrorBody extends StatelessWidget {
   final VoidCallback onRetry;
   final String errorMessage;
@@ -210,54 +210,67 @@ class _ErrorBody extends StatelessWidget {
     return Scaffold(
       resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.error_outline,
-                  size: 80,
-                  color: Colors.red.shade400,
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Something went wrong',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+        child: Column(
+          children: [
+            // SCROLLABLE CONTENT (SAFE)
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        size: 80,
+                        color: Colors.red.shade400,
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Something went wrong',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        errorMessage.isEmpty ? 'Please try again' : errorMessage,
+                        textAlign: TextAlign.center,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  errorMessage.isEmpty ? 'Please try again' : errorMessage,
-                  textAlign: TextAlign.center,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        child: SizedBox(
-          height: 52,
-          child: ElevatedButton(
-            onPressed: onRetry,
-            style: ElevatedButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
               ),
             ),
-            child: const Text('Try Again'),
-          ),
+            // FIXED BUTTON (NO OVERFLOW)
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                24,
+                12,
+                24,
+                MediaQuery.of(context).viewPadding.bottom + 16,
+              ),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: onRetry,
+                  style: ElevatedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: const Text('Try Again'),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -412,7 +425,7 @@ class _LoadingScreen extends StatelessWidget {
   }
 }
 
-/// Error screen with retry option
+/// Error screen with safe layout
 class _ErrorScreen extends StatelessWidget {
   final String title;
   final String message;
@@ -429,61 +442,74 @@ class _ErrorScreen extends StatelessWidget {
     return Scaffold(
       resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.wifi_off,
-                  size: 80,
-                  color: Colors.orange.shade400,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+        child: Column(
+          children: [
+            // SCROLLABLE CONTENT (SAFE)
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.wifi_off,
+                        size: 80,
+                        color: Colors.orange.shade400,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        message,
+                        textAlign: TextAlign.center,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  message,
-                  textAlign: TextAlign.center,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        child: SizedBox(
-          height: 52,
-          child: ElevatedButton(
-            onPressed: onRetry,
-            style: ElevatedButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
               ),
             ),
-            child: const Text('Try Again'),
-          ),
+            // FIXED BUTTON (NO OVERFLOW)
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                24,
+                12,
+                24,
+                MediaQuery.of(context).viewPadding.bottom + 16,
+              ),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: onRetry,
+                  style: ElevatedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: const Text('Try Again'),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-/// App Check failure screen - shown when App Check verification fails
+/// App Check failure screen with safe layout
 class _AppCheckFailureScreen extends StatelessWidget {
   final VoidCallback onRetry;
   
@@ -493,79 +519,93 @@ class _AppCheckFailureScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.shield_outlined,
-                    size: 64,
-                    color: Colors.red.shade400,
+        child: Column(
+          children: [
+            // SCROLLABLE CONTENT (SAFE)
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 120,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.shield_outlined,
+                          size: 64,
+                          color: Colors.red.shade400,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      Text(
+                        'Security Verification Failed',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF0F172A),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'We could not verify your app security. This may be due to:\n\n'
+                        '• Running an unofficial app build\n'
+                        '• Device security restrictions\n'
+                        '• Network connectivity issues',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 14,
+                          color: const Color(0xFF64748B),
+                          height: 1.6,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'If the problem persists, please install the app from the official store.',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 12,
+                          color: const Color(0xFF94A3B8),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 32),
-                Text(
-                  'Security Verification Failed',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF0F172A),
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'We could not verify your app security. This may be due to:\n\n'
-                  '• Running an unofficial app build\n'
-                  '• Device security restrictions\n'
-                  '• Network connectivity issues',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 14,
-                    color: const Color(0xFF64748B),
-                    height: 1.6,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'If the problem persists, please install the app from the official store.',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 12,
-                    color: const Color(0xFF94A3B8),
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(32, 16, 32, 16),
-        child: SizedBox(
-          height: 56,
-          child: ElevatedButton.icon(
-            onPressed: onRetry,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Try Again'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF6366F1),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
               ),
             ),
-          ),
+            // FIXED BUTTON (NO OVERFLOW)
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                24,
+                12,
+                24,
+                MediaQuery.of(context).viewPadding.bottom + 16,
+              ),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Try Again'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6366F1),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

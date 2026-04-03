@@ -54,7 +54,7 @@ async function logAdminAction(
  * Approve Technician Service
  * Changes status from pending to approved
  */
-export const admin_approveService = functions.https.onCall(
+export const admin_approveService = functions.region('asia-south1').https.onCall(
   secureCallable(async (request: any, context: any) => {
     // Authentication check
     if (!context.auth) {
@@ -105,7 +105,7 @@ export const admin_approveService = functions.https.onCall(
  * Reject Technician Service
  * Changes status from pending to rejected
  */
-export const admin_rejectService = functions.https.onCall(
+export const admin_rejectService = functions.region('asia-south1').https.onCall(
   secureCallable(async (request: any, context: any) => {
     // Authentication check
     if (!context.auth) {
@@ -158,7 +158,7 @@ export const admin_rejectService = functions.https.onCall(
  * Disable Technician Service
  * Changes status to disabled (SOFT DELETE - never removes document)
  */
-export const admin_disableService = functions.https.onCall(
+export const admin_disableService = functions.region('asia-south1').https.onCall(
   secureCallable(async (request: any, context: any) => {
     // Authentication check
     if (!context.auth) {

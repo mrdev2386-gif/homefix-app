@@ -55,7 +55,7 @@ function LoginForm() {
             const authorizedEmail = 'cryptosourav23@gmail.com';
 
             if (tokenResult.claims.admin === true && (user.email === authorizedEmail)) {
-                router.push('/dashboard');
+                router.push('/admin');
             } else {
                 await signOutUser();
                 setError(user.email === authorizedEmail
@@ -88,8 +88,8 @@ function LoginForm() {
             const authorizedEmail = 'cryptosourav23@gmail.com';
 
             if (tokenResult.claims.admin === true && (user.email === authorizedEmail)) {
-                console.log('Admin access granted for:', user.email);
-                router.push('/dashboard');
+            console.log('Admin access granted for:', user.email);
+            router.push('/admin');
             } else {
                 console.log('Access Denied for:', user.email);
                 await signOutUser();

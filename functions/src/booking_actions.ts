@@ -13,7 +13,7 @@ import { secureCallable } from './shared/security';
 // Stub implementations - these should be replaced with actual implementations
 // or connected to existing functions in booking_lifecycle.ts
 
-export const scheduleInspection = functions.https.onCall(
+export const scheduleInspection = functions.region('asia-south1').https.onCall(
     secureCallable(async (data, context) => {
     throw new functions.https.HttpsError(
         'unimplemented',
@@ -22,7 +22,7 @@ export const scheduleInspection = functions.https.onCall(
 })
 );
 
-export const startInspection = functions.https.onCall(
+export const startInspection = functions.region('asia-south1').https.onCall(
     secureCallable(async (data, context) => {
     throw new functions.https.HttpsError(
         'unimplemented',
@@ -31,7 +31,7 @@ export const startInspection = functions.https.onCall(
 })
 );
 
-export const submitInspectionReport = functions.https.onCall(
+export const submitInspectionReport = functions.region('asia-south1').https.onCall(
     secureCallable(async (data, context) => {
     throw new functions.https.HttpsError(
         'unimplemented',
@@ -40,7 +40,7 @@ export const submitInspectionReport = functions.https.onCall(
 })
 );
 
-export const startJob = functions.https.onCall(
+export const startJob = functions.region('asia-south1').https.onCall(
     secureCallable(async (data, context) => {
     throw new functions.https.HttpsError(
         'unimplemented',
@@ -49,7 +49,7 @@ export const startJob = functions.https.onCall(
 })
 );
 
-export const completeJob = functions.https.onCall(
+export const completeJob = functions.region('asia-south1').https.onCall(
     secureCallable(async (data, context) => {
     throw new functions.https.HttpsError(
         'unimplemented',
@@ -58,7 +58,7 @@ export const completeJob = functions.https.onCall(
 })
 );
 
-export const approveJobQuote = functions.https.onCall(
+export const approveJobQuote = functions.region('asia-south1').https.onCall(
     secureCallable(async (data, context) => {
     throw new functions.https.HttpsError(
         'unimplemented',
@@ -67,7 +67,7 @@ export const approveJobQuote = functions.https.onCall(
 })
 );
 
-export const rejectJobQuote = functions.https.onCall(
+export const rejectJobQuote = functions.region('asia-south1').https.onCall(
     secureCallable(async (data, context) => {
     throw new functions.https.HttpsError(
         'unimplemented',

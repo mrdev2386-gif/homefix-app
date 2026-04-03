@@ -7,6 +7,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'dart:convert';
+import '../firebase/functions_instance.dart';
 import 'booking_service.dart';
 import '../../features/bookings/presentation/booking_detail_screen.dart';
 import '../../main.dart';
@@ -172,7 +173,8 @@ class NotificationsService extends ChangeNotifier {
         try {
           final token = await _messaging.getToken();
           if (token != null) {
-            final callable = FirebaseFunctions.instance.httpsCallable('removeFcmToken');
+            
+            final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('removeFcmToken');
             await callable.call({
               'token': token,
               'userType': 'customer',
@@ -200,7 +202,8 @@ class NotificationsService extends ChangeNotifier {
     }
 
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('saveFcmToken');
+      
+      final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('saveFcmToken');
       await callable.call({
         'token': token,
       });
@@ -328,7 +331,8 @@ class NotificationsService extends ChangeNotifier {
 
   static Future<void> markAsRead(String notificationId) async {
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('markNotificationRead');
+      
+      final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('markNotificationRead');
       await callable.call({'notificationId': notificationId});
     } catch (e) {
       debugPrint('[NotificationsService] Mark as read failed: $e');
@@ -337,7 +341,8 @@ class NotificationsService extends ChangeNotifier {
 
   static Future<void> markAllAsRead(String userId) async {
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('markAllNotificationsRead');
+      
+      final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('markAllNotificationsRead');
       await callable.call();
     } catch (e) {
       debugPrint('[NotificationsService] Mark all as read failed: $e');
@@ -346,7 +351,8 @@ class NotificationsService extends ChangeNotifier {
 
   static Future<void> deleteNotification(String notificationId) async {
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('deleteNotificationCallable');
+      
+      final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('deleteNotificationCallable');
       await callable.call({'notificationId': notificationId});
     } catch (e) {
       debugPrint('[NotificationsService] Delete failed: $e');
@@ -355,7 +361,8 @@ class NotificationsService extends ChangeNotifier {
 
   static Future<void> deleteAllNotifications(String userId) async {
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('deleteAllNotificationsCallable');
+      
+      final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('deleteAllNotificationsCallable');
       await callable.call();
     } catch (e) {
       debugPrint('[NotificationsService] Delete all failed: $e');

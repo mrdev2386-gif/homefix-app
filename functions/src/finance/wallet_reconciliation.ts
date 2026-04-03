@@ -69,7 +69,7 @@ async function flagSuspiciousWallet(technicianId: string, flags: any) {
 /**
  * Manual reconciliation trigger (admin callable)
  */
-export const triggerManualReconciliation = functions.https.onCall(
+export const triggerManualReconciliation = functions.region('asia-south1').https.onCall(
     async (data, context) => {
         // Check admin - validate uid exists
         const uid = context.auth?.uid;
@@ -133,7 +133,7 @@ export const triggerManualReconciliation = functions.https.onCall(
 /**
  * Get reconciliation anomalies (admin callable)
  */
-export const getReconciliationAnomalies = functions.https.onCall(
+export const getReconciliationAnomalies = functions.region('asia-south1').https.onCall(
     async (data, context) => {
         // Check admin
         const uid = context.auth?.uid;
@@ -179,7 +179,7 @@ export const getReconciliationAnomalies = functions.https.onCall(
 /**
  * Mark wallet as reviewed (admin callable)
  */
-export const markWalletReviewed = functions.https.onCall(
+export const markWalletReviewed = functions.region('asia-south1').https.onCall(
     async (data, context) => {
         // Check admin
         const uid = context.auth?.uid;

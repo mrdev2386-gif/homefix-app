@@ -21,7 +21,7 @@ interface ApprovalRequest {
  * Approve or Reject Technician
  * Sets proper status and profile completion
  */
-export const approveTechnician = functions.https.onCall(
+export const approveTechnician = functions.region('asia-south1').https.onCall(
   secureCallable(async (request: any, context: any) => {
     if (!context.auth) {
       throw new functions.https.HttpsError("unauthenticated", "Authentication required");

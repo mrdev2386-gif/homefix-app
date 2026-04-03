@@ -1,10 +1,5 @@
 import './globals.css'
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
-
-const inter = Inter({ subsets: ['latin'] })
-
-import { AuthProvider } from '@/components/AuthProvider'
 
 export const metadata: Metadata = {
     title: 'HomeFix Admin Portal',
@@ -23,10 +18,8 @@ export default function RootLayout({
 }) {
     return (
         <html lang="en">
-            <body className={inter.className}>
-                <AuthProvider>
-                    {children}
-                </AuthProvider>
+            <body style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+                {children}
             </body>
         </html>
     )

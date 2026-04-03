@@ -15,7 +15,7 @@ interface BankVerificationRequest {
   bankName: string;
 }
 
-export const verifyTechnicianBankAccount = functions.https.onCall(
+export const verifyTechnicianBankAccount = functions.region('asia-south1').https.onCall(
   async (data: BankVerificationRequest, context) => {
     // 1. Authentication check
     if (!context.auth) {

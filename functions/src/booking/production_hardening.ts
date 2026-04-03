@@ -204,7 +204,7 @@ interface BookingLifecycleInterface {
 /**
  * Create booking with global idempotency
  */
-export const createBookingIdempotent = functions.https.onCall(
+export const createBookingIdempotent = functions.region('asia-south1').https.onCall(
   async (
     data: BookingCreationRequest,
     context: functions.https.CallableContext
@@ -515,7 +515,7 @@ export async function createPayoutLedgerEntry(
 /**
  * Get technician earnings summary
  */
-export const getTechnicianEarnings = functions.https.onCall(
+export const getTechnicianEarnings = functions.region('asia-south1').https.onCall(
   async (data: { technicianId: string }, context) => {
     if (!context.auth) {
       throw new functions.https.HttpsError('unauthenticated', 'Auth required');
@@ -564,7 +564,7 @@ export const getTechnicianEarnings = functions.https.onCall(
 /**
  * Generate weekly payout report
  */
-export const generateWeeklyPayoutReport = functions.https.onCall(
+export const generateWeeklyPayoutReport = functions.region('asia-south1').https.onCall(
   async (data: { technicianId?: string }, context) => {
     if (!context.auth) {
       throw new functions.https.HttpsError('unauthenticated', 'Auth required');

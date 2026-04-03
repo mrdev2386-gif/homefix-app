@@ -3,6 +3,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:rxdart/rxdart.dart';
 import '../models/booking.dart';
+import '../firebase/firebase_functions.dart';
 
 class BookingService {
   late final FirebaseFirestore _db;
@@ -10,7 +11,7 @@ class BookingService {
 
   BookingService() {
     _db = FirebaseFirestore.instance;
-    _functions = FirebaseFunctions.instance;
+    _functions = FirebaseFunctionsService.instance;
   }
 
   /// NEW FLOW: Get pending bookings that need technician response

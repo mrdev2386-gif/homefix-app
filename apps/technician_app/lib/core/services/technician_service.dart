@@ -3,6 +3,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../models/technician.dart';
+import '../firebase/firebase_functions.dart';
 
 class TechnicianService {
   late final FirebaseFirestore _db;
@@ -10,7 +11,7 @@ class TechnicianService {
 
   TechnicianService() {
     _db = FirebaseFirestore.instance;
-    _functions = FirebaseFunctions.instance;
+    _functions = FirebaseFunctionsService.instance;
   }
 
   Future<void> saveTechnicianProfile(User user, {

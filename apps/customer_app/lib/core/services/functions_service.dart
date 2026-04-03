@@ -1,11 +1,9 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import '../firebase/firebase_functions_instance.dart';
+import '../firebase/functions_instance.dart' as FunctionsInstance;
 
 class FunctionsService {
-  // CRITICAL: Use GLOBAL instance - NO local instances
-  FirebaseFunctions get _functions => FirebaseFunctionsInstance.instance;
 
   FunctionsService();
 
@@ -74,23 +72,19 @@ class FunctionsService {
 
   Future<void> updateUserProfile(Map<String, dynamic> userData) async {
     try {
-      // CRITICAL: Ensure auth is ready before ANY function call
-      await FirebaseFunctionsInstance.ensureAuthReady();
-      await Future.delayed(const Duration(milliseconds: 500));
-      
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) {
         throw Exception('User not authenticated');
       }
       
-      // CRITICAL: Force refresh auth token before EVERY call
       await currentUser.getIdToken(true);
       
       debugPrint('[AUTH DEBUG] UID: ${currentUser.uid}');
       debugPrint('[AUTH DEBUG] Token: ${await currentUser.getIdToken()}');
       debugPrint('[updateUserProfile] Payload: $userData');
 
-      final callable = _functions.httpsCallable(
+      
+      final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable(
         'updateUserProfile',
         options: HttpsCallableOptions(
           timeout: const Duration(seconds: 30),
@@ -118,16 +112,14 @@ class FunctionsService {
   Future<Map<String, dynamic>> createServiceRequest(Map<String, dynamic> requestData) async {
     _debugCheckParameters(requestData);
     try {
-      await FirebaseFunctionsInstance.ensureAuthReady();
-      await Future.delayed(const Duration(milliseconds: 500));
-      
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception("User not logged in");
       await user.getIdToken(true);
       debugPrint('[AUTH DEBUG] UID: ${user.uid}');
       debugPrint('[AUTH DEBUG] Token: ${await user.getIdToken()}');
       
-      HttpsCallable callable = _functions.httpsCallable('createCustomServiceRequest');
+      
+      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('createCustomServiceRequest');
       final result = await callable.call(requestData);
       return Map<String, dynamic>.from(result.data);
     } catch (e) {
@@ -138,15 +130,13 @@ class FunctionsService {
   // Payment System
   Future<Map<String, dynamic>> initiateRazorpayPayment(String bookingId) async {
     try {
-      await FirebaseFunctionsInstance.ensureAuthReady();
-      await Future.delayed(const Duration(milliseconds: 500));
-      
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception("User not logged in");
       await user.getIdToken(true);
       debugPrint('[AUTH DEBUG] UID: ${user.uid}');
       
-      HttpsCallable callable = _functions.httpsCallable('initiateRazorpayPayment');
+      
+      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('initiateRazorpayPayment');
       final result = await callable.call({'bookingId': bookingId});
       return Map<String, dynamic>.from(result.data);
     } catch (e) {
@@ -157,14 +147,12 @@ class FunctionsService {
   Future<void> verifyRazorpayPayment(Map<String, dynamic> paymentData) async {
     _debugCheckParameters(paymentData);
     try {
-      await FirebaseFunctionsInstance.ensureAuthReady();
-      await Future.delayed(const Duration(milliseconds: 500));
-      
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception("User not logged in");
       await user.getIdToken(true);
       
-      HttpsCallable callable = _functions.httpsCallable('verifyRazorpayPayment');
+      
+      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('verifyRazorpayPayment');
       await callable.call(paymentData);
     } catch (e) {
       rethrow;
@@ -174,14 +162,12 @@ class FunctionsService {
   // Referral System
   Future<Map<String, dynamic>> validateReferralCode(String code) async {
     try {
-      await FirebaseFunctionsInstance.ensureAuthReady();
-      await Future.delayed(const Duration(milliseconds: 500));
-      
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception("User not logged in");
       await user.getIdToken(true);
       
-      HttpsCallable callable = _functions.httpsCallable('validateReferralCode');
+      
+      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('validateReferralCode');
       final result = await callable.call({'code': code});
       return Map<String, dynamic>.from(result.data);
     } catch (e) {
@@ -192,14 +178,12 @@ class FunctionsService {
   // Booking Cancellation override
   Future<void> cancelBookingExtended(String bookingId, String reason) async {
     try {
-      await FirebaseFunctionsInstance.ensureAuthReady();
-      await Future.delayed(const Duration(milliseconds: 500));
-      
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception("User not logged in");
       await user.getIdToken(true);
       
-      HttpsCallable callable = _functions.httpsCallable('updateBookingStatusNew');
+      
+      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('updateBookingStatusNew');
       await callable.call({'bookingId': bookingId, 'status': 'cancelled', 'reason': reason});
     } catch (e) {
       rethrow;
@@ -209,14 +193,12 @@ class FunctionsService {
   // Service Rating
   Future<void> submitServiceRating(String bookingId, double rating, String comment) async {
     try {
-      await FirebaseFunctionsInstance.ensureAuthReady();
-      await Future.delayed(const Duration(milliseconds: 500));
-      
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception("User not logged in");
       await user.getIdToken(true);
       
-      HttpsCallable callable = _functions.httpsCallable('submitServiceRating');
+      
+      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('submitServiceRating');
       await callable.call({
         'bookingId': bookingId,
         'rating': rating,
@@ -230,14 +212,12 @@ class FunctionsService {
   // Support Request
   Future<void> submitSupportRequest(String category, String message) async {
     try {
-      await FirebaseFunctionsInstance.ensureAuthReady();
-      await Future.delayed(const Duration(milliseconds: 500));
-      
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception("User not logged in");
       await user.getIdToken(true);
       
-      HttpsCallable callable = _functions.httpsCallable('submitSupportRequest');
+      
+      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('submitSupportRequest');
       await callable.call({
         'category': category,
         'message': message,
@@ -249,7 +229,6 @@ class FunctionsService {
 
   // Matching Logic for Cleaning Essentials
   Future<Map<String, dynamic>> findEligibleTechniciansCount(String categoryId, Map<String, double> userLocation) async {
-    // Explicitly safe payload for location
     final safePayload = {
       'categoryId': categoryId,
       'userLocation': {
@@ -260,14 +239,12 @@ class FunctionsService {
     
     _debugCheckParameters(safePayload);
     try {
-      await FirebaseFunctionsInstance.ensureAuthReady();
-      await Future.delayed(const Duration(milliseconds: 500));
-      
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception("User not logged in");
       await user.getIdToken(true);
       
-      HttpsCallable callable = _functions.httpsCallable('findEligibleTechniciansCount');
+      
+      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('findEligibleTechniciansCount');
       final result = await callable.call(safePayload);
       return Map<String, dynamic>.from(result.data);
     } catch (e) {
@@ -278,7 +255,8 @@ class FunctionsService {
   // Save FCM Token securely
   Future<void> saveFcmToken(String token, String userType) async {
     try {
-      HttpsCallable callable = _functions.httpsCallable('saveFcmToken');
+      
+      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('saveFcmToken');
       await callable.call({
         'token': token,
         'userType': userType, // 'customer' or 'technician'
@@ -293,14 +271,12 @@ class FunctionsService {
   Future<Map<String, dynamic>> submitPartnerApplication(Map<String, dynamic> applicationData) async {
     _debugCheckParameters(applicationData);
     try {
-      await FirebaseFunctionsInstance.ensureAuthReady();
-      await Future.delayed(const Duration(milliseconds: 500));
-      
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception("User not logged in");
       await user.getIdToken(true);
       
-      HttpsCallable callable = _functions.httpsCallable('submitPartnerApplication');
+      
+      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('submitPartnerApplication');
       final result = await callable.call(applicationData);
       return Map<String, dynamic>.from(result.data);
     } catch (e) {
@@ -312,14 +288,12 @@ class FunctionsService {
   Future<Map<String, dynamic>> saveAddress(Map<String, dynamic> addressData) async {
     _debugCheckParameters(addressData);
     try {
-      await FirebaseFunctionsInstance.ensureAuthReady();
-      await Future.delayed(const Duration(milliseconds: 500));
-      
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception("User not logged in");
       await user.getIdToken(true);
       
-      HttpsCallable callable = _functions.httpsCallable('manageAddress');
+      
+      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('manageAddress');
       final result = await callable.call(addressData);
       return Map<String, dynamic>.from(result.data);
     } catch (e) {
@@ -335,7 +309,8 @@ class FunctionsService {
   Future<Map<String, dynamic>> createCustomServiceRequest(Map<String, dynamic> requestData) async {
     _debugCheckParameters(requestData);
     try {
-      HttpsCallable callable = _functions.httpsCallable('createCustomServiceRequest');
+      
+      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('createCustomServiceRequest');
       final result = await callable.call(requestData).timeout(
         const Duration(seconds: 30),
       );
@@ -348,14 +323,12 @@ class FunctionsService {
   /// Technician: Accept or Reject a custom request
   Future<Map<String, dynamic>> technicianRespondServiceRequest(String requestId, String action, {String? reason}) async {
     try {
-      await FirebaseFunctionsInstance.ensureAuthReady();
-      await Future.delayed(const Duration(milliseconds: 500));
-      
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception("User not logged in");
       await user.getIdToken(true);
       
-      HttpsCallable callable = _functions.httpsCallable('technicianRespondServiceRequest');
+      
+      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('technicianRespondServiceRequest');
       final result = await callable.call({
         'requestId': requestId,
         'action': action, // 'accept' or 'reject'
@@ -370,14 +343,12 @@ class FunctionsService {
   /// Customer: Confirm payment for custom request
   Future<Map<String, dynamic>> customerConfirmServicePayment(String requestId, String paymentMethod) async {
     try {
-      await FirebaseFunctionsInstance.ensureAuthReady();
-      await Future.delayed(const Duration(milliseconds: 500));
-      
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception("User not logged in");
       await user.getIdToken(true);
       
-      HttpsCallable callable = _functions.httpsCallable('customerConfirmServicePayment');
+      
+      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('customerConfirmServicePayment');
       final result = await callable.call({
         'requestId': requestId,
         'paymentMethod': paymentMethod, // 'now' or 'after_service'
@@ -391,14 +362,12 @@ class FunctionsService {
   /// Accept a proposal for a service request securely
   Future<Map<String, dynamic>> acceptProposal(String proposalId, String requestId) async {
     try {
-      await FirebaseFunctionsInstance.ensureAuthReady();
-      await Future.delayed(const Duration(milliseconds: 500));
-      
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception("User not logged in");
       await user.getIdToken(true);
       
-      HttpsCallable callable = _functions.httpsCallable('acceptProposal');
+      
+      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('acceptProposal');
       final result = await callable.call({
         'proposalId': proposalId,
         'requestId': requestId,

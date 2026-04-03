@@ -59,18 +59,15 @@ export default function CustomRequestsPage() {
 
   const filterRequests = () => {
     let filtered = [...requests];
-
     if (statusFilter !== 'all') {
       filtered = filtered.filter(r => r.status === statusFilter);
     }
-
     if (searchTerm) {
-      filtered = filtered.filter(r => 
+      filtered = filtered.filter(r =>
         r.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
         r.customerName?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
-
     setFilteredRequests(filtered);
   };
 
@@ -89,16 +86,13 @@ export default function CustomRequestsPage() {
         firestoreLimit(20)
       );
       const techSnapshot = await getDocs(techQuery);
-      let techs = techSnapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        ...doc.data() 
+      let techs = techSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
       })) as Array<{ id: string; district?: string; [key: string]: any }>;
-      
-      // Filter by district if available
       if (request.district) {
         techs = techs.filter(t => t.district === request.district);
       }
-      
       setAvailableTechnicians(techs);
       setShowAssignModal(true);
     } catch (error) {
@@ -167,68 +161,64 @@ export default function CustomRequestsPage() {
   };
 
   const formatStatus = (status: string): string => {
-    return status.split('_').map(word => 
+    return status.split('_').map(word =>
       word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ');
   };
 
   const columns: Column[] = [
-    { 
-      key: 'id', 
+    {
+      key: 'id',
       label: 'Request ID',
       sortable: true,
       render: (item) => (
-        <span className="text-sm font-mono text-gray-900">
-          {item.id.substring(0, 8)}
-        </span>
+        <span className="text-sm font-mono text-[#9CA3AF]">{item.id.substring(0, 8)}</span>
       )
     },
-    { 
-      key: 'customerName', 
+    {
+      key: 'customerName',
       label: 'Customer',
       render: (item) => (
-        <span className="text-sm text-gray-900">{item.customerName || 'N/A'}</span>
+        <span className="text-sm text-[#E5E7EB]">{item.customerName || 'N/A'}</span>
       )
     },
-    { 
-      key: 'description', 
+    {
+      key: 'description',
       label: 'Description',
       render: (item) => (
-        <span className="text-sm text-gray-900 truncate max-w-xs block">
-          {item.description || 'N/A'}
-        </span>
+        <span className="text-sm text-[#E5E7EB] truncate max-w-xs block">{item.description || 'N/A'}</span>
       )
     },
-    { 
-      key: 'category', 
+    {
+      key: 'category',
       label: 'Category',
       render: (item) => (
-        <span className="text-sm text-gray-600">{item.category || 'General'}</span>
+        <span className="text-sm text-[#9CA3AF]">{item.category || 'General'}</span>
       )
     },
-    { 
-      key: 'location', 
+    {
+      key: 'location',
       label: 'Location',
       render: (item) => (
-        <span className="text-sm text-gray-600">{item.district || item.city || 'N/A'}</span>
+        <span className="text-sm text-[#9CA3AF]">{item.district || item.city || 'N/A'}</span>
       )
     },
-    { 
-      key: 'createdAt', 
+    {
+      key: 'createdAt',
       label: 'Requested Date',
       render: (item) => {
-        const date = item.createdAt instanceof Timestamp 
+        const date = item.createdAt instanceof Timestamp
           ? item.createdAt.toDate().toLocaleDateString()
           : 'N/A';
-        return <span className="text-sm text-gray-600">{date}</span>;
+        return <span className="text-sm text-[#9CA3AF]">{date}</span>;
       }
     },
     {
       key: 'status',
       label: 'Status',
       render: (item) => (
-        <StatusBadge 
-          status={formatStatus(item.status || 'pending')} 
+        <StatusBadge
+          status={formatStatus(item.status || 'pending')}
           variant={getStatusVariant(item.status || 'pending')}
         />
       )
@@ -241,7 +231,7 @@ export default function CustomRequestsPage() {
         <div className="flex items-center gap-2 justify-end">
           <button
             onClick={() => handleViewDetails(item)}
-            className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+            className="px-3 py-1 text-xs bg-[#1F2937] text-[#9CA3AF] rounded-lg hover:bg-[#374151] hover:text-[#E5E7EB] transition-colors"
           >
             View
           </button>
@@ -249,7 +239,7 @@ export default function CustomRequestsPage() {
             <>
               <button
                 onClick={() => handleAssignTechnician(item)}
-                className="px-3 py-1 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                className="px-3 py-1 text-xs bg-[#6366F1] text-white rounded-lg hover:bg-[#4F46E5] transition-colors"
               >
                 Assign
               </button>
@@ -282,35 +272,33 @@ export default function CustomRequestsPage() {
       />
 
       {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <div className="bg-[#111827] rounded-xl p-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Search */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" size={16} />
             <input
               type="text"
               placeholder="Search by ID or customer name..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="w-full pl-9 pr-4 py-2 bg-[#1F2937] border border-[#374151] text-[#E5E7EB] placeholder-[#6B7280] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:border-transparent"
             />
             {searchTerm && (
               <button
                 onClick={() => setSearchTerm('')}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-[#9CA3AF]"
               >
-                <X size={18} />
+                <X size={14} />
               </button>
             )}
           </div>
 
-          {/* Status Filter */}
           <div className="relative">
-            <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" size={16} />
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent appearance-none bg-white"
+              className="w-full pl-9 pr-4 py-2 bg-[#1F2937] border border-[#374151] text-[#E5E7EB] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:border-transparent appearance-none"
             >
               <option value="all">All Status</option>
               <option value="pending">Pending</option>
@@ -321,17 +309,16 @@ export default function CustomRequestsPage() {
             </select>
           </div>
 
-          {/* Results Count */}
           <div className="flex items-center justify-end">
-            <span className="text-sm text-gray-600">
-              Showing {filteredRequests.length} of {requests.length} requests
+            <span className="text-sm text-[#6B7280]">
+              {filteredRequests.length} of {requests.length} requests
             </span>
           </div>
         </div>
       </div>
 
       {/* Requests Table */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="admin-card p-6">
         <DataTable
           columns={columns}
           data={filteredRequests}
@@ -342,79 +329,71 @@ export default function CustomRequestsPage() {
 
       {/* Request Details Modal */}
       {showDetailsModal && selectedRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-900">Request Details</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#111827] border border-[#1F2937] rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-[#111827] border-b border-[#1F2937] px-6 py-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-[#E5E7EB]">Request Details</h2>
               <button
                 onClick={() => setShowDetailsModal(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="p-1.5 text-[#6B7280] hover:text-[#E5E7EB] hover:bg-[#1F2937] rounded-lg transition-colors"
               >
-                <X size={24} />
+                <X size={18} />
               </button>
             </div>
-            <div className="p-6 space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-600">Request ID</p>
-                  <p className="text-sm font-medium text-gray-900">{selectedRequest.id}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Status</p>
-                  <StatusBadge 
-                    status={formatStatus(selectedRequest.status || 'pending')} 
+            <div className="p-6 space-y-5">
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: 'Request ID', value: selectedRequest.id },
+                  { label: 'Customer', value: selectedRequest.customerName },
+                  { label: 'Phone', value: selectedRequest.phone },
+                  { label: 'Category', value: selectedRequest.category || 'General' },
+                  { label: 'Requested Date', value: selectedRequest.createdAt instanceof Timestamp ? selectedRequest.createdAt.toDate().toLocaleString() : 'N/A' },
+                ].map(({ label, value }) => (
+                  <div key={label} className="bg-[#0F172A] rounded-lg p-3">
+                    <p className="text-xs text-[#6B7280] mb-1">{label}</p>
+                    <p className="text-sm font-medium text-[#E5E7EB]">{value || 'N/A'}</p>
+                  </div>
+                ))}
+                <div className="bg-[#0F172A] rounded-lg p-3">
+                  <p className="text-xs text-[#6B7280] mb-1">Status</p>
+                  <StatusBadge
+                    status={formatStatus(selectedRequest.status || 'pending')}
                     variant={getStatusVariant(selectedRequest.status || 'pending')}
                   />
                 </div>
-                <div>
-                  <p className="text-sm text-gray-600">Customer</p>
-                  <p className="text-sm font-medium text-gray-900">{selectedRequest.customerName || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Category</p>
-                  <p className="text-sm font-medium text-gray-900">{selectedRequest.category || 'General'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Phone</p>
-                  <p className="text-sm font-medium text-gray-900">{selectedRequest.phone || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Requested Date</p>
-                  <p className="text-sm font-medium text-gray-900">
-                    {selectedRequest.createdAt instanceof Timestamp 
-                      ? selectedRequest.createdAt.toDate().toLocaleString()
-                      : 'N/A'}
-                  </p>
-                </div>
               </div>
-              <div>
-                <p className="text-sm text-gray-600 mb-2">Description</p>
-                <p className="text-sm text-gray-900">{selectedRequest.description || 'N/A'}</p>
+
+              <div className="bg-[#0F172A] rounded-lg p-4">
+                <p className="text-xs text-[#6B7280] mb-2">Description</p>
+                <p className="text-sm text-[#E5E7EB] leading-relaxed">{selectedRequest.description || 'N/A'}</p>
               </div>
-              <div>
-                <p className="text-sm text-gray-600 mb-2">Address</p>
-                <p className="text-sm text-gray-900">
+
+              <div className="bg-[#0F172A] rounded-lg p-4">
+                <p className="text-xs text-[#6B7280] mb-2">Address</p>
+                <p className="text-sm text-[#E5E7EB] leading-relaxed">
                   {selectedRequest.address || 'N/A'}<br />
                   {selectedRequest.district}, {selectedRequest.state}<br />
                   {selectedRequest.pincode}
                 </p>
               </div>
+
               {selectedRequest.images && selectedRequest.images.length > 0 && (
                 <div>
-                  <p className="text-sm text-gray-600 mb-2">Uploaded Images</p>
+                  <p className="text-xs text-[#6B7280] mb-3">Uploaded Images</p>
                   <div className="grid grid-cols-3 gap-2">
                     {selectedRequest.images.map((img: string, idx: number) => (
-                      <div key={idx} className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center">
-                        <ImageIcon className="text-gray-400" size={32} />
+                      <div key={idx} className="aspect-square bg-[#1F2937] rounded-lg flex items-center justify-center">
+                        <ImageIcon className="text-[#374151]" size={28} />
                       </div>
                     ))}
                   </div>
                 </div>
               )}
+
               {selectedRequest.technicianName && (
-                <div>
-                  <p className="text-sm text-gray-600 mb-2">Assigned Technician</p>
-                  <p className="text-sm font-medium text-gray-900">{selectedRequest.technicianName}</p>
+                <div className="bg-[#0F172A] rounded-lg p-4">
+                  <p className="text-xs text-[#6B7280] mb-1">Assigned Technician</p>
+                  <p className="text-sm font-medium text-[#E5E7EB]">{selectedRequest.technicianName}</p>
                 </div>
               )}
             </div>
@@ -424,42 +403,42 @@ export default function CustomRequestsPage() {
 
       {/* Assign Technician Modal */}
       {showAssignModal && selectedRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-900">Assign Technician</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#111827] border border-[#1F2937] rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-[#111827] border-b border-[#1F2937] px-6 py-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-[#E5E7EB]">Assign Technician</h2>
               <button
                 onClick={() => setShowAssignModal(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="p-1.5 text-[#6B7280] hover:text-[#E5E7EB] hover:bg-[#1F2937] rounded-lg transition-colors"
               >
-                <X size={24} />
+                <X size={18} />
               </button>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-3">
               {availableTechnicians.length === 0 ? (
-                <p className="text-center text-gray-500 py-8">No available technicians found in this area</p>
+                <p className="text-center text-[#6B7280] py-10 text-sm">No available technicians found in this area</p>
               ) : (
                 availableTechnicians.map(tech => (
-                  <div key={tech.id} className="border border-gray-200 rounded-lg p-4 hover:border-indigo-500 transition-colors">
+                  <div key={tech.id} className="bg-[#0F172A] rounded-lg p-4 hover:bg-[#1F2937] transition-colors">
                     <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-900">{tech.name}</p>
-                        <div className="flex items-center gap-4 mt-1">
-                          <p className="text-sm text-gray-600">{tech.city || tech.district}</p>
-                          <p className="text-sm text-gray-600">Rating: {tech.rating || 'N/A'}</p>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-[#E5E7EB] text-sm">{tech.name}</p>
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
+                          <p className="text-xs text-[#6B7280]">{tech.city || tech.district}</p>
+                          <p className="text-xs text-[#6B7280]">Rating: {tech.rating || 'N/A'}</p>
                           {tech.experience && (
-                            <p className="text-sm text-gray-600">Exp: {tech.experience}</p>
+                            <p className="text-xs text-[#6B7280]">Exp: {tech.experience}</p>
                           )}
                         </div>
                         <div className="mt-2">
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-green-500/20 text-green-400">
                             Online & Available
                           </span>
                         </div>
                       </div>
                       <button
                         onClick={() => handleAssign(selectedRequest.id, tech.id)}
-                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                        className="ml-4 px-4 py-2 bg-[#6366F1] text-white rounded-lg hover:bg-[#4F46E5] transition-colors text-sm flex-shrink-0"
                       >
                         Assign
                       </button>
@@ -472,7 +451,6 @@ export default function CustomRequestsPage() {
         </div>
       )}
 
-      {/* Confirm Dialog */}
       <ConfirmDialog
         isOpen={confirmDialog.isOpen}
         title={confirmDialog.title}

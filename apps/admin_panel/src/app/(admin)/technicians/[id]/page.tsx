@@ -16,6 +16,8 @@ import { Badge } from '@/components/ui/Badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 
+export function generateStaticParams() { return []; }
+
 export default function TechnicianDetailPage() {
     const params = useParams();
     const router = useRouter();

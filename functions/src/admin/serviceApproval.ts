@@ -15,7 +15,7 @@ const db = admin.firestore();
  * Approve a technician service
  * Changes status from 'pending' to 'active'
  */
-export const approveService = functions.https.onCall(
+export const approveService = functions.region('asia-south1').https.onCall(
     async (request, context) => {
         if (!context.auth) {
             throw new functions.https.HttpsError("unauthenticated", "Admin authentication required");
@@ -70,7 +70,7 @@ export const approveService = functions.https.onCall(
  * Reject a technician service
  * Changes status from 'pending' to 'rejected'
  */
-export const rejectService = functions.https.onCall(
+export const rejectService = functions.region('asia-south1').https.onCall(
     async (request, context) => {
         if (!context.auth) {
             throw new functions.https.HttpsError("unauthenticated", "Admin authentication required");
@@ -126,7 +126,7 @@ export const rejectService = functions.https.onCall(
  * Disable an active service
  * Changes status from 'active' to 'disabled'
  */
-export const disableService = functions.https.onCall(
+export const disableService = functions.region('asia-south1').https.onCall(
     async (request, context) => {
         if (!context.auth) {
             throw new functions.https.HttpsError("unauthenticated", "Admin authentication required");

@@ -5,7 +5,7 @@ import { assertAdmin, logAdminAction } from './utils';
 
 import * as notify from '../shared/notification_helper';
 
-export const sendPushNotification = functions.https.onCall(async (data, context) => {
+export const sendPushNotification = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
     const { target, title, body, imageUrl } = data; // target: 'all' | 'customers' | 'technicians' | 'uid'
 

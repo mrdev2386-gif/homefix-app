@@ -10,6 +10,7 @@ import 'dart:convert';
 import 'booking_service.dart';
 import '../../screens/job_details_screen.dart';
 import '../../main.dart';
+import '../firebase/firebase_functions.dart';
 
 // ==========================================
 // NOTIFICATION MODEL
@@ -192,7 +193,7 @@ class NotificationsService extends ChangeNotifier {
     try {
       final token = await _messaging!.getToken();
       if (token != null) {
-        final callable = FirebaseFunctions.instance.httpsCallable('removeFcmToken');
+        final callable = FirebaseFunctionsService.instance.httpsCallable('removeFcmToken');
         await callable.call({
           'token': token,
           'userType': 'technician',
@@ -209,7 +210,7 @@ class NotificationsService extends ChangeNotifier {
       // PHASE 3: Generate idempotency key for token save
       final idempotencyKey = '${token}_${DateTime.now().millisecondsSinceEpoch}';
       
-      final callable = FirebaseFunctions.instance.httpsCallable('saveFcmToken');
+      final callable = FirebaseFunctionsService.instance.httpsCallable('saveFcmToken');
       await callable.call({
         'token': token,
         'platform': defaultTargetPlatform.toString().split('.').last,
@@ -311,7 +312,7 @@ class NotificationsService extends ChangeNotifier {
 
   Future<void> markAsRead(String notificationId) async {
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('markNotificationRead');
+      final callable = FirebaseFunctionsService.instance.httpsCallable('markNotificationRead');
       await callable.call({'notificationId': notificationId});
     } catch (e) {
       debugPrint('[Notifications] Mark read error: $e');
@@ -320,7 +321,7 @@ class NotificationsService extends ChangeNotifier {
 
   Future<void> markAllAsRead() async {
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('markAllNotificationsRead');
+      final callable = FirebaseFunctionsService.instance.httpsCallable('markAllNotificationsRead');
       await callable.call();
     } catch (e) {
       debugPrint('[Notifications] Mark all read error: $e');
@@ -329,7 +330,7 @@ class NotificationsService extends ChangeNotifier {
 
   Future<void> deleteNotification(String notificationId) async {
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('deleteNotificationCallable');
+      final callable = FirebaseFunctionsService.instance.httpsCallable('deleteNotificationCallable');
       await callable.call({'notificationId': notificationId});
     } catch (e) {
       debugPrint('[Notifications] Delete error: $e');

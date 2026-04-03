@@ -114,7 +114,9 @@ async function createRazorpayOrderDoc(
  * 
  * Called by: Technician app to add money to wallet
  */
-export const createRazorpayOrder = functions.https.onCall(
+export const createRazorpayOrder = functions
+  .region('asia-south1')
+  .https.onCall(
     secureCallable(async (data, context) => {
     // Authentication check
     if (!context.auth) {
@@ -208,7 +210,9 @@ export const createRazorpayOrder = functions.https.onCall(
  * 
  * Called by: Customer app after work completion
  */
-export const createPaymentOrder = functions.https.onCall(
+export const createPaymentOrder = functions
+  .region('asia-south1')
+  .https.onCall(
     secureCallable(async (data, context) => {
     // Authentication check
     if (!context.auth) {
@@ -614,7 +618,9 @@ async function handlePaymentFailed(payload: any) {
  * This is a fallback in case webhook fails or is delayed
  * Still verifies signature for security
  */
-export const verifyPayment = functions.https.onCall(
+export const verifyPayment = functions
+  .region('asia-south1')
+  .https.onCall(
     secureCallable(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
@@ -735,7 +741,9 @@ export const verifyPayment = functions.https.onCall(
 /**
  * Initiate refund (Admin only)
  */
-export const initiateRefund = functions.https.onCall(
+export const initiateRefund = functions
+  .region('asia-south1')
+  .https.onCall(
     secureCallable(async (data, context) => {
     // Check admin authentication
     if (!context.auth || !context.auth.token.admin) {

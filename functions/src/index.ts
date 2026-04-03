@@ -8,6 +8,7 @@ if (!admin.apps.length) {
 console.log("BOOT OK - Functions loading...");
 
 import * as testing from './testing';
+import { testAuth } from './testing/testAuth';
 import { getAppConfig } from './shared/config';
 import * as crypto from 'crypto';
 
@@ -413,7 +414,7 @@ export const onPaymentStatusRiskCheck = fraudProtection.onPaymentStatusRiskCheck
 export const onTechnicianProfileUpdateRiskCheck = fraudProtection.onTechnicianProfileUpdateRiskCheck;
 
 // SMART MATCHING V2
-export const assignTechnicianToBooking = functions.https.onCall(
+export const assignTechnicianToBooking = functions.region('asia-south1').https.onCall(
     async (data, context) => {
         if (!context.auth) {
             throw new functions.https.HttpsError('unauthenticated', 'Authentication required');
@@ -440,7 +441,7 @@ export const respondToAssignment = handleAssignmentResponse;
  * Saves FCM token for a user (customer or technician)
  * Supports multiple devices by storing tokens in a subcollection
  */
-export const saveFcmToken = functions.https.onCall(
+export const saveFcmToken = functions.region('asia-south1').https.onCall(
     async (data, context) => {
         const uid = context.auth?.uid;
         if (!uid) {
@@ -484,7 +485,7 @@ export const saveFcmToken = functions.https.onCall(
  * Removes FCM token for a user
  * Called on logout or token refresh
  */
-export const removeFcmToken = functions.https.onCall(
+export const removeFcmToken = functions.region('asia-south1').https.onCall(
     async (data, context) => {
         const uid = context.auth?.uid;
         if (!uid) {
@@ -593,3 +594,9 @@ export const getOrCreateChat = chat.getOrCreateChat;
 export const sendChatMessage = chat.sendChatMessage;
 export const markMessagesRead = chat.markMessagesRead;
 export const getChatDetails = chat.getChatDetails;
+
+// ==========================================
+// DEBUG & TESTING
+// ==========================================
+
+export { testAuth };

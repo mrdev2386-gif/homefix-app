@@ -60,6 +60,8 @@ const formatDateTime = (timestamp: any) => {
   } catch { return '-'; }
 };
 
+export function generateStaticParams() { return []; }
+
 export default function BookingDetailsPage() {
   const params = useParams();
   const router = useRouter();

@@ -6,7 +6,7 @@ import { assertAuthenticated } from '../shared/security';
 
 const db = admin.firestore();
 
-export const bindDevice = functions.https.onCall(async (data, context) => {
+export const bindDevice = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
     const { deviceId, deviceInfo } = data;

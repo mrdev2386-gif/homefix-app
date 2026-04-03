@@ -2,13 +2,10 @@ import 'dart:async';
 import 'dart:developer' as developer;
 import 'package:cloud_functions/cloud_functions.dart';
 import '../models/matched_technician.dart';
-import '../firebase/firebase_functions_instance.dart';
+import 'functions_helper.dart';
 
 /// Edge case protection for matching operations
 class MatchingService {
-  FirebaseFunctions get _functions => FirebaseFunctionsInstance.instance;
-  
-  // Prevent duplicate matching requests
   bool _isMatchingInProgress = false;
   int _matchingAttempts = 0;
   static const int _maxMatchingAttempts = 3;
@@ -60,7 +57,7 @@ class MatchingService {
 
     // Call the Cloud Function V2 with timeout
     try {
-      final callable = _functions.httpsCallable('matchTechniciansV2');
+      final callable = await FunctionsHelper.getCallable('matchTechniciansV2');
       final result = await callable.call(<String, dynamic>{
         'serviceId': serviceId,
         if (subServiceId != null) 'subServiceId': subServiceId,

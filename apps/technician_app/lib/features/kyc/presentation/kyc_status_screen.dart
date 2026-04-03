@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:cloud_functions/cloud_functions.dart';
+import 'package:cloud_functions/cloud_functions.dart';`nimport '../../../core/firebase/firebase_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:io';
 import '../../../core/providers/technician_provider.dart';
@@ -76,7 +76,7 @@ class _KycStatusScreenState extends State<KycStatusScreen> {
         await selfieRef.putFile(_selfie!);
         final selfieUrl = await selfieRef.getDownloadURL();
 
-        final callable = FirebaseFunctions.instance.httpsCallable('submitKYC');
+        final callable = FirebaseFunctionsService.instance.httpsCallable('submitKYC');
         await callable.call({
             'fullName': _nameController.text.trim(),
             'aadharNumber': _aadharController.text.trim(),
@@ -239,3 +239,5 @@ class _KycStatusScreenState extends State<KycStatusScreen> {
     );
   }
 }
+
+

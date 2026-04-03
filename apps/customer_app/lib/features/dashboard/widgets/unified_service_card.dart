@@ -81,12 +81,11 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
       elevation: 3,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       margin: widget.isGrid ? EdgeInsets.zero : const EdgeInsets.only(right: 12),
-      child: Container(
+      child: SizedBox(
         width: widget.isGrid ? null : 170,
-        height: 320,
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(18)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
             // IMAGE SECTION
             GestureDetector(
@@ -279,13 +278,12 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
               ),
             ),
 
-            // CONTENT SECTION - Fixed overflow by using proper constraints
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+            // CONTENT SECTION
+            Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       service.title,
@@ -323,34 +321,31 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
                       ],
                     ),
 
-                    const SizedBox(height: 6),
-
                     if (service.technicianDistrict != null &&
-                        service.technicianDistrict!.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.blue.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                          child: Text(
-                            service.technicianDistrict!.toUpperCase(),
-                            style: GoogleFonts.outfit(
-                              fontSize: 8,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.blue[700],
-                              letterSpacing: 0.3,
-                            ),
+                        service.technicianDistrict!.isNotEmpty) ...[  
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: Text(
+                          service.technicianDistrict!.toUpperCase(),
+                          style: GoogleFonts.outfit(
+                            fontSize: 8,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.blue[700],
+                            letterSpacing: 0.3,
                           ),
                         ),
                       ),
+                    ],
 
-                    const Spacer(),
+                    const SizedBox(height: 6),
 
                     SizedBox(
                       width: double.infinity,
@@ -378,7 +373,6 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
                   ],
                 ),
               ),
-            ),
           ],
         ),
       ),

@@ -20,9 +20,11 @@ export default function TechniciansPage() {
     isOpen: boolean;
     title: string;
     message: string;
-    onConfirm: () => void;
+    onConfirm: (inputValue?: string) => void;
     variant?: 'default' | 'danger';
     requireInput?: boolean;
+    inputLabel?: string;
+    inputPlaceholder?: string;
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   useEffect(() => {
@@ -57,7 +59,6 @@ export default function TechniciansPage() {
 
   const filterTechnicians = () => {
     let filtered = [...technicians];
-
     if (statusFilter !== 'all') {
       if (statusFilter === 'active') {
         filtered = filtered.filter(t => t.isOnline === true && !t.suspended);
@@ -67,21 +68,17 @@ export default function TechniciansPage() {
         filtered = filtered.filter(t => t.suspended === true);
       }
     }
-
     if (searchTerm) {
-      filtered = filtered.filter(t => 
+      filtered = filtered.filter(t =>
         t.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         t.phone?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
-
     setFilteredTechnicians(filtered);
   };
 
   const handleViewDetails = async (technician: any) => {
     setSelectedTechnician(technician);
-    
-    // Fetch recent bookings for this technician
     try {
       const bookingsQuery = query(
         collection(db, 'bookings'),
@@ -96,7 +93,6 @@ export default function TechniciansPage() {
       console.error('Error fetching bookings:', error);
       setRecentBookings([]);
     }
-    
     setShowDetailsModal(true);
   };
 
@@ -140,79 +136,75 @@ export default function TechniciansPage() {
   };
 
   const getTechnicianStatus = (tech: any): { status: string; variant: 'success' | 'warning' | 'error' | 'info' | 'default' } => {
-    if (tech.suspended) {
-      return { status: 'Suspended', variant: 'error' };
-    }
-    if (tech.isOnline) {
-      return { status: 'Active', variant: 'success' };
-    }
+    if (tech.suspended) return { status: 'Suspended', variant: 'error' };
+    if (tech.isOnline) return { status: 'Active', variant: 'success' };
     return { status: 'Offline', variant: 'default' };
   };
 
   const columns: Column[] = [
-    { 
-      key: 'name', 
+    {
+      key: 'name',
       label: 'Technician Name',
       sortable: true,
       render: (item) => (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           {item.profileImageUrl ? (
             <img src={item.profileImageUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
-              <User size={16} className="text-indigo-600" />
+            <div className="w-8 h-8 rounded-full bg-[#6366F1]/20 flex items-center justify-center flex-shrink-0">
+              <User size={14} className="text-[#6366F1]" />
             </div>
           )}
-          <span className="text-sm font-medium text-gray-900">{item.name || 'N/A'}</span>
+          <span className="text-sm font-medium text-[#E5E7EB]">{item.name || 'N/A'}</span>
         </div>
       )
     },
-    { 
-      key: 'phone', 
+    {
+      key: 'phone',
       label: 'Phone Number',
       render: (item) => (
-        <span className="text-sm text-gray-900">{item.phone || 'N/A'}</span>
+        <span className="text-sm text-[#E5E7EB]">{item.phone || 'N/A'}</span>
       )
     },
-    { 
-      key: 'skills', 
+    {
+      key: 'skills',
       label: 'Service Categories',
       render: (item) => (
-        <span className="text-sm text-gray-600">
+        <span className="text-sm text-[#9CA3AF]">
           {Array.isArray(item.skills) ? item.skills.slice(0, 2).join(', ') : item.skills || 'N/A'}
           {Array.isArray(item.skills) && item.skills.length > 2 && ` +${item.skills.length - 2}`}
         </span>
       )
     },
-    { 
-      key: 'city', 
+    {
+      key: 'city',
       label: 'City',
       render: (item) => (
-        <span className="text-sm text-gray-600">{item.city || item.district || 'N/A'}</span>
+        <span className="text-sm text-[#9CA3AF]">{item.city || item.district || 'N/A'}</span>
       )
     },
-    { 
-      key: 'rating', 
+    {
+      key: 'rating',
       label: 'Rating',
       render: (item) => (
         <div className="flex items-center gap-1">
-          <Star size={14} className="text-yellow-500 fill-yellow-500" />
-          <span className="text-sm font-medium text-gray-900">{item.rating?.toFixed(1) || '0.0'}</span>
+          <Star size={13} className="text-yellow-500 fill-yellow-500" />
+          <span className="text-sm font-medium text-[#E5E7EB]">{item.rating?.toFixed(1) || '0.0'}</span>
         </div>
       )
     },
-    { 
-      key: 'completedJobs', 
+    {
+      key: 'completedJobs',
       label: 'Completed Jobs',
       render: (item) => (
-        <span className="text-sm text-gray-900">{item.completedJobs || 0}</span>
+        <span className="text-sm text-[#E5E7EB]">{item.completedJobs || 0}</span>
       )
     },
-    { 
-      key: 'walletBalance', 
+    {
+      key: 'walletBalance',
       label: 'Wallet Balance',
       render: (item) => (
-        <span className="text-sm font-medium text-gray-900">₹{item.walletBalance || 0}</span>
+        <span className="text-sm font-medium text-[#E5E7EB]">₹{item.walletBalance || 0}</span>
       )
     },
     {
@@ -231,7 +223,7 @@ export default function TechniciansPage() {
         <div className="flex items-center gap-2 justify-end">
           <button
             onClick={() => handleViewDetails(item)}
-            className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+            className="px-3 py-1 text-xs bg-[#1F2937] text-[#9CA3AF] rounded-lg hover:bg-[#374151] hover:text-[#E5E7EB] transition-colors"
           >
             View
           </button>
@@ -263,30 +255,30 @@ export default function TechniciansPage() {
       />
 
       {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <div className="bg-[#111827] rounded-xl p-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" size={16} />
             <input
               type="text"
               placeholder="Search by name or phone..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="w-full pl-9 pr-4 py-2 bg-[#1F2937] border border-[#374151] text-[#E5E7EB] placeholder-[#6B7280] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:border-transparent"
             />
             {searchTerm && (
-              <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                <X size={18} />
+              <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280] hover:text-[#9CA3AF]">
+                <X size={14} />
               </button>
             )}
           </div>
 
           <div className="relative">
-            <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" size={16} />
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent appearance-none bg-white"
+              className="w-full pl-9 pr-4 py-2 bg-[#1F2937] border border-[#374151] text-[#E5E7EB] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#6366F1] focus:border-transparent appearance-none"
             >
               <option value="all">All Status</option>
               <option value="active">Active</option>
@@ -296,42 +288,42 @@ export default function TechniciansPage() {
           </div>
 
           <div className="flex items-center justify-end">
-            <span className="text-sm text-gray-600">
-              Showing {filteredTechnicians.length} of {technicians.length} technicians
+            <span className="text-sm text-[#6B7280]">
+              {filteredTechnicians.length} of {technicians.length} technicians
             </span>
           </div>
         </div>
       </div>
 
       {/* Technicians Table */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="admin-card p-6">
         <DataTable columns={columns} data={filteredTechnicians} loading={loading} emptyMessage="No technicians found" />
       </div>
 
       {/* Technician Details Modal */}
       {showDetailsModal && selectedTechnician && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-900">Technician Details</h2>
-              <button onClick={() => setShowDetailsModal(false)} className="text-gray-400 hover:text-gray-600">
-                <X size={24} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#111827] border border-[#1F2937] rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-[#111827] border-b border-[#1F2937] px-6 py-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-[#E5E7EB]">Technician Details</h2>
+              <button onClick={() => setShowDetailsModal(false)} className="p-1.5 text-[#6B7280] hover:text-[#E5E7EB] hover:bg-[#1F2937] rounded-lg transition-colors">
+                <X size={18} />
               </button>
             </div>
             <div className="p-6 space-y-6">
               {/* Profile Section */}
-              <div className="flex items-start gap-6">
+              <div className="flex items-start gap-5">
                 {selectedTechnician.profileImageUrl ? (
-                  <img src={selectedTechnician.profileImageUrl} alt="" className="w-24 h-24 rounded-full object-cover" />
+                  <img src={selectedTechnician.profileImageUrl} alt="" className="w-20 h-20 rounded-full object-cover flex-shrink-0" />
                 ) : (
-                  <div className="w-24 h-24 rounded-full bg-indigo-100 flex items-center justify-center">
-                    <User size={48} className="text-indigo-600" />
+                  <div className="w-20 h-20 rounded-full bg-[#6366F1]/20 flex items-center justify-center flex-shrink-0">
+                    <User size={36} className="text-[#6366F1]" />
                   </div>
                 )}
-                <div className="flex-1">
-                  <h3 className="text-2xl font-bold text-gray-900">{selectedTechnician.name}</h3>
-                  <p className="text-gray-600">{selectedTechnician.phone}</p>
-                  <p className="text-gray-600">{selectedTechnician.email || 'N/A'}</p>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-xl font-bold text-[#E5E7EB]">{selectedTechnician.name}</h3>
+                  <p className="text-sm text-[#9CA3AF] mt-0.5">{selectedTechnician.phone}</p>
+                  <p className="text-sm text-[#9CA3AF]">{selectedTechnician.email || 'N/A'}</p>
                   <div className="mt-2">
                     {(() => {
                       const { status, variant } = getTechnicianStatus(selectedTechnician);
@@ -343,96 +335,83 @@ export default function TechniciansPage() {
 
               {/* Service Info */}
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Service Information</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-600">Service Categories</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {Array.isArray(selectedTechnician.skills) ? selectedTechnician.skills.join(', ') : selectedTechnician.skills || 'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Experience</p>
-                    <p className="text-sm font-medium text-gray-900">{selectedTechnician.experience || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">City</p>
-                    <p className="text-sm font-medium text-gray-900">{selectedTechnician.city || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">District</p>
-                    <p className="text-sm font-medium text-gray-900">{selectedTechnician.district || 'N/A'}</p>
-                  </div>
+                <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider mb-3">Service Information</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: 'Service Categories', value: Array.isArray(selectedTechnician.skills) ? selectedTechnician.skills.join(', ') : selectedTechnician.skills },
+                    { label: 'Experience', value: selectedTechnician.experience },
+                    { label: 'City', value: selectedTechnician.city },
+                    { label: 'District', value: selectedTechnician.district },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="bg-[#0F172A] rounded-lg p-3">
+                      <p className="text-xs text-[#6B7280] mb-1">{label}</p>
+                      <p className="text-sm font-medium text-[#E5E7EB]">{value || 'N/A'}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
 
               {/* Performance Metrics */}
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Performance Metrics</h3>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="bg-gray-50 p-4 rounded-lg">
+                <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider mb-3">Performance Metrics</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-[#0F172A] rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-2">
-                      <Star size={20} className="text-yellow-500" />
-                      <p className="text-sm text-gray-600">Average Rating</p>
+                      <Star size={16} className="text-yellow-500" />
+                      <p className="text-xs text-[#6B7280]">Avg Rating</p>
                     </div>
-                    <p className="text-2xl font-bold text-gray-900">{selectedTechnician.rating?.toFixed(1) || '0.0'}</p>
+                    <p className="text-2xl font-bold text-[#E5E7EB]">{selectedTechnician.rating?.toFixed(1) || '0.0'}</p>
                   </div>
-                  <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="bg-[#0F172A] rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-2">
-                      <Calendar size={20} className="text-indigo-600" />
-                      <p className="text-sm text-gray-600">Completed Jobs</p>
+                      <Calendar size={16} className="text-[#6366F1]" />
+                      <p className="text-xs text-[#6B7280]">Completed Jobs</p>
                     </div>
-                    <p className="text-2xl font-bold text-gray-900">{selectedTechnician.completedJobs || 0}</p>
+                    <p className="text-2xl font-bold text-[#E5E7EB]">{selectedTechnician.completedJobs || 0}</p>
                   </div>
-                  <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="bg-[#0F172A] rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-2">
-                      <Wallet size={20} className="text-green-600" />
-                      <p className="text-sm text-gray-600">Wallet Balance</p>
+                      <Wallet size={16} className="text-green-500" />
+                      <p className="text-xs text-[#6B7280]">Wallet Balance</p>
                     </div>
-                    <p className="text-2xl font-bold text-gray-900">₹{selectedTechnician.walletBalance || 0}</p>
+                    <p className="text-2xl font-bold text-[#E5E7EB]">₹{selectedTechnician.walletBalance || 0}</p>
                   </div>
                 </div>
               </div>
 
               {/* Recent Bookings */}
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Bookings</h3>
+                <p className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider mb-3">Recent Bookings</p>
                 {recentBookings.length > 0 ? (
                   <div className="space-y-2">
                     {recentBookings.map((booking) => (
-                      <div key={booking.id} className="border border-gray-200 rounded-lg p-3 flex items-center justify-between">
+                      <div key={booking.id} className="bg-[#0F172A] rounded-lg px-4 py-3 flex items-center justify-between">
                         <div>
-                          <p className="text-sm font-medium text-gray-900">{booking.serviceType || 'N/A'}</p>
-                          <p className="text-xs text-gray-600">{booking.customerName || 'N/A'}</p>
+                          <p className="text-sm font-medium text-[#E5E7EB]">{booking.serviceType || 'N/A'}</p>
+                          <p className="text-xs text-[#6B7280]">{booking.customerName || 'N/A'}</p>
                         </div>
                         <StatusBadge status={booking.status} variant="info" />
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-500 text-center py-4">No recent bookings</p>
+                  <p className="text-sm text-[#6B7280] text-center py-6 bg-[#0F172A] rounded-lg">No recent bookings</p>
                 )}
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center gap-3 pt-4 border-t border-gray-200">
+              <div className="flex items-center gap-3 pt-2">
                 {selectedTechnician.suspended ? (
                   <button
-                    onClick={() => {
-                      setShowDetailsModal(false);
-                      handleActivate(selectedTechnician.id);
-                    }}
-                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                    onClick={() => { setShowDetailsModal(false); handleActivate(selectedTechnician.id); }}
+                    className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
                   >
                     Activate Technician
                   </button>
                 ) : (
                   <button
-                    onClick={() => {
-                      setShowDetailsModal(false);
-                      handleSuspend(selectedTechnician.id);
-                    }}
-                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                    onClick={() => { setShowDetailsModal(false); handleSuspend(selectedTechnician.id); }}
+                    className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
                   >
                     Suspend Technician
                   </button>
@@ -443,7 +422,6 @@ export default function TechniciansPage() {
         </div>
       )}
 
-      {/* Confirm Dialog */}
       <ConfirmDialog
         isOpen={confirmDialog.isOpen}
         title={confirmDialog.title}

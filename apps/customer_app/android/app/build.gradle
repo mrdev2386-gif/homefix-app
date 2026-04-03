@@ -58,6 +58,18 @@ flutter {
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
-    implementation platform('com.google.firebase:firebase-bom:32.7.0')
-    implementation 'com.google.firebase:firebase-appcheck-debug'
+    
+    // Firebase BOM - manages all Firebase versions
+    implementation platform('com.google.firebase:firebase-bom:33.5.1')
+    
+    // Firebase dependencies (versions managed by BOM)
+    implementation 'com.google.firebase:firebase-auth'
+    implementation 'com.google.firebase:firebase-firestore'
+    implementation 'com.google.firebase:firebase-functions'
+    implementation 'com.google.firebase:firebase-messaging'
+    implementation 'com.google.firebase:firebase-storage'
+    // App Check REMOVED for debugging UNAUTHENTICATED errors
+    
+    // Google Play Services
+    implementation 'com.google.android.gms:play-services-auth:21.0.1'
 }

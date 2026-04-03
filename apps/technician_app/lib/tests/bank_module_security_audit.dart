@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../core/firebase/firebase_functions.dart';
 
 /// PRODUCTION SECURITY AUDIT - Technician Bank Module
 class BankModuleSecurityAudit {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
+  final FirebaseFunctions _functions = FirebaseFunctionsService.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   
   final List<String> _results = [];
@@ -154,8 +155,8 @@ class BankModuleSecurityAudit {
     _results.add('\n=== STEP 4: REGION ===');
     
     final region = _functions.toString();
-    if (region.contains('us-central1')) {
-      _results.add('✅ PASS: Using us-central1');
+    if (region.contains('asia-south1')) {
+      _results.add('✅ PASS: Using asia-south1');
       return true;
     } else {
       _results.add('❌ FAIL: Wrong region');

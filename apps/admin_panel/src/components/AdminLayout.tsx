@@ -6,7 +6,7 @@ import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 
 const pageTitles: Record<string, string> = {
-  '/dashboard': 'Dashboard',
+  '/admin': 'Dashboard',
   '/bookings': 'Bookings',
   '/custom-requests': 'Custom Requests',
   '/applications': 'Technician Applications',

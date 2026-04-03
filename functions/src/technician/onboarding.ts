@@ -35,7 +35,7 @@ const ADMIN_ONLY_FIELDS = [
  * Create or update technician profile draft
  * Called after successful Phone OTP verification
  */
-export const createTechnicianProfile = functions.https.onCall(async (data, context) => {
+export const createTechnicianProfile = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
     const { phone, email } = data;
@@ -138,7 +138,7 @@ export const createTechnicianProfile = functions.https.onCall(async (data, conte
  * 
  * Stage progression: draft/phone → basicDetails → documents
  */
-export const saveTechnicianBasicDetails = functions.https.onCall(async (data, context) => {
+export const saveTechnicianBasicDetails = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
     const { fullName, email, district, experienceYears } = data;
@@ -261,7 +261,7 @@ export const saveTechnicianBasicDetails = functions.https.onCall(async (data, co
 /**
  * Save documents/KYC during onboarding
  */
-export const saveTechnicianDocuments = functions.https.onCall(async (data, context) => {
+export const saveTechnicianDocuments = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
     const {
@@ -340,7 +340,7 @@ export const saveTechnicianDocuments = functions.https.onCall(async (data, conte
 /**
  * Save service/category selection during onboarding
  */
-export const saveTechnicianServices = functions.https.onCall(async (data, context) => {
+export const saveTechnicianServices = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
     const { categoryId, categoryName, skills } = data;
@@ -409,7 +409,7 @@ export const saveTechnicianServices = functions.https.onCall(async (data, contex
  * Submit KYC application for admin approval
  * CRITICAL: This transitions the technician from onboarding to pending review
  */
-export const submitTechnicianKyc = functions.https.onCall(async (data, context) => {
+export const submitTechnicianKyc = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
 
@@ -473,7 +473,7 @@ export const submitTechnicianKyc = functions.https.onCall(async (data, context) 
  * Update technician profile after initial creation
  * Used for profile updates (not onboarding)
  */
-export const updateTechnicianProfile = functions.https.onCall(async (data, context) => {
+export const updateTechnicianProfile = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
     const { updates } = data;
@@ -524,7 +524,7 @@ export const updateTechnicianProfile = functions.https.onCall(async (data, conte
 /**
  * Update technician online status
  */
-export const updateTechnicianStatus = functions.https.onCall(async (data, context) => {
+export const updateTechnicianStatus = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
     const { isOnline } = data;
@@ -579,7 +579,7 @@ export const updateTechnicianStatus = functions.https.onCall(async (data, contex
  * Save technician step data (generic step saver)
  * Used for flexible onboarding step updates
  */
-export const saveTechnicianStepData = functions.https.onCall(async (data, context) => {
+export const saveTechnicianStepData = functions.region('asia-south1').https.onCall(async (data, context) => {
     assertAuthenticated(context);
     const uid = context.auth!.uid;
     const { step, stepName, stepKey, data: updateData } = data;

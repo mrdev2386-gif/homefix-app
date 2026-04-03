@@ -6,7 +6,7 @@ import { assertAdmin, logAdminAction } from './utils';
 
 import { sendPushNotification } from '../shared/notifications'; // Ensure this exists
 
-export const adminManageBooking = functions.https.onCall(async (data, context) => {
+export const adminManageBooking = functions.region('asia-south1').https.onCall(async (data, context) => {
     try {
         await assertAdmin(context);
         const { bookingId, action, payload } = data; // action: 'assign' | 'reassign' | 'cancel'

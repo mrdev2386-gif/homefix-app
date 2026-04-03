@@ -32,7 +32,7 @@ interface AuditResult {
  * Audits the complete service catalog
  * Admin-only, read-only operation
  */
-export const admin_auditServiceCatalog = functions.https.onCall(
+export const admin_auditServiceCatalog = functions.region('asia-south1').https.onCall(
     async (data, context): Promise<AuditResult> => {
         // 1. Enforce admin-only access
         await assertAdmin(context);

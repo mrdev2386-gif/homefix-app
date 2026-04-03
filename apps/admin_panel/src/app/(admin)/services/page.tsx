@@ -140,7 +140,7 @@ export default function TechnicianServicesPage() {
       const servicesData: TechnicianService[] = [];
       
       for (const serviceDoc of snapshot.docs) {
-        const serviceData = serviceDoc.data();
+        const serviceData = serviceDoc.data() as Record<string, any>;
         
         debugLog(`Resolving service ${serviceDoc.id}:`, {
           technicianId: serviceData.technicianId || 'missing',

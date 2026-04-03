@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/models/address.dart';
 import '../../core/services/firestore_service.dart';
 import 'package:provider/provider.dart';
+import '../../core/services/functions_helper.dart';
 
 class UrgentBookingScreen extends StatefulWidget {
   const UrgentBookingScreen({super.key});
@@ -347,14 +348,14 @@ class _UrgentBookingScreenState extends State<UrgentBookingScreen> {
         builder: (context) => const Center(child: CircularProgressIndicator()),
       );
 
-      // Use Cloud Function instead of direct Firestore write
-      final callable = FirebaseFunctions.instance.httpsCallable('createUrgentBooking');
+      final callable = await FunctionsHelper.getCallable('createBookingRequest');
       await callable.call({
         'technicianId': techId,
         'technicianName': techData['name'] ?? 'Unknown',
         'serviceType': (techData['skills'] as List<dynamic>?)?.first ?? 'General Service',
         'district': _userDistrict,
         'urgentFee': 100,
+        'isUrgent': true,
       });
 
       if (mounted) {

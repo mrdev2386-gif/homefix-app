@@ -48,12 +48,19 @@ const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
 // ==========================================
 // 1️⃣ ADMIN APPROVE BOOKING
 // ==========================================
-export const approveBookingByAdmin = functions.https.onCall(
+export const approveBookingByAdmin = functions
+  .region('asia-south1')
+  .https.onCall(
     secureCallable(async (data, context) => {
+        console.log('✅ [approveBookingByAdmin] Auth UID:', context.auth?.uid);
+        
         const { bookingId } = data;
         const uid = context.auth?.uid;
 
-        if (!uid) throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
+        if (!uid) {
+          console.error('❌ [approveBookingByAdmin] context.auth is NULL');
+          throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
+        }
         if (!bookingId) throw new functions.https.HttpsError('invalid-argument', 'bookingId required');
 
         const adminDoc = await db.collection('admins').doc(uid).get();
@@ -123,12 +130,19 @@ export const approveBookingByAdmin = functions.https.onCall(
 // ==========================================
 // 2️⃣ TECHNICIAN ACCEPT BOOKING
 // ==========================================
-export const technicianAcceptBooking = functions.https.onCall(
+export const technicianAcceptBooking = functions
+  .region('asia-south1')
+  .https.onCall(
     secureCallable(async (data, context) => {
+        console.log('✅ [technicianAcceptBooking] Auth UID:', context.auth?.uid);
+        
         const { bookingId } = data;
         const uid = context.auth?.uid;
 
-        if (!uid) throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
+        if (!uid) {
+          console.error('❌ [technicianAcceptBooking] context.auth is NULL');
+          throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
+        }
         if (!bookingId) throw new functions.https.HttpsError('invalid-argument', 'bookingId required');
 
         const bookingRef = db.collection('bookings').doc(bookingId);
@@ -179,12 +193,19 @@ export const technicianAcceptBooking = functions.https.onCall(
 // ==========================================
 // 3️⃣ START SERVICE
 // ==========================================
-export const startService = functions.https.onCall(
+export const startService = functions
+  .region('asia-south1')
+  .https.onCall(
     secureCallable(async (data, context) => {
+        console.log('✅ [startService] Auth UID:', context.auth?.uid);
+        
         const { bookingId } = data;
         const uid = context.auth?.uid;
 
-        if (!uid) throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
+        if (!uid) {
+          console.error('❌ [startService] context.auth is NULL');
+          throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
+        }
         if (!bookingId) throw new functions.https.HttpsError('invalid-argument', 'bookingId required');
 
         const bookingRef = db.collection('bookings').doc(bookingId);
@@ -235,12 +256,19 @@ export const startService = functions.https.onCall(
 // ==========================================
 // 4️⃣ COMPLETE SERVICE
 // ==========================================
-export const completeService = functions.https.onCall(
+export const completeService = functions
+  .region('asia-south1')
+  .https.onCall(
     secureCallable(async (data, context) => {
+        console.log('✅ [completeService] Auth UID:', context.auth?.uid);
+        
         const { bookingId } = data;
         const uid = context.auth?.uid;
 
-        if (!uid) throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
+        if (!uid) {
+          console.error('❌ [completeService] context.auth is NULL');
+          throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
+        }
         if (!bookingId) throw new functions.https.HttpsError('invalid-argument', 'bookingId required');
 
         const bookingRef = db.collection('bookings').doc(bookingId);
@@ -292,12 +320,19 @@ export const completeService = functions.https.onCall(
 // ==========================================
 // 5️⃣ TECHNICIAN REJECT BOOKING
 // ==========================================
-export const technicianRejectBooking = functions.https.onCall(
+export const technicianRejectBooking = functions
+  .region('asia-south1')
+  .https.onCall(
     secureCallable(async (data, context) => {
+        console.log('✅ [technicianRejectBooking] Auth UID:', context.auth?.uid);
+        
         const { bookingId, reason } = data;
         const uid = context.auth?.uid;
 
-        if (!uid) throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
+        if (!uid) {
+          console.error('❌ [technicianRejectBooking] context.auth is NULL');
+          throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
+        }
         if (!bookingId) throw new functions.https.HttpsError('invalid-argument', 'bookingId required');
 
         const bookingRef = db.collection('bookings').doc(bookingId);
@@ -352,12 +387,19 @@ export const technicianRejectBooking = functions.https.onCall(
 // ==========================================
 // 6️⃣ CANCEL BOOKING
 // ==========================================
-export const cancelBooking = functions.https.onCall(
+export const cancelBooking = functions
+  .region('asia-south1')
+  .https.onCall(
     secureCallable(async (data, context) => {
+        console.log('✅ [cancelBooking] Auth UID:', context.auth?.uid);
+        
         const { bookingId, reason } = data;
         const uid = context.auth?.uid;
 
-        if (!uid) throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
+        if (!uid) {
+          console.error('❌ [cancelBooking] context.auth is NULL');
+          throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
+        }
         if (!bookingId) throw new functions.https.HttpsError('invalid-argument', 'bookingId required');
 
         const bookingRef = db.collection('bookings').doc(bookingId);
@@ -410,10 +452,15 @@ export const cancelBooking = functions.https.onCall(
  * TRANSACTION: Atomic write with idempotency check
  * VALIDATION: Input sanitization and business logic validation
  */
-export const createBookingRequest = functions.https.onCall(
+export const createBookingRequest = functions
+  .region('asia-south1')
+  .https.onCall(
   secureCallable(async (data, context) => {
+    console.log('✅ [createBookingRequest] Auth UID:', context.auth?.uid);
+    
     const uid = context.auth?.uid;
     if (!uid) {
+      console.error('❌ [createBookingRequest] context.auth is NULL');
       throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
     }
 

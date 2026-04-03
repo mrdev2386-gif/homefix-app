@@ -120,7 +120,7 @@ interface ScoredTechnician {
   score: number;
 }
 
-export const matchTechniciansV2 = functions.https.onCall(async (data: {
+export const matchTechniciansV2 = functions.region('asia-south1').https.onCall(async (data: {
   serviceId: string;
   subServiceId?: string;
   location: CustomerLocation
@@ -128,8 +128,12 @@ export const matchTechniciansV2 = functions.https.onCall(async (data: {
   const ctx = createLogContext(context.auth?.uid, data?.serviceId);
   const startTime = Date.now();
 
+  console.log('✅ [matchTechniciansV2] Auth UID:', context.auth?.uid);
+  console.log('✅ [matchTechniciansV2] Context:', JSON.stringify({ auth: context.auth }, null, 2));
+
   // Authentication guard
   if (!context.auth) {
+    console.error('❌ [matchTechniciansV2] context.auth is NULL');
     logStructured(ctx, "ERROR", "auth_failure", { error: "Authentication required" });
     throw new functions.https.HttpsError(
       "unauthenticated",

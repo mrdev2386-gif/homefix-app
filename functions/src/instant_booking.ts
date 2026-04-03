@@ -62,7 +62,7 @@ const VALID_AVAILABILITY_STATUSES = ['online', 'offline', 'busy'];
  * a composite index. For efficient distance sorting, consider using
  * Firebase Extensions for Geospatial queries or Algolia/Elasticsearch.
  */
-export const getInstantServices = functions.https.onCall(
+export const getInstantServices = functions.region('asia-south1').https.onCall(
   secureCallable(async (data: InstantServiceRequest, context: functions.https.CallableContext): Promise<InstantServicesResponse> => {
   // 1. Verify Firebase Auth
   if (!context.auth) {

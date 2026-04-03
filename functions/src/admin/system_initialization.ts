@@ -70,7 +70,7 @@ const SERVICE_BANNERS = [
     { id: 'banner_3', title: 'Pest Control', description: 'Safe & effective treatment', imageUrl: 'https://images.unsplash.com/photo-1626876115993-9c8a0029b9dc?auto=format&fit=crop&q=80&w=800', order: 3 },
 ];
 
-export const admin_initializeHomeContent = functions.https.onCall(async (data, context) => {
+export const admin_initializeHomeContent = functions.region('asia-south1').https.onCall(async (data, context) => {
     // 1. Security Check
     if (!context.auth || context.auth.token.admin !== true) {
         throw new functions.https.HttpsError('permission-denied', 'Only admins can initialize system data.');
@@ -194,7 +194,7 @@ export const admin_initializeHomeContent = functions.https.onCall(async (data, c
  * STEP 2, 3, 4, 5 - SAFE IMAGE BACKFILL
  * Ensures EVERY category, service, and subService has a valid imageUrl
  */
-export const admin_backfillImages = functions.https.onCall(async (data, context) => {
+export const admin_backfillImages = functions.region('asia-south1').https.onCall(async (data, context) => {
     // Security Check
     if (!context.auth || context.auth.token.admin !== true) {
         throw new functions.https.HttpsError('permission-denied', 'Only admins can run backfill.');

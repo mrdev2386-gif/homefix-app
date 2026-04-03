@@ -7,7 +7,7 @@ const db = admin.firestore();
 /**
  * Marks a specific notification as read
  */
-export const markNotificationRead = functions.https.onCall(
+export const markNotificationRead = functions.region('asia-south1').https.onCall(
     secureCallable(async (data, context) => {
     const uid = context.auth?.uid;
     if (!uid) throw new functions.https.HttpsError('unauthenticated', 'User not logged in');
@@ -29,7 +29,7 @@ export const markNotificationRead = functions.https.onCall(
 /**
  * Marks all notifications for the current user as read
  */
-export const markAllNotificationsRead = functions.https.onCall(
+export const markAllNotificationsRead = functions.region('asia-south1').https.onCall(
     secureCallable(async (data, context) => {
     const uid = context.auth?.uid;
     if (!uid) throw new functions.https.HttpsError('unauthenticated', 'User not logged in');
@@ -52,7 +52,7 @@ export const markAllNotificationsRead = functions.https.onCall(
 /**
  * Deletes a specific notification
  */
-export const deleteNotificationCallable = functions.https.onCall(
+export const deleteNotificationCallable = functions.region('asia-south1').https.onCall(
     secureCallable(async (data, context) => {
     const uid = context.auth?.uid;
     if (!uid) throw new functions.https.HttpsError('unauthenticated', 'User not logged in');
@@ -74,7 +74,7 @@ export const deleteNotificationCallable = functions.https.onCall(
 /**
  * Deletes all notifications for the current user
  */
-export const deleteAllNotificationsCallable = functions.https.onCall(
+export const deleteAllNotificationsCallable = functions.region('asia-south1').https.onCall(
     secureCallable(async (data, context) => {
     const uid = context.auth?.uid;
     if (!uid) throw new functions.https.HttpsError('unauthenticated', 'User not logged in');

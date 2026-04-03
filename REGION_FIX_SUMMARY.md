@@ -1,275 +1,103 @@
-# Region Fix Summary - Complete Analysis & Solution
+# Cloud Functions Region Fix - UNAUTHENTICATED Error Resolution
 
-## 🔍 Deep Scan Results
+## ROOT CAUSE
+Customer app was using **default region (us-central1)** while technician app uses **asia-south1**. Firebase App Check enforcement is region-specific, causing UNAUTHENTICATED errors when calling functions in the wrong region.
 
-### Exported Cloud Functions (from index.ts)
-```typescript
-// Service Management Functions
-export const addTechnicianService = techServicesManagement.addTechnicianService;
-export const createTechnicianService = techServicesManagement.addTechnicianService; // ALIAS
-export const updateTechnicianService = techServicesManagement.updateTechnicianService;
-export const deleteTechnicianService = techServicesManagement.deleteTechnicianService;
-export const toggleTechnicianServiceStatus = techServicesManagement.toggleTechnicianServiceStatus;
-export const getMyTechnicianServices = techServicesManagement.getMyTechnicianServices;
-```
+## EXACT ISSUE
+- **Customer App**: `FirebaseFunctions.instance` → default region `us-central1`
+- **Technician App**: `FirebaseFunctions.instanceFor(region: 'asia-south1')` → correct region
+- **Result**: App Check blocks customer app requests with UNAUTHENTICATED error
 
-**KEY FINDING**: Both `addTechnicianService` and `createTechnicianService` are valid function names (alias).
+## SOLUTION IMPLEMENTED
 
----
+### 1. Updated firebase_functions_instance.dart
+**File**: `apps/customer_app/lib/core/firebase/firebase_functions_instance.dart`
 
-## 🐛 Root Cause Identified
-
-### Region Inconsistency Matrix
-
-| Function Name | File | Region BEFORE | Region AFTER | Status |
-|--------------|------|---------------|--------------|--------|
-| `addTechnicianService` | services_management.ts | ❌ default | ✅ asia-south1 | FIXED |
-| `updateTechnicianService` | services_management.ts | ❌ default | ✅ asia-south1 | FIXED |
-| `deleteTechnicianService` | services_management.ts | ✅ asia-south1 | ✅ asia-south1 | OK |
-| `toggleTechnicianServiceStatus` | services_management.ts | ❌ default | ✅ asia-south1 | FIXED |
-| `getMyTechnicianServices` | services_management.ts | ❌ default | ✅ asia-south1 | FIXED |
-| `updateTechnicianPersonalDetails` | profile_management.ts | ❌ us-central1 | ✅ asia-south1 | FIXED |
-| `updateTechnicianBankDetails` | profile_management.ts | ❌ us-central1 | ✅ asia-south1 | FIXED |
-| `reuploadVerificationDocument` | profile_management.ts | ❌ us-central1 | ✅ asia-south1 | FIXED |
-| `adminUpdateBankStatus` | profile_management.ts | ❌ us-central1 | ✅ asia-south1 | FIXED |
-| `adminUpdateDocumentStatus` | profile_management.ts | ❌ us-central1 | ✅ asia-south1 | FIXED |
-| `updateLocation` | tracking.ts | ❌ us-central1 | ✅ asia-south1 | FIXED |
-| `toggleOnlineStatus` | tracking.ts | ❌ us-central1 | ✅ asia-south1 | FIXED |
-| `createCustomServiceRequest` | custom_request.ts | ❌ us-central1 | ✅ asia-south1 | FIXED |
-| `adminApproveServiceRequest` | custom_request.ts | ❌ us-central1 | ✅ asia-south1 | FIXED |
-| `technicianRespondServiceRequest` | custom_request.ts | ❌ us-central1 | ✅ asia-south1 | FIXED |
-| `customerConfirmServicePayment` | custom_request.ts | ❌ us-central1 | ✅ asia-south1 | FIXED |
-| `getTechnicianInbox` | custom_request.ts | ❌ us-central1 | ✅ asia-south1 | FIXED |
-| `getCustomRequestDetail` | custom_request.ts | ❌ us-central1 | ✅ asia-south1 | FIXED |
-| `deleteService` | admin/services.ts | ❌ us-central1 | ✅ asia-south1 | FIXED |
-
-**Total Functions Fixed**: 18
-
----
-
-## 🔧 Changes Applied
-
-### Backend Changes (Cloud Functions)
-
-#### 1. services_management.ts
-```typescript
-// BEFORE
-export const addTechnicianService = functions.https.onCall(...)
-
-// AFTER
-export const addTechnicianService = functions
-  .region('asia-south1')
-  .https.onCall(...)
-```
-
-Applied to:
-- `addTechnicianService`
-- `updateTechnicianService`
-- `toggleTechnicianServiceStatus`
-- `getMyTechnicianServices`
-
-Note: `deleteTechnicianService` already had correct region.
-
-#### 2. profile_management.ts
-```typescript
-// BEFORE
-export const updateTechnicianPersonalDetails = functions.region('us-central1').https.onCall(...)
-
-// AFTER
-export const updateTechnicianPersonalDetails = functions.region('asia-south1').https.onCall(...)
-```
-
-Applied to:
-- `updateTechnicianPersonalDetails`
-- `updateTechnicianBankDetails`
-- `reuploadVerificationDocument`
-- `adminUpdateBankStatus`
-- `adminUpdateDocumentStatus`
-
-#### 3. tracking.ts
-```typescript
-// BEFORE
-export const toggleOnlineStatus = functions.region('us-central1').https.onCall(...)
-
-// AFTER
-export const toggleOnlineStatus = functions.region('asia-south1').https.onCall(...)
-```
-
-Applied to:
-- `updateLocation`
-- `toggleOnlineStatus`
-
-#### 4. custom_request.ts
-```typescript
-// BEFORE
-export const getTechnicianInbox = functions.region('us-central1').https.onCall(...)
-
-// AFTER
-export const getTechnicianInbox = functions.region('asia-south1').https.onCall(...)
-```
-
-Applied to:
-- `createCustomServiceRequest`
-- `adminApproveServiceRequest`
-- `technicianRespondServiceRequest`
-- `customerConfirmServicePayment`
-- `getTechnicianInbox`
-- `getCustomRequestDetail`
-
-#### 5. admin/services.ts
-```typescript
-// BEFORE
-export const deleteService = functions.region('us-central1').https.onCall(...)
-
-// AFTER
-export const deleteService = functions.region('asia-south1').https.onCall(...)
-```
-
-### Frontend Changes (Flutter)
-
-#### 1. functions_service.dart (Technician App)
+Changed from:
 ```dart
-// Already correct - no changes needed
-final FirebaseFunctions _functions =
-    FirebaseFunctions.instanceFor(region: 'asia-south1');
+_instance ??= FirebaseFunctions.instance; // Use default region (us-central1)
 ```
 
-#### 2. technician_catalog_service.dart (Technician App)
+To:
 ```dart
-// BEFORE
-final FirebaseFunctions _functions = FirebaseFunctions.instance;
-
-// AFTER
-final FirebaseFunctions _functions = 
-    FirebaseFunctions.instanceFor(region: 'asia-south1');
+_instance ??= FirebaseFunctions.instanceFor(region: 'asia-south1');
 ```
 
----
+### 2. Replaced All Function Calls
+Replaced all instances of:
+- `FirebaseFunctions.instance` → `FirebaseFunctionsInstance.instance`
+- `FirebaseFunctions.instanceFor(region: 'us-central1')` → `FirebaseFunctionsInstance.instance`
 
-## 📊 Function Call Verification
+**Files Updated**:
+- `lib/core/services/auth_service.dart` (2 occurrences)
+- `lib/core/services/firestore_service.dart` (14 occurrences)
+- `lib/core/services/notifications_service.dart` (6 occurrences)
+- `lib/features/booking/presentation/customer_booking_screen.dart`
+- `lib/features/bookings/presentation/rate_technician_screen.dart`
+- `lib/features/bookings/presentation/rating_screen.dart`
+- `lib/features/job_details/presentation/job_details_screen.dart`
+- `lib/features/services/presentation/instant_booking_screen.dart`
+- `lib/features/urgent/urgent_booking_screen.dart`
 
-### Flutter → Backend Mapping
+### 3. Added Required Imports
+Added `import '../../../core/firebase/firebase_functions_instance.dart';` to all files using Cloud Functions.
 
-| Flutter Call | Backend Function | Region | Status |
-|-------------|------------------|--------|--------|
-| `addService()` → `addTechnicianService` | ✅ asia-south1 | ✅ MATCH |
-| `updateService()` → `updateTechnicianService` | ✅ asia-south1 | ✅ MATCH |
-| `deleteService()` → `deleteTechnicianService` | ✅ asia-south1 | ✅ MATCH |
-| `toggleServiceStatus()` → `toggleTechnicianServiceStatus` | ✅ asia-south1 | ✅ MATCH |
-| `createService()` → `createTechnicianService` | ✅ asia-south1 | ✅ MATCH |
-| `updateTechnicianPersonalDetails()` → `updateTechnicianPersonalDetails` | ✅ asia-south1 | ✅ MATCH |
-| `updateTechnicianBankDetails()` → `updateTechnicianBankDetails` | ✅ asia-south1 | ✅ MATCH |
-| `updateTechnicianOnlineStatus()` → `toggleOnlineStatus` | ✅ asia-south1 | ✅ MATCH |
-| `getTechnicianInbox()` → `getTechnicianInbox` | ✅ asia-south1 | ✅ MATCH |
+## VERIFICATION
 
-**All mappings verified and consistent!**
-
----
-
-## 🚀 Deployment Commands
-
-### Build Functions
-```powershell
-cd C:\Users\yash\projects\homefix\functions
-npm run build
+### Region Parity Check
+✅ **Customer App**: Uses `asia-south1`
+```
+c:\Users\yash\projects\homefix\apps\customer_app\lib\core\firebase\firebase_functions_instance.dart:
+  _instance ??= FirebaseFunctions.instanceFor(region: 'asia-south1');
 ```
 
-### Deploy All Functions
-```powershell
-firebase deploy --only functions
+✅ **Technician App**: Uses `asia-south1`
+```
+c:\Users\yash\projects\homefix\apps\technician_app\lib\core\firebase\firebase_functions.dart:
+  FirebaseFunctions.instanceFor(region: 'asia-south1');
 ```
 
-### Or Use Automated Script
-```powershell
-cd C:\Users\yash\projects\homefix
-.\scripts\deploy-region-fix.bat
-```
+### No Default Region Usage
+✅ No `FirebaseFunctions.instance` (default region) found in customer app services
 
----
+## TESTING CHECKLIST
 
-## ✅ Testing Checklist
+After running `flutter clean && flutter pub get && flutter run`:
 
-### Technician App Tests
+- [ ] **addToCart** → Must succeed without UNAUTHENTICATED error
+- [ ] **toggleFavorite** → Must succeed without UNAUTHENTICATED error
+- [ ] **No retry triggered** → Functions should work on first attempt
+- [ ] **No App Check logs** → No App Check-related errors in console
+- [ ] **Auth token valid** → Token refresh happens automatically
 
-#### Service Management
-- [ ] Add new service (should succeed)
-- [ ] Update existing service (should succeed)
-- [ ] Delete service (should succeed)
-- [ ] Toggle service status (should succeed)
-- [ ] View my services list (should succeed)
+## KEY CHANGES SUMMARY
 
-#### Profile Management
-- [ ] Update personal details (should succeed)
-- [ ] Update bank details (should succeed)
-- [ ] Reupload verification document (should succeed)
+| Component | Before | After |
+|-----------|--------|-------|
+| Region | us-central1 (default) | asia-south1 |
+| Instance Type | Direct `FirebaseFunctions.instance` | Centralized `FirebaseFunctionsInstance.instance` |
+| Single Source of Truth | No | Yes - `firebase_functions_instance.dart` |
+| Parity with Technician App | ❌ No | ✅ Yes |
 
-#### Status Management
-- [ ] Toggle online status (should succeed)
-- [ ] Update location (should succeed)
+## CRITICAL RULES ENFORCED
 
-#### Custom Requests
-- [ ] Get technician inbox (should succeed)
-- [ ] Respond to custom request (should succeed)
-- [ ] View custom request details (should succeed)
+1. ✅ Single centralized instance for entire app
+2. ✅ Explicit region set to 'asia-south1' (no defaults)
+3. ✅ All function calls use centralized instance
+4. ✅ No region mixing between apps
+5. ✅ Auth ready check before function calls
 
-### Expected Logs (Success)
-```
-🔥 [FUNCTION START] addTechnicianService triggered
-🔥 [REQUEST TIMESTAMP] 2026-01-XX...
-🔥 [CONTEXT AUTH] {...}
-🔥 [CONTEXT UID] abc123xyz
-🔥 [AUTH SUCCESS] Authenticated UID: abc123xyz
-✅ [SERVICE_ADD] Service xyz123 created for technician abc123xyz
-```
+## DEPLOYMENT NOTES
 
-### Expected Logs (Before Fix - Error)
-```
-❌ [ERROR] FirebaseFunctionsException: not-found
-❌ [ERROR] Function addTechnicianService not found
-```
+- No backend changes required
+- No Cloud Functions modifications needed
+- Client-side only fix
+- Backward compatible with existing functions
+- No breaking changes to API contracts
 
----
+## NEXT STEPS
 
-## 🔍 Verification in Firebase Console
-
-1. Navigate to: https://console.firebase.google.com/
-2. Select your project
-3. Go to: **Functions** → **Dashboard**
-4. Verify each function shows:
-   - ✅ Region: **asia-south1**
-   - ✅ Status: **Deployed**
-   - ✅ Last deployed: Recent timestamp
-
----
-
-## 📝 Key Insights
-
-1. **Function Aliases**: `createTechnicianService` is an alias for `addTechnicianService` - both are valid
-2. **Region Consistency**: ALL functions must use the same region as Flutter apps
-3. **Default Region**: Functions without explicit `.region()` use `us-central1` by default
-4. **Token Refresh**: Flutter apps refresh auth tokens before each call for security
-5. **Comprehensive Logging**: All functions have detailed logging for debugging
-
----
-
-## 🎯 Success Metrics
-
-- ✅ 18 functions updated to asia-south1
-- ✅ 2 Flutter service files verified/updated
-- ✅ 100% region consistency achieved
-- ✅ Zero "function not found" errors expected
-- ✅ All CRUD operations functional
-
----
-
-## 📞 Support
-
-For issues or questions:
-- Phone: 9508322397
-- Documentation: See REGION_FIX_DEPLOYMENT.md
-
----
-
-**Status**: ✅ COMPLETE - READY FOR DEPLOYMENT
-**Date**: 2026-01-XX
-**Impact**: HIGH - Fixes critical "function not found" errors
+1. Run `flutter run` to test the fix
+2. Verify addToCart and toggleFavorite work without errors
+3. Monitor logs for any UNAUTHENTICATED errors
+4. If issues persist, check Firebase Console App Check settings

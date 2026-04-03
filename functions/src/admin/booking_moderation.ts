@@ -52,7 +52,7 @@ async function sendNotification(userId: string, userType: 'customer' | 'technici
     }
 }
 
-export const approveBooking = functions.https.onCall(
+export const approveBooking = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
         const uid = context.auth?.uid;
         await assertAdmin(uid);
@@ -114,7 +114,7 @@ export const approveBooking = functions.https.onCall(
     })
 );
 
-export const rejectBooking = functions.https.onCall(
+export const rejectBooking = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
         const uid = context.auth?.uid;
         await assertAdmin(uid);
@@ -175,7 +175,7 @@ export const rejectBooking = functions.https.onCall(
     })
 );
 
-export const updateBookingPayment = functions.https.onCall(
+export const updateBookingPayment = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
         const uid = context.auth?.uid;
         await assertAdmin(uid);
@@ -220,7 +220,7 @@ export const updateBookingPayment = functions.https.onCall(
     })
 );
 
-export const markBookingActive = functions.https.onCall(
+export const markBookingActive = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
         const uid = context.auth?.uid;
         await assertAdmin(uid);

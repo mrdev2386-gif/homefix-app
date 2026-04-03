@@ -3,11 +3,11 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../models/technician_service.dart';
+import '../firebase/firebase_functions.dart';
 
 class TechnicianCatalogService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseFunctions _functions = 
-      FirebaseFunctions.instanceFor(region: 'asia-south1');
+  final FirebaseFunctions _functions = FirebaseFunctionsService.instance;
 
   /// Check if technician is approved to manage services
   Future<bool> canManageServices() async {

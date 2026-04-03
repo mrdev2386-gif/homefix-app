@@ -65,15 +65,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     useEffect(() => {
         if (loading) return;
 
-        const publicPaths = ['/login'];
+        const publicPaths = ['/', '/login'];
         const isPublicPath = publicPaths.includes(pathname);
 
         if (!user && !isPublicPath) {
             router.push('/login');
         } else if (user && !isAdmin && !isPublicPath) {
             router.push('/login?error=not_admin');
-        } else if (user && isAdmin && isPublicPath) {
-            router.push('/dashboard');
+        } else if (user && isAdmin && pathname === '/login') {
+            router.push('/admin');
         }
     }, [user, isAdmin, loading, pathname, router]);
 

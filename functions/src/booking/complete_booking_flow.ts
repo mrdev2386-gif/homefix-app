@@ -32,7 +32,7 @@ interface CreateBookingData {
     paymentMode?: 'pay_before_work' | 'pay_after_work';
 }
 
-export const createBookingRequest = functions.https.onCall(
+export const createBookingRequest = functions.region('asia-south1').https.onCall(
     async (data: CreateBookingData, context) => {
         if (!context.auth) {
             throw new functions.https.HttpsError('unauthenticated', 'Authentication required');
@@ -117,7 +117,7 @@ export const createBookingRequest = functions.https.onCall(
 // STEP 2: ADMIN APPROVE BOOKING
 // ==========================================
 
-export const approveBookingRequest = functions.https.onCall(
+export const approveBookingRequest = functions.region('asia-south1').https.onCall(
     async (data: { bookingId: string }, context) => {
         if (!context.auth) {
             throw new functions.https.HttpsError('unauthenticated', 'Authentication required');
@@ -178,7 +178,7 @@ export const approveBookingRequest = functions.https.onCall(
 // STEP 3: TECHNICIAN ACCEPT/REJECT JOB
 // ==========================================
 
-export const technicianRespondToJob = functions.https.onCall(
+export const technicianRespondToJob = functions.region('asia-south1').https.onCall(
     async (data: { bookingId: string; action: 'accept' | 'reject'; reason?: string }, context) => {
         if (!context.auth) {
             throw new functions.https.HttpsError('unauthenticated', 'Authentication required');
@@ -267,7 +267,7 @@ export const technicianRespondToJob = functions.https.onCall(
 // STEP 4: PAY BEFORE WORK
 // ==========================================
 
-export const payBeforeWork = functions.https.onCall(
+export const payBeforeWork = functions.region('asia-south1').https.onCall(
     async (data: { bookingId: string; paymentDetails: any }, context) => {
         if (!context.auth) {
             throw new functions.https.HttpsError('unauthenticated', 'Authentication required');
@@ -331,7 +331,7 @@ export const payBeforeWork = functions.https.onCall(
 // STEP 5: COMPLETE SERVICE
 // ==========================================
 
-export const completeService = functions.https.onCall(
+export const completeService = functions.region('asia-south1').https.onCall(
     async (data: { bookingId: string }, context) => {
         if (!context.auth) {
             throw new functions.https.HttpsError('unauthenticated', 'Authentication required');
@@ -407,7 +407,7 @@ export const completeService = functions.https.onCall(
 // STEP 6: CONFIRM AFTER WORK PAYMENT
 // ==========================================
 
-export const confirmAfterWorkPayment = functions.https.onCall(
+export const confirmAfterWorkPayment = functions.region('asia-south1').https.onCall(
     async (data: { bookingId: string }, context) => {
         if (!context.auth) {
             throw new functions.https.HttpsError('unauthenticated', 'Authentication required');
@@ -481,7 +481,7 @@ async function createTechnicianWalletTransaction(technicianId: string, bookingId
 // TECHNICIAN QR CODE GENERATION
 // ==========================================
 
-export const generateTechnicianQR = functions.https.onCall(
+export const generateTechnicianQR = functions.region('asia-south1').https.onCall(
     async (data: { bookingId: string }, context) => {
         if (!context.auth) {
             throw new functions.https.HttpsError('unauthenticated', 'Authentication required');
@@ -515,7 +515,7 @@ export const generateTechnicianQR = functions.https.onCall(
 // UPDATE BOOKING STATUS (GENERIC)
 // ==========================================
 
-export const updateBookingStatus = functions.https.onCall(
+export const updateBookingStatus = functions.region('asia-south1').https.onCall(
     async (data: { bookingId: string; status: string }, context) => {
         if (!context.auth) {
             throw new functions.https.HttpsError('unauthenticated', 'Authentication required');

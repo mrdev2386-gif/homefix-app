@@ -10,7 +10,7 @@ async function assertAdmin(context: functions.https.CallableContext) {
     if (!adminDoc.exists) throw new functions.https.HttpsError('permission-denied', 'Admin access required');
 }
 
-export const manageDispute = functions.https.onCall(
+export const manageDispute = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
     await assertAdmin(context);
     const { disputeId, action, notes, amount } = data;

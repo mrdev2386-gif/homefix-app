@@ -14,7 +14,7 @@ const db = admin.firestore();
  * Normalize Technician Data
  * Migrates legacy fields to standard schema
  */
-export const normalizeTechnicianData = functions.https.onCall(
+export const normalizeTechnicianData = functions.region('asia-south1').https.onCall(
   async (request, context) => {
     if (!context.auth) {
       throw new functions.https.HttpsError("unauthenticated", "Authentication required");

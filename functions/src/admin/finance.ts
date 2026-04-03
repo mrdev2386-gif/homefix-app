@@ -4,7 +4,7 @@ import { db } from '../shared/config';
 import { assertAdmin, logAdminAction } from './utils';
 import { secureCallable, sanitize } from '../shared/security';
 
-export const refundBooking = functions.https.onCall(
+export const refundBooking = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
     await assertAdmin(context);
     const { bookingId } = data;
@@ -47,7 +47,7 @@ export const refundBooking = functions.https.onCall(
   })
 );
 
-export const adjustWallet = functions.https.onCall(
+export const adjustWallet = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
     await assertAdmin(context);
     const { userId, type, amount, reason } = data; // type: 'credit' | 'debit'
@@ -83,7 +83,7 @@ export const adjustWallet = functions.https.onCall(
  * Process a booking payout - marks it as completed
  * Requirements: 4.2, 4.3, 15.1, 15.4, 15.8, 16.1, 16.5, 16.6
  */
-export const processBookingPayout = functions.https.onCall(
+export const processBookingPayout = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
     // Verify admin authentication
     await assertAdmin(context);

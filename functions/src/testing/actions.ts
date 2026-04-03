@@ -3,7 +3,7 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { db, getAppConfig } from '../shared/config';
 
-export const simulatePayment = functions.https.onCall(async (data, context) => {
+export const simulatePayment = functions.region('asia-south1').https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
 
     const config = await getAppConfig();
@@ -52,7 +52,7 @@ export const simulatePayment = functions.https.onCall(async (data, context) => {
     return { success: true };
 });
 
-export const resetTestData = functions.https.onCall(async (data, context) => {
+export const resetTestData = functions.region('asia-south1').https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Auth required');
     // Ideally check Admin
 
