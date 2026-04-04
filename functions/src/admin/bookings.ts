@@ -3,6 +3,7 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { db } from '../shared/config';
 import { assertAdmin, logAdminAction } from './utils';
+import { updateBookingStatus } from '../shared/status_history_tracker';
 
 import { sendPushNotification } from '../shared/notifications'; // Ensure this exists
 
@@ -29,6 +30,10 @@ export const adminManageBooking = functions.region('asia-south1').https.onCall(a
             const techData = techDoc.data()!;
 
             await db.runTransaction(async (t) => {
+                const bookingDoc = await t.get(bookingRef);
+                if (!bookingDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
+                const booking = bookingDoc.data()!;
+
                 // If reassigning, remove from old technician
                 if (booking.assignedTechnicianId && booking.assignedTechnicianId !== technicianId) {
                     t.update(db.collection('technicians').doc(booking.assignedTechnicianId), {
@@ -36,11 +41,10 @@ export const adminManageBooking = functions.region('asia-south1').https.onCall(a
                     });
                 }
 
-                t.update(bookingRef, {
+                // Use status history tracker for atomic update
+                updateBookingStatus(t, bookingRef, 'assigned', booking, {
                     assignedTechnicianId: technicianId,
                     assignedTechnicianName: techData.name || 'Expert',
-                    status: 'assigned',
-                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
                 });
 
                 t.update(db.collection('technicians').doc(technicianId), {

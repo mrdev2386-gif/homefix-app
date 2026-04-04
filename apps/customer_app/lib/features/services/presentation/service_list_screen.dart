@@ -107,7 +107,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         filtered.sort((a, b) => b.rating.compareTo(a.rating));
         break;
       case 'lowestprice':
-        filtered.sort((a, b) => a.basePrice.compareTo(b.basePrice));
+        filtered.sort((a, b) => a.price.compareTo(b.price));
         break;
       case 'popular':
         filtered.sort((a, b) => (b.reviewCount ?? 0).compareTo(a.reviewCount ?? 0));
@@ -427,6 +427,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                     (context, index) {
                       final service = filtered[index];
                       return _ServiceGridCard(
+                        key: ValueKey(service.id),
                         service: service,
                         onTap: () => _handleServiceTap(service),
                       );
@@ -579,12 +580,24 @@ class _ServiceGridCard extends StatelessWidget {
   final VoidCallback onTap;
 
   const _ServiceGridCard({
+    super.key,
     required this.service,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    // PRICE CALCULATION (SAME AS HOME SCREEN)
+    final double price = service.price ?? 0;
+    final double offerPrice = service.offerPrice ?? 0;
+    
+    final bool hasOffer = offerPrice > 0 && offerPrice < price;
+    final double finalPrice = hasOffer ? offerPrice : price;
+    
+    final int discount = hasOffer 
+        ? ((price - offerPrice) / price * 100).round()
+        : 0;
+    
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -649,7 +662,7 @@ class _ServiceGridCard extends StatelessWidget {
                     right: 8,
                     child: _SmallFavoriteButton(service: service),
                   ),
-                  if (service.offerPrice != null && service.offerPrice! > 0 && service.offerPrice! < service.basePrice)
+                  if (discount > 0)
                     Positioned(
                       top: 8,
                       left: 8,
@@ -660,7 +673,7 @@ class _ServiceGridCard extends StatelessWidget {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          '${((service.basePrice - service.offerPrice!) / service.basePrice * 100).toInt()}% OFF',
+                          '$discount% OFF',
                           style: GoogleFonts.outfit(
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
@@ -713,24 +726,22 @@ class _ServiceGridCard extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const Spacer(),
+                    const SizedBox(height: 4),
+                    // PRICE ROW
                     Row(
                       children: [
                         Text(
-                          service.offerPrice != null && service.offerPrice! > 0 && service.offerPrice! < service.basePrice
-                              ? '₹${service.offerPrice!.toStringAsFixed(0)}'
-                              : '₹${service.basePrice.toStringAsFixed(0)}',
+                          "₹${finalPrice.toStringAsFixed(0)}",
                           style: GoogleFonts.outfit(
                             fontSize: 16,
                             fontWeight: FontWeight.w900,
-                            color: AppTheme.primaryColor,
+                            color: Colors.green,
                           ),
                         ),
-                        if (service.offerPrice != null && service.offerPrice! > 0 && service.offerPrice! < service.basePrice)
-                          const SizedBox(width: 4),
-                        if (service.offerPrice != null && service.offerPrice! > 0 && service.offerPrice! < service.basePrice)
+                        const SizedBox(width: 6),
+                        if (hasOffer)
                           Text(
-                            '₹${service.basePrice.toStringAsFixed(0)}',
+                            "₹${price.toStringAsFixed(0)}",
                             style: GoogleFonts.outfit(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,

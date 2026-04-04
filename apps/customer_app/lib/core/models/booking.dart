@@ -14,6 +14,7 @@ class Booking {
   final String? scheduledTime;
   final Map<String, dynamic> addressSnapshot;
   final String status;
+  final List<Map<String, dynamic>>? statusHistory;
   final String paymentStatus;
   final String? paymentMode; // 'pay_before_work' or 'pay_after_work'
   final String? razorpayOrderId;
@@ -42,6 +43,7 @@ class Booking {
     this.scheduledTime,
     required this.addressSnapshot,
     required this.status,
+    this.statusHistory,
     this.paymentStatus = 'pending',
     this.paymentMode,
     this.razorpayOrderId,
@@ -79,6 +81,9 @@ class Booking {
       scheduledTime: data['scheduledTime']?.toString(),
       addressSnapshot: Map<String, dynamic>.from(data['addressSnapshot'] ?? data['address'] ?? {}),
       status: (data['status'] ?? data['bookingStatus'] ?? 'pending').toString(),
+      statusHistory: data['statusHistory'] != null 
+          ? List<Map<String, dynamic>>.from(data['statusHistory'])
+          : null,
       paymentStatus: (data['paymentStatus'] ?? 'pending').toString(),
       paymentMode: data['paymentMode']?.toString(),
       razorpayOrderId: data['razorpayOrderId']?.toString(),
@@ -113,6 +118,7 @@ class Booking {
       'scheduledTime': scheduledTime,
       'addressSnapshot': addressSnapshot,
       'status': status,
+      'statusHistory': statusHistory,
       'paymentStatus': paymentStatus,
       'paymentMode': paymentMode,
       'razorpayOrderId': razorpayOrderId,

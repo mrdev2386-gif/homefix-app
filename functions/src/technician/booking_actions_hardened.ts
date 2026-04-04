@@ -5,6 +5,7 @@
 
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import { updateBookingStatus } from '../shared/status_history_tracker';
 
 const db = admin.firestore();
 
@@ -122,21 +123,17 @@ export const technicianRespondBooking = functions.region('asia-south1').https.on
           'Outside working hours');
       }
 
-      // Update booking
-      transaction.update(bookingRef, {
-        status: 'awaiting_payment',
+      // Use status history tracker for atomic update
+      updateBookingStatus(transaction, bookingRef, 'awaiting_payment', booking, {
         acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
       return { success: true, action: 'accepted', newStatus: 'awaiting_payment' };
     } else {
-      // Reject
-      transaction.update(bookingRef, {
-        status: 'rejected',
+      // Use status history tracker for atomic update
+      updateBookingStatus(transaction, bookingRef, 'rejected', booking, {
         rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
         rejectionReason: rejectionReason || 'Technician declined',
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
       return { success: true, action: 'rejected', newStatus: 'rejected' };
@@ -210,9 +207,7 @@ export const updateBookingStatusNew = functions.region('asia-south1').https.onCa
     }
 
     // Update booking
-    transaction.update(bookingRef, {
-      status,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updateBookingStatus(transaction, bookingRef, status, booking, {
       ...(status === 'in_progress' && { startedAt: admin.firestore.FieldValue.serverTimestamp() }),
       ...(status === 'completed' && { completedAt: admin.firestore.FieldValue.serverTimestamp() }),
     });
@@ -525,19 +520,17 @@ export const technicianRespondBookingRateLimited = functions.region('asia-south1
           'Outside working hours');
       }
 
-      transaction.update(bookingRef, {
-        status: 'awaiting_payment',
+      // Use status history tracker for atomic update
+      updateBookingStatus(transaction, bookingRef, 'awaiting_payment', booking, {
         acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
       return { success: true, action: 'accepted', newStatus: 'awaiting_payment' };
     } else {
-      transaction.update(bookingRef, {
-        status: 'rejected',
+      // Use status history tracker for atomic update
+      updateBookingStatus(transaction, bookingRef, 'rejected', booking, {
         rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
         rejectionReason: rejectionReason || 'Technician declined',
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
       return { success: true, action: 'rejected', newStatus: 'rejected' };

@@ -63,41 +63,49 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
   Widget build(BuildContext context) {
     final service = widget.service;
     
-    final hasOffer = service.offerPrice != null && 
-                     service.offerPrice! > 0 && 
-                     service.offerPrice! < service.basePrice;
+    final double price = service.price ?? 0;
+    final double offerPrice = service.offerPrice ?? 0;
+    
+    final bool hasOffer = offerPrice > 0 && offerPrice < price;
+    final double finalPrice = hasOffer ? offerPrice : price;
+    
+    print("UI PRICE CHECK -> price: $price, offer: $offerPrice, final: $finalPrice");
     
     final discount = hasOffer 
-        ? ((service.basePrice - service.offerPrice!) / service.basePrice * 100).round()
+        ? ((price - offerPrice) / price * 100).round()
         : 0;
 
-    final finalPrice = hasOffer ? service.offerPrice! : service.basePrice;
-
-    if (kDebugMode && hasOffer) {
-      debugPrint('🏷️ [DISCOUNT_CARD] ${service.title}: ₹${service.basePrice} → ₹${service.offerPrice} ($discount% OFF)');
-    }
-
-    return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      margin: widget.isGrid ? EdgeInsets.zero : const EdgeInsets.only(right: 12),
-      child: SizedBox(
-        width: widget.isGrid ? null : 170,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // IMAGE SECTION
-            GestureDetector(
-              onTap: _navigateToDetails,
-              child: Stack(
+    return GestureDetector(
+      onTap: _navigateToDetails,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        margin: widget.isGrid ? EdgeInsets.zero : const EdgeInsets.only(right: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: SizedBox(
+          width: widget.isGrid ? null : 170,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // IMAGE WITH GRADIENT OVERLAY
+              Stack(
                 children: [
                   ClipRRect(
                     borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(18),
                     ),
                     child: SizedBox(
-                      height: 130,
+                      height: 140,
                       width: double.infinity,
                       child: SafeNetworkImage(
                         imageUrl: service.imageUrl ?? '',
@@ -106,55 +114,101 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
                     ),
                   ),
 
-                  // Rating badge
-                  Positioned(
-                    top: 8,
-                    left: 8,
+                  // GRADIENT OVERLAY
+                  Positioned.fill(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.7),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.star_rounded,
-                            color: Color(0xFFFFB800),
-                            size: 12,
-                          ),
-                          const SizedBox(width: 2),
-                          Text(
-                            service.rating > 0
-                                ? service.rating.toStringAsFixed(1)
-                                : 'New',
-                            style: GoogleFonts.outfit(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(18),
+                        ),
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [
+                            Colors.black.withOpacity(0.4),
+                            Colors.transparent,
+                          ],
+                        ),
                       ),
                     ),
                   ),
 
-                  // Favorite button
+                  // DISCOUNT BADGE ON IMAGE
+                  if (discount > 0)
+                    Positioned(
+                      top: 10,
+                      right: 10,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '$discount% OFF',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  // RATING BADGE
+                  if (service.rating > 0)
+                    Positioned(
+                      top: 10,
+                      left: 10,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.7),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.star_rounded,
+                              color: Color(0xFFFFB800),
+                              size: 12,
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              service.rating.toStringAsFixed(1),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                  // FAVORITE BUTTON
                   Positioned(
-                    top: 8,
-                    right: 8,
+                    bottom: 10,
+                    right: 10,
                     child: Consumer<FavoritesProvider>(
                       builder: (context, favorites, _) {
                         final isFavorite = favorites.isFavorite(service.id);
                         return GestureDetector(
-                          onTap: () => favorites.toggleFavorite(
-                            service.id,
-                            service.category,
-                          ),
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            favorites.toggleFavorite(
+                              service.id,
+                              service.category,
+                            );
+                          },
                           child: Container(
                             padding: const EdgeInsets.all(6),
                             decoration: BoxDecoration(
@@ -165,9 +219,7 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
                               isFavorite
                                   ? Icons.favorite_rounded
                                   : Icons.favorite_border_rounded,
-                              color: isFavorite
-                                  ? Colors.red
-                                  : Colors.grey[600],
+                              color: isFavorite ? Colors.red : Colors.grey[600],
                               size: 18,
                             ),
                           ),
@@ -175,197 +227,74 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
                       },
                     ),
                   ),
-
-                  // Price & Discount section
-                  Positioned(
-                    bottom: 8,
-                    right: 8,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (service.urgentBookingEnabled)
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 6),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.orange,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.flash_on,
-                                  color: Colors.white,
-                                  size: 10,
-                                ),
-                                const SizedBox(width: 2),
-                                Text(
-                                  'Urgent',
-                                  style: GoogleFonts.outfit(
-                                    color: Colors.white,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                        if (discount > 0)
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 6),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.green,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              '$discount% OFF',
-                              style: GoogleFonts.outfit(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryColor,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                '₹${finalPrice.toStringAsFixed(0)}',
-                                style: GoogleFonts.outfit(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              if (hasOffer)
-                                Text(
-                                  '₹${service.basePrice.toStringAsFixed(0)}',
-                                  style: GoogleFonts.outfit(
-                                    color: Colors.white.withOpacity(0.6),
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w500,
-                                    decoration: TextDecoration.lineThrough,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ],
               ),
-            ),
 
-            // CONTENT SECTION
-            Padding(
-              padding: const EdgeInsets.all(10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
+              // CONTENT SECTION
+              Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
+                    // SERVICE NAME
                     Text(
                       service.title,
-                      style: GoogleFonts.outfit(
-                        fontSize: 13,
+                      style: const TextStyle(
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
-                        color: AppTheme.textColor,
+                        color: Color(0xFF111827),
+                        height: 1.2,
                       ),
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
 
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
 
+                    // PRICE ROW
                     Row(
                       children: [
-                        const Icon(
-                          Icons.person_pin_rounded,
-                          size: 11,
-                          color: AppTheme.primaryColor,
-                        ),
-                        const SizedBox(width: 3),
-                        Expanded(
-                          child: Text(
-                            service.technicianName ?? 'Verified Pro',
-                            style: GoogleFonts.outfit(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                              color: AppTheme.subtitleColor,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                        Text(
+                          "₹${finalPrice.toStringAsFixed(0)}",
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
                           ),
                         ),
+                        const SizedBox(width: 8),
+                        if (hasOffer)
+                          Text(
+                            "₹${price.toStringAsFixed(0)}",
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey,
+                              decoration: TextDecoration.lineThrough,
+                            ),
+                          ),
                       ],
                     ),
 
-                    if (service.technicianDistrict != null &&
-                        service.technicianDistrict!.isNotEmpty) ...[  
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
+                    const SizedBox(height: 8),
+
+                    // BOOK NOW BUTTON
+                    GestureDetector(
+                      onTap: _navigateToDetails,
+                      child: Container(
+                        height: 34,
+                        width: double.infinity,
                         decoration: BoxDecoration(
-                          color: Colors.blue.withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(5),
+                          color: Colors.black,
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Text(
-                          service.technicianDistrict!.toUpperCase(),
-                          style: GoogleFonts.outfit(
-                            fontSize: 8,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.blue[700],
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                      ),
-                    ],
-
-                    const SizedBox(height: 6),
-
-                    SizedBox(
-                      width: double.infinity,
-                      height: 32,
-                      child: ElevatedButton(
-                        onPressed: _navigateToDetails,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          padding: EdgeInsets.zero,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: Text(
-                          'Get Service',
-                          style: GoogleFonts.outfit(
-                            fontSize: 11,
+                        alignment: Alignment.center,
+                        child: const Text(
+                          'Book Now',
+                          style: TextStyle(
+                            color: Colors.white,
                             fontWeight: FontWeight.w600,
+                            fontSize: 13,
                           ),
                         ),
                       ),
@@ -373,7 +302,8 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
                   ],
                 ),
               ),
-          ],
+            ],
+          ),
         ),
       ),
     );

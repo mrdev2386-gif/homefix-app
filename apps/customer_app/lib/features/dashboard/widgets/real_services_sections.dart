@@ -61,6 +61,11 @@ class _BaseServicesSection extends StatelessWidget {
 
         var services = snapshot.data ?? [];
         
+        print('\n📊 [STREAM BUILDER] $title received ${services.length} services');
+        for (final service in services.take(3)) {
+          print('   ${service.title}: price=${service.price}, offer=${service.offerPrice}');
+        }
+        
         // Filter out already displayed services to prevent duplicates
         if (displayedServiceIds != null) {
           services = services.where((s) => !displayedServiceIds!.contains(s.id)).toList();
@@ -146,7 +151,10 @@ class _BaseServicesSection extends StatelessWidget {
         physics: const BouncingScrollPhysics(),
         itemCount: services.length,
         itemBuilder: (context, index) {
-          return UniversalServiceCard(service: services[index]);
+          return UniversalServiceCard(
+            key: ValueKey(services[index].id),
+            service: services[index],
+          );
         },
       ),
     );
@@ -167,7 +175,11 @@ class _BaseServicesSection extends StatelessWidget {
         ),
         itemCount: services.length,
         itemBuilder: (context, index) {
-          return UniversalServiceCard(service: services[index], isGrid: true);
+          return UniversalServiceCard(
+            key: ValueKey(services[index].id),
+            service: services[index],
+            isGrid: true,
+          );
         },
       ),
     );
@@ -413,7 +425,10 @@ class TopRatedRealServicesSection extends StatelessWidget {
                 itemBuilder: (context, index) {
                   return Padding(
                     padding: const EdgeInsets.only(right: 12),
-                    child: UniversalServiceCard(service: services[index]),
+                    child: UniversalServiceCard(
+                      key: ValueKey(services[index].id),
+                      service: services[index],
+                    ),
                   );
                 },
               ),

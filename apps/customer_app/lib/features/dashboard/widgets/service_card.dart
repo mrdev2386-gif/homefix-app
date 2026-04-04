@@ -179,99 +179,63 @@ class ServiceCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 6),
-                      // Price with discount logic
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.baseline,
-                        textBaseline: TextBaseline.alphabetic,
-                        children: [
-                          // Check if there's an offer price
-                          if (service.offerPrice != null && service.offerPrice! > 0 && service.offerPrice! < service.basePrice) ...[
-                            // Show original price with strikethrough
-                            Text(
-                              '₹${service.basePrice.toStringAsFixed(0)}',
-                              style: GoogleFonts.outfit(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey[500],
-                                decoration: TextDecoration.lineThrough,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            // Show offer price
-                            Text(
-                              '₹',
-                              style: GoogleFonts.outfit(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: const Color(0xFF6366F1),
-                              ),
-                            ),
-                            Flexible(
-                              child: Text(
-                                service.offerPrice!.toStringAsFixed(0),
-                                style: GoogleFonts.outfit(
+                      // MODERN PRICE SECTION
+                      // PRICING LOGIC:
+                      // - basePrice/originalPrice: Original price (for strikethrough)
+                      // - offerPrice: Discounted price (actual selling price)
+                      // - Display offerPrice as main price
+                      // - Show basePrice with strikethrough if offerPrice < basePrice
+                      Builder(
+                        builder: (context) {
+                          final double originalPrice = service.basePrice ?? 0;
+                          final double offerPrice = service.offerPrice ?? originalPrice;
+                          
+                          // Show offer only if offerPrice is less than originalPrice
+                          final bool hasOffer = offerPrice > 0 && offerPrice < originalPrice;
+                          final double displayPrice = offerPrice > 0 ? offerPrice : originalPrice;
+                          
+                          print("[UI PRICE] ${service.title}: original=$originalPrice, offer=$offerPrice, display=$displayPrice, hasOffer=$hasOffer");
+                          
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
+                            children: [
+                              // Main price (offerPrice or originalPrice)
+                              Text(
+                                "₹${displayPrice.toStringAsFixed(0)}",
+                                style: const TextStyle(
                                   fontSize: 18,
-                                  fontWeight: FontWeight.w800,
-                                  color: const Color(0xFF6366F1),
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            // Discount badge
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.green,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                '${((service.basePrice - service.offerPrice!) / service.basePrice * 100).round()}% OFF',
-                                style: GoogleFonts.outfit(
-                                  color: Colors.white,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green,
                                 ),
                               ),
-                            ),
-                          ] else ...[
-                            // Show regular price
-                            Text(
-                              '₹',
-                              style: GoogleFonts.outfit(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: const Color(0xFF6366F1),
-                              ),
-                            ),
-                            Flexible(
-                              child: Text(
-                                service.basePrice.toStringAsFixed(0),
-                                style: GoogleFonts.outfit(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w800,
-                                  color: const Color(0xFF6366F1),
+                              const SizedBox(width: 8),
+                              // Strikethrough original price (only if offer exists)
+                              if (hasOffer)
+                                Text(
+                                  "₹${originalPrice.toStringAsFixed(0)}",
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey,
+                                    decoration: TextDecoration.lineThrough,
+                                  ),
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  '/${service.duration}',
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 12,
+                                    color: Colors.grey[500],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                            ),
-                          ],
-                          const SizedBox(width: 4),
-                          Flexible(
-                            child: Text(
-                              '/${service.duration}',
-                              style: GoogleFonts.outfit(
-                                fontSize: 12,
-                                color: Colors.grey[500],
-                                fontWeight: FontWeight.w500,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
+                            ],
+                          );
+                        },
                       ),
                       const SizedBox(height: 8),
                       // Rating Row

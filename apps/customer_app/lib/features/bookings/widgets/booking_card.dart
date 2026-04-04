@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../core/models/booking.dart';
+import 'booking_tracking_sheet.dart';
 
 class BookingCard extends StatelessWidget {
   final Booking booking;
@@ -161,7 +162,7 @@ class BookingCard extends StatelessWidget {
                     const SizedBox(height: 20),
 
                     // ═══════════════════════════════════════════════════════════
-                    // BOTTOM ROW: Price + View Details Button
+                    // BOTTOM ROW: Price + Track + View Details
                     // ═══════════════════════════════════════════════════════════
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -186,7 +187,7 @@ class BookingCard extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'TOTAL AMOUNT',
+                                'TOTAL',
                                 style: GoogleFonts.outfit(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w700,
@@ -198,7 +199,7 @@ class BookingCard extends StatelessWidget {
                               Text(
                                 '₹${booking.finalAmount.toStringAsFixed(0)}',
                                 style: GoogleFonts.outfit(
-                                  fontSize: 24,
+                                  fontSize: 20,
                                   fontWeight: FontWeight.w900,
                                   color: const Color(0xFF111827),
                                   height: 1,
@@ -207,46 +208,90 @@ class BookingCard extends StatelessWidget {
                             ],
                           ),
                         ),
-                        // View Details Button
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 14,
-                          ),
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(14),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFF6366F1).withOpacity(0.4),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'View Details',
-                                style: GoogleFonts.outfit(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white,
+                        
+                        Row(
+                          children: [
+                            // Track Button
+                            Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () {
+                                  showModalBottomSheet(
+                                    context: context,
+                                    isScrollControlled: true,
+                                    backgroundColor: Colors.transparent,
+                                    builder: (context) => BookingTrackingSheet(booking: booking),
+                                  );
+                                },
+                                borderRadius: BorderRadius.circular(14),
+                                child: Container(
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: _getStatusColor(booking.status).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: _getStatusColor(booking.status).withOpacity(0.3),
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    Icons.timeline_rounded,
+                                    color: _getStatusColor(booking.status),
+                                    size: 20,
+                                  ),
                                 ),
                               ),
-                              const SizedBox(width: 6),
-                              const Icon(
-                                Icons.arrow_forward_rounded,
-                                size: 16,
-                                color: Colors.white,
+                            ),
+                            const SizedBox(width: 8),
+                            // View Details Button
+                            Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: onTap,
+                                borderRadius: BorderRadius.circular(14),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 14,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    borderRadius: BorderRadius.circular(14),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: const Color(0xFF6366F1).withOpacity(0.4),
+                                        blurRadius: 12,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Details',
+                                        style: GoogleFonts.outfit(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      const Icon(
+                                        Icons.arrow_forward_rounded,
+                                        size: 16,
+                                        color: Colors.white,
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -318,21 +363,27 @@ class BookingCard extends StatelessWidget {
     switch (status.toLowerCase()) {
       case 'pending':
       case 'pending_admin':
+      case 'pending_admin_review':
         return Colors.orange;
-      case 'technician_pending':
+      case 'accepted':
+      case 'admin_approved':
+      case 'approved_by_admin':
         return Colors.blue;
+      case 'technician_pending':
       case 'awaiting_payment':
         return Colors.purple;
-      case 'confirmed':
       case 'assigned':
-      case 'accepted':
-        return Colors.green;
+      case 'technician_assigned':
+      case 'confirmed':
+        return Colors.purple;
       case 'on_the_way':
       case 'started':
       case 'in_progress':
+      case 'service_in_progress':
         return Colors.teal;
       case 'completed':
-        return Colors.grey;
+      case 'service_completed':
+        return Colors.green;
       case 'cancelled':
         return Colors.red;
       default:
@@ -357,16 +408,32 @@ class BookingCard extends StatelessWidget {
     switch (status.toLowerCase()) {
       case 'pending':
       case 'pending_admin':
+      case 'pending_admin_review':
         backgroundColor = Colors.orange.shade50;
         textColor = Colors.orange.shade700;
         displayText = 'Pending';
         icon = Icons.schedule_rounded;
+        break;
+      case 'accepted':
+      case 'admin_approved':
+      case 'approved_by_admin':
+        backgroundColor = Colors.blue.shade50;
+        textColor = Colors.blue.shade700;
+        displayText = 'Approved';
+        icon = Icons.verified_rounded;
         break;
       case 'technician_pending':
         backgroundColor = Colors.blue.shade50;
         textColor = Colors.blue.shade700;
         displayText = 'Finding Technician';
         icon = Icons.person_search_rounded;
+        break;
+      case 'assigned':
+      case 'technician_assigned':
+        backgroundColor = Colors.purple.shade50;
+        textColor = Colors.purple.shade700;
+        displayText = 'Technician Assigned';
+        icon = Icons.person_add_rounded;
         break;
       case 'awaiting_payment':
         backgroundColor = Colors.purple.shade50;
@@ -375,16 +442,9 @@ class BookingCard extends StatelessWidget {
         icon = Icons.payment_rounded;
         break;
       case 'confirmed':
-        backgroundColor = Colors.green.shade50;
-        textColor = Colors.green.shade700;
+        backgroundColor = Colors.purple.shade50;
+        textColor = Colors.purple.shade700;
         displayText = 'Confirmed';
-        icon = Icons.verified_rounded;
-        break;
-      case 'assigned':
-      case 'accepted':
-        backgroundColor = Colors.blue.shade50;
-        textColor = Colors.blue.shade700;
-        displayText = 'Assigned';
         icon = Icons.check_circle_outline_rounded;
         break;
       case 'on_the_way':
@@ -395,12 +455,14 @@ class BookingCard extends StatelessWidget {
         break;
       case 'started':
       case 'in_progress':
+      case 'service_in_progress':
         backgroundColor = Colors.teal.shade50;
         textColor = Colors.teal.shade700;
         displayText = 'In Progress';
         icon = Icons.engineering_rounded;
         break;
       case 'completed':
+      case 'service_completed':
         backgroundColor = Colors.green.shade50;
         textColor = Colors.green.shade700;
         displayText = 'Completed';

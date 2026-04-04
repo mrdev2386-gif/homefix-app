@@ -51,9 +51,8 @@ function calculateProfileCompletion(technician: any): number {
 
 interface ServiceInput {
   name: string;
-  price: number;
-  basePrice?: number;
-  offerPrice?: number;
+  price: number;  // Original price (before discount)
+  offerPrice: number;  // Discounted price (REQUIRED)
   imageUrl: string;
   category: string;
   description?: string;
@@ -73,7 +72,8 @@ interface ServiceInput {
 interface UpdateServiceInput {
   serviceId: string;
   name?: string;
-  price?: number;
+  price?: number;  // Original price (before discount)
+  offerPrice?: number;  // Discounted price
   imageUrl?: string;
   category?: string;
   description?: string;
@@ -128,19 +128,26 @@ export const addTechnicianService = functions
     console.log("🔥 [AUTH SUCCESS] Authenticated UID:", technicianId);
     console.log("🔥 [AUTH TOKEN CLAIMS]", JSON.stringify(context.auth.token, null, 2));
 
-    const { name, price, basePrice, offerPrice, imageUrl, category, description, urgentBooking, nightService } = data;
+    const { name, price, offerPrice, imageUrl, category, description, urgentBooking, nightService } = data;
 
     // SECURITY FIX: Sanitize inputs
     const sanitizedName = sanitizeString(name || '', 200);
     const sanitizedCategory = sanitizeString(category || '', 100);
     const sanitizedDescription = sanitizeString(description || '', 1000);
 
-    // Validation
+    // CRITICAL VALIDATION: Price and offerPrice are REQUIRED
     if (!sanitizedName || sanitizedName.length < 3) {
       throw new functions.https.HttpsError("invalid-argument", "Service name must be at least 3 characters");
     }
     if (!price || price <= 0) {
-      throw new functions.https.HttpsError("invalid-argument", "Price must be greater than 0");
+      throw new functions.https.HttpsError("invalid-argument", "Original price is required and must be greater than 0");
+    }
+    if (!offerPrice || offerPrice <= 0) {
+      throw new functions.https.HttpsError("invalid-argument", "Offer price is required and must be greater than 0");
+    }
+    // CRITICAL: offerPrice MUST be strictly less than price
+    if (offerPrice >= price) {
+      throw new functions.https.HttpsError("invalid-argument", "Offer price must be strictly less than original price");
     }
     if (!imageUrl?.trim()) {
       throw new functions.https.HttpsError("invalid-argument", "Image is required");
@@ -208,12 +215,16 @@ export const addTechnicianService = functions
     const now = admin.firestore.Timestamp.now();
 
     // CRITICAL FIX: Services must start as PENDING for admin approval
+    // PRICING STRUCTURE:
+    // - price: Original price (before discount) - used for strikethrough display
+    // - offerPrice: Discounted price - the actual selling price
+    // - basePrice: Same as price (for backward compatibility)
     const serviceData: any = {
       id: serviceId,
       name: sanitizedName,
-      price,
-      basePrice: basePrice ?? price,
-      offerPrice: offerPrice ?? price,
+      price,  // Original price (before discount)
+      offerPrice,  // Discounted price (actual selling price)
+      basePrice: price,  // Same as price (for backward compatibility)
       categoryId: sanitizedCategory,
       imageUrl: imageUrl.trim(),
       category: sanitizedCategory,
@@ -231,6 +242,8 @@ export const addTechnicianService = functions
       createdAt: now,
       updatedAt: now,
     };
+
+    console.log(`[PRICING DEBUG] Service ${serviceId}: price=${price}, offerPrice=${offerPrice}, basePrice=${price}`);
 
     // Add urgent booking configuration if provided
     if (urgentBooking) {
@@ -324,9 +337,22 @@ export const updateTechnicianService = functions
 
     if (updates.price !== undefined) {
       if (updates.price <= 0) {
-        throw new functions.https.HttpsError("invalid-argument", "Price must be greater than 0");
+        throw new functions.https.HttpsError("invalid-argument", "Original price must be greater than 0");
       }
       updateData.price = updates.price;
+      updateData.basePrice = updates.price;  // Keep basePrice in sync
+    }
+
+    if (updates.offerPrice !== undefined) {
+      if (updates.offerPrice <= 0) {
+        throw new functions.https.HttpsError("invalid-argument", "Offer price must be greater than 0");
+      }
+      // Validate offerPrice < price if both are being updated
+      const currentPrice = updates.price ?? serviceData.price;
+      if (updates.offerPrice >= currentPrice) {
+        throw new functions.https.HttpsError("invalid-argument", "Offer price must be strictly less than original price");
+      }
+      updateData.offerPrice = updates.offerPrice;
     }
 
     if (updates.imageUrl !== undefined) {

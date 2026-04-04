@@ -650,37 +650,39 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
       return;
     }
 
-    // Strict price validation
-    if (_offerPrice != null && _originalPrice != null) {
-      if (_offerPrice! >= _originalPrice!) {
+    // CRITICAL PRICE VALIDATION
+    // 1. Both prices are required (not for custom category)
+    if (_selectedCategoryId != 'custom') {
+      if (_originalPrice == null || _originalPrice! <= 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Offer price must be less than original price'),
+            content: Text('Original price is required and must be greater than 0'),
             backgroundColor: Colors.orange,
           ),
         );
         return;
       }
-    }
 
-    if (_originalPrice != null && _originalPrice! <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Original price must be greater than 0'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
+      if (_offerPrice == null || _offerPrice! <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Offer price is required and must be greater than 0'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
 
-    if (_offerPrice != null && _offerPrice! <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Offer price must be greater than 0'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
+      // 2. Offer price MUST be strictly less than original price
+      if (_offerPrice! >= _originalPrice!) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Offer price must be strictly less than original price'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
     }
 
     // Prevent duplicate submissions
@@ -715,16 +717,15 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
 
       if (widget.isEdit && widget.serviceId != null) {
         // UPDATE existing service
+        print('[UPDATE DEBUG] originalPrice: $_originalPrice, offerPrice: $_offerPrice');
         await _functionsService.updateService(
           serviceId: widget.serviceId!,
           name: _nameController.text.trim(),
-          price: _offerPrice ?? double.parse(_priceController.text.trim()),
+          price: _originalPrice!,  // Main price (before discount)
+          offerPrice: _offerPrice!, // Discounted price
           imageUrl: imageUrl.isNotEmpty ? imageUrl : null,
           category: _selectedCategoryId,
           description: _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
-          originalPrice: _originalPrice,
-          offerPrice: _offerPrice,
-          discountPercent: _calculateDiscount(),
           urgentBooking: _urgentBookingEnabled ? {
             'enabled': true,
             'arrivalTime': _urgentArrivalTime,
@@ -738,17 +739,17 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
         print("[UPDATE SERVICE] SUCCESS");
       } else {
         // CREATE new service
+        // CRITICAL: Send originalPrice as 'price', offerPrice as 'offerPrice'
+        print('[SAVE DEBUG] originalPrice: $_originalPrice, offerPrice: $_offerPrice');
         await _functionsService.addService(
           name: _nameController.text.trim(),
-          price: _offerPrice ?? double.parse(_priceController.text.trim()),
+          price: _originalPrice!,  // Main price (before discount)
+          offerPrice: _offerPrice!, // Discounted price
           imageUrl: imageUrl,
           category: _selectedCategoryId!,
           description: _descriptionController.text.trim().isEmpty 
               ? null 
               : _descriptionController.text.trim(),
-          originalPrice: _originalPrice,
-          offerPrice: _offerPrice,
-          discountPercent: _calculateDiscount(),
           urgentBooking: _urgentBookingEnabled ? {
             'enabled': true,
             'arrivalTime': _urgentArrivalTime,

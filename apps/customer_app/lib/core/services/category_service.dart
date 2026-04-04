@@ -208,11 +208,31 @@ class CategoryService extends ChangeNotifier {
         .limit(50)
         .snapshots()
         .map((snapshot) {
+      if (kDebugMode) debugPrint('\n🔥 [CATEGORY_SERVICE] Fetched ${snapshot.docs.length} documents for category: $categoryId');
+      
       final services = snapshot.docs
-          .map((doc) => HomeService.fromFirestore(doc))
+          .map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            if (kDebugMode) {
+              debugPrint('📄 [CATEGORY_SERVICE RAW] ${doc.id}:');
+              debugPrint('   price: ${data['price']}');
+              debugPrint('   offerPrice: ${data['offerPrice']}');
+              debugPrint('   basePrice: ${data['basePrice']}');
+            }
+            return HomeService.fromFirestore(doc);
+          })
           .whereType<HomeService>()
           .toList();
+      
       services.sort((a, b) => a.order.compareTo(b.order));
+      
+      if (kDebugMode) {
+        debugPrint('\n✅ [CATEGORY_SERVICE] Returning ${services.length} services');
+        for (final service in services.take(3)) {
+          debugPrint('   ${service.title}: price=${service.price}, offer=${service.offerPrice}');
+        }
+      }
+      
       return services;
     }).handleError((error) {
       if (kDebugMode) debugPrint('❌ [CategoryService] Services by category error: $error');
@@ -347,10 +367,29 @@ class CategoryService extends ChangeNotifier {
         .limit(50)
         .snapshots()
         .map((snapshot) {
+      if (kDebugMode) debugPrint('\n🔥 [CATEGORY_SERVICE] Fetched ${snapshot.docs.length} documents');
+      
       final services = snapshot.docs
-          .map((doc) => HomeService.fromFirestore(doc))
+          .map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            if (kDebugMode) {
+              debugPrint('📄 [CATEGORY_SERVICE RAW] ${doc.id}:');
+              debugPrint('   price: ${data['price']}');
+              debugPrint('   offerPrice: ${data['offerPrice']}');
+              debugPrint('   basePrice: ${data['basePrice']}');
+            }
+            return HomeService.fromFirestore(doc);
+          })
           .whereType<HomeService>()
           .toList();
+      
+      if (kDebugMode) {
+        debugPrint('\n✅ [CATEGORY_SERVICE] Returning ${services.length} services');
+        for (final service in services.take(3)) {
+          debugPrint('   ${service.title}: price=${service.price}, offer=${service.offerPrice}');
+        }
+      }
+      
       return services;
     }).handleError((error) {
       if (kDebugMode) debugPrint('❌ [CategoryService] All services error: $error');

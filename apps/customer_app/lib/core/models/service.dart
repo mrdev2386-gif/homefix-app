@@ -91,20 +91,42 @@ class HomeService {
     
     // ============================================================================
     // PRICE EXTRACTION: Safe number parsing for all price fields
+    // PRICING STRUCTURE:
+    // - price: Original price (before discount) - used for strikethrough
+    // - offerPrice: Discounted price - the actual selling price
+    // - basePrice: Legacy field, same as price
     // ============================================================================
     
-    double price = 0.0;
-    double? originalPrice;
-    double? offerPrice;
+    double price = 0.0;  // Original price (before discount)
+    double? offerPrice;  // Discounted price (actual selling price)
     
-    price = _parsePrice(data['price'] ?? data['basePrice']);
-    originalPrice = _parsePrice(data['originalPrice']);
+    // Extract price (original price before discount)
+    price = _parsePrice(data['price']);
+    
+    // Extract offerPrice (discounted price - actual selling price)
     offerPrice = _parsePrice(data['offerPrice']);
+    
+    // Fallback: if price is 0, try basePrice field (legacy support)
+    if (price == 0.0) {
+      price = _parsePrice(data['basePrice']);
+    }
+    
+    // Backward compatibility: If offerPrice is 0 or null, use price as offerPrice
+    if (offerPrice == null || offerPrice == 0.0) {
+      offerPrice = price;
+    }
+    
+    // DEBUG: Print parsed values for EVERY service
+    print('💰 [MODEL PARSE] ${data['name'] ?? data['title'] ?? 'Unknown'}:');
+    print('   Firestore price: ${data['price']} → Parsed: $price');
+    print('   Firestore offerPrice: ${data['offerPrice']} → Parsed: $offerPrice');
+    print('   Firestore basePrice: ${data['basePrice']}');
+    print('   Final: price=$price (strikethrough), offerPrice=$offerPrice (display)');
     
     // Log price information only for services with special offers (reduce spam)
     if (kDebugMode && offerPrice != null && offerPrice > 0 && offerPrice < price) {
       final discountPercent = ((price - offerPrice!) / price * 100).toInt();
-      debugPrint('💰 [SERVICE_OFFER] $title: ₹$price → ₹$offerPrice ($discountPercent% off)');
+      debugPrint('💰 [SERVICE_OFFER] ${data['name'] ?? data['title']}: ₹$price → ₹$offerPrice ($discountPercent% off)');
     }
 
     // ============================================================================
@@ -146,9 +168,9 @@ class HomeService {
       imageAssetPath: '', // Deprecated: No longer used for network images
       imageUrl: imageUrl,
       description: (data['description'] ?? '').toString(),
-      basePrice: price,
-      originalPrice: originalPrice,
-      offerPrice: offerPrice,
+      basePrice: price,  // Original price (for strikethrough)
+      originalPrice: price,  // Same as basePrice (for backward compatibility)
+      offerPrice: offerPrice,  // Discounted price (actual selling price)
       urgentBookingEnabled: data['urgentBookingEnabled'] ?? false,
       isActive: isActive,
       category: finalCategory,

@@ -95,11 +95,20 @@ class FirestoreService {
           .limit(limit)
           .snapshots()
           .map((snapshot) {
+            print('\n🔥 [FIRESTORE RAW] Fetched ${snapshot.docs.length} documents');
             final services = snapshot.docs
-                .map((doc) => HomeService.fromFirestore(doc))
+                .map((doc) {
+                  final data = doc.data();
+                  print('📄 [FIRESTORE RAW DATA] ${doc.id}:');
+                  print('   price: ${data['price']}');
+                  print('   offerPrice: ${data['offerPrice']}');
+                  print('   basePrice: ${data['basePrice']}');
+                  return HomeService.fromFirestore(doc);
+                })
                 .whereType<HomeService>()
                 .toList();
             services.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+            print('✅ [FIRESTORE] Returning ${services.length} services\n');
             return services;
           })
           .asBroadcastStream(),

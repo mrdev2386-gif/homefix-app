@@ -28,6 +28,7 @@ import { isValidTransition, isTerminalState, validateTransitionInTransaction } f
 import { checkBookingRateLimit } from './production_hardening';
 import { secureCallable, sanitize } from '../shared/security';
 import { logger } from '../shared/utils';
+import { updateBookingStatus } from '../shared/status_history_tracker';
 
 const db = admin.firestore();
 
@@ -102,11 +103,15 @@ export const approveBookingByAdmin = functions
             );
         }
 
-        await bookingRef.update({
-            bookingStatus: 'approved_by_admin',
-            approvedAt: admin.firestore.FieldValue.serverTimestamp(),
-            approvedBy: uid,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        await db.runTransaction(async (t) => {
+            const freshDoc = await t.get(bookingRef);
+            if (!freshDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
+            const freshBooking = freshDoc.data()!;
+            updateBookingStatus(t, bookingRef, 'approved_by_admin', freshBooking, {
+                bookingStatus: 'approved_by_admin',
+                approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+                approvedBy: uid,
+            });
         });
 
         if (booking.technicianId) {
@@ -168,10 +173,14 @@ export const technicianAcceptBooking = functions
             );
         }
 
-        await bookingRef.update({
-            bookingStatus: 'technician_accepted',
-            acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        await db.runTransaction(async (t) => {
+            const freshDoc = await t.get(bookingRef);
+            if (!freshDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
+            const freshBooking = freshDoc.data()!;
+            updateBookingStatus(t, bookingRef, 'technician_accepted', freshBooking, {
+                bookingStatus: 'technician_accepted',
+                acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
         });
 
         const customerDoc = await db.collection('customers').doc(booking.customerId).get();
@@ -231,10 +240,14 @@ export const startService = functions
             );
         }
 
-        await bookingRef.update({
-            bookingStatus: 'service_in_progress',
-            serviceStartedAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        await db.runTransaction(async (t) => {
+            const freshDoc = await t.get(bookingRef);
+            if (!freshDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
+            const freshBooking = freshDoc.data()!;
+            updateBookingStatus(t, bookingRef, 'service_in_progress', freshBooking, {
+                bookingStatus: 'service_in_progress',
+                serviceStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
         });
 
         const customerDoc = await db.collection('customers').doc(booking.customerId).get();
@@ -294,11 +307,15 @@ export const completeService = functions
             );
         }
 
-        await bookingRef.update({
-            bookingStatus: 'service_completed',
-            serviceCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
-            paymentStatus: 'pending',
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        await db.runTransaction(async (t) => {
+            const freshDoc = await t.get(bookingRef);
+            if (!freshDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
+            const freshBooking = freshDoc.data()!;
+            updateBookingStatus(t, bookingRef, 'service_completed', freshBooking, {
+                bookingStatus: 'service_completed',
+                serviceCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
+                paymentStatus: 'pending',
+            });
         });
 
         const customerDoc = await db.collection('customers').doc(booking.customerId).get();
@@ -358,12 +375,16 @@ export const technicianRejectBooking = functions
             );
         }
 
-        await bookingRef.update({
-            bookingStatus: 'technician_rejected',
-            rejectedBy: uid,
-            rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
-            rejectionReason: sanitize(reason) || 'Technician unavailable',
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        await db.runTransaction(async (t) => {
+            const freshDoc = await t.get(bookingRef);
+            if (!freshDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
+            const freshBooking = freshDoc.data()!;
+            updateBookingStatus(t, bookingRef, 'technician_rejected', freshBooking, {
+                bookingStatus: 'technician_rejected',
+                rejectedBy: uid,
+                rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
+                rejectionReason: sanitize(reason) || 'Technician unavailable',
+            });
         });
 
         // Notify admin to reassign
@@ -430,12 +451,16 @@ export const cancelBooking = functions
             );
         }
 
-        await bookingRef.update({
-            bookingStatus: 'cancelled',
-            cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
-            cancelledBy: uid,
-            cancellationReason: sanitize(reason) || 'No reason provided',
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        await db.runTransaction(async (t) => {
+            const freshDoc = await t.get(bookingRef);
+            if (!freshDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
+            const freshBooking = freshDoc.data()!;
+            updateBookingStatus(t, bookingRef, 'cancelled', freshBooking, {
+                bookingStatus: 'cancelled',
+                cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+                cancelledBy: uid,
+                cancellationReason: sanitize(reason) || 'No reason provided',
+            });
         });
 
         return { success: true, bookingStatus: 'cancelled' };
@@ -456,87 +481,146 @@ export const createBookingRequest = functions
   .region('asia-south1')
   .https.onCall(
   secureCallable(async (data, context) => {
-    console.log('✅ [createBookingRequest] Auth UID:', context.auth?.uid);
-    
-    const uid = context.auth?.uid;
-    if (!uid) {
-      console.error('❌ [createBookingRequest] context.auth is NULL');
-      throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
-    }
-
-    // PHASE 3: Rate Limiting
-    const rateLimit = await checkBookingRateLimit(uid);
-    if (!rateLimit.allowed) {
-      throw new functions.https.HttpsError(
-        'resource-exhausted',
-        rateLimit.error || 'Too many booking requests. Please try later.'
-      );
-    }
-
-    // PHASE 4: Input Validation (Strict)
-    const {
-      serviceId,
-      technicianId,
-      categoryId,
-      categoryName,
-      scheduledDate,
-      scheduledTime,
-      address,
-      subcategoryId,
-      quantity,
-      durationMinutes,
-      couponCode,
-      idempotencyKey,
-      paymentMode,
-    } = data;
-
-    if (!serviceId || typeof serviceId !== 'string') {
-      throw new functions.https.HttpsError('invalid-argument', 'Invalid serviceId');
-    }
-    if (!technicianId || typeof technicianId !== 'string') {
-      throw new functions.https.HttpsError('invalid-argument', 'Invalid technicianId');
-    }
-    if (!categoryId || !scheduledDate || !scheduledTime || !address) {
-      throw new functions.https.HttpsError('invalid-argument', 'Missing required booking fields');
-    }
-
-    const customerDoc = await db.collection('users').doc(uid).get();
-    if (!customerDoc.exists) {
-      throw new functions.https.HttpsError('not-found', 'Customer profile not found');
-    }
-
-    // PHASE 1: Fix Price Manipulation
-    // Fetch actual price from source of truth (technician_services)
-    const serviceDoc = await db.collection('technician_services').doc(serviceId).get();
-    if (!serviceDoc.exists) {
-      throw new functions.https.HttpsError('not-found', 'Service listing not found');
-    }
-
-    const serviceData = serviceDoc.data()!;
-    if (serviceData.technicianId !== technicianId) {
-      throw new functions.https.HttpsError('invalid-argument', 'Service does not belong to the selected technician');
-    }
-
-    // ENFORCE Database Price
-    const basePrice = serviceData.price;
-    if (typeof basePrice !== 'number' || basePrice <= 0) {
-      throw new functions.https.HttpsError('internal', 'Invalid service price configuration');
-    }
-
-    const techDoc = await db.collection('technicians').doc(technicianId).get();
-    if (!techDoc.exists) {
-      throw new functions.https.HttpsError('not-found', 'Technician not found');
-    }
-
-    const techData = techDoc.data()!;
-    if (techData.verificationStatus !== 'approved' && techData.status !== 'approved') {
-      throw new functions.https.HttpsError('failed-precondition', 'Technician is not verified');
-    }
-
-    const finalIdempotencyKey = idempotencyKey || `BK_${uid}_${Date.now()}`;
-    const bookingId = db.collection('bookings').doc().id;
-
     try {
+      // 1. App Check: warn but never block
+      if (!context.app) {
+        console.warn('⚠️ [createBookingRequest] App Check token missing - allowing request (non-enforced)');
+      }
+
+      console.log('✅ [createBookingRequest] Auth UID:', context.auth?.uid);
+      console.log('📦 [createBookingRequest] INPUT DATA:', JSON.stringify(data));
+      
+      const uid = context.auth?.uid;
+      if (!uid) {
+        console.error('❌ [createBookingRequest] context.auth is NULL');
+        throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
+      }
+
+    // PHASE 3: Rate Limiting (non-fatal - log and continue if it fails)
+    try {
+      const rateLimit = await checkBookingRateLimit(uid);
+      if (!rateLimit.allowed) {
+        throw new functions.https.HttpsError(
+          'resource-exhausted',
+          rateLimit.error || 'Too many booking requests. Please try later.'
+        );
+      }
+    } catch (rateLimitError: any) {
+      if (rateLimitError instanceof functions.https.HttpsError) throw rateLimitError;
+      console.warn('⚠️ [createBookingRequest] Rate limit check failed (non-fatal):', rateLimitError.message);
+    }
+
+      // PHASE 4: Input Validation (Strict)
+      const {
+        serviceId,
+        technicianId,
+        categoryId,
+        categoryName,
+        scheduledDate,
+        scheduledTime,
+        address,
+        subcategoryId,
+        quantity,
+        durationMinutes,
+        couponCode,
+        idempotencyKey,
+        paymentMode,
+        price,
+      } = data;
+
+      console.log('🔍 [createBookingRequest] Validating inputs...');
+      
+      if (!serviceId || typeof serviceId !== 'string') {
+        console.error('❌ [createBookingRequest] Invalid serviceId:', serviceId);
+        throw new functions.https.HttpsError('invalid-argument', 'serviceId is required and must be a string');
+      }
+      if (!technicianId || typeof technicianId !== 'string') {
+        console.error('❌ [createBookingRequest] Invalid technicianId:', technicianId);
+        throw new functions.https.HttpsError('invalid-argument', 'technicianId is required and must be a string');
+      }
+      if (!categoryId) {
+        console.error('❌ [createBookingRequest] Missing categoryId');
+        throw new functions.https.HttpsError('invalid-argument', 'categoryId is required');
+      }
+      if (!scheduledDate) {
+        console.error('❌ [createBookingRequest] Missing scheduledDate');
+        throw new functions.https.HttpsError('invalid-argument', 'scheduledDate is required');
+      }
+      if (!scheduledTime) {
+        console.error('❌ [createBookingRequest] Missing scheduledTime');
+        throw new functions.https.HttpsError('invalid-argument', 'scheduledTime is required');
+      }
+      if (!address || typeof address !== 'object') {
+        console.warn('⚠️ [createBookingRequest] address missing or invalid - using empty object');
+        // Do NOT throw - address is sanitized below, empty is acceptable
+      }
+      if (price !== undefined && (typeof price !== 'number' || price <= 0)) {
+        console.error('❌ [createBookingRequest] Invalid price:', price);
+        throw new functions.https.HttpsError('invalid-argument', 'price must be a positive number');
+      }
+      if (paymentMode && !['before_work', 'after_work', 'pay_before_work', 'pay_after_work'].includes(paymentMode)) {
+        console.error('❌ [createBookingRequest] Invalid paymentMode:', paymentMode);
+        throw new functions.https.HttpsError('invalid-argument', 'paymentMode must be either "before_work" or "after_work"');
+      }
+      
+      console.log('✅ [createBookingRequest] Input validation passed');
+
+      console.log('🔍 [createBookingRequest] Fetching customer profile...');
+      const customerDoc = await db.collection('customers').doc(uid).get();
+      if (!customerDoc.exists) {
+        console.error('❌ [createBookingRequest] Customer not found:', uid);
+        throw new functions.https.HttpsError('not-found', 'Customer profile not found. Please complete your profile first.');
+      }
+      console.log('✅ [createBookingRequest] Customer found:', customerDoc.data()?.name);
+
+      // PHASE 1: Fix Price Manipulation
+      // Fetch actual price from source of truth (technician_services)
+      console.log('🔍 [createBookingRequest] Fetching service data...');
+      const serviceDoc = await db.collection('technician_services').doc(serviceId).get();
+      if (!serviceDoc.exists) {
+        console.error('❌ [createBookingRequest] Service not found:', serviceId);
+        throw new functions.https.HttpsError('not-found', `Service listing not found: ${serviceId}`);
+      }
+
+      const serviceData = serviceDoc.data()!;
+      console.log('📦 [createBookingRequest] Service data:', { name: serviceData.name, price: serviceData.price, technicianId: serviceData.technicianId });
+      
+      if (serviceData.technicianId !== technicianId) {
+        console.error('❌ [createBookingRequest] Technician mismatch. Expected:', serviceData.technicianId, 'Got:', technicianId);
+        throw new functions.https.HttpsError('invalid-argument', 'Service does not belong to the selected technician');
+      }
+
+      // ENFORCE Database Price (use client price if service price is missing)
+      const basePrice = serviceData.price || price || 0;
+      if (typeof basePrice !== 'number' || basePrice <= 0) {
+        console.error('❌ [createBookingRequest] Invalid price. Service price:', serviceData.price, 'Client price:', price);
+        throw new functions.https.HttpsError('internal', 'Invalid service price configuration. Please contact support.');
+      }
+      console.log('✅ [createBookingRequest] Using price:', basePrice);
+
+      console.log('🔍 [createBookingRequest] Fetching technician data...');
+      const techDoc = await db.collection('technicians').doc(technicianId).get();
+      if (!techDoc.exists) {
+        console.error('❌ [createBookingRequest] Technician not found:', technicianId);
+        throw new functions.https.HttpsError('not-found', `Technician not found: ${technicianId}`);
+      }
+
+      const techData = techDoc.data()!;
+      console.log('📦 [createBookingRequest] Technician data:', { name: techData.name, status: techData.status, verificationStatus: techData.verificationStatus });
+      
+      if (techData.verificationStatus !== 'approved' && techData.status !== 'approved') {
+        console.error('❌ [createBookingRequest] Technician not verified. Status:', techData.status, 'Verification:', techData.verificationStatus);
+        throw new functions.https.HttpsError('failed-precondition', 'Technician is not verified. Please select another technician.');
+      }
+      console.log('✅ [createBookingRequest] Technician verified');
+
+      const finalIdempotencyKey = idempotencyKey || `BK_${uid}_${Date.now()}`;
+      const bookingId = db.collection('bookings').doc().id;
+      
+      console.log('🔑 [createBookingRequest] Idempotency key:', finalIdempotencyKey);
+      console.log('🆔 [createBookingRequest] Generated booking ID:', bookingId);
+
+      try {
       await db.runTransaction(async (transaction) => {
         const idempotencyRef = db.collection('booking_idempotency').doc(finalIdempotencyKey);
         const idempotencyDoc = await transaction.get(idempotencyRef);
@@ -567,8 +651,16 @@ export const createBookingRequest = functions
           price: basePrice,
           discountAmount: 0,
           finalAmount: basePrice,
-          paymentMode: paymentMode || 'pay_after_work',
+          paymentMode: paymentMode || 'after_work',
           bookingStatus: 'pending',
+          status: 'pending',
+          // INITIALIZE STATUS HISTORY
+          statusHistory: [
+            {
+              status: 'pending',
+              timestamp: admin.firestore.FieldValue.serverTimestamp(),
+            },
+          ],
           paymentStatus: 'pending',
           adminApproval: null,
           approvedAt: null,
@@ -584,6 +676,7 @@ export const createBookingRequest = functions
         };
 
         transaction.set(db.collection('bookings').doc(bookingId), bookingData);
+        console.log(`💾 [createBookingRequest] Writing booking to Firestore: ${bookingId}`);
         transaction.set(idempotencyRef, {
           bookingId,
           customerId: uid,
@@ -599,29 +692,43 @@ export const createBookingRequest = functions
         });
       });
 
-      console.log(`[BOOKING] Created booking: ${bookingId} for customer: ${uid} with price: ${basePrice}`);
-      await sendAdminNotification(bookingId, 'New Booking Pending Approval');
+        console.log(`✅ [BOOKING] Created booking: ${bookingId} for customer: ${uid} with price: ${basePrice}`);
+        await sendAdminNotification(bookingId, 'New Booking Pending Approval');
 
-      return {
-        success: true,
-        bookingId,
-        bookingStatus: 'pending',
-        message: 'Booking created successfully. Awaiting admin approval.',
-      };
-    } catch (error: any) {
-      if (error.message?.startsWith('IDEMPOTENCY_DUPLICATE:')) {
-        const existingBookingId = error.message.split(':')[1];
-        console.log(`[BOOKING] Duplicate booking request detected. Returning existing booking: ${existingBookingId}`);
         return {
           success: true,
-          bookingId: existingBookingId,
+          bookingId,
           bookingStatus: 'pending',
-          isDuplicate: true,
-          message: 'Booking already exists with this request.',
+          message: 'Booking created successfully. Awaiting admin approval.',
         };
+      } catch (error: any) {
+        if (error.message?.startsWith('IDEMPOTENCY_DUPLICATE:')) {
+          const existingBookingId = error.message.split(':')[1];
+          console.log(`[BOOKING] Duplicate booking request detected. Returning existing booking: ${existingBookingId}`);
+          return {
+            success: true,
+            bookingId: existingBookingId,
+            bookingStatus: 'pending',
+            isDuplicate: true,
+            message: 'Booking already exists with this request.',
+          };
+        }
+        console.error(`❌ [BOOKING] Transaction error:`, error);
+        console.error(`❌ [BOOKING] Error stack:`, error.stack);
+        throw new functions.https.HttpsError('internal', error.message || 'Transaction failed');
       }
-      console.error(`[BOOKING] Error creating booking:`, error);
-      throw new functions.https.HttpsError('internal', 'Failed to create booking');
+    } catch (error: any) {
+      console.error('FINAL ERROR:', error);
+      console.error('STACK:', error?.stack);
+      console.error('INPUT:', data);
+      
+      // Re-throw HttpsError as-is
+      if (error instanceof functions.https.HttpsError) {
+        throw error;
+      }
+      
+      // Wrap unexpected errors with real message
+      throw new functions.https.HttpsError('internal', error.message || 'Unknown error');
     }
   })
 );
@@ -639,11 +746,16 @@ export function validateStatusTransition(currentStatus: string, newStatus: strin
  */
 function sanitizeAddress(address: any): Record<string, any> {
   if (!address || typeof address !== 'object') {
+    console.warn('[sanitizeAddress] Invalid address object, returning empty');
     return {};
   }
 
   const sanitized: Record<string, any> = {};
-  const allowedKeys = ['line1', 'line2', 'city', 'state', 'postalCode', 'country', 'latitude', 'longitude', 'text'];
+  const allowedKeys = [
+    'line1', 'line2', 'city', 'state', 'postalCode', 'country', 
+    'latitude', 'longitude', 'text', 'fullAddress', 'landmark',
+    'name', 'phone', 'label', 'district', 'pincode'
+  ];
 
   for (const key of allowedKeys) {
     if (key in address) {
@@ -653,7 +765,17 @@ function sanitizeAddress(address: any): Record<string, any> {
       }
     }
   }
+  
+  // If no keys were sanitized, copy all primitive values
+  if (Object.keys(sanitized).length === 0) {
+    for (const [key, value] of Object.entries(address)) {
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        sanitized[key] = value;
+      }
+    }
+  }
 
+  console.log('[sanitizeAddress] Sanitized address keys:', Object.keys(sanitized));
   return sanitized;
 }
 

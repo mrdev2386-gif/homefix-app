@@ -1,6 +1,7 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { secureCallable, sanitize } from '../shared/security';
+import { updateBookingStatus } from '../shared/status_history_tracker';
 
 const db = admin.firestore();
 
@@ -74,13 +75,12 @@ export const approveBooking = functions.region('asia-south1').https.onCall(
                     throw new functions.https.HttpsError('failed-precondition', `Booking is not pending approval. Current status: ${booking.status}`);
                 }
 
-                t.update(bookingRef, {
-                    status: 'ASSIGNED',
+                // Use status history tracker for atomic update
+                updateBookingStatus(t, bookingRef, 'ASSIGNED', booking, {
                     bookingStatus: 'approved_by_admin',
                     technicianId: booking.technicianId,
                     adminApprovedAt: admin.firestore.FieldValue.serverTimestamp(),
                     adminApprovedBy: uid,
-                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 });
 
                 // Log activity
@@ -136,12 +136,11 @@ export const rejectBooking = functions.region('asia-south1').https.onCall(
                     throw new functions.https.HttpsError('failed-precondition', `Booking is not pending approval. Current status: ${booking.status}`);
                 }
 
-                t.update(bookingRef, {
-                    status: 'CANCELLED',
+                // Use status history tracker for atomic update
+                updateBookingStatus(t, bookingRef, 'CANCELLED', booking, {
                     cancellationReason: sanitize(reason) || 'Rejected by admin',
                     cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
                     cancelledBy: uid,
-                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 });
 
                 // Log activity
@@ -240,10 +239,9 @@ export const markBookingActive = functions.region('asia-south1').https.onCall(
                     throw new functions.https.HttpsError('failed-precondition', 'Booking must be accepted by technician first');
                 }
 
-                t.update(bookingRef, {
-                    status: 'IN_PROGRESS',
+                // Use status history tracker for atomic update
+                updateBookingStatus(t, bookingRef, 'IN_PROGRESS', booking, {
                     serviceStartedAt: admin.firestore.FieldValue.serverTimestamp(),
-                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 });
 
                 // Log activity

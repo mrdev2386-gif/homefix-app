@@ -12,6 +12,7 @@
 
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import { updateBookingStatusStandalone } from '../shared/status_history_tracker';
 
 const db = admin.firestore();
 
@@ -145,11 +146,10 @@ export const approveBookingRequest = functions.region('asia-south1').https.onCal
 
         const now = admin.firestore.FieldValue.serverTimestamp();
 
-        await bookingRef.update({
+        await updateBookingStatusStandalone(bookingId, 'approved_by_admin', {
             bookingStatus: 'approved_by_admin',
             approvedAt: now,
             approvedBy: context.auth.uid,
-            updatedAt: now
         });
 
         // Send notification to technician
@@ -207,10 +207,9 @@ export const technicianRespondToJob = functions.region('asia-south1').https.onCa
         const now = admin.firestore.FieldValue.serverTimestamp();
 
         if (action === 'accept') {
-            await bookingRef.update({
+            await updateBookingStatusStandalone(bookingId, 'technician_accepted', {
                 bookingStatus: 'technician_accepted',
                 acceptedAt: now,
-                updatedAt: now
             });
 
             // Notify customer
@@ -233,11 +232,10 @@ export const technicianRespondToJob = functions.region('asia-south1').https.onCa
 
             return { success: true, status: 'technician_accepted' };
         } else {
-            await bookingRef.update({
+            await updateBookingStatusStandalone(bookingId, 'technician_rejected', {
                 bookingStatus: 'technician_rejected',
                 rejectedAt: now,
                 rejectionReason: reason || 'Technician unavailable',
-                updatedAt: now
             });
 
             // Notify customer and admin
@@ -356,24 +354,20 @@ export const completeService = functions.region('asia-south1').https.onCall(
         const now = admin.firestore.FieldValue.serverTimestamp();
 
         if (booking.paymentMode === 'pay_before_work') {
-            // Work is done, payment already received
-            await bookingRef.update({
+            await updateBookingStatusStandalone(bookingId, 'service_completed', {
                 bookingStatus: 'service_completed',
                 serviceCompletedAt: now,
                 paymentStatus: 'paid',
-                updatedAt: now
             });
 
             // Create wallet transaction for technician
             await createTechnicianWalletTransaction(technicianId, bookingId, booking.price);
 
         } else {
-            // Pay after work - set status to pending payment
-            await bookingRef.update({
+            await updateBookingStatusStandalone(bookingId, 'service_completed', {
                 bookingStatus: 'service_completed',
                 serviceCompletedAt: now,
                 paymentStatus: 'pending_after_work_payment',
-                updatedAt: now
             });
         }
 
@@ -435,11 +429,10 @@ export const confirmAfterWorkPayment = functions.region('asia-south1').https.onC
 
         const now = admin.firestore.FieldValue.serverTimestamp();
 
-        await bookingRef.update({
+        await updateBookingStatusStandalone(bookingId, booking.bookingStatus || 'service_completed', {
             paymentStatus: 'paid',
             paymentMode: 'pay_after_work',
             paidAt: now,
-            updatedAt: now
         });
 
         // Create wallet transaction for technician
@@ -524,10 +517,7 @@ export const updateBookingStatus = functions.region('asia-south1').https.onCall(
         const { bookingId, status } = data;
         const now = admin.firestore.FieldValue.serverTimestamp();
 
-        await db.collection('bookings').doc(bookingId).update({
-            bookingStatus: status,
-            updatedAt: now
-        });
+        await updateBookingStatusStandalone(bookingId, status, {});
 
         return { success: true, status };
     }

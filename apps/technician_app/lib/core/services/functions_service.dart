@@ -193,15 +193,14 @@ class FunctionsService {
 
   /// Add a new technician service via Cloud Function
   /// SECURITY: Validates technician approval before service creation
+  /// PRICING: price = original price (before discount), offerPrice = discounted price
   Future<Map<String, dynamic>> addService({
     required String name,
     required double price,
+    required double offerPrice,
     required String imageUrl,
     required String category,
     String? description,
-    double? originalPrice,
-    double? offerPrice,
-    double? discountPercent,
     Map<String, dynamic>? urgentBooking,
     Map<String, dynamic>? nightService,
   }) async {
@@ -220,12 +219,13 @@ class FunctionsService {
         'name': name,
         'category': category,
         'categoryId': category,
-        'price': price,
-        'basePrice': originalPrice ?? price,
-        'offerPrice': offerPrice ?? price,
+        'price': price,  // Original price (before discount)
+        'offerPrice': offerPrice,  // Discounted price
         'imageUrl': imageUrl,
         'description': description ?? 'Professional service provided by experienced technician',
       };
+      
+      debugPrint('[FunctionsService] addService DATA: $data');
       
       final result = await callable.call(data);
       return Map<String, dynamic>.from(result.data);
@@ -239,16 +239,15 @@ class FunctionsService {
   }
 
   /// Update an existing technician service via Cloud Function
+  /// PRICING: price = original price (before discount), offerPrice = discounted price
   Future<Map<String, dynamic>> updateService({
     required String serviceId,
     String? name,
     double? price,
+    double? offerPrice,
     String? imageUrl,
     String? category,
     String? description,
-    double? originalPrice,
-    double? offerPrice,
-    double? discountPercent,
     bool? isActive,
     Map<String, dynamic>? urgentBooking,
     Map<String, dynamic>? nightService,
@@ -266,16 +265,16 @@ class FunctionsService {
       final Map<String, dynamic> data = {'serviceId': serviceId};
       
       if (name != null) data['name'] = name;
-      if (price != null) data['price'] = price;
+      if (price != null) data['price'] = price;  // Original price
+      if (offerPrice != null) data['offerPrice'] = offerPrice;  // Discounted price
       if (imageUrl != null) data['imageUrl'] = imageUrl;
       if (category != null) data['category'] = category;
       if (description != null) data['description'] = description;
-      if (originalPrice != null) data['originalPrice'] = originalPrice;
-      if (offerPrice != null) data['offerPrice'] = offerPrice;
-      if (discountPercent != null) data['discountPercent'] = discountPercent;
       if (isActive != null) data['isActive'] = isActive;
       if (urgentBooking != null) data['urgentBooking'] = urgentBooking;
       if (nightService != null) data['nightService'] = nightService;
+
+      debugPrint('[FunctionsService] updateService DATA: $data');
 
       final result = await callable.call(data);
       return Map<String, dynamic>.from(result.data);

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
@@ -35,15 +34,9 @@ import 'features/auth/screens/onboarding_screen.dart';
 import 'features/home/main_wrapper_screen.dart';
 import 'features/custom_request/presentation/custom_request_screen.dart';
 import 'features/profile/presentation/saved_addresses_screen.dart';
-import 'core/models/user_model.dart';
 import 'firebase_options.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  AppLogger.firebase('FCM', 'Background message: ${message.notification?.title}');
-}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -54,6 +47,13 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
   print('✅ Firebase initialized successfully');
+  
+  // CRITICAL: Disable Firestore cache for debugging price issues
+  print('⚠️ [DEBUG] Disabling Firestore persistence cache...');
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: false,
+  );
+  print('✅ Firestore cache disabled - all data will be fetched fresh');
 
   // DISABLED FOR DEBUG (fix unauthenticated issue)
   // await FirebaseAppCheck.instance.activate(
@@ -151,173 +151,57 @@ class HomeFixApp extends StatelessWidget {
   }
 }
 
-class AuthWrapper extends StatefulWidget {
+class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
   @override
-  State<AuthWrapper> createState() => _AuthWrapperState();
-}
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, authSnapshot) {
+        if (authSnapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
 
-class _AuthWrapperState extends State<AuthWrapper> {
-  bool _isInitialized = false;
-  StreamSubscription? _authSubscription;
-  StreamSubscription? _userDataSubscription;
+        final user = authSnapshot.data;
 
-  @override
-  void initState() {
-    super.initState();
-    _initializeAuth();
-  }
+        if (user == null) {
+          return const LoginScreen();
+        }
 
-  @override
-  void dispose() {
-    _authSubscription?.cancel();
-    _userDataSubscription?.cancel();
-    super.dispose();
-  }
+        return FutureBuilder<DocumentSnapshot>(
+          future: FirebaseFirestore.instance
+              .collection('customers')
+              .doc(user.uid)
+              .get(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
 
-  Future<void> _initializeAuth() async {
-    final authService = Provider.of<AuthService>(context, listen: false);
-    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-    final localeProvider = Provider.of<LocaleProvider>(context, listen: false);
+            if (!snapshot.hasData || !snapshot.data!.exists) {
+              return const OnboardingScreen();
+            }
 
-    _authSubscription = authService.authStateChanges.listen((user) async {
-      _userDataSubscription?.cancel();
-      _userDataSubscription = null;
+            final data = snapshot.data!.data() as Map<String, dynamic>;
 
-      if (user != null) {
-        localeProvider.setUserId(user.uid);
-        await localeProvider.initialize(user.uid);
+            final isComplete =
+                data['profileCompleted'] == true &&
+                data['isOnboarded'] == true &&
+                (data['district'] ?? '').toString().isNotEmpty;
 
-        _userDataSubscription = firestoreService.streamUserModel(user.uid).listen(
-          (_) {
-            if (mounted) setState(() => _isInitialized = true);
-          },
-          onError: (e) {
-            AppLogger.error('AuthWrapper', 'User data stream error', e);
-            if (mounted) setState(() => _isInitialized = true);
+            if (isComplete) {
+              return const MainWrapperScreen();
+            } else {
+              return const OnboardingScreen();
+            }
           },
         );
-      } else {
-        if (mounted) setState(() => _isInitialized = true);
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_isInitialized) return const SplashScreen();
-
-    final authService = Provider.of<AuthService>(context, listen: false);
-    final user = authService.currentUser;
-
-    if (user == null) return const LoginScreen();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<LocationProvider>(context, listen: false).initialize(user.uid);
-    });
-
-    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-    return StreamBuilder<UserModel>(
-      stream: firestoreService.streamUserModel(user.uid),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SplashScreen();
-        }
-
-        // On stream error: do a direct Firestore fetch as fallback
-        // instead of blindly routing to OnboardingScreen
-        if (snapshot.hasError) {
-          AppLogger.error('AuthWrapper', 'StreamBuilder error — falling back to direct fetch', snapshot.error);
-          return _ProfileFallbackLoader(uid: user.uid);
-        }
-
-        final userData = snapshot.data;
-
-        if (kDebugMode) {
-          AppLogger.debug('AuthWrapper',
-              'profileCompleted=${userData?.profileCompleted}, '
-              'isOnboarded=${userData?.isOnboarded}, '
-              'district=${userData?.district}');
-        }
-
-        return _routeFromProfile(userData);
       },
     );
   }
-
-  /// Central routing logic — Firestore is the single source of truth.
-  /// Requires BOTH profileCompleted AND isOnboarded AND non-empty district.
-  static Widget _routeFromProfile(UserModel? userData) {
-    if (userData == null) {
-      AppLogger.debug('AuthWrapper', 'userData is null, routing to OnboardingScreen');
-      return const OnboardingScreen();
-    }
-
-    final bool ready = userData.profileCompleted &&
-        userData.isOnboarded &&
-        (userData.district?.isNotEmpty ?? false);
-
-    AppLogger.debug('AuthWrapper', 
-        'profileCompleted=${userData.profileCompleted}, '
-        'isOnboarded=${userData.isOnboarded}, '
-        'district=${userData.district}, '
-        'ready=$ready');
-
-    return ready ? const MainWrapperScreen() : const OnboardingScreen();
-  }
-}
-
-/// Fallback widget: performs a single direct Firestore .get() when the
-/// stream errors (e.g. temporary permission delay on first login).
-/// Retries once after 500 ms before giving up.
-class _ProfileFallbackLoader extends StatefulWidget {
-  final String uid;
-  const _ProfileFallbackLoader({required this.uid});
-
-  @override
-  State<_ProfileFallbackLoader> createState() => _ProfileFallbackLoaderState();
-}
-
-class _ProfileFallbackLoaderState extends State<_ProfileFallbackLoader> {
-  @override
-  void initState() {
-    super.initState();
-    _fetchWithRetry();
-  }
-
-  Future<void> _fetchWithRetry() async {
-    UserModel? userData;
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('customers')
-          .doc(widget.uid)
-          .get();
-      final data = doc.data() ?? {};
-      userData = doc.exists ? UserModel.fromFirestore(doc) : null;
-      AppLogger.firebase('FallbackLoader', 'Direct fetch succeeded — profileCompleted=${data["profileCompleted"]}');
-    } catch (e) {
-      AppLogger.error('FallbackLoader', 'First fetch failed, retrying in 500ms', e);
-      await Future.delayed(const Duration(milliseconds: 500));
-      try {
-        final doc = await FirebaseFirestore.instance
-            .collection('customers')
-            .doc(widget.uid)
-            .get();
-        userData = doc.exists ? UserModel.fromFirestore(doc) : null;
-      } catch (e2) {
-        AppLogger.error('FallbackLoader', 'Retry also failed — showing onboarding', e2);
-      }
-    }
-
-    if (!mounted) return;
-    final dest = _AuthWrapperState._routeFromProfile(userData);
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => dest),
-      (route) => false,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) => const SplashScreen();
 }

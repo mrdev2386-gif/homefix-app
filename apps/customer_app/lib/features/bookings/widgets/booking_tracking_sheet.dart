@@ -1,0 +1,328 @@
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+import '../../../core/models/booking.dart';
+
+class BookingTrackingSheet extends StatelessWidget {
+  final Booking booking;
+
+  const BookingTrackingSheet({super.key, required this.booking});
+
+  @override
+  Widget build(BuildContext context) {
+    final steps = _getTimelineSteps();
+    final currentStepIndex = _getCurrentStepIndex();
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle bar
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          
+          // Header
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.timeline, color: Colors.white, size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Track Booking',
+                        style: GoogleFonts.outfit(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        'ID: ${booking.id.substring(0, 8).toUpperCase()}',
+                        style: GoogleFonts.outfit(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+
+          const Divider(height: 1),
+
+          // Timeline
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: List.generate(steps.length, (index) {
+                  final step = steps[index];
+                  final isCompleted = index < currentStepIndex;
+                  final isCurrent = index == currentStepIndex;
+                  final isLast = index == steps.length - 1;
+
+                  return _buildTimelineStep(
+                    step['title'] as String,
+                    step['subtitle'] as String,
+                    step['icon'] as IconData,
+                    step['timestamp'] as DateTime?,
+                    isCompleted: isCompleted,
+                    isCurrent: isCurrent,
+                    isLast: isLast,
+                  );
+                }),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimelineStep(
+    String title,
+    String subtitle,
+    IconData icon,
+    DateTime? timestamp, {
+    required bool isCompleted,
+    required bool isCurrent,
+    required bool isLast,
+  }) {
+    Color iconColor;
+    Color lineColor;
+    Color bgColor;
+
+    if (isCompleted) {
+      iconColor = const Color(0xFF10B981);
+      lineColor = const Color(0xFF10B981);
+      bgColor = const Color(0xFF10B981);
+    } else if (isCurrent) {
+      iconColor = const Color(0xFF6366F1);
+      lineColor = Colors.grey[300]!;
+      bgColor = const Color(0xFF6366F1);
+    } else {
+      iconColor = Colors.grey[400]!;
+      lineColor = Colors.grey[300]!;
+      bgColor = Colors.grey[400]!;
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Timeline indicator
+        Column(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: bgColor.withOpacity(0.1),
+                shape: BoxShape.circle,
+                border: Border.all(color: bgColor, width: 2),
+              ),
+              child: Icon(
+                isCompleted ? Icons.check_rounded : icon,
+                color: bgColor,
+                size: 24,
+              ),
+            ),
+            if (!isLast)
+              Container(
+                width: 2,
+                height: 60,
+                color: lineColor,
+              ),
+          ],
+        ),
+        const SizedBox(width: 16),
+        
+        // Content
+        Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(bottom: isLast ? 0 : 20, top: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.outfit(
+                    fontSize: 16,
+                    fontWeight: isCurrent || isCompleted ? FontWeight.bold : FontWeight.w600,
+                    color: isCurrent || isCompleted ? Colors.black : Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: GoogleFonts.outfit(
+                    fontSize: 13,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                if (timestamp != null && (isCompleted || isCurrent)) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: bgColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      DateFormat('MMM dd, hh:mm a').format(timestamp),
+                      style: GoogleFonts.outfit(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: bgColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<Map<String, dynamic>> _getTimelineSteps() {
+    final statusLower = booking.status.toLowerCase();
+
+    // Handle cancelled/rejected
+    if (statusLower.contains('cancel') || statusLower.contains('reject')) {
+      return [
+        {
+          'title': 'Request Placed',
+          'subtitle': 'Your booking was created',
+          'icon': Icons.receipt_long_rounded,
+          'timestamp': booking.createdAt,
+        },
+        {
+          'title': statusLower.contains('reject') ? 'Request Rejected' : 'Booking Cancelled',
+          'subtitle': 'This booking will not proceed',
+          'icon': Icons.cancel_rounded,
+          'timestamp': booking.updatedAt,
+        },
+      ];
+    }
+
+    // Normal flow
+    return [
+      {
+        'title': 'Request Placed',
+        'subtitle': 'Booking created successfully',
+        'icon': Icons.receipt_long_rounded,
+        'timestamp': _getStepTimestamp(0),
+      },
+      {
+        'title': 'Admin Approved',
+        'subtitle': 'Request verified and approved',
+        'icon': Icons.verified_rounded,
+        'timestamp': _getStepTimestamp(1),
+      },
+      {
+        'title': 'Technician Assigned',
+        'subtitle': 'Professional assigned to your job',
+        'icon': Icons.person_add_rounded,
+        'timestamp': _getStepTimestamp(2),
+      },
+      {
+        'title': 'Work Started',
+        'subtitle': 'Service is in progress',
+        'icon': Icons.engineering_rounded,
+        'timestamp': _getStepTimestamp(3),
+      },
+      {
+        'title': 'Completed',
+        'subtitle': 'Service finished successfully',
+        'icon': Icons.check_circle_rounded,
+        'timestamp': _getStepTimestamp(4),
+      },
+    ];
+  }
+
+  int _getCurrentStepIndex() {
+    final statusLower = booking.status.toLowerCase();
+
+    if (statusLower.contains('cancel') || statusLower.contains('reject')) {
+      return 1;
+    }
+
+    if (statusLower.contains('pending') || statusLower == 'pending_admin_review') {
+      return 0;
+    }
+    if (statusLower.contains('approved') || statusLower.contains('accepted') || 
+        statusLower == 'admin_approved' || statusLower == 'technician_pending') {
+      return 1;
+    }
+    if (statusLower.contains('assigned') || statusLower.contains('confirmed') ||
+        statusLower.contains('awaiting_payment')) {
+      return 2;
+    }
+    if (statusLower.contains('progress') || statusLower.contains('started') || 
+        statusLower.contains('on_the_way')) {
+      return 3;
+    }
+    if (statusLower.contains('completed')) {
+      return 4;
+    }
+
+    return 0;
+  }
+
+  DateTime? _getStepTimestamp(int stepIndex) {
+    // Try to get from statusHistory if available
+    if (booking.statusHistory != null && booking.statusHistory!.isNotEmpty) {
+      try {
+        if (stepIndex < booking.statusHistory!.length) {
+          final historyItem = booking.statusHistory![stepIndex];
+          if (historyItem['timestamp'] != null) {
+            return (historyItem['timestamp'] as dynamic).toDate();
+          }
+        }
+      } catch (e) {
+        // Fallback to generated timestamps
+      }
+    }
+
+    // Generate timestamps based on current step
+    final currentStep = _getCurrentStepIndex();
+    if (stepIndex > currentStep) return null;
+    if (stepIndex == 0) return booking.createdAt;
+    if (stepIndex == currentStep) return booking.updatedAt;
+    
+    // Estimate intermediate timestamps
+    final duration = booking.updatedAt.difference(booking.createdAt);
+    final stepDuration = duration ~/ (currentStep > 0 ? currentStep : 1);
+    return booking.createdAt.add(stepDuration * stepIndex);
+  }
+}

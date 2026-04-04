@@ -211,10 +211,11 @@ export function secureCallable(
 
             // 6. Fallback Unhandled Error
             console.error(`[${functionName}] ❌ Unhandled error:`, error);
+            console.error(`[${functionName}] STACK:`, error?.stack);
             logger.error(`${functionName}_failure`, { uid: context.auth?.uid }, error);
             throw new functions.https.HttpsError(
                 'internal',
-                'An unexpected error occurred. Please try again later.'
+                error?.message || 'An unexpected error occurred'
             );
         }
     };

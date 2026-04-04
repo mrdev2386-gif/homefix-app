@@ -14,6 +14,7 @@ import * as admin from 'firebase-admin';
 import { processTechnicianEarning } from '../finance/wallet_logic';
 import { checkRateLimit } from '../shared/utils';
 import * as notify from '../shared/notification_helper';
+import { updateBookingStatusStandalone } from '../shared/status_history_tracker';
 
 if (!admin.apps.length) {
     admin.initializeApp();
@@ -517,10 +518,8 @@ export const adminApproveBooking = functions.region('asia-south1').https.onCall(
                 newStatus = 'ASSIGNED';
                 message = 'Booking approved. Technician will be notified.';
 
-                await bookingDoc.ref.update({
-                    status: newStatus,
+                await updateBookingStatusStandalone(bookingId, newStatus, {
                     adminApprovedAt: now,
-                    updatedAt: now,
                 });
 
                 // Notify technician
@@ -538,11 +537,9 @@ export const adminApproveBooking = functions.region('asia-south1').https.onCall(
                 newStatus = 'admin_rejected';
                 message = rejectionReason || 'Booking rejected by admin';
 
-                await bookingDoc.ref.update({
-                    status: newStatus,
+                await updateBookingStatusStandalone(bookingId, newStatus, {
                     rejectionReason: message,
                     adminApprovedAt: now,
-                    updatedAt: now,
                 });
 
                 // Notify customer
@@ -642,10 +639,8 @@ export const technicianRespondBooking = functions.region('asia-south1').https.on
                 newStatus = 'confirmed';
                 message = 'Booking confirmed.';
 
-                await bookingDoc.ref.update({
-                    status: newStatus,
+                await updateBookingStatusStandalone(bookingId, newStatus, {
                     technicianAcceptedAt: now,
-                    updatedAt: now,
                 });
 
                 // Notify customer
@@ -664,11 +659,9 @@ export const technicianRespondBooking = functions.region('asia-south1').https.on
                 newStatus = 'technician_rejected';
                 message = rejectionReason || 'Booking declined by technician';
 
-                await bookingDoc.ref.update({
-                    status: newStatus,
+                await updateBookingStatusStandalone(bookingId, newStatus, {
                     rejectionReason: message,
                     technicianAcceptedAt: now,
-                    updatedAt: now,
                 });
 
                 // Notify customer
@@ -809,13 +802,11 @@ export const customerConfirmPayment = functions.region('asia-south1').https.onCa
                 message = 'Payment successful! Your booking is confirmed.';
             }
 
-            await bookingDoc.ref.update({
-                status: newStatus,
+            await updateBookingStatusStandalone(bookingId, newStatus, {
                 paymentStatus: 'paid_escrow',
                 paymentMethod: 'wallet',
                 paidAt: now,
                 confirmedAt: now,
-                updatedAt: now,
             });
 
             // Notify technician
@@ -867,12 +858,10 @@ export const markWorkCompleted = functions.region('asia-south1').https.onCall(
             // Already paid to escrow, now complete and payout
             await processTechnicianEarning(bookingId, technicianId, booking.finalAmount || booking.price || 0, booking.customerId);
 
-            await db.collection('bookings').doc(bookingId).update({
-                status: 'completed',
+            await updateBookingStatusStandalone(bookingId, 'completed', {
                 completedAt: now,
-                updatedAt: now,
                 workCompletedAt: now,
-                paymentStatus: 'paid'
+                paymentStatus: 'paid',
             });
 
             await notify.notifyCustomerJobCompleted(
@@ -884,10 +873,8 @@ export const markWorkCompleted = functions.region('asia-south1').https.onCall(
             return { success: true, status: 'completed', message: 'Work completed and payout released.' };
         } else {
             // after_work mode -> set status to awaiting payment for QR scan
-            await bookingDoc.ref.update({
-                status: 'awaiting_customer_payment',
+            await updateBookingStatusStandalone(bookingId, 'awaiting_customer_payment', {
                 workCompletedAt: now,
-                updatedAt: now,
             });
 
             await notify.sendUserNotification({
@@ -1031,7 +1018,9 @@ export const updateBookingStatusGeneric = functions.region('asia-south1').https.
                 );
             }
 
-            await bookingDoc.ref.update(updateData);
+            // Extract status from updateData and use history tracker
+            const { status: _s, updatedAt: _u, ...extraFields } = updateData;
+            await updateBookingStatusStandalone(bookingId, status, extraFields);
 
             // Send notifications based on status
             if (status === 'completed') {

@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
+import 'dart:async';
 
 import 'package:customer_app/core/theme/app_theme.dart';
 import 'package:customer_app/core/services/firestore_service.dart';
@@ -12,6 +13,8 @@ import 'package:customer_app/core/services/auth_service.dart';
 import 'package:customer_app/core/models/address.dart';
 import '../../profile/presentation/saved_addresses_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:customer_app/features/custom_request/widgets/expandable_request_card.dart';
+import 'package:customer_app/core/utils/custom_request_status_mapper.dart';
 
 class CustomRequestScreen extends StatefulWidget {
   const CustomRequestScreen({super.key});
@@ -39,8 +42,12 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
   
   List<Map<String, dynamic>> _categories = [];
   List<Map<String, dynamic>> _subCategories = [];
+  List<Map<String, dynamic>> _filteredSubCategories = [];
   bool _isLoadingCategories = true;
   bool _isLoadingSubCategories = false;
+  
+  final _searchController = TextEditingController();
+  Timer? _debounce;
 
   final List<String> _priorities = [
     'Low',
@@ -69,6 +76,8 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
     _descriptionController.dispose();
     _customCategoryController.dispose();
     _customSubCategoryController.dispose();
+    _searchController.dispose();
+    _debounce?.cancel();
     super.dispose();
   }
 
@@ -91,30 +100,60 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
   }
 
   Future<void> _loadSubCategories(String categoryId) async {
+    print('[SUBCATEGORY_FETCH] Selected categoryId: $categoryId');
+    
     if (categoryId == 'custom') {
       setState(() {
-        _subCategories = [{'id': 'custom', 'name': 'Custom'}];
+        _subCategories = [];
+        _filteredSubCategories = [];
         _isLoadingSubCategories = false;
+        _searchController.clear();
       });
       return;
     }
     
-    setState(() => _isLoadingSubCategories = true);
+    setState(() {
+      _isLoadingSubCategories = true;
+      _searchController.clear();
+    });
+    
     try {
       final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-      final subCategories = await firestoreService.fetchSubCategories(categoryId);
       
-      // Add custom option
-      subCategories.add({'id': 'custom', 'name': 'Custom'});
+      // Try nested subcategories first: categories/{categoryId}/subcategories
+      List<Map<String, dynamic>> subCategories = await firestoreService.fetchSubCategories(categoryId);
+      print('[SUBCATEGORY_FETCH] Nested query returned: ${subCategories.length} items');
+      
+      // If empty, try top-level services collection filtered by categoryId
+      if (subCategories.isEmpty) {
+        print('[SUBCATEGORY_FETCH] Trying top-level services collection...');
+        final db = FirebaseFirestore.instance;
+        final snapshot = await db.collection('services')
+            .where('categoryId', isEqualTo: categoryId)
+            .where('isActive', isEqualTo: true)
+            .get();
+        
+        subCategories = snapshot.docs
+            .map((doc) => {'id': doc.id, 'name': doc.data()['name'] ?? 'Unnamed', ...doc.data()})
+            .toList();
+        print('[SUBCATEGORY_FETCH] Top-level query returned: ${subCategories.length} items');
+      }
+      
+      print('[SUBCATEGORY_FETCH] Final count: ${subCategories.length}');
       
       setState(() {
         _subCategories = subCategories;
+        _filteredSubCategories = List.from(subCategories);
         _selectedSubCategory = null;
         _isLoadingSubCategories = false;
       });
     } catch (e) {
-      setState(() => _isLoadingSubCategories = false);
-      print('Error loading subcategories: $e');
+      print('[SUBCATEGORY_FETCH] Error: $e');
+      setState(() {
+        _subCategories = [];
+        _filteredSubCategories = [];
+        _isLoadingSubCategories = false;
+      });
     }
   }
 
@@ -302,24 +341,7 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
     });
   }
 
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'open':
-        return Colors.blue;
-      case 'assigned':
-        return Colors.orange;
-      case 'accepted':
-        return Colors.green;
-      case 'in_progress':
-        return Colors.purple;
-      case 'completed':
-        return Colors.teal;
-      case 'cancelled':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -403,12 +425,15 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
                     child: Text(cat['name'] as String, style: GoogleFonts.outfit()),
                   )).toList(),
                   onChanged: (val) {
+                    print('[CATEGORY_CHANGE] New category: $val');
                     setState(() {
                       _selectedCategory = val;
                       _selectedSubCategory = null;
                       _subCategories.clear();
+                      _filteredSubCategories.clear();
+                      _searchController.clear();
                     });
-                    if (val != null) {
+                    if (val != null && val != 'custom') {
                       _loadSubCategories(val);
                     }
                   },
@@ -428,33 +453,13 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
             const SizedBox(height: 20),
           ],
 
-          // Subcategory
+          // Subcategory with Search
           if (_selectedCategory != null && _selectedCategory != 'custom') ...[
             _buildFieldLabel('Subcategory', Icons.subdirectory_arrow_right),
             const SizedBox(height: 8),
             _isLoadingSubCategories
-                ? const CircularProgressIndicator()
-                : DropdownButtonFormField<String>(
-                    value: _selectedSubCategory,
-                    decoration: _buildInputDecoration('Select subcategory'),
-                    items: _subCategories.map((subCat) => DropdownMenuItem<String>(
-                      value: subCat['id'] as String,
-                      child: Text(subCat['name'] as String, style: GoogleFonts.outfit()),
-                    )).toList(),
-                    onChanged: (val) => setState(() => _selectedSubCategory = val),
-                  ),
-            const SizedBox(height: 20),
-          ],
-
-          // Custom Subcategory Input
-          if (_selectedSubCategory == 'custom') ...[
-            _buildFieldLabel('Custom Subcategory', Icons.edit),
-            const SizedBox(height: 8),
-            TextFormField(
-              controller: _customSubCategoryController,
-              decoration: _buildInputDecoration('Enter custom subcategory'),
-              validator: (val) => val?.isEmpty ?? true ? 'Custom subcategory is required' : null,
-            ),
+                ? const Center(child: CircularProgressIndicator())
+                : _buildSubcategorySelector(),
             const SizedBox(height: 20),
           ],
 
@@ -665,87 +670,104 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
   }
 
   Widget _buildRequestCard(Map<String, dynamic> request) {
-    final status = request['status'] ?? 'open';
-    final statusColor = _getStatusColor(status);
-    
-    DateTime createdAt;
-    try {
-      if (request['createdAt'] is Timestamp) {
-        createdAt = (request['createdAt'] as Timestamp).toDate();
-      } else if (request['createdAt'] is String) {
-        createdAt = DateTime.parse(request['createdAt']);
-      } else {
-        createdAt = DateTime.now();
-      }
-    } catch (e) {
-      createdAt = DateTime.now();
-    }
+    return ExpandableRequestCard(
+      request: request,
+      onPayNow: () => _handlePayNow(request),
+      onTrackTechnician: () => _handleTrackTechnician(request),
+      onCallTechnician: () => _handleCallTechnician(request),
+      onCancelRequest: () => _handleCancelRequest(request),
+      onViewDetails: () => _handleViewDetails(request),
+      onRateService: () => _handleRateService(request),
+    );
+  }
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+  // CTA Action Handlers
+  void _handlePayNow(Map<String, dynamic> request) {
+    // TODO: Implement payment flow
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Payment flow for request ${request['id']}'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _handleTrackTechnician(Map<String, dynamic> request) {
+    // TODO: Implement technician tracking
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Track technician for request ${request['id']}'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _handleCallTechnician(Map<String, dynamic> request) {
+    final technicianPhone = request['technicianPhone'];
+    if (technicianPhone != null) {
+      // TODO: Implement phone call
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Calling $technicianPhone'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  void _handleCancelRequest(Map<String, dynamic> request) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'Cancel Request?',
+          style: GoogleFonts.outfit(fontWeight: FontWeight.w800),
+        ),
+        content: Text(
+          'Are you sure you want to cancel this request?',
+          style: GoogleFonts.outfit(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('No', style: GoogleFonts.outfit()),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // TODO: Implement cancel request
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Request cancelled'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: Text('Yes, Cancel', style: GoogleFonts.outfit(fontWeight: FontWeight.w700)),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  request['title'] ?? 'Untitled Request',
-                  style: GoogleFonts.outfit(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                    color: AppTheme.textColor,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  status.toUpperCase(),
-                  style: GoogleFonts.outfit(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: statusColor,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            request['category'] ?? 'N/A',
-            style: GoogleFonts.outfit(
-              fontSize: 12,
-              color: AppTheme.primaryColor,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            DateFormat('MMM dd, yyyy').format(createdAt),
-            style: GoogleFonts.outfit(
-              fontSize: 12,
-              color: Colors.grey[600],
-            ),
-          ),
-        ],
+    );
+  }
+
+  void _handleViewDetails(Map<String, dynamic> request) {
+    // TODO: Navigate to request details screen
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('View details for request ${request['id']}'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _handleRateService(Map<String, dynamic> request) {
+    // TODO: Show rating dialog
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Rate service for request ${request['id']}'),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -1010,5 +1032,243 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
       default:
         return Colors.grey;
     }
+  }
+  
+  void _onSearchChanged(String query) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      setState(() {
+        if (query.isEmpty) {
+          _filteredSubCategories = List.from(_subCategories);
+        } else {
+          _filteredSubCategories = _subCategories
+              .where((sub) => (sub['name'] as String)
+                  .toLowerCase()
+                  .contains(query.toLowerCase()))
+              .toList();
+        }
+      });
+    });
+  }
+  
+  Widget _buildSubcategorySelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Search Input
+        TextFormField(
+          controller: _searchController,
+          decoration: _buildInputDecoration('Search subcategory...').copyWith(
+            prefixIcon: const Icon(Icons.search, size: 20),
+            suffixIcon: _searchController.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 20),
+                    onPressed: () {
+                      _searchController.clear();
+                      _onSearchChanged('');
+                    },
+                  )
+                : null,
+          ),
+          onChanged: _onSearchChanged,
+        ),
+        const SizedBox(height: 12),
+        
+        // Subcategory List
+        if (_filteredSubCategories.isEmpty && _subCategories.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(Icons.inbox_outlined, size: 48, color: Colors.grey[400]),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No subcategories available',
+                    style: GoogleFonts.outfit(
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Use custom option below',
+                    style: GoogleFonts.outfit(
+                      fontSize: 12,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else if (_filteredSubCategories.isEmpty && _searchController.text.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.orange[50],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.search_off, color: Colors.orange[700]),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'No results for "${_searchController.text}"',
+                    style: GoogleFonts.outfit(
+                      color: Colors.orange[900],
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          Container(
+            constraints: const BoxConstraints(maxHeight: 250),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey[300]!),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: _filteredSubCategories.length,
+              separatorBuilder: (context, index) => Divider(height: 1, color: Colors.grey[200]),
+              itemBuilder: (context, index) {
+                final subCat = _filteredSubCategories[index];
+                final isSelected = _selectedSubCategory == subCat['id'];
+                return ListTile(
+                  title: Text(
+                    subCat['name'] as String,
+                    style: GoogleFonts.outfit(
+                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                      color: isSelected ? AppTheme.primaryColor : AppTheme.textColor,
+                    ),
+                  ),
+                  trailing: isSelected
+                      ? Icon(Icons.check_circle, color: AppTheme.primaryColor)
+                      : null,
+                  tileColor: isSelected ? AppTheme.primaryColor.withOpacity(0.1) : Colors.white,
+                  onTap: () {
+                    setState(() {
+                      _selectedSubCategory = subCat['id'] as String;
+                    });
+                  },
+                );
+              },
+            ),
+          ),
+        
+        // Always show Custom Option
+        const SizedBox(height: 12),
+        GestureDetector(
+          onTap: () => _showCustomSubcategoryDialog(),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(
+                color: _selectedSubCategory == 'custom' ? AppTheme.primaryColor : Colors.grey[300]!,
+                width: _selectedSubCategory == 'custom' ? 2 : 1,
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.add_circle_outline,
+                    color: AppTheme.primaryColor,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '+ Add Custom Service',
+                        style: GoogleFonts.outfit(
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.primaryColor,
+                          fontSize: 15,
+                        ),
+                      ),
+                      if (_selectedSubCategory == 'custom' && _customSubCategoryController.text.isNotEmpty)
+                        Text(
+                          _customSubCategoryController.text,
+                          style: GoogleFonts.outfit(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (_selectedSubCategory == 'custom')
+                  Icon(Icons.check_circle, color: AppTheme.primaryColor),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+  
+  void _showCustomSubcategoryDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'Custom Service',
+          style: GoogleFonts.outfit(fontWeight: FontWeight.w800),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Enter your custom service name',
+              style: GoogleFonts.outfit(color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _customSubCategoryController,
+              decoration: _buildInputDecoration('e.g., Custom Repair'),
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel', style: GoogleFonts.outfit()),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (_customSubCategoryController.text.trim().isNotEmpty) {
+                setState(() {
+                  _selectedSubCategory = 'custom';
+                });
+                Navigator.pop(context);
+              }
+            },
+            child: Text('Save', style: GoogleFonts.outfit(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
   }
 }
