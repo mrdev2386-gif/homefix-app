@@ -719,6 +719,7 @@ async function handlePaymentFailed(payload: any) {
  * 
  * This is a fallback in case webhook fails or is delayed
  * Still verifies signature for security
+ * FIX 4: TRANSACTION SAFETY - Prevents race conditions
  */
 export const verifyPayment = functions
   .region('asia-south1')
@@ -761,22 +762,6 @@ export const verifyPayment = functions
         throw new functions.https.HttpsError('invalid-argument', 'Invalid payment signature');
     }
 
-    // Check if already processed
-    const isPaid = (booking.payment && booking.payment.status === 'paid') || booking.paymentStatus === 'paid';
-    if (isPaid) {
-        // Log duplicate verification attempt
-        await db.collection('payment_logs').add({
-            bookingId,
-            orderId: razorpayOrderId,
-            paymentId: razorpayPaymentId,
-            action: 'verify_payment_duplicate_ignored',
-            reason: 'Payment already marked as paid',
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-        }).catch(err => console.error('Failed to log duplicate verification:', err));
-        
-        return { success: true, message: 'Payment already processed' };
-    }
-
     const bookingTotal = booking.pricing?.total || booking.finalAmount || booking.price;
 
     // Fetch payment details from Razorpay to get amount
@@ -791,35 +776,59 @@ export const verifyPayment = functions
             throw new functions.https.HttpsError('invalid-argument', 'Amount mismatch');
         }
 
-        // Update booking
-        const isNewFlow = booking.status === 'awaiting_payment' || booking.status === 'pending_admin_review' || booking.status === 'pending';
-        const newStatus = isNewFlow ? 'confirmed' : 'completed';
+        // FIX 4: TRANSACTION SAFETY - Wrap booking update in Firestore transaction
+        await db.runTransaction(async (transaction) => {
+            // Re-read booking inside transaction to check current state
+            const currentBookingDoc = await transaction.get(bookingRef);
+            
+            if (!currentBookingDoc.exists) {
+                throw new Error('Booking not found in transaction');
+            }
+            
+            const currentBooking: any = currentBookingDoc.data();
+            
+            // FIX 4: Check if already paid inside transaction (race condition protection)
+            const isPaid = (currentBooking.payment && currentBooking.payment.status === 'paid') || 
+                          currentBooking.paymentStatus === 'paid';
+            
+            if (isPaid) {
+                console.log(`[RAZORPAY] Payment already processed in transaction - Booking: ${bookingId}`);
+                // Don't throw error, just skip update - this is idempotent
+                return;
+            }
 
-        const updateData: any = {
-            'payment.status': 'paid',
-            'payment.razorpayPaymentId': razorpayPaymentId,
-            'payment.razorpaySignature': razorpaySignature,
-            'payment.amountPaid': amount,
-            'payment.paymentMethod': payment.method,
-            'payment.paidAt': admin.firestore.FieldValue.serverTimestamp(),
-            'status': newStatus,
-            'updatedAt': admin.firestore.FieldValue.serverTimestamp(),
-            'paymentStatus': 'paid',
+            // Update booking atomically
+            const isNewFlow = currentBooking.status === 'awaiting_payment' || 
+                            currentBooking.status === 'pending_admin_review' || 
+                            currentBooking.status === 'pending';
+            const newStatus = isNewFlow ? 'confirmed' : 'completed';
 
-            // Initialize payout
-            'payout.status': 'pending',
-            'payout.totalAmount': bookingTotal,
-        };
+            const updateData: any = {
+                'payment.status': 'paid',
+                'payment.razorpayPaymentId': razorpayPaymentId,
+                'payment.razorpaySignature': razorpaySignature,
+                'payment.amountPaid': amount,
+                'payment.paymentMethod': payment.method,
+                'payment.paidAt': admin.firestore.FieldValue.serverTimestamp(),
+                'status': newStatus,
+                'updatedAt': admin.firestore.FieldValue.serverTimestamp(),
+                'paymentStatus': 'paid',
 
-        if (booking.pricing) {
-            updateData['payout.platformFee'] = booking.pricing.platformFee;
-            updateData['payout.gst'] = booking.pricing.gst;
-            updateData['payout.technicianAmount'] = booking.pricing.subtotal - booking.pricing.platformFee;
-        }
+                // Initialize payout
+                'payout.status': 'pending',
+                'payout.totalAmount': bookingTotal,
+            };
 
-        await bookingRef.update(updateData);
+            if (currentBooking.pricing) {
+                updateData['payout.platformFee'] = currentBooking.pricing.platformFee;
+                updateData['payout.gst'] = currentBooking.pricing.gst;
+                updateData['payout.technicianAmount'] = currentBooking.pricing.subtotal - currentBooking.pricing.platformFee;
+            }
 
-        // Log verification
+            transaction.update(bookingRef, updateData);
+        });
+
+        // Log verification (outside transaction)
         await db.collection('payment_logs').add({
             bookingId,
             orderId: razorpayOrderId,
@@ -830,7 +839,7 @@ export const verifyPayment = functions
             status: 'success',
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             verifiedBy: userId
-        });
+        }).catch(err => console.error('[RAZORPAY] Failed to log verification:', err));
         
         console.log(`[RAZORPAY] Payment verified successfully - Booking: ${bookingId}, Amount: ${amount}`);
 
@@ -849,6 +858,7 @@ export const verifyPayment = functions
 
 /**
  * Initiate refund (Admin only)
+ * FIX 2: STRONG IDEMPOTENCY - Prevents duplicate refunds on retry
  */
 export const initiateRefund = functions
   .region('asia-south1')
@@ -876,8 +886,35 @@ export const initiateRefund = functions
 
     const booking = bookingDoc.data() as Booking;
 
+    // FIX 2: STRONG IDEMPOTENCY CHECK - Check if refund already in progress or completed
+    if (booking.refund) {
+        const refundStatus = booking.refund.status;
+        
+        if (refundStatus === 'processing') {
+            // Refund is currently being processed - return existing request ID
+            console.log(`[RAZORPAY] Refund already processing for booking: ${bookingId}`);
+            return {
+                success: true,
+                refundId: booking.refund.requestId || 'processing',
+                message: 'Refund is already being processed',
+                isDuplicate: true
+            };
+        }
+        
+        if (refundStatus === 'processed' || refundStatus === 'completed') {
+            // Refund already completed - return existing refund ID
+            console.log(`[RAZORPAY] Refund already completed for booking: ${bookingId}`);
+            return {
+                success: true,
+                refundId: booking.refund.razorpayRefundId,
+                message: 'Refund already processed',
+                isDuplicate: true
+            };
+        }
+    }
+
     // Validate payment is completed
-    if (booking.payment.status !== 'paid') {
+    if (booking.payment.status !== 'paid' && booking.payment.status !== 'partially_refunded') {
         throw new functions.https.HttpsError('failed-precondition', 'Booking is not paid yet');
     }
 
@@ -890,6 +927,21 @@ export const initiateRefund = functions
         throw new functions.https.HttpsError('invalid-argument', 'Refund amount exceeds paid amount');
     }
 
+    // FIX 2: Generate unique request ID for idempotency
+    const requestId = `refund_${bookingId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // FIX 2: Mark refund as "processing" BEFORE calling Razorpay API
+    await bookingRef.update({
+        'refund': {
+            status: 'processing',
+            requestId: requestId,
+            refundAmount,
+            refundReason,
+            requestedBy: adminId,
+            requestedAt: admin.firestore.FieldValue.serverTimestamp()
+        }
+    });
+
     try {
         const razorpay = getRazorpayInstance();
 
@@ -899,28 +951,24 @@ export const initiateRefund = functions
             notes: {
                 bookingId,
                 reason: refundReason,
-                requestedBy: adminId
+                requestedBy: adminId,
+                requestId: requestId
             }
         });
 
-        // Update booking
+        // Update booking with success
         await bookingRef.update({
             'payment.status': refundAmount >= (booking.payment.amountPaid || 0) ? 'refunded' : 'partially_refunded',
-            'refund': {
-                status: 'processed',
-                razorpayRefundId: refund.id,
-                refundAmount,
-                refundReason,
-                requestedBy: adminId,
-                requestedAt: admin.firestore.FieldValue.serverTimestamp(),
-                processedAt: admin.firestore.FieldValue.serverTimestamp()
-            }
+            'refund.status': 'processed',
+            'refund.razorpayRefundId': refund.id,
+            'refund.processedAt': admin.firestore.FieldValue.serverTimestamp()
         });
 
         // Log refund
         await db.collection('payment_logs').add({
             bookingId,
             refundId: refund.id,
+            requestId: requestId,
             amount: refundAmount,
             action: 'refund_processed',
             reason: refundReason,
@@ -928,21 +976,18 @@ export const initiateRefund = functions
             createdBy: adminId
         });
 
+        console.log(`[RAZORPAY] Refund processed successfully - Booking: ${bookingId}, Refund ID: ${refund.id}`);
+
         return { success: true, refundId: refund.id };
 
     } catch (error: any) {
-        console.error('Refund error:', error);
+        console.error('[RAZORPAY] Refund error:', error);
 
         // Update booking with failure
         await bookingRef.update({
-            'refund': {
-                status: 'failed',
-                refundAmount,
-                refundReason,
-                requestedBy: adminId,
-                requestedAt: admin.firestore.FieldValue.serverTimestamp(),
-                failureReason: error.message
-            }
+            'refund.status': 'failed',
+            'refund.failureReason': error.message,
+            'refund.failedAt': admin.firestore.FieldValue.serverTimestamp()
         });
 
         throw new functions.https.HttpsError('internal', `Refund failed: ${error.message}`);

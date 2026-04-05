@@ -398,21 +398,6 @@ class OnboardingService {
     }
   }
 
-  /// Update technician online status (for approved technicians only)
-  Future<void> updateOnlineStatus(bool isOnline) async {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) {
-      throw Exception('User not authenticated');
-    }
-
-    // Use Cloud Function for secure status update
-    final result = await _callFunction('updateTechnicianStatus', {
-      'isOnline': isOnline,
-    });
-
-    debugPrint('[OnboardingService] Updated online status via Cloud Function: $result');
-  }
-
   /// Validate Aadhaar number format (12 digits, numeric only)
   /// Returns null if valid, error message if invalid
   static String? validateAadhaar(String? aadhaar) {

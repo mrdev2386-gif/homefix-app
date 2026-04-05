@@ -32,11 +32,6 @@ class TechnicianService {
     }
   }
 
-  Future<void> updateOnlineStatus(String uid, bool isOnline) async {
-    final callable = _functions.httpsCallable('toggleOnlineStatus');
-    await callable.call({'isOnline': isOnline});
-  }
-
   /// Update technician skills via Cloud Function (required by Firestore rules)
   Future<void> updateSkills(String uid, List<String> skills) async {
     try {

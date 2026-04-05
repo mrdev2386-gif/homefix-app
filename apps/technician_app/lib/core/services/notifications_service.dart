@@ -134,9 +134,8 @@ class NotificationsService extends ChangeNotifier {
         sound: true,
       );
 
-      // 3. Setup handlers
+      // 3. Setup token handlers
       _setupTokenHandlers();
-      _setupMessageHandlers();
 
       _isInitialized = true;
     } catch (e) {
@@ -221,16 +220,6 @@ class NotificationsService extends ChangeNotifier {
       debugPrint('[Notifications] Token save error: $e');
       // Don't rethrow - token save failure shouldn't break the app
     }
-  }
-
-  void _setupMessageHandlers() {
-    FirebaseMessaging.onMessage.listen((message) {
-      _showLocalNotification(message);
-    });
-
-    FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      _handleNotificationClick(message.data);
-    });
   }
 
   Future<void> _handleNotificationClick(Map<String, dynamic> data) async {

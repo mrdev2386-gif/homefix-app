@@ -7,16 +7,24 @@ const db = admin.firestore();
 
 // ==========================================
 // REFUND BOOKING PAYMENT
+// FIX 4: Use functions.config() for Razorpay keys (consistent with all other payment functions)
+// FIX 5: DEPRECATED - Use initiateRefund from razorpay.ts instead
 // ==========================================
+
+/**
+ * @deprecated HARD DISABLED - Use initiateRefund from razorpay.ts instead
+ * This function has been permanently disabled to prevent duplicate refund paths.
+ * All refund requests MUST use the initiateRefund function from razorpay.ts.
+ */
 export const refundBookingPayment = functions
   .region('asia-south1')
   .https.onCall(secureCallable(async (data: any, context: any) => {
-  const { bookingId, refundReason } = data;
-  const uid = context.auth?.uid;
-
-  if (!uid) throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
-  if (!bookingId) throw new functions.https.HttpsError('invalid-argument', 'bookingId required');
-  if (!refundReason) throw new functions.https.HttpsError('invalid-argument', 'refundReason required');
+  // HARD DISABLED - Force migration to new refund system
+  throw new functions.https.HttpsError(
+    'failed-precondition',
+    'DEPRECATED: This refund function is disabled. Use initiateRefund from razorpay.ts instead. Contact admin for migration.'
+  );
+}));
 
   // Verify admin
   const adminDoc = await db.collection('admins').doc(uid).get();
@@ -42,8 +50,8 @@ export const refundBookingPayment = functions
     );
   }
 
-  // Duplicate refund protection
-  if (booking.paymentStatus === 'refunded') {
+  // FIX 6: Idempotency check - prevent duplicate refunds
+  if (booking.paymentStatus === 'refunded' || booking.refund?.status === 'processed') {
     throw new functions.https.HttpsError(
       'failed-precondition',
       'Refund already processed for this booking'
@@ -58,12 +66,32 @@ export const refundBookingPayment = functions
     );
   }
 
+  // FIX 6: Mark refund as processing BEFORE calling Razorpay API
+  await bookingRef.update({
+    'refund.status': 'processing',
+    'refund.requestedAt': admin.firestore.FieldValue.serverTimestamp(),
+    'refund.requestedBy': uid,
+    'refund.reason': refundReason
+  });
+
   try {
+    // FIX 4: Use functions.config() instead of process.env
+    const config = functions.config();
+    const razorpayKeyId = config.razorpay?.key_id || '';
+    const razorpayKeySecret = config.razorpay?.key_secret || '';
+
+    if (!razorpayKeyId || !razorpayKeySecret) {
+      throw new functions.https.HttpsError(
+        'failed-precondition',
+        'Razorpay configuration not found. Run: firebase functions:config:set razorpay.key_id="xxx" razorpay.key_secret="xxx"'
+      );
+    }
+
     // Process refund with Razorpay
     const Razorpay = (await import('razorpay')).default;
     const razorpay = new Razorpay({
-      key_id: process.env.RAZORPAY_KEY_ID || '',
-      key_secret: process.env.RAZORPAY_KEY_SECRET || '',
+      key_id: razorpayKeyId,
+      key_secret: razorpayKeySecret,
     });
 
     const refundAmount = booking.price * 100;
@@ -80,30 +108,46 @@ export const refundBookingPayment = functions
     // Update booking
     await bookingRef.update({
       paymentStatus: 'refunded',
+      'refund.status': 'processed',
+      'refund.processedAt': admin.firestore.FieldValue.serverTimestamp(),
+      'refund.refundId': refund.id,
       refundedAt: admin.firestore.FieldValue.serverTimestamp(),
       refundReason,
       refundedBy: uid,
       refundId: refund.id,
     });
 
-    // Update technician wallet
-    const techRef = db.collection('technicians').doc(booking.technicianId);
-    const techSnap = await techRef.get();
-    const techData = techSnap.data();
+    // FIX 3A: Update technician wallet using technician_wallets (single source of truth)
+    const walletRef = db.collection('technician_wallets').doc(booking.technicianId);
+    const walletSnap = await walletRef.get();
 
-    if (techData) {
-      const newWalletBalance = (techData.walletBalance || 0) - booking.price;
+    if (walletSnap.exists) {
+      const walletData = walletSnap.data()!;
+      const currentBalance = walletData.availableBalance || 0;
+      const newBalance = currentBalance - booking.price;
 
-      if (newWalletBalance < 0) {
+      if (newBalance < 0) {
         throw new functions.https.HttpsError(
           'failed-precondition',
-          `Insufficient wallet balance. Current: ₹${techData.walletBalance}, Required: ₹${booking.price}`
+          `Insufficient wallet balance. Current: ₹${currentBalance}, Required: ₹${booking.price}`
         );
       }
 
-      await techRef.update({
-        walletBalance: newWalletBalance,
-        totalEarnings: Math.max(0, (techData.totalEarnings || 0) - booking.price),
+      await walletRef.update({
+        availableBalance: newBalance,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // Log transaction
+      await walletRef.collection('transactions').add({
+        type: 'debit',
+        source: 'refund',
+        status: 'completed',
+        amount: booking.price,
+        fee: 0,
+        referenceId: bookingId,
+        description: `Refund for booking`,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
     }
 
@@ -136,6 +180,14 @@ export const refundBookingPayment = functions
     return { success: true, paymentStatus: 'refunded', refundId: refund.id, amount: booking.price };
   } catch (error: any) {
     console.error('Refund processing error:', error);
+    
+    // FIX 6: Mark refund as failed on error
+    await bookingRef.update({
+      'refund.status': 'failed',
+      'refund.failureReason': error.message,
+      'refund.failedAt': admin.firestore.FieldValue.serverTimestamp()
+    });
+    
     if (error instanceof functions.https.HttpsError) throw error;
     throw new functions.https.HttpsError('internal', `Refund processing failed: ${error.message}`);
   }

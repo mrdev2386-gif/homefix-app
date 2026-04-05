@@ -1,24 +1,28 @@
 
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import * as crypto from 'crypto';
 import { db } from '../shared/config';
-
-// Environment variables for Razorpay configuration
-const razorpayKeyId = process.env.RAZORPAY_KEY_ID || '';
-const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || '';
-const razorpayPayoutAccount = process.env.RAZORPAY_PAYOUT_ACCOUNT || '';
-
-// Helper for lazy loading Razorpay
-async function getRazorpay() {
-    const Razorpay = (await import('razorpay')).default;
-    return new Razorpay({
-        key_id: razorpayKeyId || 'rzp_test_placeholder',
-        key_secret: razorpayKeySecret || 'placeholder_secret',
-    });
-}
 import { assertAdmin, logAdminAction } from '../shared/utils';
-import { sendUserNotification, notifyTechnicianPayoutProcessed, notifyCustomerBookingCancelled } from '../shared/notification_helper';
 import * as notify from '../shared/notification_helper';
+
+const LOG_PREFIX = '[PAYOUT_LOGIC]';
+
+// Use functions.config() — consistent with all other payment functions
+function getRazorpayConfig() {
+    const config = functions.config();
+    return {
+        key_id: config.razorpay?.key_id || '',
+        key_secret: config.razorpay?.key_secret || '',
+        payout_account: config.razorpay?.payout_account || '',
+    };
+}
+
+async function getRazorpay() {
+    const { key_id, key_secret } = getRazorpayConfig();
+    const Razorpay = (await import('razorpay')).default;
+    return new Razorpay({ key_id, key_secret });
+}
 
 /**
  * Admin triggers manual payout for a technician
@@ -32,9 +36,10 @@ export const triggerTechnicianPayout = functions.region('asia-south1').https.onC
     }
 
     const techRef = db.collection('technicians').doc(technicianId);
-    const walletRef = techRef.collection('wallet').doc('main');
-    const techDoc = await techRef.get();
-    const walletDoc = await walletRef.get();
+    // FIX 3A: Use technician_wallets (single source of truth)
+    const walletRef = db.collection('technician_wallets').doc(technicianId);
+
+    const [techDoc, walletDoc] = await Promise.all([techRef.get(), walletRef.get()]);
 
     if (!techDoc.exists || !walletDoc.exists) {
         throw new functions.https.HttpsError('not-found', 'Technician or Wallet not found');
@@ -48,7 +53,6 @@ export const triggerTechnicianPayout = functions.region('asia-south1').https.onC
     const payoutId = db.collection('payouts').doc().id;
 
     try {
-        // 1. Create Payout record in 'initiated' status
         await db.collection('payouts').doc(payoutId).set({
             id: payoutId,
             technicianId,
@@ -58,25 +62,21 @@ export const triggerTechnicianPayout = functions.region('asia-south1').https.onC
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
-        // 2. Razorpay Payout Integration
         const techData = techDoc.data()!;
-        
-        // CRITICAL: Check bank verification
+
         if (techData.bankVerified !== true || techData.bankVerificationStatus !== 'verified') {
             throw new Error('Technician bank account not verified');
         }
-        
         if (!techData.fundAccountId) {
             throw new Error('Fund account ID missing. Bank verification incomplete.');
         }
-        
         if (!techData.bankDetails) {
             throw new Error('Technician bank details missing');
         }
 
         const rzp = await getRazorpay();
+        const { payout_account } = getRazorpayConfig();
 
-        // Create Contact (if not exists)
         let contactId = techData.rzpContactId;
         if (!contactId) {
             const contact = await (rzp as any).contacts.create({
@@ -90,7 +90,6 @@ export const triggerTechnicianPayout = functions.region('asia-south1').https.onC
             await techRef.update({ rzpContactId: contactId });
         }
 
-        // Create Fund Account (if not exists)
         let fundAccountId = techData.fundAccountId || techData.rzpFundAccountId;
         if (!fundAccountId) {
             const fundAccount = await (rzp as any).fundAccounts.create({
@@ -106,9 +105,8 @@ export const triggerTechnicianPayout = functions.region('asia-south1').https.onC
             await techRef.update({ rzpFundAccountId: fundAccountId });
         }
 
-        // Trigger Payout
         const payout = await (rzp as any).payouts.create({
-            account_number: razorpayPayoutAccount || 'X123456789',
+            account_number: payout_account,
             fund_account_id: fundAccountId,
             amount: Math.round(amount * 100),
             currency: 'INR',
@@ -119,14 +117,13 @@ export const triggerTechnicianPayout = functions.region('asia-south1').https.onC
             notes: { technicianId, payoutId }
         });
 
-        // 3. Update Firestore with Razorpay Payout ID
+        // FIX 3A: Deduct from technician_wallets (single source of truth)
         await db.runTransaction(async (t) => {
             t.update(db.collection('payouts').doc(payoutId), {
                 razorpayPayoutId: payout.id,
                 status: payout.status,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
-
             t.update(walletRef, {
                 availableBalance: admin.firestore.FieldValue.increment(-amount),
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -138,7 +135,7 @@ export const triggerTechnicianPayout = functions.region('asia-south1').https.onC
         return { success: true, payoutId, rzpPayoutId: payout.id };
 
     } catch (error: any) {
-        console.error('Payout Error:', error);
+        console.error(`${LOG_PREFIX} Payout Error:`, error);
         await db.collection('payouts').doc(payoutId).update({
             status: 'failed',
             error: error.message,
@@ -149,75 +146,154 @@ export const triggerTechnicianPayout = functions.region('asia-south1').https.onC
 });
 
 /**
- * Handle Razorpay Webhooks for Payout status updates
+ * FIX 1: Razorpay Payout Webhook — SECURED with HMAC SHA256 signature verification
+ * Previously had NO verification — now production-safe
  */
 export const razorpayPayoutWebhook = functions.https.onRequest(async (req, res) => {
-    // Note: Secret verification should be done here in production
-    const event = req.body.event;
-    const payout = req.body.payload.payout.entity;
-    const payoutId = payout.reference_id;
-
-    console.log(`Received Razorpay Payout Webhook: ${event} for payout ${payoutId}`);
-
-    const payoutRef = db.collection('payouts').doc(payoutId);
-    const payoutDoc = await payoutRef.get();
-    if (!payoutDoc.exists) {
-        res.status(404).send('Payout not found');
+    if (req.method !== 'POST') {
+        res.status(405).send('Method Not Allowed');
         return;
     }
 
-    const pData = payoutDoc.data()!;
-    const techId = pData.technicianId;
-    const techRef = db.collection('technicians').doc(techId);
-    const walletRef = techRef.collection('wallet').doc('main');
+    try {
+        // STEP 1: Load webhook secret from functions.config()
+        const config = functions.config();
+        const webhookSecret = config.razorpay?.webhook_secret || '';
 
-    if (event === 'payout.processed') {
-        await db.runTransaction(async (t) => {
-            t.update(payoutRef, {
-                status: 'success',
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-            t.update(walletRef, {
-                lastPayoutAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-        });
+        if (!webhookSecret) {
+            console.error(`${LOG_PREFIX} Webhook secret not configured`);
+            res.status(500).send('Webhook secret not configured');
+            return;
+        }
 
-        await notify.notifyTechnicianPayoutProcessed(techId, pData.amount);
+        // STEP 2: Verify x-razorpay-signature header
+        const signature = req.headers['x-razorpay-signature'] as string;
+        if (!signature) {
+            console.error(`${LOG_PREFIX} No signature in payout webhook request`);
+            res.status(400).send('No signature provided');
+            return;
+        }
 
-    } else if (event === 'payout.reversed' || event === 'payout.failed') {
-        await db.runTransaction(async (t) => {
-            t.update(payoutRef, {
-                status: 'failed',
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-            t.update(walletRef, {
-                availableBalance: admin.firestore.FieldValue.increment(pData.amount),
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-        });
+        // STEP 3: HMAC SHA256 — use raw body (same pattern as razorpayWebhookV2)
+        const body = req.rawBody || JSON.stringify(req.body);
+        const expectedSignature = crypto
+            .createHmac('sha256', webhookSecret)
+            .update(body)
+            .digest('hex');
 
-        await notify.sendUserNotification({
-            userId: techId,
-            userType: 'technician',
-            title: 'Payout Failed 🔴',
-            body: `Your payout of ₹${pData.amount} failed. Balance has been restored.`,
-            type: 'payout_processed',
-            data: { screen: 'wallet' },
-            priority: 'high'
-        });
+        if (signature !== expectedSignature) {
+            console.error(`${LOG_PREFIX} Invalid payout webhook signature — REJECTED`);
+            await db.collection('payment_logs').add({
+                action: 'payout_webhook_invalid_signature',
+                receivedSignature: signature.substring(0, 10) + '...',
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            }).catch(() => {});
+            res.status(400).send('Invalid signature');
+            return;
+        }
+
+        console.log(`${LOG_PREFIX} Payout webhook signature verified`);
+
+        // STEP 4: Defensive null safety
+        const event = req.body?.event;
+        const payoutEntity = req.body?.payload?.payout?.entity;
+
+        if (!payoutEntity || !payoutEntity.reference_id) {
+            console.warn(`${LOG_PREFIX} Missing payout entity or reference_id`);
+            res.status(200).send('OK');
+            return;
+        }
+
+        const payoutId = payoutEntity.reference_id;
+
+        const payoutRef = db.collection('payouts').doc(payoutId);
+        const payoutDoc = await payoutRef.get();
+
+        if (!payoutDoc.exists) {
+            console.warn(`${LOG_PREFIX} Payout not found: ${payoutId}`);
+            // Return 200 to prevent Razorpay retry storms
+            res.status(200).send('OK');
+            return;
+        }
+
+        const pData = payoutDoc.data()!;
+        const techId = pData.technicianId;
+
+        // FIX 3A: Use technician_wallets (single source of truth)
+        const walletRef = db.collection('technician_wallets').doc(techId);
+
+        if (event === 'payout.processed') {
+            // Idempotency: only update if not already success
+            if (pData.status === 'success') {
+                console.log(`${LOG_PREFIX} Duplicate payout.processed ignored: ${payoutId}`);
+                res.status(200).send('OK');
+                return;
+            }
+
+            await db.runTransaction(async (t) => {
+                t.update(payoutRef, {
+                    status: 'success',
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+                t.update(walletRef, {
+                    lastPayoutAt: admin.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+            });
+
+            await notify.notifyTechnicianPayoutProcessed(techId, pData.amount);
+
+        } else if (event === 'payout.reversed' || event === 'payout.failed') {
+            // Idempotency: only restore balance if not already failed
+            if (pData.status === 'failed') {
+                console.log(`${LOG_PREFIX} Duplicate payout failure ignored: ${payoutId}`);
+                res.status(200).send('OK');
+                return;
+            }
+
+            await db.runTransaction(async (t) => {
+                t.update(payoutRef, {
+                    status: 'failed',
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+                // FIX 3A: Restore balance in technician_wallets
+                t.update(walletRef, {
+                    availableBalance: admin.firestore.FieldValue.increment(pData.amount),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+            });
+
+            await notify.sendUserNotification({
+                userId: techId,
+                userType: 'technician',
+                title: 'Payout Failed 🔴',
+                body: `Your payout of ₹${pData.amount} failed. Balance has been restored.`,
+                type: 'payout_processed',
+                data: { screen: 'wallet' },
+                priority: 'high'
+            });
+        } else {
+            console.log(`${LOG_PREFIX} Unhandled payout event: ${event}`);
+        }
+
+        res.status(200).send('OK');
+
+    } catch (error: any) {
+        console.error(`${LOG_PREFIX} Payout webhook error:`, error);
+        res.status(500).send('Internal Server Error');
     }
-
-    res.json({ status: 'ok' });
 });
 
 /**
  * Admin settles pending balance into available balance
+ * FIX 3A: Uses technician_wallets (single source of truth)
  */
 export const settleTechnicianBalance = functions.region('asia-south1').https.onCall(async (data, context) => {
     await assertAdmin(context);
     const { technicianId } = data;
 
-    const walletRef = db.collection('technicians').doc(technicianId).collection('wallet').doc('main');
+    // FIX 3A: Use technician_wallets
+    const walletRef = db.collection('technician_wallets').doc(technicianId);
     const walletDoc = await walletRef.get();
     if (!walletDoc.exists) throw new functions.https.HttpsError('not-found', 'Wallet not found');
 
@@ -246,15 +322,22 @@ export const settleTechnicianBalance = functions.region('asia-south1').https.onC
     return { success: true, settledAmount: pending };
 });
 
+/**
+ * Internal helper: initiate Razorpay refund for a cancelled booking
+ * Uses functions.config() for keys — consistent with all other payment functions
+ * 
+ * FIX 5: This is a legacy helper function. For new refund requests, use initiateRefund 
+ * from razorpay.ts instead, which has better admin controls and idempotency.
+ */
 export async function initiateRefund(bookingId: string) {
-    console.log(`Initiating refund for booking: ${bookingId}`);
+    console.log(`${LOG_PREFIX} Initiating refund for booking: ${bookingId}`);
     const payments = await db.collection('payments')
         .where('bookingId', '==', bookingId)
         .where('status', '==', 'success')
         .get();
 
     if (payments.empty) {
-        console.log(`No successful payment found for booking ${bookingId}. Skipping refund.`);
+        console.log(`${LOG_PREFIX} No successful payment found for booking ${bookingId}. Skipping refund.`);
         return;
     }
 
@@ -279,13 +362,12 @@ export async function initiateRefund(bookingId: string) {
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
-        // Notify Customer
         await notify.notifyCustomerBookingCancelled(
             paymentData.userId,
             bookingId,
             `A refund of ₹${paymentData.amount} has been initiated for your booking.`
         );
     } catch (e) {
-        console.error('Razorpay Refund Error:', e);
+        console.error(`${LOG_PREFIX} Razorpay Refund Error:`, e);
     }
 }

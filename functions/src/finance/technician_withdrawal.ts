@@ -2,10 +2,7 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { db } from '../shared/config';
 
-const razorpayKeyId = process.env.RAZORPAY_KEY_ID || '';
-const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || '';
-const razorpayPayoutAccount = process.env.RAZORPAY_PAYOUT_ACCOUNT || '';
-
+// FIX 4: Use functions.config() for Razorpay keys (consistent with all other payment functions)
 const LOG_PREFIX = "[WITHDRAWAL]";
 
 const MIN_WITHDRAWAL = 100;
@@ -16,10 +13,22 @@ const COOLDOWN_HOURS = 6;
 const MAX_PENDING_WITHDRAWALS = 2;
 
 async function getRazorpay() {
+    // FIX 4: Use functions.config() instead of process.env
+    const config = functions.config();
+    const razorpayKeyId = config.razorpay?.key_id || '';
+    const razorpayKeySecret = config.razorpay?.key_secret || '';
+
+    if (!razorpayKeyId || !razorpayKeySecret) {
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            'Razorpay configuration not found. Run: firebase functions:config:set razorpay.key_id="xxx" razorpay.key_secret="xxx"'
+        );
+    }
+
     const Razorpay = (await import('razorpay')).default;
     return new Razorpay({
-        key_id: razorpayKeyId || 'rzp_test_placeholder',
-        key_secret: razorpayKeySecret || 'placeholder_secret',
+        key_id: razorpayKeyId,
+        key_secret: razorpayKeySecret,
     });
 }
 
