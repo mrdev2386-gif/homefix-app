@@ -14,6 +14,7 @@ import '../core/models/wallet.dart';
 import '../core/models/wallet_transaction.dart';
 import '../core/models/bank_account.dart';
 import '../core/providers/technician_provider.dart';
+import '../core/utils/transaction_display_helper.dart';
 import 'add_bank_account_screen.dart';
 
 /// Modern Premium Technician Wallet Screen
@@ -100,15 +101,16 @@ class _WalletScreenState extends State<WalletScreen> {
 
   BankAccountStatus _parseBankStatus(String status) {
     switch (status) {
-      case 'pending':
-      case 'unverified':
+      case 'verifying':
         return BankAccountStatus.pending;
       case 'verified':
-      case 'active':
         return BankAccountStatus.verified;
-      case 'rejected':
       case 'failed':
+      case 'rejected':
         return BankAccountStatus.rejected;
+      case 'not_submitted':
+      case 'pending':
+      case 'unverified':
       default:
         return BankAccountStatus.pending;
     }
@@ -422,20 +424,22 @@ class _WalletScreenState extends State<WalletScreen> {
     final isVerified = bankAccount?.status == BankAccountStatus.verified;
     final canWithdraw = hasBalance && wallet.canWithdraw && !_isWithdrawing && isVerified;
     
-    // Determine bank button state
+    // Determine bank button state using new verification fields
     String bankButtonLabel = 'Add Bank';
     VoidCallback? bankButtonAction = _showAddBankDialog;
     List<Color>? bankButtonGradient = const [Color(0xFF6366F1), Color(0xFF8B5CF6)];
     
     if (hasBankAccount) {
       if (bankAccount!.status == BankAccountStatus.verified) {
-        bankButtonLabel = 'Manage Bank';
+        bankButtonLabel = 'Bank Verified ✅';
+        bankButtonAction = null; // Disable button when verified
+        bankButtonGradient = const [Color(0xFF10B981), Color(0xFF059669)];
       } else if (bankAccount.status == BankAccountStatus.pending) {
-        bankButtonLabel = 'Verification in Progress';
+        bankButtonLabel = 'Verifying...';
         bankButtonAction = null;
         bankButtonGradient = null;
       } else if (bankAccount.status == BankAccountStatus.rejected) {
-        bankButtonLabel = 'Re-verify Bank';
+        bankButtonLabel = 'Resubmit Bank Details';
       }
     }
     
@@ -822,26 +826,8 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   Widget _buildTransactionTile(WalletTransaction txn) {
-    final isCredit = txn.type == TransactionType.credit;
-    final isPayout = txn.type == TransactionType.payout;
-    
-    Color iconColor = AppTheme.successColor;
-    IconData icon = Icons.arrow_upward_rounded;
-    String typeLabel = 'Credit';
-    
-    if (isPayout) {
-      iconColor = AppTheme.warningColor;
-      icon = Icons.arrow_downward_rounded;
-      typeLabel = 'Withdrawal';
-    } else if (!isCredit) {
-      iconColor = AppTheme.errorColor;
-      icon = Icons.arrow_downward_rounded;
-      typeLabel = 'Debit';
-    } else if (txn.source == TransactionSource.refund) {
-      iconColor = AppTheme.infoColor;
-      icon = Icons.replay_rounded;
-      typeLabel = 'Refund';
-    }
+    final display = TransactionDisplayHelper.getDisplay(txn);
+    final isCredit = TransactionDisplayHelper.isCredit(txn);
 
     return InkWell(
       onTap: () => _showTransactionDetails(txn),
@@ -852,10 +838,10 @@ class _WalletScreenState extends State<WalletScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: iconColor.withValues(alpha: 0.12),
+                color: display.color.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: Icon(icon, color: iconColor, size: 22),
+              child: Icon(display.icon, color: display.color, size: 22),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -863,7 +849,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    txn.description ?? typeLabel,
+                    txn.description ?? display.label,
                     style: GoogleFonts.plusJakartaSans(
                       fontWeight: FontWeight.w600,
                       fontSize: 15,
@@ -888,11 +874,9 @@ class _WalletScreenState extends State<WalletScreen> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    '${isCredit || txn.type == TransactionType.release ? '+' : '-'}₹${_formatAmount(txn.amount)}',
+                    '${TransactionDisplayHelper.getAmountSign(txn)}₹${_formatAmount(txn.amount)}',
                     style: GoogleFonts.plusJakartaSans(
-                      color: (isCredit || txn.type == TransactionType.release) 
-                          ? AppTheme.successColor 
-                          : AppTheme.errorColor,
+                      color: isCredit ? AppTheme.successColor : AppTheme.errorColor,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
@@ -927,7 +911,7 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   void _showTransactionDetails(WalletTransaction txn) {
-    final isCredit = txn.type == TransactionType.credit || txn.type == TransactionType.release;
+    final isCredit = TransactionDisplayHelper.isCredit(txn);
     
     showModalBottomSheet(
       context: context,
@@ -1934,26 +1918,8 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
   }
 
   Widget _buildTransactionCard(WalletTransaction txn) {
-    final isCredit = txn.type == TransactionType.credit || txn.type == TransactionType.release;
-    final isPayout = txn.type == TransactionType.payout;
-    
-    Color iconColor = AppTheme.successColor;
-    IconData icon = Icons.arrow_upward_rounded;
-    String typeLabel = 'Credit';
-    
-    if (isPayout) {
-      iconColor = AppTheme.warningColor;
-      icon = Icons.arrow_downward_rounded;
-      typeLabel = 'Withdrawal';
-    } else if (!isCredit) {
-      iconColor = AppTheme.errorColor;
-      icon = Icons.arrow_downward_rounded;
-      typeLabel = 'Debit';
-    } else if (txn.source == TransactionSource.refund) {
-      iconColor = AppTheme.infoColor;
-      icon = Icons.replay_rounded;
-      typeLabel = 'Refund';
-    }
+    final display = TransactionDisplayHelper.getDisplay(txn);
+    final isCredit = TransactionDisplayHelper.isCredit(txn);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -1974,10 +1940,10 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.12),
+              color: display.color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Icon(icon, color: iconColor, size: 24),
+            child: Icon(display.icon, color: display.color, size: 24),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -1985,7 +1951,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  txn.description ?? typeLabel,
+                  txn.description ?? display.label,
                   style: GoogleFonts.plusJakartaSans(
                     fontWeight: FontWeight.w600,
                     fontSize: 16,
@@ -2022,7 +1988,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  '${isCredit ? '+' : '-'}₹${txn.amount.toStringAsFixed(2)}',
+                  '${TransactionDisplayHelper.getAmountSign(txn)}₹${txn.amount.toStringAsFixed(2)}',
                   style: GoogleFonts.plusJakartaSans(
                     color: isCredit ? AppTheme.successColor : AppTheme.errorColor,
                     fontWeight: FontWeight.bold,

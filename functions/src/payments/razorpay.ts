@@ -25,31 +25,109 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { db } from '../shared/config';
 import { Booking } from '../shared/models';
-import Razorpay from 'razorpay';
+const Razorpay = require('razorpay');
 import crypto from 'crypto';
 import { sendPushNotification } from '../shared/notifications';
 import { secureCallable } from '../shared/security';
 import { logger } from '../shared/utils';
 
-// Environment variables for Razorpay configuration
-const razorpayKeyId = process.env.RAZORPAY_KEY_ID || '';
-const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || '';
-const razorpayWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || '';
+const LOG_PREFIX = '[RAZORPAY]';
 
-// Initialize Razorpay
-// Store keys in environment variables: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET
-const getRazorpayInstance = () => {
-    if (!razorpayKeyId || !razorpayKeySecret) {
+// Get Razorpay configuration from Firebase Functions config
+const getRazorpayConfig = () => {
+    const config = functions.config();
+    
+    if (!config.razorpay) {
         throw new functions.https.HttpsError(
             'failed-precondition',
-            'Razorpay configuration not found. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET environment variables.'
+            'Razorpay configuration not found. Run: firebase functions:config:set razorpay.key_id="xxx" razorpay.key_secret="xxx" razorpay.webhook_secret="xxx"'
         );
     }
 
-    return new Razorpay({
-        key_id: razorpayKeyId,
-        key_secret: razorpayKeySecret
-    });
+    const { key_id, key_secret } = config.razorpay;
+
+    if (!key_id || !key_secret) {
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            'Razorpay key_id and key_secret are required'
+        );
+    }
+
+    return { key_id, key_secret };
+};
+
+// Lazy-loaded Razorpay instance
+let razorpayInstance: any = null;
+
+// Initialize Razorpay (lazy loading) - PURE CommonJS
+// Store keys in Firebase Functions config: firebase functions:config:set razorpay.key_id="xxx" razorpay.key_secret="xxx"
+const getRazorpayInstance = () => {
+    if (razorpayInstance) {
+        return razorpayInstance;
+    }
+
+    const { key_id, key_secret } = getRazorpayConfig();
+
+    console.log('[RAZORPAY] Initializing Razorpay SDK...');
+    console.log('[RAZORPAY] Razorpay class:', typeof Razorpay);
+
+    razorpayInstance = new Razorpay({
+        key_id,
+        key_secret
+    }) as any;
+
+    console.log('[RAZORPAY] TYPE:', typeof razorpayInstance);
+    console.log('[RAZORPAY] CONTACTS:', razorpayInstance.contacts);
+    console.log('[RAZORPAY] Instance created:', !!razorpayInstance);
+    console.log('[RAZORPAY] typeof instance.orders:', typeof razorpayInstance.orders);
+    console.log('[RAZORPAY] typeof instance.orders.create:', typeof razorpayInstance.orders?.create);
+    console.log('[RAZORPAY] typeof instance.payments:', typeof razorpayInstance.payments);
+    console.log('[RAZORPAY] typeof instance.payments.fetch:', typeof razorpayInstance.payments?.fetch);
+
+    // Strict validation - methods MUST be functions
+    if (!razorpayInstance.orders) {
+        console.error('[RAZORPAY] FULL INSTANCE:', JSON.stringify(razorpayInstance, null, 2));
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            'Razorpay instance.orders is undefined'
+        );
+    }
+
+    if (typeof razorpayInstance.orders.create !== 'function') {
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            'Razorpay instance not properly initialized - orders.create is not a function'
+        );
+    }
+
+    if (!razorpayInstance.payments) {
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            'Razorpay instance.payments is undefined'
+        );
+    }
+
+    if (typeof razorpayInstance.payments.fetch !== 'function') {
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            'Razorpay instance not properly initialized - payments.fetch is not a function'
+        );
+    }
+
+    console.log('[RAZORPAY] ✅ Razorpay SDK initialized successfully');
+    return razorpayInstance;
+};
+
+// Verify signature using HMAC SHA256
+const verifyPaymentSignature = (orderId: string, paymentId: string, signature: string): boolean => {
+    const { key_secret } = getRazorpayConfig();
+    
+    const generatedSignature = crypto
+        .createHmac('sha256', key_secret)
+        .update(`${orderId}|${paymentId}`)
+        .digest('hex');
+    
+    return generatedSignature === signature;
 };
 
 // ============================================================================
@@ -204,11 +282,14 @@ export const createRazorpayOrder = functions
  * 
  * Security:
  * - Validates user is booking owner
- * - Validates booking is completed
+ * - Validates booking is in payable state (awaiting_payment OR completed)
  * - Validates pricing is locked
  * - Amount comes ONLY from Firestore
+ * - Supports DUAL PAYMENT FLOW:
+ *   1. Online payment (before service) - status: awaiting_payment
+ *   2. After-service payment - status: completed
  * 
- * Called by: Customer app after work completion
+ * Called by: Customer app after booking creation (online) OR after work completion (after-service)
  */
 export const createPaymentOrder = functions
   .region('asia-south1')
@@ -241,16 +322,31 @@ export const createPaymentOrder = functions
         throw new functions.https.HttpsError('permission-denied', 'You are not authorized to pay for this booking');
     }
 
-    // Validation 2: Booking must be in a payable state
-    const payableStatuses = ['awaiting_payment', 'completed'];
-    if (!payableStatuses.includes(booking.status)) {
-        throw new functions.https.HttpsError(
-            'failed-precondition',
-            `Payment not allowed. Booking status is "${booking.status}".`
-        );
+    // Validation 2: Check payment method
+    const paymentMethod = booking.payment?.paymentMethod || booking.paymentMethod || 'after_service';
+    
+    // Validation 3: Booking must be in a payable state based on payment method
+    if (paymentMethod === 'online') {
+        // Online payment: must be in awaiting_payment or pending state
+        const validStatuses = ['awaiting_payment', 'pending', 'approved_by_admin', 'pending_admin_approval'];
+        if (!validStatuses.includes(booking.status) && !validStatuses.includes(booking.bookingStatus)) {
+            throw new functions.https.HttpsError(
+                'failed-precondition',
+                `Online payment not allowed. Booking status is "${booking.status || booking.bookingStatus}".`
+            );
+        }
+    } else {
+        // After-service payment: must be completed
+        const validStatuses = ['awaiting_payment', 'completed', 'service_completed'];
+        if (!validStatuses.includes(booking.status) && !validStatuses.includes(booking.bookingStatus)) {
+            throw new functions.https.HttpsError(
+                'failed-precondition',
+                `Payment not allowed. Booking status is "${booking.status || booking.bookingStatus}".`
+            );
+        }
     }
 
-    // Validation 3: Check if already paid
+    // Validation 4: Check if already paid
     const isPaid = (booking.payment && booking.payment.status === 'paid') || booking.paymentStatus === 'paid';
     if (isPaid) {
         throw new functions.https.HttpsError('already-exists', 'This booking has already been paid');
@@ -267,7 +363,8 @@ export const createPaymentOrder = functions
             orderId: existingOrderId,
             amount: bookingTotal,
             currency: 'INR',
-            bookingNumber: booking.bookingNumber
+            bookingNumber: booking.bookingNumber,
+            paymentMethod
         };
     }
 
@@ -293,7 +390,8 @@ export const createPaymentOrder = functions
                 customerName: booking.customerName,
                 serviceName: booking.serviceName,
                 technicianId: booking.technicianId || '',
-                technicianName: booking.technicianName || ''
+                technicianName: booking.technicianName || '',
+                paymentMethod
             }
         });
 
@@ -310,9 +408,11 @@ export const createPaymentOrder = functions
             'payment.status': 'processing',
             'payment.currency': 'INR',
             'payment.receipt': booking.bookingNumber,
+            'payment.paymentMethod': paymentMethod,
             'payment.retryCount': admin.firestore.FieldValue.increment(1),
             'razorpayOrderId': order.id,
-            'paymentStatus': 'processing'
+            'paymentStatus': 'processing',
+            'paymentMethod': paymentMethod
         });
 
         // Log the order creation
@@ -321,6 +421,7 @@ export const createPaymentOrder = functions
             orderId: order.id,
             amount: bookingTotal,
             currency: 'INR',
+            paymentMethod,
             action: 'order_created',
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             createdBy: userId
@@ -334,7 +435,8 @@ export const createPaymentOrder = functions
             bookingNumber: booking.bookingNumber,
             customerName: booking.customerName,
             customerEmail: context.auth.token.email || '',
-            customerPhone: booking.customerPhone
+            customerPhone: booking.customerPhone,
+            paymentMethod
         };
 
     } catch (error: any) {
@@ -655,19 +757,23 @@ export const verifyPayment = functions
     }
 
     // Verify signature
-    const keySecret = razorpayKeySecret;
-    const generatedSignature = crypto
-        .createHmac('sha256', keySecret)
-        .update(`${razorpayOrderId}|${razorpayPaymentId}`)
-        .digest('hex');
-
-    if (generatedSignature !== razorpaySignature) {
+    if (!verifyPaymentSignature(razorpayOrderId, razorpayPaymentId, razorpaySignature)) {
         throw new functions.https.HttpsError('invalid-argument', 'Invalid payment signature');
     }
 
     // Check if already processed
     const isPaid = (booking.payment && booking.payment.status === 'paid') || booking.paymentStatus === 'paid';
     if (isPaid) {
+        // Log duplicate verification attempt
+        await db.collection('payment_logs').add({
+            bookingId,
+            orderId: razorpayOrderId,
+            paymentId: razorpayPaymentId,
+            action: 'verify_payment_duplicate_ignored',
+            reason: 'Payment already marked as paid',
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        }).catch(err => console.error('Failed to log duplicate verification:', err));
+        
         return { success: true, message: 'Payment already processed' };
     }
 
@@ -721,9 +827,12 @@ export const verifyPayment = functions
             amount,
             action: 'payment_verified_client',
             method: payment.method,
+            status: 'success',
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             verifiedBy: userId
         });
+        
+        console.log(`[RAZORPAY] Payment verified successfully - Booking: ${bookingId}, Amount: ${amount}`);
 
         return { success: true, message: 'Payment verified successfully' };
 

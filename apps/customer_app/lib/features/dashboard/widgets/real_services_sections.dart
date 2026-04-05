@@ -88,7 +88,7 @@ class _BaseServicesSection extends StatelessWidget {
             _buildHeader(),
             const SizedBox(height: 16),
             isGrid
-                ? _buildGridList(services)
+                ? _buildGridList(context, services)
                 : _buildHorizontalList(services),
           ],
         );
@@ -160,28 +160,79 @@ class _BaseServicesSection extends StatelessWidget {
     );
   }
 
-  Widget _buildGridList(List<HomeService> services) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: GridView.builder(
-        padding: EdgeInsets.zero,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 16,
-          crossAxisSpacing: 12,
-          childAspectRatio: 0.75,
+  Widget _buildGridList(BuildContext context, List<HomeService> services) {
+    // Split services into two rows
+    final topRowServices = <HomeService>[];
+    final bottomRowServices = <HomeService>[];
+    
+    for (int i = 0; i < services.length; i++) {
+      if (i % 2 == 0) {
+        topRowServices.add(services[i]);
+      } else {
+        bottomRowServices.add(services[i]);
+      }
+    }
+    
+    // Calculate card dimensions based on grid specs
+    final screenWidth = MediaQuery.of(context).size.width;
+    final horizontalPadding = 16.0 * 2; // left + right padding
+    final crossAxisSpacing = 12.0;
+    final cardWidth = (screenWidth - horizontalPadding - crossAxisSpacing) / 2;
+    final cardHeight = cardWidth / 0.75; // childAspectRatio: 0.75
+    final rowSpacing = 16.0; // mainAxisSpacing from grid
+    
+    return Column(
+      children: <Widget>[
+        // Top Row
+        SizedBox(
+          height: cardHeight,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            physics: const BouncingScrollPhysics(),
+            itemCount: topRowServices.length,
+            itemBuilder: (context, index) {
+              return Container(
+                width: cardWidth,
+                margin: EdgeInsets.only(
+                  right: index < topRowServices.length - 1 ? 12 : 16,
+                ),
+                child: UniversalServiceCard(
+                  key: ValueKey(topRowServices[index].id),
+                  service: topRowServices[index],
+                  isGrid: true,
+                ),
+              );
+            },
+          ),
         ),
-        itemCount: services.length,
-        itemBuilder: (context, index) {
-          return UniversalServiceCard(
-            key: ValueKey(services[index].id),
-            service: services[index],
-            isGrid: true,
-          );
-        },
-      ),
+        if (bottomRowServices.isNotEmpty)
+          SizedBox(height: rowSpacing),
+        if (bottomRowServices.isNotEmpty)
+          // Bottom Row
+          SizedBox(
+            height: cardHeight,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              physics: const BouncingScrollPhysics(),
+              itemCount: bottomRowServices.length,
+              itemBuilder: (context, index) {
+                return Container(
+                  width: cardWidth,
+                  margin: EdgeInsets.only(
+                    right: index < bottomRowServices.length - 1 ? 12 : 16,
+                  ),
+                  child: UniversalServiceCard(
+                    key: ValueKey(bottomRowServices[index].id),
+                    service: bottomRowServices[index],
+                    isGrid: true,
+                  ),
+                );
+              },
+            ),
+          ),
+      ],
     );
   }
 

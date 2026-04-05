@@ -240,6 +240,18 @@ export const startService = functions
             );
         }
 
+        // Check payment status for online payment method
+        const paymentMethod = booking.payment?.paymentMethod || booking.paymentMethod;
+        if (paymentMethod === 'online') {
+            const isPaid = booking.payment?.status === 'paid' || booking.paymentStatus === 'paid';
+            if (!isPaid) {
+                throw new functions.https.HttpsError(
+                    'failed-precondition',
+                    'Payment must be completed before starting service for online payment bookings'
+                );
+            }
+        }
+
         await db.runTransaction(async (t) => {
             const freshDoc = await t.get(bookingRef);
             if (!freshDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
@@ -525,6 +537,7 @@ export const createBookingRequest = functions
         couponCode,
         idempotencyKey,
         paymentMode,
+        paymentMethod,
         price,
       } = data;
 
@@ -561,6 +574,10 @@ export const createBookingRequest = functions
       if (paymentMode && !['before_work', 'after_work', 'pay_before_work', 'pay_after_work'].includes(paymentMode)) {
         console.error('❌ [createBookingRequest] Invalid paymentMode:', paymentMode);
         throw new functions.https.HttpsError('invalid-argument', 'paymentMode must be either "before_work" or "after_work"');
+      }
+      if (paymentMethod && !['online', 'after_service'].includes(paymentMethod)) {
+        console.error('❌ [createBookingRequest] Invalid paymentMethod:', paymentMethod);
+        throw new functions.https.HttpsError('invalid-argument', 'paymentMethod must be either "online" or "after_service"');
       }
       
       console.log('✅ [createBookingRequest] Input validation passed');
@@ -620,6 +637,10 @@ export const createBookingRequest = functions
       console.log('🔑 [createBookingRequest] Idempotency key:', finalIdempotencyKey);
       console.log('🆔 [createBookingRequest] Generated booking ID:', bookingId);
 
+      // PHASE 5: Protect Booking Integrity - Define outside transaction
+      const finalPaymentMethod = paymentMethod || (paymentMode === 'before_work' || paymentMode === 'pay_before_work' ? 'online' : 'after_service');
+      const initialStatus = finalPaymentMethod === 'online' ? 'awaiting_payment' : 'pending';
+
       try {
       await db.runTransaction(async (transaction) => {
         const idempotencyRef = db.collection('booking_idempotency').doc(finalIdempotencyKey);
@@ -629,8 +650,7 @@ export const createBookingRequest = functions
           const existingBookingId = idempotencyDoc.data()?.bookingId;
           throw new Error(`IDEMPOTENCY_DUPLICATE:${existingBookingId}`);
         }
-
-        // PHASE 5: Protect Booking Integrity
+        
         const bookingData = {
           bookingId,
           customerId: uid,
@@ -652,16 +672,22 @@ export const createBookingRequest = functions
           discountAmount: 0,
           finalAmount: basePrice,
           paymentMode: paymentMode || 'after_work',
-          bookingStatus: 'pending',
-          status: 'pending',
+          paymentMethod: finalPaymentMethod,
+          bookingStatus: initialStatus,
+          status: initialStatus,
           // INITIALIZE STATUS HISTORY
           statusHistory: [
             {
-              status: 'pending',
+              status: initialStatus,
               timestamp: admin.firestore.FieldValue.serverTimestamp(),
             },
           ],
           paymentStatus: 'pending',
+          payment: {
+            status: 'pending',
+            paymentMethod: finalPaymentMethod,
+            currency: 'INR'
+          },
           adminApproval: null,
           approvedAt: null,
           approvedBy: null,
@@ -692,14 +718,22 @@ export const createBookingRequest = functions
         });
       });
 
-        console.log(`✅ [BOOKING] Created booking: ${bookingId} for customer: ${uid} with price: ${basePrice}`);
-        await sendAdminNotification(bookingId, 'New Booking Pending Approval');
+        console.log(`✅ [BOOKING] Created booking: ${bookingId} for customer: ${uid} with price: ${basePrice}, paymentMethod: ${finalPaymentMethod}`);
+        
+        if (finalPaymentMethod === 'online') {
+          await sendAdminNotification(bookingId, 'New Booking - Payment Required');
+        } else {
+          await sendAdminNotification(bookingId, 'New Booking Pending Approval');
+        }
 
         return {
           success: true,
           bookingId,
-          bookingStatus: 'pending',
-          message: 'Booking created successfully. Awaiting admin approval.',
+          bookingStatus: initialStatus,
+          paymentMethod: finalPaymentMethod,
+          message: finalPaymentMethod === 'online' 
+            ? 'Booking created. Please complete payment to proceed.' 
+            : 'Booking created successfully. Awaiting admin approval.',
         };
       } catch (error: any) {
         if (error.message?.startsWith('IDEMPOTENCY_DUPLICATE:')) {

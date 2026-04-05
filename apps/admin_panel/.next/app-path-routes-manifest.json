@@ -1,0 +1,19 @@
+{
+  "/page": "/",
+  "/login/page": "/login",
+  "/(admin)/admin/page": "/admin",
+  "/(admin)/booking-approvals/page": "/booking-approvals",
+  "/(admin)/bookings/page": "/bookings",
+  "/(admin)/disputes/page": "/disputes",
+  "/(admin)/services/page": "/services",
+  "/(admin)/custom-requests/page": "/custom-requests",
+  "/(admin)/customers/page": "/customers",
+  "/(admin)/applications/page": "/applications",
+  "/(admin)/technician-approvals/page": "/technician-approvals",
+  "/(admin)/technicians/page": "/technicians",
+  "/(admin)/reviews/page": "/reviews",
+  "/(admin)/service-approvals/page": "/service-approvals",
+  "/(admin)/bookings/[bookingId]/page": "/bookings/[bookingId]",
+  "/(admin)/customers/[id]/page": "/customers/[id]",
+  "/(admin)/technicians/[id]/page": "/technicians/[id]"
+}

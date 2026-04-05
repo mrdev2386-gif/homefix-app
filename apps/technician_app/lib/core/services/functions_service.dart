@@ -416,11 +416,10 @@ class FunctionsService {
     }
   }
 
-  /// Update technician bank details via Cloud Function
-  /// Only allows updating bank-related fields
-  Future<Map<String, dynamic>> updateTechnicianBankDetails({
+  /// Verify technician bank account using production-safe Cloud Function
+  /// Uses verifyTechnicianBankAccountSecure with idempotency and race condition protection
+  Future<Map<String, dynamic>> verifyTechnicianBankAccountSecure({
     required String accountHolderName,
-    required String bankName,
     required String accountNumber,
     required String ifscCode,
   }) async {
@@ -429,23 +428,64 @@ class FunctionsService {
       if (user == null) {
         throw Exception('User not authenticated');
       }
-      debugPrint('[FunctionsService] updateTechnicianBankDetails: Current user UID: ${user.uid}');
+      debugPrint('[FunctionsService] verifyTechnicianBankAccountSecure: Current user UID: ${user.uid}');
       await user.getIdToken(true);
-      debugPrint('[FunctionsService] updateTechnicianBankDetails: Token refreshed successfully');
+      debugPrint('[FunctionsService] verifyTechnicianBankAccountSecure: Token refreshed successfully');
       
-      final callable = _functions.httpsCallable('updateTechnicianBankDetails');
+      // FIX 1: Use correct function name
+      debugPrint('[FunctionsService] Calling verifyTechnicianBankAccountSecure...');
+      final callable = _functions.httpsCallable('verifyTechnicianBankAccountSecure');
+      
+      // FIX 2: Add debug log before call
+      debugPrint('[FunctionsService] Bank verification request: accountHolder=$accountHolderName, ifsc=$ifscCode');
+      
       final result = await callable.call({
         'accountHolderName': accountHolderName,
-        'bankName': bankName,
         'accountNumber': accountNumber,
         'ifscCode': ifscCode.toUpperCase(),
       });
-      return Map<String, dynamic>.from(result.data);
+      
+      // FIX 3: Validate response structure
+      final responseData = Map<String, dynamic>.from(result.data);
+      debugPrint('[FunctionsService] Bank verification response: $responseData');
+      
+      // FIX 4: Check for success flag
+      if (responseData['success'] != true) {
+        final message = responseData['message'] ?? 'Bank verification failed';
+        debugPrint('[FunctionsService] Bank verification failed: $message');
+        throw Exception(message);
+      }
+      
+      debugPrint('[FunctionsService] Bank verification successful: ${responseData['status']}');
+      return responseData;
     } on FirebaseFunctionsException catch (e) {
-      debugPrint('[FunctionsService] updateTechnicianBankDetails: FirebaseFunctionsException - Code: ${e.code}, Message: ${e.message}');
+      debugPrint('[FunctionsService] verifyTechnicianBankAccountSecure: FirebaseFunctionsException - Code: ${e.code}, Message: ${e.message}');
       rethrow;
     } catch (e) {
-      debugPrint('[FunctionsService] updateTechnicianBankDetails: Unexpected error: $e');
+      debugPrint('[FunctionsService] verifyTechnicianBankAccountSecure: Unexpected error: $e');
+      rethrow;
+    }
+  }
+
+  /// Check bank verification status using production-safe Cloud Function
+  Future<Map<String, dynamic>> checkBankVerificationStatus() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+      debugPrint('[FunctionsService] checkBankVerificationStatus: Current user UID: ${user.uid}');
+      await user.getIdToken(true);
+      debugPrint('[FunctionsService] checkBankVerificationStatus: Token refreshed successfully');
+      
+      final callable = _functions.httpsCallable('checkBankVerificationStatus');
+      final result = await callable.call();
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[FunctionsService] checkBankVerificationStatus: FirebaseFunctionsException - Code: ${e.code}, Message: ${e.message}');
+      rethrow;
+    } catch (e) {
+      debugPrint('[FunctionsService] checkBankVerificationStatus: Unexpected error: $e');
       rethrow;
     }
   }

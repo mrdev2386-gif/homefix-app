@@ -23,7 +23,9 @@ class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
   bool _isSaving = false;
   bool _showAccountNumber = false;
   Technician? _technician;
-  String _bankStatus = 'not_submitted'; // not_submitted, pending, approved, rejected
+  String _bankVerificationStatus = 'not_submitted'; // not_submitted, verifying, verified, failed
+  bool _bankVerified = false;
+  bool _canResubmit = false;
   String? _rejectionReason;
 
   @override
@@ -38,12 +40,16 @@ class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
     
     if (_technician != null) {
       final techData = _technician!.toMap();
-      _bankStatus = techData['bankStatus'] ?? 'not_submitted';
-      _rejectionReason = techData['bankRejectionReason'];
+      _bankVerificationStatus = techData['bankVerificationStatus'] ?? 'not_submitted';
+      _bankVerified = techData['bankVerified'] ?? false;
+      _rejectionReason = techData['bankVerificationMessage'];
       
-      // SECURITY: Only prefill if editable (not_submitted or rejected)
-      // Never expose raw account number for approved/pending
-      if (_bankStatus == 'not_submitted' || _bankStatus == 'rejected') {
+      // Determine if user can resubmit
+      _canResubmit = _bankVerificationStatus == 'failed' || _bankVerificationStatus == 'not_submitted';
+      
+      // SECURITY: Only prefill if editable (not_submitted or failed)
+      // Never expose raw account number for verified/verifying
+      if (_canResubmit) {
         _accountHolderController.text = techData['accountHolderName'] ?? '';
         _bankNameController.text = techData['bankName'] ?? '';
         _accountNumberController.text = techData['accountNumber'] ?? '';
@@ -89,33 +95,59 @@ class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
     setState(() => _isSaving = true);
 
     try {
-      await _functionsService.updateTechnicianBankDetails(
+      print('[BANK_VERIFY] Starting verification...');
+      
+      // FIX 1: Capture response
+      final result = await _functionsService.verifyTechnicianBankAccountSecure(
         accountHolderName: _accountHolderController.text.trim(),
-        bankName: _bankNameController.text.trim(),
         accountNumber: _accountNumberController.text.trim(),
         ifscCode: _ifscCodeController.text.trim().toUpperCase(),
       );
 
+      print('[BANK_VERIFY] Response received: $result');
+
       if (!mounted) return;
 
-      // FORCE REFRESH: Ensure UI updates immediately
+      // FIX 2: Validate response before proceeding
+      if (result['success'] != true) {
+        throw Exception(result['message'] ?? 'Verification failed');
+      }
+
+      print('[BANK_VERIFY] Verification successful, refreshing data...');
+      
+      // FIX 3: Refresh technician data
       await context.read<TechnicianProvider>().refreshTechnicianData();
 
       if (!mounted) return;
 
+      print('[BANK_VERIFY] Data refreshed, showing success message');
+      
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Bank details submitted for verification'),
+          content: Text('Bank verification initiated successfully'),
           backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
         ),
       );
-      Navigator.pop(context);
-    } catch (e) {
+      
+      // FIX 4: Delay navigation to ensure UI updates
+      await Future.delayed(const Duration(milliseconds: 500));
+      
       if (mounted) {
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      print('[BANK_VERIFY] Error: $e');
+      
+      if (mounted) {
+        // FIX 5: Always reset loading state
+        setState(() => _isSaving = false);
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: $e'),
+            content: Text('Error: ${e.toString().replaceAll('Exception: ', '')}'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -128,18 +160,18 @@ class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Dynamic UI based on bank status
-    if (_bankStatus == 'pending') {
-      return _buildPendingView();
-    } else if (_bankStatus == 'approved') {
-      return _buildApprovedView();
+    // Dynamic UI based on bank verification status
+    if (_bankVerificationStatus == 'verifying') {
+      return _buildVerifyingView();
+    } else if (_bankVerified == true && _bankVerificationStatus == 'verified') {
+      return _buildVerifiedView();
     } else {
-      // not_submitted or rejected - show editable form
+      // not_submitted or failed - show editable form
       return _buildEditableForm();
     }
   }
 
-  Widget _buildPendingView() {
+  Widget _buildVerifyingView() {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
@@ -161,14 +193,16 @@ class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: const BoxDecoration(
-                  color: Color(0xFFFEF3C7),
+                  color: Color(0xFFDEF7EC),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.pending, size: 60, color: Color(0xFFF59E0B)),
+                child: const CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
+                ),
               ),
               const SizedBox(height: 24),
               Text(
-                'Verification Pending',
+                'Verifying...',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
@@ -177,7 +211,7 @@ class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Your bank details are under verification. You will be notified once approved.',
+                'We are verifying your bank details. This usually takes a few moments.',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
@@ -193,7 +227,7 @@ class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
     );
   }
 
-  Widget _buildApprovedView() {
+  Widget _buildVerifiedView() {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
@@ -222,7 +256,7 @@ class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
               ),
               const SizedBox(height: 24),
               Text(
-                'Bank Details Verified',
+                'Bank Details Verified ✅',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
@@ -231,7 +265,7 @@ class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Your bank details have been verified and approved.',
+                'Your bank details have been verified and approved. You can now receive payouts.',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
@@ -318,7 +352,7 @@ class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (_bankStatus == 'rejected') ...[
+              if (_bankVerificationStatus == 'failed') ...[
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
@@ -330,7 +364,7 @@ class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Bank Details Rejected', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.red)),
+                            Text('Bank Verification Failed', style: GoogleFonts.plusJakartaSans(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.red)),
                             const SizedBox(height: 4),
                             Text(_rejectionReason ?? 'Please update and resubmit', style: GoogleFonts.plusJakartaSans(fontSize: 13, color: Colors.red.shade700)),
                           ],
@@ -403,7 +437,7 @@ class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
                 child: ElevatedButton(
                   onPressed: _isSaving ? null : _saveBankDetails,
                   style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6366F1), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                  child: _isSaving ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white))) : Text(_bankStatus == 'rejected' ? 'Resubmit Bank Details' : 'Submit Bank Details', style: GoogleFonts.plusJakartaSans(fontSize: 16, fontWeight: FontWeight.w600)),
+                  child: _isSaving ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white))) : Text(_bankVerificationStatus == 'failed' ? 'Resubmit Bank Details' : 'Submit Bank Details', style: GoogleFonts.plusJakartaSans(fontSize: 16, fontWeight: FontWeight.w600)),
                 ),
               ),
             ],

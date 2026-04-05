@@ -22,7 +22,7 @@
     "firebase-functions": "^4.4.1",
     "firebase-functions-test": "^0.3.3",
     "pdfkit": "^0.13.0",
-    "razorpay": "^2.9.6"
+    "razorpay": "^2.9.2"
   },
   "devDependencies": {
     "@types/node": "^20.12.0",

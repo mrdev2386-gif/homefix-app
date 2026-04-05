@@ -42,7 +42,8 @@ export const razorpayWebhookV2 = functions.https.onRequest(
         }
 
         try {
-            const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || "";
+            const config = functions.config();
+            const webhookSecret = config.razorpay?.webhook_secret || '';
 
             if (!webhookSecret) {
                 console.error(`${LOG_PREFIX} Webhook secret not configured`);
@@ -58,7 +59,9 @@ export const razorpayWebhookV2 = functions.https.onRequest(
                 return;
             }
 
-            const body = JSON.stringify(req.body);
+            // CRITICAL: Use raw body for signature verification, NOT JSON.stringify
+            // Razorpay signature is computed on the raw request body
+            const body = req.rawBody || JSON.stringify(req.body);
             const expectedSignature = crypto
                 .createHmac("sha256", webhookSecret)
                 .update(body)
@@ -66,9 +69,21 @@ export const razorpayWebhookV2 = functions.https.onRequest(
 
             if (signature !== expectedSignature) {
                 console.error(`${LOG_PREFIX} Invalid webhook signature - REJECTED`);
+                console.error(`${LOG_PREFIX} Expected: ${expectedSignature.substring(0, 10)}..., Received: ${signature.substring(0, 10)}...`);
+                
+                // Log invalid signature attempt
+                await db.collection("payment_logs").add({
+                    action: "webhook_invalid_signature",
+                    expectedSignature: expectedSignature.substring(0, 10) + "...",
+                    receivedSignature: signature.substring(0, 10) + "...",
+                    createdAt: admin.firestore.FieldValue.serverTimestamp()
+                }).catch(err => console.error(`${LOG_PREFIX} Failed to log invalid signature:`, err));
+                
                 res.status(400).send("Invalid signature");
                 return;
             }
+            
+            console.log(`${LOG_PREFIX} Signature verified successfully`);
 
             // STEP 5: DEFENSIVE NULL SAFETY - Validate payload structure
             const event = req.body.event;
@@ -253,6 +268,16 @@ async function handlePaymentCapturedV2(payload: any) {
     // STEP 3: Idempotency check - Check if order is already paid
     if (orderData.status === "paid") {
         console.log(`${LOG_PREFIX} duplicate_ignored - Order already paid: ${orderId}`);
+        
+        // Log duplicate webhook detection
+        await db.collection("payment_logs").add({
+            orderId,
+            paymentId: payment.id,
+            action: "webhook_duplicate_ignored",
+            reason: "Order already marked as paid",
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        }).catch(err => console.error(`${LOG_PREFIX} Failed to log duplicate:`, err));
+        
         // Already processed - safe to return 200, no need to retry
         return;
     }
@@ -421,11 +446,22 @@ async function processBookingPayment(
             "payment.amountPaid": amount,
             "payment.paymentMethod": payment.method,
             "payment.paidAt": admin.firestore.FieldValue.serverTimestamp(),
-            "status": "completed",
             "paymentStatus": "paid",
             "payout.status": "pending",
             "payout.totalAmount": booking.pricing?.total || booking.finalAmount || booking.price || amount,
         };
+
+        // Determine status based on payment method
+        const paymentMethod = booking.payment?.paymentMethod || booking.paymentMethod || 'after_service';
+        if (paymentMethod === 'online') {
+            // Online payment: move to confirmed (ready for service)
+            updateData["status"] = "confirmed";
+            updateData["bookingStatus"] = "confirmed";
+        } else {
+            // After-service payment: mark as completed
+            updateData["status"] = "completed";
+            updateData["bookingStatus"] = "completed";
+        }
 
         if (booking.pricing) {
             updateData["payout.platformFee"] = booking.pricing.platformFee;

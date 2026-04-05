@@ -13,23 +13,23 @@ class FirebaseInit {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    AppLogger.firebase('Core initialized');
+    AppLogger.firebase('Firebase Core initialized');
 
     // Initialize App Check with debug provider
     await FirebaseAppCheck.instance.activate(
       androidProvider: AndroidProvider.debug,
       appleProvider: AppleProvider.debug,
     );
-    AppLogger.firebase('App Check activated with debug provider');
+    AppLogger.firebase('Firebase App Check activated with debug provider');
     
     // Force generate and print debug token
     try {
       final token = await FirebaseAppCheck.instance.getToken(true);
       print('🔥 DEBUG TOKEN: $token');
-      AppLogger.firebase('AppCheck Debug Token: $token');
+      AppLogger.firebase('Firebase AppCheck Debug Token: $token');
     } catch (e) {
       print('❌ Failed to get App Check token: $e');
-      AppLogger.error('AppCheck token generation failed', data: e);
+      AppLogger.error('FIREBASE', 'AppCheck token generation failed', data: e);
     }
 
     _initialized = true;

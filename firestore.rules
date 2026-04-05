@@ -149,9 +149,9 @@ service cloud.firestore {
 
       allow create: if isSignedIn()
         && request.resource.data.customerId == request.auth.uid
-        && request.resource.data.status in ['pending', 'pending_admin_review'];
+        && request.resource.data.status in ['pending', 'pending_admin_review', 'awaiting_payment'];
 
-      // Status updates go through Cloud Functions only
+      // Status updates and payment fields go through Cloud Functions only
       allow update: if false;
       allow delete: if false;
     }

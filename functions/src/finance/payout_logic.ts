@@ -60,6 +60,16 @@ export const triggerTechnicianPayout = functions.region('asia-south1').https.onC
 
         // 2. Razorpay Payout Integration
         const techData = techDoc.data()!;
+        
+        // CRITICAL: Check bank verification
+        if (techData.bankVerified !== true || techData.bankVerificationStatus !== 'verified') {
+            throw new Error('Technician bank account not verified');
+        }
+        
+        if (!techData.fundAccountId) {
+            throw new Error('Fund account ID missing. Bank verification incomplete.');
+        }
+        
         if (!techData.bankDetails) {
             throw new Error('Technician bank details missing');
         }
@@ -81,7 +91,7 @@ export const triggerTechnicianPayout = functions.region('asia-south1').https.onC
         }
 
         // Create Fund Account (if not exists)
-        let fundAccountId = techData.rzpFundAccountId;
+        let fundAccountId = techData.fundAccountId || techData.rzpFundAccountId;
         if (!fundAccountId) {
             const fundAccount = await (rzp as any).fundAccounts.create({
                 contact_id: contactId,

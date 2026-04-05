@@ -29,10 +29,11 @@ import * as adminDynamic from './admin/dynamic_content';
 // Wallet Operations (Atomic & Safe) - CONSOLIDATED
 import * as walletSafety from './shared/wallet_safety';
 
-// Payment Modules (New Razorpay Integration)
+// Payment Modules (Razorpay Integration)
 import * as razorpayPayments from './payments/razorpay';
 import * as technicianPayouts from './payments/payouts';
 import { razorpayWebhookV2 } from './payments/razorpayWebhookV2';
+import * as afterServicePayment from './payments/after_service_payment';
 
 // Partner Applications
 import * as partnerApplications from './partner/applications';
@@ -52,6 +53,8 @@ import * as techProfile from './technician/profile_management';
 import * as techTrack from './technician/tracking';
 import * as adminTechMgmt from './admin/technician_management';
 import * as techBankVerification from './technician/bank_verification';
+import * as techBankStatus from './technician/bank_status_checker';
+import * as techBankCleanup from './technician/bank_verification_cleanup';
 
 // EXPORTS FOR TECHNICIAN ONBOARDING (SECURE CLOUD FUNCTIONS)
 export const createTechnicianProfile = techOnboarding.createTechnicianProfile;
@@ -69,9 +72,15 @@ export const reuploadVerificationDocument = techProfile.reuploadVerificationDocu
 export const adminUpdateBankStatus = techProfile.adminUpdateBankStatus;
 export const adminUpdateDocumentStatus = techProfile.adminUpdateDocumentStatus;
 
-// EXPORTS FOR BANK VERIFICATION (RAZORPAY PENNY DROP)
-export const verifyTechnicianBankAccount = techBankVerification.verifyTechnicianBankAccount;
+// EXPORTS FOR BANK VERIFICATION (RAZORPAY FUND ACCOUNT)
+export const verifyTechnicianBankAccountSecure = techBankVerification.verifyTechnicianBankAccountSecure;
+export const verifyTechnicianBankAccount = techBankVerification.verifyTechnicianBankAccountSecure; // Alias for backward compatibility
 export const razorpayBankWebhook = techBankVerification.razorpayBankWebhook;
+export const checkBankVerificationStatus = techBankStatus.checkBankVerificationStatus;
+
+// EXPORTS FOR BANK VERIFICATION CLEANUP (SCHEDULED FUNCTIONS)
+export const cleanupStuckBankVerifications = techBankCleanup.cleanupStuckBankVerifications;
+export const cleanupOldIdempotencyRecords = techBankCleanup.cleanupOldIdempotencyRecords;
 
 import * as matchEngine from './matching/engine';
 import * as techTriggers from './technician/triggers';
@@ -577,9 +586,11 @@ export const onBookingCompletedAwardReferral = customerFeatures.onBookingComplet
 // RAZORPAY PAYMENT INTEGRATION
 // ==========================================
 
+// Razorpay Payment Functions (Single Source of Truth)
 export { razorpayWebhookV2 };
-export const initiateRefund = razorpayPayments.initiateRefund;
 export const createRazorpayOrder = razorpayPayments.createRazorpayOrder;
+export const initiateRefund = razorpayPayments.initiateRefund;
+export const confirmAfterServicePayment = afterServicePayment.confirmAfterServicePayment;
 
 // Payout Functions (Admin)
 export const getPendingPayouts = technicianPayouts.getPendingPayouts;
@@ -600,3 +611,8 @@ export const getChatDetails = chat.getChatDetails;
 // ==========================================
 
 export { testAuth };
+
+// Razorpay Connection Tests
+import * as testRazorpay from './payments/testRazorpay';
+export const testRazorpayConnection = testRazorpay.testRazorpayConnection;
+export const testBankVerification = testRazorpay.testBankVerification;

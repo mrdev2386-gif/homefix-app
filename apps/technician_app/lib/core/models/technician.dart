@@ -117,14 +117,24 @@ class Technician {
   final Map<String, dynamic>? stepsCompleted;
   final int? profileCompletion;
   
-  // Bank details fields
+  // Bank details fields - PRODUCTION-SAFE VERIFICATION
   final String? bankName;
   final String? accountNumber;
   final String? ifscCode;
   final String? accountHolderName;
-  final String? bankStatus; // not_submitted, pending, approved, rejected
-  final String? bankRejectionReason;
-  final DateTime? bankSubmittedAt;
+  
+  // NEW: Production-safe bank verification fields
+  final String? bankVerificationStatus; // not_submitted, verifying, verified, failed
+  final bool? bankVerified; // true when verified
+  final String? bankVerificationMessage; // Error message or success message
+  final DateTime? bankVerifiedAt; // When verification completed
+  final String? fundAccountId; // Razorpay fund account ID
+  final String? razorpayContactId; // Razorpay contact ID
+  
+  // DEPRECATED: Old bank status field (kept for backward compatibility)
+  final String? bankStatus; // DEPRECATED - use bankVerificationStatus instead
+  final String? bankRejectionReason; // DEPRECATED - use bankVerificationMessage instead
+  final DateTime? bankSubmittedAt; // DEPRECATED
 
   // Custom services added by technician
   final List<String>? customServices;
@@ -198,9 +208,15 @@ class Technician {
     this.accountNumber,
     this.ifscCode,
     this.accountHolderName,
-    this.bankStatus,
-    this.bankRejectionReason,
-    this.bankSubmittedAt,
+    this.bankVerificationStatus,
+    this.bankVerified,
+    this.bankVerificationMessage,
+    this.bankVerifiedAt,
+    this.fundAccountId,
+    this.razorpayContactId,
+    this.bankStatus, // DEPRECATED
+    this.bankRejectionReason, // DEPRECATED
+    this.bankSubmittedAt, // DEPRECATED
     this.customServices,
     this.experienceDescription,
     this.tools,
@@ -412,16 +428,28 @@ class Technician {
       dynamicPricingAllowed: data['dynamicPricingAllowed'],
       stepsCompleted: normalizedStepsMap,
       profileCompletion: data['profileCompletion'] as int?,
-      // Bank details - root level only (no legacy fallback)
-      bankName: data['bankName']?.toString(),
-      accountNumber: data['accountNumber']?.toString(),
-      ifscCode: data['ifscCode']?.toString(),
-      accountHolderName: data['accountHolderName']?.toString(),
-      bankStatus: data['bankStatus']?.toString(),
-      bankRejectionReason: data['bankRejectionReason']?.toString(),
-      bankSubmittedAt: data['bankSubmittedAt'] != null
-          ? (data['bankSubmittedAt'] as Timestamp).toDate()
-          : null,
+    // Bank details - root level only (no legacy fallback)
+    bankName: data['bankName']?.toString(),
+    accountNumber: data['accountNumber']?.toString(),
+    ifscCode: data['ifscCode']?.toString(),
+    accountHolderName: data['accountHolderName']?.toString(),
+    
+    // NEW: Production-safe bank verification fields
+    bankVerificationStatus: data['bankVerificationStatus']?.toString(),
+    bankVerified: data['bankVerified'] as bool?,
+    bankVerificationMessage: data['bankVerificationMessage']?.toString(),
+    bankVerifiedAt: data['bankVerifiedAt'] != null
+        ? (data['bankVerifiedAt'] as Timestamp).toDate()
+        : null,
+    fundAccountId: data['fundAccountId']?.toString(),
+    razorpayContactId: data['razorpayContactId']?.toString(),
+    
+    // DEPRECATED: Keep for backward compatibility
+    bankStatus: data['bankStatus']?.toString(),
+    bankRejectionReason: data['bankRejectionReason']?.toString(),
+    bankSubmittedAt: data['bankSubmittedAt'] != null
+        ? (data['bankSubmittedAt'] as Timestamp).toDate()
+        : null,
       customServices: (data['customServices'] as List?)?.map((e) => e.toString()).toList(),
       experienceDescription: data['experienceDescription']?.toString(),
       tools: (data['tools'] as List?)?.map((e) => e.toString()).toList(),
@@ -520,9 +548,15 @@ class Technician {
       if (accountNumber != null) 'accountNumber': accountNumber,
       if (ifscCode != null) 'ifscCode': ifscCode,
       if (accountHolderName != null) 'accountHolderName': accountHolderName,
-      if (bankStatus != null) 'bankStatus': bankStatus,
-      if (bankRejectionReason != null) 'bankRejectionReason': bankRejectionReason,
-      if (bankSubmittedAt != null) 'bankSubmittedAt': Timestamp.fromDate(bankSubmittedAt!),
+      if (bankVerificationStatus != null) 'bankVerificationStatus': bankVerificationStatus,
+      if (bankVerified != null) 'bankVerified': bankVerified,
+      if (bankVerificationMessage != null) 'bankVerificationMessage': bankVerificationMessage,
+      if (bankVerifiedAt != null) 'bankVerifiedAt': Timestamp.fromDate(bankVerifiedAt!),
+      if (fundAccountId != null) 'fundAccountId': fundAccountId,
+      if (razorpayContactId != null) 'razorpayContactId': razorpayContactId,
+      if (bankStatus != null) 'bankStatus': bankStatus, // DEPRECATED
+      if (bankRejectionReason != null) 'bankRejectionReason': bankRejectionReason, // DEPRECATED
+      if (bankSubmittedAt != null) 'bankSubmittedAt': Timestamp.fromDate(bankSubmittedAt!), // DEPRECATED
       if (customServices != null) 'customServices': customServices,
       if (experienceDescription != null) 'experienceDescription': experienceDescription,
       if (tools != null) 'tools': tools,
@@ -601,6 +635,50 @@ class Technician {
     return completion;
   }
 
+  /// Get bank verification status (production-safe)
+  String getBankVerificationStatus() {
+    // Use new field if available, fallback to old field for backward compatibility
+    if (bankVerificationStatus != null) {
+      return bankVerificationStatus!;
+    }
+    
+    // Map old bankStatus to new format
+    switch (bankStatus) {
+      case 'pending':
+        return 'verifying';
+      case 'approved':
+        return 'verified';
+      case 'rejected':
+        return 'failed';
+      case 'not_submitted':
+      default:
+        return 'not_submitted';
+    }
+  }
+
+  /// Check if bank account is verified (production-safe)
+  bool isBankVerified() {
+    // Use new field if available
+    if (bankVerified != null) {
+      return bankVerified!;
+    }
+    
+    // Fallback to old field
+    return bankStatus == 'approved';
+  }
+
+  /// Check if user can resubmit bank details
+  bool canResubmitBankDetails() {
+    final status = getBankVerificationStatus();
+    return status == 'failed' || status == 'not_submitted';
+  }
+
+  /// Get bank verification message
+  String? getBankVerificationMessage() {
+    // Use new field if available, fallback to old field
+    return bankVerificationMessage ?? bankRejectionReason;
+  }
+
 
   Technician copyWith({
     String? uid,
@@ -665,9 +743,15 @@ class Technician {
     String? accountNumber,
     String? ifscCode,
     String? accountHolderName,
-    String? bankStatus,
-    String? bankRejectionReason,
-    DateTime? bankSubmittedAt,
+    String? bankVerificationStatus,
+    bool? bankVerified,
+    String? bankVerificationMessage,
+    DateTime? bankVerifiedAt,
+    String? fundAccountId,
+    String? razorpayContactId,
+    String? bankStatus, // DEPRECATED
+    String? bankRejectionReason, // DEPRECATED
+    DateTime? bankSubmittedAt, // DEPRECATED
     List<String>? customServices,
     String? experienceDescription,
     List<String>? tools,
@@ -737,9 +821,15 @@ class Technician {
       accountNumber: accountNumber ?? this.accountNumber,
       ifscCode: ifscCode ?? this.ifscCode,
       accountHolderName: accountHolderName ?? this.accountHolderName,
-      bankStatus: bankStatus ?? this.bankStatus,
-      bankRejectionReason: bankRejectionReason ?? this.bankRejectionReason,
-      bankSubmittedAt: bankSubmittedAt ?? this.bankSubmittedAt,
+      bankVerificationStatus: bankVerificationStatus ?? this.bankVerificationStatus,
+      bankVerified: bankVerified ?? this.bankVerified,
+      bankVerificationMessage: bankVerificationMessage ?? this.bankVerificationMessage,
+      bankVerifiedAt: bankVerifiedAt ?? this.bankVerifiedAt,
+      fundAccountId: fundAccountId ?? this.fundAccountId,
+      razorpayContactId: razorpayContactId ?? this.razorpayContactId,
+      bankStatus: bankStatus ?? this.bankStatus, // DEPRECATED
+      bankRejectionReason: bankRejectionReason ?? this.bankRejectionReason, // DEPRECATED
+      bankSubmittedAt: bankSubmittedAt ?? this.bankSubmittedAt, // DEPRECATED
       customServices: customServices ?? this.customServices,
       experienceDescription: experienceDescription ?? this.experienceDescription,
       tools: tools ?? this.tools,

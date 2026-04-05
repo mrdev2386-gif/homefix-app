@@ -1,0 +1,109 @@
+# BANK VERIFICATION FIXES - QUICK REFERENCE
+
+## 🎯 WHAT WAS FIXED
+
+| Problem | Solution |
+|---------|----------|
+| Duplicate contacts | Reuse `razorpayContactId` |
+| Duplicate fund accounts | Check if verified before creating |
+| Stuck "pending" status | Always set to "verifying" → "verified"/"failed" |
+| Can't resubmit | Allow retry for "failed"/"pending" |
+| Missing logs | Log all attempts |
+
+---
+
+## 🔧 DEPLOYMENT
+
+```bash
+# 1. Deploy functions
+cd functions
+npm run build
+firebase deploy --only functions:verifyTechnicianBankAccountSecure,checkBankVerificationStatus
+
+# 2. Fix stuck pending statuses
+cd scripts
+node fix_pending_bank_verifications.js
+```
+
+---
+
+## 📊 STATUS FLOW
+
+```
+pending/failed → verifying → verified ✅ (final)
+                           → failed ❌ (can retry)
+```
+
+**Rules:**
+- ✅ Can call function if: `pending`, `failed`
+- ❌ Returns immediately if: `verified`
+- ⏳ Never stuck in: `pending` or `verifying`
+
+---
+
+## 🔍 CHECK STATUS
+
+```dart
+final result = await FirebaseFunctions.instance
+  .httpsCallable('checkBankVerificationStatus')
+  .call();
+
+bool canResubmit = result.data['canResubmit'];
+bool isVerified = result.data['isVerified'];
+String status = result.data['status'];
+```
+
+---
+
+## 🔄 RESUBMISSION LOGIC
+
+```dart
+if (canResubmit) {
+  // Show "Resubmit" button
+  ElevatedButton(
+    onPressed: _verifyBankAccount,
+    child: Text('Resubmit Bank Details'),
+  );
+}
+
+if (isVerified) {
+  // Show verified badge
+  Icon(Icons.check_circle, color: Colors.green);
+}
+```
+
+---
+
+## 📝 LOGGING
+
+All attempts logged in `payment_logs`:
+```javascript
+{
+  action: 'bank_verification_attempt',
+  status: 'started' | 'verified' | 'failed',
+  previousStatus: 'none' | 'pending' | 'failed',
+  accountNumber: '***1234',
+  ifsc: 'SBIN0001234'
+}
+```
+
+---
+
+## 🐛 TROUBLESHOOTING
+
+**Status stuck in "verifying"?**
+```bash
+node scripts/fix_pending_bank_verifications.js
+```
+
+**Duplicate fund accounts?**
+- Fixed - now checks if verified before creating
+
+**Can't resubmit?**
+- Fixed - now allows retry for failed/pending
+
+---
+
+## 📞 SUPPORT
+
+Contact: 9508322397

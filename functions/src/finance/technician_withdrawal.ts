@@ -70,6 +70,23 @@ export const requestWithdrawal = functions.region('asia-south1').https.onCall(as
     const wallet = walletDoc.data()!;
     const tech = techDoc.data()!;
 
+    // CRITICAL: Check bank verification status
+    if (tech.bankVerified !== true || tech.bankVerificationStatus !== 'verified') {
+        console.warn(`${LOG_PREFIX} bank_not_verified - Technician: ${technicianId}, Status: ${tech.bankVerificationStatus}`);
+        throw new functions.https.HttpsError(
+            'failed-precondition', 
+            'Please verify your bank account before requesting withdrawal. Go to Profile > Bank Details to verify.'
+        );
+    }
+
+    if (!tech.fundAccountId) {
+        console.warn(`${LOG_PREFIX} fund_account_missing - Technician: ${technicianId}`);
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            'Bank account verification incomplete. Please re-verify your bank details.'
+        );
+    }
+
     if (wallet.kycStatus !== 'verified') {
         console.warn(`${LOG_PREFIX} kyc_required - Technician: ${technicianId}`);
         throw new functions.https.HttpsError('failed-precondition', 'KYC verification required before withdrawal');

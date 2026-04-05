@@ -1,0 +1,19 @@
+{
+  "/page": "app/page.js",
+  "/login/page": "app/login/page.js",
+  "/(admin)/admin/page": "app/(admin)/admin/page.js",
+  "/(admin)/booking-approvals/page": "app/(admin)/booking-approvals/page.js",
+  "/(admin)/bookings/page": "app/(admin)/bookings/page.js",
+  "/(admin)/disputes/page": "app/(admin)/disputes/page.js",
+  "/(admin)/services/page": "app/(admin)/services/page.js",
+  "/(admin)/custom-requests/page": "app/(admin)/custom-requests/page.js",
+  "/(admin)/customers/page": "app/(admin)/customers/page.js",
+  "/(admin)/applications/page": "app/(admin)/applications/page.js",
+  "/(admin)/technician-approvals/page": "app/(admin)/technician-approvals/page.js",
+  "/(admin)/technicians/page": "app/(admin)/technicians/page.js",
+  "/(admin)/reviews/page": "app/(admin)/reviews/page.js",
+  "/(admin)/service-approvals/page": "app/(admin)/service-approvals/page.js",
+  "/(admin)/bookings/[bookingId]/page": "app/(admin)/bookings/[bookingId]/page.js",
+  "/(admin)/customers/[id]/page": "app/(admin)/customers/[id]/page.js",
+  "/(admin)/technicians/[id]/page": "app/(admin)/technicians/[id]/page.js"
+}

@@ -1,61 +1,43 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
-.DS_Store
-.atom/
-.build/
-.buildlog/
-.history
-.svn/
-.swiftpm/
-migrate_working_dir/
+# Service Account Keys (NEVER COMMIT THESE)
+serviceAccountKey.json
+**/serviceAccountKey.json
 
-# IntelliJ
-*.iml
-*.ipr
-*.iws
-.idea/
-
-# Flutter / Dart
-**/doc/api/
-**/ios/Flutter/.last_build_id
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.pub-cache/
-.pub/
-build/
-
-# Android build
-/android/app/debug
-/android/app/profile
-/android/app/release
-
-# Node / Next.js
-node_modules/
-.firebase/
-build/
-dist/
-
-apps/admin_panel/.next/
-apps/admin_panel/out/
-
-# Firebase
-functions/node_modules/
-functions/lib/
+# Firebase Config
+.firebaserc
 firebase-debug.log
+firebase-debug.*.log
 
-# Env
+# Environment Variables
 .env
 .env.local
-.env.*
+.env.production
 
-# Service account keys & Secrets
-serviceAccountKey.json
-scripts/serviceAccountKey.json
-fix_key.js
-*.pem
-*.key
-*.p12
+# API Keys and Secrets
+config/keys.js
+config/prod.js
+
+# Node modules
+node_modules/
+
+# Build outputs
+dist/
+build/
+lib/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
