@@ -197,29 +197,6 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     }
   }
 
-  /// Handle Firestore errors with user-friendly messages
-  void _handleFirestoreError(FirebaseException e, String context) {
-    String message;
-    switch (e.code) {
-      case 'permission-denied':
-        message = 'Access denied. Please check your permissions.';
-        break;
-      case 'unavailable':
-        message = 'Network unavailable. Please check your connection.';
-        break;
-      case 'deadline-exceeded':
-        message = 'Request timed out. Please try again.';
-        break;
-      default:
-        message = 'Failed to load $context. Please try again.';
-    }
-    
-    setState(() {
-      _categoryError = message;
-      _isLoadingCategories = false;
-    });
-  }
-
 
 
   /// Load services from Firestore (filtered by category)
@@ -519,10 +496,10 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
   /// Save service with proper error handling
   /// PART 2: Prevent rapid taps
   Future<void> _saveService() async {
-    print("[ADD SERVICE] Submit pressed");
-    print("categoryId=$_selectedCategoryId");
-    print("serviceId=$_selectedServiceId");
-    print("isEdit=${widget.isEdit}");
+    debugPrint("[ADD SERVICE] Submit pressed");
+    debugPrint("categoryId=$_selectedCategoryId");
+    debugPrint("serviceId=$_selectedServiceId");
+    debugPrint("isEdit=${widget.isEdit}");
     
     // APPROVAL CHECK: Validate technician approval before proceeding
     final techProvider = context.read<TechnicianProvider>();
@@ -717,7 +694,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
 
       if (widget.isEdit && widget.serviceId != null) {
         // UPDATE existing service
-        print('[UPDATE DEBUG] originalPrice: $_originalPrice, offerPrice: $_offerPrice');
+        debugPrint('[UPDATE DEBUG] originalPrice: $_originalPrice, offerPrice: $_offerPrice');
         await _functionsService.updateService(
           serviceId: widget.serviceId!,
           name: _nameController.text.trim(),
@@ -736,11 +713,11 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
             'nightCharge': _nightCharge,
           } : null,
         );
-        print("[UPDATE SERVICE] SUCCESS");
+        debugPrint("[UPDATE SERVICE] SUCCESS");
       } else {
         // CREATE new service
         // CRITICAL: Send originalPrice as 'price', offerPrice as 'offerPrice'
-        print('[SAVE DEBUG] originalPrice: $_originalPrice, offerPrice: $_offerPrice');
+        debugPrint('[SAVE DEBUG] originalPrice: $_originalPrice, offerPrice: $_offerPrice');
         await _functionsService.addService(
           name: _nameController.text.trim(),
           price: _originalPrice!,  // Main price (before discount)
@@ -760,7 +737,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
             'nightCharge': _nightCharge,
           } : null,
         );
-        print("[ADD SERVICE] SUCCESS");
+        debugPrint("[ADD SERVICE] SUCCESS");
       }
 
       debugPrint('[WRITE VERIFY] service ${widget.isEdit ? "updated" : "added"}');

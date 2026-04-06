@@ -25,11 +25,11 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { db } from '../shared/config';
 import { Booking } from '../shared/models';
-const Razorpay = require('razorpay');
 import crypto from 'crypto';
 import { sendPushNotification } from '../shared/notifications';
 import { secureCallable } from '../shared/security';
 import { logger } from '../shared/utils';
+const { razorpay } = require('../config/razorpay');
 
 const LOG_PREFIX = '[RAZORPAY]';
 
@@ -54,68 +54,6 @@ const getRazorpayConfig = () => {
     }
 
     return { key_id, key_secret };
-};
-
-// Lazy-loaded Razorpay instance
-let razorpayInstance: any = null;
-
-// Initialize Razorpay (lazy loading) - PURE CommonJS
-// Store keys in Firebase Functions config: firebase functions:config:set razorpay.key_id="xxx" razorpay.key_secret="xxx"
-const getRazorpayInstance = () => {
-    if (razorpayInstance) {
-        return razorpayInstance;
-    }
-
-    const { key_id, key_secret } = getRazorpayConfig();
-
-    console.log('[RAZORPAY] Initializing Razorpay SDK...');
-    console.log('[RAZORPAY] Razorpay class:', typeof Razorpay);
-
-    razorpayInstance = new Razorpay({
-        key_id,
-        key_secret
-    }) as any;
-
-    console.log('[RAZORPAY] TYPE:', typeof razorpayInstance);
-    console.log('[RAZORPAY] CONTACTS:', razorpayInstance.contacts);
-    console.log('[RAZORPAY] Instance created:', !!razorpayInstance);
-    console.log('[RAZORPAY] typeof instance.orders:', typeof razorpayInstance.orders);
-    console.log('[RAZORPAY] typeof instance.orders.create:', typeof razorpayInstance.orders?.create);
-    console.log('[RAZORPAY] typeof instance.payments:', typeof razorpayInstance.payments);
-    console.log('[RAZORPAY] typeof instance.payments.fetch:', typeof razorpayInstance.payments?.fetch);
-
-    // Strict validation - methods MUST be functions
-    if (!razorpayInstance.orders) {
-        console.error('[RAZORPAY] FULL INSTANCE:', JSON.stringify(razorpayInstance, null, 2));
-        throw new functions.https.HttpsError(
-            'failed-precondition',
-            'Razorpay instance.orders is undefined'
-        );
-    }
-
-    if (typeof razorpayInstance.orders.create !== 'function') {
-        throw new functions.https.HttpsError(
-            'failed-precondition',
-            'Razorpay instance not properly initialized - orders.create is not a function'
-        );
-    }
-
-    if (!razorpayInstance.payments) {
-        throw new functions.https.HttpsError(
-            'failed-precondition',
-            'Razorpay instance.payments is undefined'
-        );
-    }
-
-    if (typeof razorpayInstance.payments.fetch !== 'function') {
-        throw new functions.https.HttpsError(
-            'failed-precondition',
-            'Razorpay instance not properly initialized - payments.fetch is not a function'
-        );
-    }
-
-    console.log('[RAZORPAY] ✅ Razorpay SDK initialized successfully');
-    return razorpayInstance;
 };
 
 // Verify signature using HMAC SHA256
@@ -229,8 +167,7 @@ export const createRazorpayOrder = functions
     }
 
     try {
-        const razorpay = getRazorpayInstance();
-
+        // Use direct Razorpay instance
         // Create Razorpay order
         const order = await razorpay.orders.create({
             amount: Math.round(amount * 100), // Amount in paise
@@ -376,9 +313,7 @@ export const createPaymentOrder = functions
     }
 
     try {
-        // Initialize Razorpay
-        const razorpay = getRazorpayInstance();
-
+        // Use direct Razorpay instance
         // Create Razorpay order
         const order = await razorpay.orders.create({
             amount: amount, // Amount in paise
@@ -766,7 +701,7 @@ export const verifyPayment = functions
 
     // Fetch payment details from Razorpay to get amount
     try {
-        const razorpay = getRazorpayInstance();
+        // Use direct Razorpay instance
         const payment = await razorpay.payments.fetch(razorpayPaymentId);
 
         const amount = (payment.amount as number) / 100; // Convert paise to rupees
@@ -895,13 +830,13 @@ export const initiateRefund = functions
             console.log(`[RAZORPAY] Refund already processing for booking: ${bookingId}`);
             return {
                 success: true,
-                refundId: booking.refund.requestId || 'processing',
+                refundId: booking.refund.razorpayRefundId || 'processing',
                 message: 'Refund is already being processed',
                 isDuplicate: true
             };
         }
         
-        if (refundStatus === 'processed' || refundStatus === 'completed') {
+        if (refundStatus === 'processed') {
             // Refund already completed - return existing refund ID
             console.log(`[RAZORPAY] Refund already completed for booking: ${bookingId}`);
             return {
@@ -943,8 +878,7 @@ export const initiateRefund = functions
     });
 
     try {
-        const razorpay = getRazorpayInstance();
-
+        // Use direct Razorpay instance
         // Create refund
         const refund = await razorpay.payments.refund(booking.payment.razorpayPaymentId, {
             amount: Math.round(refundAmount * 100), // Convert to paise
@@ -956,11 +890,87 @@ export const initiateRefund = functions
             }
         });
 
+        // FIX 3: REFUND + WALLET CONSISTENCY - Update booking and wallet atomically
+        // If refund succeeds but wallet update fails, mark for retry
+        let walletAdjusted = false;
+        
+        try {
+            // Adjust technician wallet if applicable
+            if (booking.technicianId) {
+                const walletRef = db.collection('technician_wallets').doc(booking.technicianId);
+                const walletDoc = await walletRef.get();
+                
+                if (walletDoc.exists) {
+                    const walletData = walletDoc.data()!;
+                    const currentBalance = walletData.availableBalance || 0;
+                    
+                    // Check if sufficient balance for deduction
+                    if (currentBalance >= refundAmount) {
+                        await walletRef.update({
+                            availableBalance: admin.firestore.FieldValue.increment(-refundAmount),
+                            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                        });
+                        
+                        // Log wallet transaction
+                        await walletRef.collection('transactions').add({
+                            type: 'debit',
+                            source: 'refund',
+                            status: 'completed',
+                            amount: refundAmount,
+                            fee: 0,
+                            referenceId: bookingId,
+                            refundId: refund.id,
+                            description: `Refund for booking`,
+                            createdAt: admin.firestore.FieldValue.serverTimestamp()
+                        });
+                        
+                        walletAdjusted = true;
+                        console.log(`[RAZORPAY] Wallet adjusted for refund - Technician: ${booking.technicianId}, Amount: -₹${refundAmount}`);
+                    } else {
+                        // Insufficient balance - mark for manual review
+                        console.warn(`[RAZORPAY] Insufficient wallet balance for refund - Technician: ${booking.technicianId}, Balance: ₹${currentBalance}, Required: ₹${refundAmount}`);
+                        
+                        // Log compensation needed
+                        await db.collection('refund_compensations').add({
+                            bookingId,
+                            refundId: refund.id,
+                            requestId: requestId,
+                            technicianId: booking.technicianId,
+                            refundAmount,
+                            currentBalance,
+                            status: 'pending_manual_review',
+                            reason: 'insufficient_wallet_balance',
+                            createdAt: admin.firestore.FieldValue.serverTimestamp()
+                        });
+                    }
+                }
+            }
+        } catch (walletError: any) {
+            // FIX 3: Wallet adjustment failed - log for retry
+            console.error(`[RAZORPAY] Wallet adjustment failed for refund:`, walletError);
+            
+            // Create compensation record for retry
+            await db.collection('refund_compensations').add({
+                bookingId,
+                refundId: refund.id,
+                requestId: requestId,
+                technicianId: booking.technicianId,
+                refundAmount,
+                status: 'pending_retry',
+                reason: 'wallet_update_failed',
+                error: walletError.message,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            
+            console.warn(`[RAZORPAY] Refund succeeded but wallet adjustment failed - marked for retry`);
+        }
+
         // Update booking with success
         await bookingRef.update({
             'payment.status': refundAmount >= (booking.payment.amountPaid || 0) ? 'refunded' : 'partially_refunded',
             'refund.status': 'processed',
             'refund.razorpayRefundId': refund.id,
+            'refund.walletAdjusted': walletAdjusted,
             'refund.processedAt': admin.firestore.FieldValue.serverTimestamp()
         });
 
@@ -972,13 +982,18 @@ export const initiateRefund = functions
             amount: refundAmount,
             action: 'refund_processed',
             reason: refundReason,
+            walletAdjusted,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             createdBy: adminId
         });
 
-        console.log(`[RAZORPAY] Refund processed successfully - Booking: ${bookingId}, Refund ID: ${refund.id}`);
+        console.log(`[RAZORPAY] Refund processed successfully - Booking: ${bookingId}, Refund ID: ${refund.id}, Wallet Adjusted: ${walletAdjusted}`);
 
-        return { success: true, refundId: refund.id };
+        return { 
+            success: true, 
+            refundId: refund.id,
+            walletAdjusted
+        };
 
     } catch (error: any) {
         console.error('[RAZORPAY] Refund error:', error);

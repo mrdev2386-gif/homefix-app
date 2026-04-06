@@ -206,6 +206,13 @@ async function handlePaymentCapturedV2(payload: any) {
     const razorpayAmount = (payment?.amount ?? 0) / 100;
     const razorpayCurrency = payment?.currency || "";
 
+    // NEW: Check if this is a QR wallet payment (no order_id)
+    if (!orderId && payment?.notes?.paymentType === 'wallet_credit') {
+        console.log(`${LOG_PREFIX} Detected QR wallet payment - Payment ID: ${paymentId}`);
+        await handleQRWalletPayment(payment, paymentId, razorpayAmount);
+        return;
+    }
+
     if (!orderId) {
         console.error(`${LOG_PREFIX} missing_order_id - Cannot process payment without order ID`);
         await db.collection("payment_logs").add({
@@ -347,6 +354,177 @@ async function handlePaymentCapturedV2(payload: any) {
         );
     } else {
         console.warn(`${LOG_PREFIX} order_invalid - No bookingId or technicianId: ${orderId}`);
+    }
+}
+
+/**
+ * Handle QR wallet payment with 10% platform fee
+ * This is called when customer scans technician's wallet QR code
+ */
+async function handleQRWalletPayment(
+    payment: any,
+    paymentId: string,
+    totalAmount: number
+) {
+    const technicianId = payment.notes?.technicianId;
+    
+    if (!technicianId) {
+        console.error(`${LOG_PREFIX} QR payment missing technicianId - Payment: ${paymentId}`);
+        await db.collection("payment_logs").add({
+            paymentId,
+            action: "qr_payment_missing_technician",
+            notes: payment.notes,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return;
+    }
+
+    console.log(`${LOG_PREFIX} qr_wallet_payment - Technician: ${technicianId}, Total: ${totalAmount}`);
+
+    // Idempotency check - prevent duplicate processing
+    const idempotencyRef = db.collection('payment_idempotency').doc(paymentId);
+    const existingPayment = await idempotencyRef.get();
+    
+    if (existingPayment.exists) {
+        console.log(`${LOG_PREFIX} duplicate_ignored - QR payment already processed: ${paymentId}`);
+        return;
+    }
+
+    // Calculate platform fee (10%)
+    const platformFeePercent = 0.10;
+    const platformFee = totalAmount * platformFeePercent;
+    const technicianAmount = totalAmount - platformFee;
+
+    console.log(`${LOG_PREFIX} Fee calculation - Total: ${totalAmount}, Platform Fee (10%): ${platformFee}, Technician: ${technicianAmount}`);
+
+    // Verify technician exists and is active
+    const techDoc = await db.collection('technicians').doc(technicianId).get();
+    if (!techDoc.exists) {
+        console.error(`${LOG_PREFIX} technician_not_found - ID: ${technicianId}`);
+        await db.collection("payment_logs").add({
+            paymentId,
+            action: "qr_technician_not_found",
+            technicianId,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return;
+    }
+
+    const techData = techDoc.data();
+    if (techData?.status === 'suspended' || techData?.status === 'deactivated') {
+        console.warn(`${LOG_PREFIX} technician_suspended - ID: ${technicianId}, Status: ${techData.status}`);
+        await db.collection("payment_logs").add({
+            paymentId,
+            action: "qr_technician_suspended",
+            technicianId,
+            status: techData.status,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return;
+    }
+
+    // Atomic wallet credit with idempotency
+    try {
+        await db.runTransaction(async (transaction) => {
+            // Mark payment as processed FIRST (idempotency)
+            transaction.set(idempotencyRef, {
+                paymentId,
+                technicianId,
+                totalAmount,
+                platformFee,
+                technicianAmount,
+                paymentType: 'qr_wallet',
+                processedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            const walletRef = db.collection('technician_wallets').doc(technicianId);
+            const walletDoc = await transaction.get(walletRef);
+
+            if (!walletDoc.exists) {
+                // Create new wallet
+                transaction.set(walletRef, {
+                    availableBalance: technicianAmount,
+                    pendingBalance: 0,
+                    lifetimeEarnings: technicianAmount,
+                    lastPayoutAt: null,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+                console.log(`${LOG_PREFIX} wallet_created - Technician: ${technicianId}`);
+            } else {
+                // Update existing wallet
+                transaction.update(walletRef, {
+                    availableBalance: admin.firestore.FieldValue.increment(technicianAmount),
+                    lifetimeEarnings: admin.firestore.FieldValue.increment(technicianAmount),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+            }
+
+            // Create transaction record
+            const txnRef = walletRef.collection('transactions').doc();
+            transaction.set(txnRef, {
+                type: 'credit',
+                source: 'qr_payment',
+                status: 'completed',
+                amount: technicianAmount,
+                fee: platformFee,
+                grossAmount: totalAmount,
+                referenceId: paymentId,
+                paymentId,
+                description: `QR payment received (10% platform fee: ₹${platformFee.toFixed(2)})`,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+        });
+
+        // Log platform fee collection
+        await db.collection('platform_fees').add({
+            paymentId,
+            technicianId,
+            source: 'qr_wallet_payment',
+            totalAmount,
+            feePercent: platformFeePercent,
+            feeAmount: platformFee,
+            technicianAmount,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        // Log successful payment
+        await db.collection('payment_logs').add({
+            paymentId,
+            technicianId,
+            action: 'qr_wallet_credit_success',
+            totalAmount,
+            platformFee,
+            technicianAmount,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        // Send notification to technician
+        await db.collection('notifications').add({
+            userId: technicianId,
+            title: 'Payment Received',
+            body: `You received ₹${technicianAmount.toFixed(2)} via QR payment (₹${platformFee.toFixed(2)} platform fee deducted).`,
+            type: 'qr_payment_received',
+            data: {
+                paymentId,
+                totalAmount,
+                platformFee,
+                technicianAmount
+            },
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        console.log(`${LOG_PREFIX} qr_credit_success - Technician: ${technicianId}, Net: ₹${technicianAmount}, Fee: ₹${platformFee}`);
+    } catch (error: any) {
+        console.error(`${LOG_PREFIX} qr_payment_failed - Technician: ${technicianId}, Error:`, error);
+        await db.collection('payment_logs').add({
+            paymentId,
+            technicianId,
+            action: 'qr_wallet_credit_failed',
+            error: error.message,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        throw error;
     }
 }
 

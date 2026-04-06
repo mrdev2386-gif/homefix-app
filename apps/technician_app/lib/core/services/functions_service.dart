@@ -318,9 +318,9 @@ class FunctionsService {
         throw Exception('User not authenticated');
       }
       
-      print('[AUTH DEBUG] UID: ${user.uid}');
+      debugPrint('[AUTH DEBUG] UID: ${user.uid}');
       await user.getIdToken(true);
-      print('[AUTH DEBUG] TOKEN REFRESHED');
+      debugPrint('[AUTH DEBUG] TOKEN REFRESHED');
       
       debugPrint('[FunctionsService] deleteService: Current user UID: ${user.uid}');
       debugPrint('[FunctionsService] deleteService: Token refreshed successfully');
@@ -403,13 +403,13 @@ class FunctionsService {
     }
 
     try {
-      await user.updateEmail(newEmail);
+      await user.verifyBeforeUpdateEmail(newEmail);
       
-      if (user != null && !user.emailVerified) {
+      if (!user.emailVerified) {
         await user.sendEmailVerification();
       }
       
-      print('Verification email sent');
+      debugPrint('Verification email sent');
     } catch (e) {
       debugPrint('[FunctionsService] updateEmail error: $e');
       rethrow;

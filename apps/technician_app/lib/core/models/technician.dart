@@ -580,9 +580,9 @@ class Technician {
   /// Check if technician can add/edit services
   /// SECURITY: Requires profileCompletion == 100% AND status == "approved" ONLY
   bool get canManageServices {
-    print("[TECH STATUS] ${status}");
-    print("[PROFILE COMPLETION] ${getProfileCompletion()}");
-    print("[SERVICE ALLOWED] ${status == 'approved'}");
+    debugPrint("[TECH STATUS] ${status}");
+    debugPrint("[PROFILE COMPLETION] ${getProfileCompletion()}");
+    debugPrint("[SERVICE ALLOWED] ${status == 'approved'}");
     return getProfileCompletion() == 100 && status == "approved";
   }
   
@@ -630,7 +630,7 @@ class Technician {
     }
     
     final completion = (completedRequiredSteps * 100) ~/ totalRequiredSteps;
-    print("[PROFILE COMPLETION] Calculated: $completion% ($completedRequiredSteps/$totalRequiredSteps)");
+    debugPrint("[PROFILE COMPLETION] Calculated: $completion% ($completedRequiredSteps/$totalRequiredSteps)");
     
     return completion;
   }

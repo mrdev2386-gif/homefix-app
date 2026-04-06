@@ -8,13 +8,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/providers/technician_provider.dart';
 import 'core/app_theme.dart';
 import 'core/services/notifications_service.dart';
-import 'core/services/push_notification_service.dart';
 import 'screens/app_onboarding_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/technician_onboarding_flow_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/complete_location_screen.dart';
-import 'features/technician/screens/profile_under_review_screen.dart';
 import 'features/technician/services/add_service_screen.dart';
 import 'core/services/technician_catalog_service.dart';
 import 'core/firebase/firebase_init.dart';
@@ -50,9 +48,6 @@ void main() async {
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   AppLogger.info('MAIN', 'Background message handler set');
   
-  // Initialize Push Notifications (FCM Token Management) AFTER App Check
-  await PushNotificationService().initialize();
-  AppLogger.info('MAIN', 'Push notification service initialized');
 
   // Initialize Notifications UI Service (Notification management) AFTER App Check
   await NotificationsService().initialize();
@@ -419,90 +414,6 @@ class _LoadingScreen extends StatelessWidget {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Error screen with safe layout
-class _ErrorScreen extends StatelessWidget {
-  final String title;
-  final String message;
-  final VoidCallback onRetry;
-  
-  const _ErrorScreen({
-    required this.title,
-    required this.message,
-    required this.onRetry,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      resizeToAvoidBottomInset: true,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // SCROLLABLE CONTENT (SAFE)
-            Expanded(
-              child: Center(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.wifi_off,
-                        size: 80,
-                        color: Colors.orange.shade400,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        title,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        message,
-                        textAlign: TextAlign.center,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            // FIXED BUTTON (NO OVERFLOW)
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                24,
-                12,
-                24,
-                MediaQuery.of(context).viewPadding.bottom + 16,
-              ),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: onRetry,
-                  style: ElevatedButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: const Text('Try Again'),
-                ),
-              ),
-            ),
-          ],
         ),
       ),
     );

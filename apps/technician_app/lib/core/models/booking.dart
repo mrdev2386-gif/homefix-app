@@ -1,6 +1,25 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/firestore_safe_parser.dart';
 
+/// Centralized booking status constants.
+/// Use ONLY these values when querying or comparing booking statuses to
+/// prevent case-sensitivity bugs and silent Firestore query mismatches.
+class BookingStatus {
+  BookingStatus._();
+
+  static const String pending    = 'pending';
+  static const String assigned   = 'assigned';
+  static const String accepted   = 'accepted';
+  static const String enRoute    = 'en_route';
+  static const String inProgress = 'in_progress';
+  static const String completed  = 'completed';
+  static const String cancelled  = 'cancelled';
+  static const String rejected   = 'rejected';
+
+  static const List<String> activeStatuses = [assigned, accepted, enRoute, inProgress];
+  static const List<String> terminalStatuses = [completed, cancelled, rejected];
+}
+
 class Booking {
   final String bookingId;
   final String customerId;

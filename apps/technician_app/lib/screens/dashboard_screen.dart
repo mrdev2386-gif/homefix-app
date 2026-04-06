@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:technician_app/features/job_requests/job_requests_screen.dart';
 import 'package:technician_app/features/technician/services/services_screen.dart';
-import 'package:technician_app/features/profile/presentation/profile_screen.dart';
+import 'package:technician_app/features/profile/presentation/technician_profile_screen.dart';
 import 'package:technician_app/screens/dashboard_home_enhanced.dart';
 
 /// Dashboard Screen - Main navigation hub for technician app
@@ -34,7 +34,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           DashboardHomeEnhanced(onNavigate: _onTabTapped),
           const JobRequestsScreen(),
           const ServicesScreen(),
-          const ProfileScreen(),
+          const TechnicianProfileScreen(),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(

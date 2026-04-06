@@ -25,10 +25,10 @@ class FirebaseInit {
     // Force generate and print debug token
     try {
       final token = await FirebaseAppCheck.instance.getToken(true);
-      print('🔥 DEBUG TOKEN: $token');
+      debugPrint('🔥 DEBUG TOKEN: $token');
       AppLogger.firebase('Firebase AppCheck Debug Token: $token');
     } catch (e) {
-      print('❌ Failed to get App Check token: $e');
+      debugPrint('❌ Failed to get App Check token: $e');
       AppLogger.error('FIREBASE', 'AppCheck token generation failed', data: e);
     }
 

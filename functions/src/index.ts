@@ -96,14 +96,8 @@ const db = admin.firestore();
 
 const getDb = () => admin.firestore();
 
-// Helper for lazy loading Razorpay
-async function getRazorpay() {
-    const Razorpay = (await import('razorpay')).default;
-    return new Razorpay({
-        key_id: razorpayKeyId || 'rzp_test_placeholder',
-        key_secret: razorpayKeySecret || 'placeholder_secret',
-    });
-}
+// Import direct Razorpay instance
+const { razorpay } = require('./config/razorpay');
 
 // Helpers
 import { sendPushNotification, NotificationPayload } from './shared/notifications';
@@ -393,20 +387,29 @@ export {
 import * as payoutLogic from './finance/payout_logic';
 import * as technicianWithdrawal from './finance/technician_withdrawal';
 import * as walletReconciliation from './finance/wallet_reconciliation';
+import * as walletMigration from './finance/wallet_migration';
+import * as refundCompensation from './finance/refund_compensation';
 
 export const triggerTechnicianPayout = payoutLogic.triggerTechnicianPayout;
 export const razorpayPayoutWebhook = payoutLogic.razorpayPayoutWebhook;
 export const settleTechnicianBalance = payoutLogic.settleTechnicianBalance;
 
-// Technician Withdrawal & QR (Admin-Controlled)
+// Wallet Migration (FIX 2: WALLET MIGRATION CHECK)
+export const migrateAllWallets = walletMigration.migrateAllWallets;
+export const migrateSingleWallet = walletMigration.migrateSingleWallet;
+
+// Refund Compensation (FIX 3: REFUND + WALLET CONSISTENCY)
+export const retryRefundCompensation = refundCompensation.retryRefundCompensation;
+export const retryAllPendingCompensations = refundCompensation.retryAllPendingCompensations;
+export const getPendingCompensations = refundCompensation.getPendingCompensations;
+export const autoRetryCompensations = refundCompensation.autoRetryCompensations;
+
+// Technician Withdrawal (Automatic Razorpay Payouts - No Admin Approval)
 export const requestWithdrawal = technicianWithdrawal.requestWithdrawal;
-export const approveWithdrawal = technicianWithdrawal.approveWithdrawal;
-export const rejectWithdrawal = technicianWithdrawal.rejectWithdrawal;
-export const getWithdrawalRequests = technicianWithdrawal.getWithdrawalRequests;
-export const getPendingWithdrawalRequests = technicianWithdrawal.getPendingWithdrawalRequests;
 export const getTransactionHistory = technicianWithdrawal.getTransactionHistory;
 export const getTechnicianPayoutHistory = technicianWithdrawal.getPayoutHistory;
 export const generateBookingQR = technicianWithdrawal.generateBookingQR;
+export const generateTechnicianWalletQR = technicianWithdrawal.generateTechnicianWalletQR;
 
 // Wallet Reconciliation (Scheduled & Admin)
 export const walletReconciliationDisabled = walletReconciliation.walletReconciliationDisabled;

@@ -2,7 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
-import 'package:cloud_functions/cloud_functions.dart' as functions;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../models/technician.dart';
 import '../firebase/firebase_functions.dart';
@@ -143,7 +142,7 @@ class OnboardingService {
       if (result['idempotent'] == true) {
         debugPrint('[OnboardingService] Basic details already saved (idempotent)');
       }
-    } on functions.FirebaseFunctionsException catch (e) {
+    } on FirebaseFunctionsException catch (e) {
       // Log the error with details
       debugPrint('[OnboardingService] FirebaseFunctionsException: code=${e.code}, message=${e.message}');
       

@@ -7,26 +7,12 @@
 
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+const { razorpay } = require('../config/razorpay');
 
 const db = admin.firestore();
 
 // Reconciliation window: last 7 days
 const RECONCILIATION_DAYS = 7;
-
-async function getRazorpay() {
-    const razorpayKeyId = process.env.RAZORPAY_KEY_ID || '';
-    const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || '';
-
-    if (!razorpayKeyId || !razorpayKeySecret) {
-        console.warn('Razorpay credentials not configured - skipping external reconciliation');
-    }
-
-    const Razorpay = (await import('razorpay')).default;
-    return new Razorpay({
-        key_id: razorpayKeyId,
-        key_secret: razorpayKeySecret,
-    });
-}
 
 /**
  * Wallet reconciliation temporarily disabled for deployment stability

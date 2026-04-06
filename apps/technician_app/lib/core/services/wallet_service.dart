@@ -154,6 +154,26 @@ class WalletService {
     }
   }
 
+  /// Generate QR code for technician wallet payments
+  /// Customers can scan this to pay directly to wallet (10% platform fee)
+  Future<QRPaymentResult> generateTechnicianWalletQR() async {
+    final technicianId = _technicianId;
+    if (technicianId == null) {
+      throw Exception('User not authenticated');
+    }
+
+    try {
+      final callable = FirebaseFunctionsService.instance
+          .httpsCallable('generateTechnicianWalletQR');
+      
+      final result = await callable.call({});
+
+      return QRPaymentResult.fromMap(result.data);
+    } catch (e) {
+      throw WalletException('Failed to generate wallet QR: $e');
+    }
+  }
+
   /// Get booking payment status
   Future<BookingPayment?> getBookingPayment(String bookingId) async {
     try {

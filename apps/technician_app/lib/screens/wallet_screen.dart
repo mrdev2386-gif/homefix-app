@@ -16,6 +16,7 @@ import '../core/models/bank_account.dart';
 import '../core/providers/technician_provider.dart';
 import '../core/utils/transaction_display_helper.dart';
 import 'add_bank_account_screen.dart';
+import '../features/profile/presentation/edit_bank_details_screen.dart';
 
 /// Modern Premium Technician Wallet Screen
 /// 
@@ -54,9 +55,10 @@ class _WalletScreenState extends State<WalletScreen> {
       final technicianId = FirebaseAuth.instance.currentUser?.uid;
       if (technicianId == null) return;
 
-      // Fetch from technician_bank_accounts collection (single source of truth)
+      // CRITICAL FIX: Fetch from technicians document (single source of truth)
+      // Bank verification data is stored in technicians/{uid}, NOT in a separate collection
       final doc = await _firestore
-          .collection('technician_bank_accounts')
+          .collection('technicians')
           .doc(technicianId)
           .get();
 
@@ -66,45 +68,62 @@ class _WalletScreenState extends State<WalletScreen> {
           
           if (doc.exists) {
             final data = doc.data() as Map<String, dynamic>;
-            final status = data['status'] ?? 'pending';
             
-            // Only add if bank account exists and is not deleted
-            if (status != 'deleted') {
+            // Check if bank details exist
+            final hasBankDetails = data['bankAccountNumber'] != null || 
+                                  data['accountNumber'] != null;
+            
+            if (hasBankDetails) {
+              // Parse verification status from technicians document
+              final verificationStatus = data['bankVerificationStatus'] ?? 'not_submitted';
+              final bankVerified = data['bankVerified'] ?? false;
+              
               final bankAccount = TechnicianBankAccount(
                 id: doc.id,
                 technicianId: technicianId,
                 bankName: data['bankName'] ?? '',
-                accountNumber: data['accountNumber'] ?? '',
-                ifscCode: data['ifscCode'] ?? '',
-                accountHolderName: data['accountHolderName'] ?? '',
-                status: _parseBankStatus(status),
-                createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+                accountNumber: data['bankAccountNumber'] ?? data['accountNumber'] ?? '',
+                ifscCode: data['bankIfsc'] ?? data['ifscCode'] ?? '',
+                accountHolderName: data['bankHolderName'] ?? data['accountHolderName'] ?? '',
+                status: _parseBankStatus(verificationStatus, bankVerified),
+                createdAt: (data['bankSubmittedAt'] as Timestamp?)?.toDate() ?? 
+                          (data['createdAt'] as Timestamp?)?.toDate() ?? 
+                          DateTime.now(),
               );
               _bankAccounts.add(bankAccount);
             }
           }
           
           _isLoadingBanks = false;
-          print('[WALLET] bankAccounts length: ${_bankAccounts.length}');
+          debugPrint('[WALLET] bankAccounts length: ${_bankAccounts.length}');
           if (_bankAccounts.isNotEmpty) {
-            print('[WALLET] bank status: ${_bankAccounts.first.status}');
+            debugPrint('[WALLET] bank status: ${_bankAccounts.first.status}');
+            debugPrint('[WALLET] bank verified: ${_bankAccounts.first.status == BankAccountStatus.verified}');
+          } else {
+            debugPrint('[WALLET] No bank details found');
           }
         });
       }
     } catch (e) {
-      debugPrint('Error loading bank accounts: $e');
+      debugPrint('[WALLET] Error loading bank accounts: $e');
       if (mounted) {
         setState(() => _isLoadingBanks = false);
       }
     }
   }
 
-  BankAccountStatus _parseBankStatus(String status) {
+  BankAccountStatus _parseBankStatus(String status, bool bankVerified) {
+    // CRITICAL FIX: Use both bankVerificationStatus AND bankVerified flag
+    // bankVerified is the authoritative flag
+    if (bankVerified == true && status == 'verified') {
+      return BankAccountStatus.verified;
+    }
+    
     switch (status) {
       case 'verifying':
         return BankAccountStatus.pending;
       case 'verified':
-        return BankAccountStatus.verified;
+        return bankVerified ? BankAccountStatus.verified : BankAccountStatus.pending;
       case 'failed':
       case 'rejected':
         return BankAccountStatus.rejected;
@@ -439,7 +458,7 @@ class _WalletScreenState extends State<WalletScreen> {
         bankButtonAction = null;
         bankButtonGradient = null;
       } else if (bankAccount.status == BankAccountStatus.rejected) {
-        bankButtonLabel = 'Resubmit Bank Details';
+        bankButtonLabel = 'Resubmit KYC';
       }
     }
     
@@ -1420,16 +1439,54 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   void _showAddBankDialog() {
+    // CRITICAL FIX: Navigate to the same screen as profile uses
+    // This ensures single source of truth for bank verification
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const AddBankAccountScreen()),
+      MaterialPageRoute(builder: (_) => const EditBankDetailsScreen()),
     ).then((_) => _loadBankAccounts());
   }
 
-  void _showReceiveQRSheet() {
+  void _showReceiveQRSheet() async {
     final tech = Provider.of<TechnicianProvider>(context, listen: false).technician;
     if (tech == null) return;
 
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: AppTheme.primaryColor),
+      ),
+    );
+
+    try {
+      // Call backend to generate QR
+      final result = await _walletService.generateTechnicianWalletQR();
+      
+      // Close loading
+      if (mounted) Navigator.pop(context);
+      
+      if (result.success && result.qrImageUrl != null) {
+        // Show QR with real image
+        _showQRCodeSheet(tech, result.qrImageUrl!, result.expiresAtDateTime);
+      } else {
+        throw Exception(result.error ?? 'Failed to generate QR');
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context); // Close loading
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to generate QR: $e'),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showQRCodeSheet(dynamic tech, String qrImageUrl, DateTime? expiresAt) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1466,7 +1523,7 @@ class _WalletScreenState extends State<WalletScreen> {
             ),
             const SizedBox(height: 24),
             Text(
-              tech.fullName,
+              tech.fullName ?? tech.name ?? 'Technician',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
@@ -1481,7 +1538,24 @@ class _WalletScreenState extends State<WalletScreen> {
                 fontSize: 15,
               ),
             ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.infoColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '10% platform fee applies',
+                style: TextStyle(
+                  color: AppTheme.infoColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
             const SizedBox(height: 28),
+            // REAL QR CODE IMAGE
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
@@ -1489,33 +1563,81 @@ class _WalletScreenState extends State<WalletScreen> {
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.qr_code_scanner_rounded,
-                    size: 140,
-                    color: Colors.grey[300],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'QR Code will be generated here',
-                    style: TextStyle(
-                      color: Colors.grey[500],
-                      fontSize: 13,
+              child: Image.network(
+                qrImageUrl,
+                width: 240,
+                height: 240,
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return SizedBox(
+                    width: 240,
+                    height: 240,
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        value: loadingProgress.expectedTotalBytes != null
+                            ? loadingProgress.cumulativeBytesLoaded /
+                                loadingProgress.expectedTotalBytes!
+                            : null,
+                        color: AppTheme.primaryColor,
+                      ),
                     ),
-                  ),
-                ],
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  return SizedBox(
+                    width: 240,
+                    height: 240,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.error_outline, size: 48, color: AppTheme.errorColor),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Failed to load QR',
+                          style: TextStyle(color: AppTheme.errorColor),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
+            // Expiry info
+            if (expiresAt != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppTheme.warningColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.access_time, size: 16, color: AppTheme.warningColor),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Expires at ${DateFormat('h:mm a').format(expiresAt)}',
+                      style: TextStyle(
+                        color: AppTheme.warningColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 28),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () {
-                      Clipboard.setData(ClipboardData(text: 'razorpay://pay/${tech.uid}'));
+                      Clipboard.setData(ClipboardData(text: qrImageUrl));
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Payment link copied')),
+                        const SnackBar(content: Text('QR link copied')),
                       );
                     },
                     icon: const Icon(Icons.copy_rounded, size: 20),
@@ -1533,7 +1655,13 @@ class _WalletScreenState extends State<WalletScreen> {
                 const SizedBox(width: 14),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () {},
+                    onPressed: () {
+                      // Share QR image URL
+                      Clipboard.setData(ClipboardData(text: qrImageUrl));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('QR link copied for sharing')),
+                      );
+                    },
                     icon: const Icon(Icons.share_rounded, size: 20),
                     label: const Text('Share'),
                     style: ElevatedButton.styleFrom(

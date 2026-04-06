@@ -5,152 +5,10 @@
 
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-const Razorpay = require('razorpay');
 import * as crypto from 'crypto';
+const { razorpay } = require('../config/razorpay');
 
 const db = admin.firestore();
-
-// Get Razorpay credentials from Firebase Functions config
-const getRazorpayCredentials = () => {
-  const config = functions.config();
-  
-  console.log('[BANK_VERIFY] FULL CONFIG:', JSON.stringify(config, null, 2));
-  console.log('[BANK_VERIFY] CONFIG.RAZORPAY:', JSON.stringify(config.razorpay, null, 2));
-  
-  const keyId = config.razorpay?.key_id;
-  const keySecret = config.razorpay?.key_secret;
-  
-  console.log('[BANK_VERIFY] Loading Razorpay config...');
-  console.log('[RAZORPAY KEY_ID]:', keyId);
-  console.log('[RAZORPAY KEY_SECRET]:', keySecret ? 'EXISTS' : 'MISSING');
-  console.log('[BANK_VERIFY] KEY_ID present:', !!keyId);
-  console.log('[BANK_VERIFY] KEY_SECRET length:', keySecret?.length || 0);
-  
-  if (!keyId || !keySecret) {
-    console.error('[BANK_VERIFY] CONFIG MISSING - keyId:', !!keyId, 'keySecret:', !!keySecret);
-    throw new functions.https.HttpsError(
-      'failed-precondition',
-      'Razorpay credentials not configured. Run: firebase functions:config:set razorpay.key_id="xxx" razorpay.key_secret="xxx"'
-    );
-  }
-  
-  // Validate key format
-  if (!keyId.startsWith('rzp_')) {
-    console.error('[BANK_VERIFY] INVALID KEY FORMAT:', keyId);
-    throw new functions.https.HttpsError(
-      'failed-precondition',
-      'Invalid Razorpay key_id format. Must start with "rzp_test_" or "rzp_live_"'
-    );
-  }
-  
-  console.log('[BANK_VERIFY] Key mode:', keyId.includes('test') ? 'TEST' : 'LIVE');
-  console.log('[BANK_VERIFY] Razorpay config loaded successfully');
-  
-  return { keyId, keySecret };
-};
-
-// Lazy-loaded Razorpay instance
-let razorpayInstance: any = null;
-
-// Initialize Razorpay SDK (lazy loading) - PURE CommonJS
-const getRazorpayInstance = () => {
-  if (razorpayInstance) {
-    console.log('[BANK_VERIFY] Returning cached Razorpay instance');
-    return razorpayInstance;
-  }
-
-  const { keyId, keySecret } = getRazorpayCredentials();
-  
-  console.log('[BANK_VERIFY] Initializing Razorpay SDK...');
-  console.log('[BANK_VERIFY] Razorpay class:', typeof Razorpay);
-  console.log('[BANK_VERIFY] Razorpay constructor:', Razorpay);
-  
-  try {
-    razorpayInstance = new Razorpay({
-      key_id: keyId,
-      key_secret: keySecret
-    }) as any;
-    console.log('[BANK_VERIFY] Razorpay instance created');
-  } catch (constructorError: any) {
-    console.error('[BANK_VERIFY] Razorpay constructor failed:', constructorError.message);
-    throw new functions.https.HttpsError(
-      'failed-precondition',
-      `Razorpay initialization failed: ${constructorError.message}`
-    );
-  }
-  
-  console.log('[BANK_VERIFY] ========== RAZORPAY INSTANCE DEBUG ==========');
-  console.log('[BANK_VERIFY] Instance type:', typeof razorpayInstance);
-  console.log('[BANK_VERIFY] Instance is null:', razorpayInstance === null);
-  console.log('[BANK_VERIFY] Instance is undefined:', razorpayInstance === undefined);
-  console.log('[BANK_VERIFY] Instance keys:', Object.keys(razorpayInstance || {}));
-  console.log('[BANK_VERIFY] Instance properties:', Object.getOwnPropertyNames(razorpayInstance || {}));
-  
-  console.log('[BANK_VERIFY] ========== CONTACTS PROPERTY ==========');
-  console.log('[BANK_VERIFY] razorpayInstance.contacts:', razorpayInstance.contacts);
-  console.log('[BANK_VERIFY] typeof razorpayInstance.contacts:', typeof razorpayInstance.contacts);
-  console.log('[BANK_VERIFY] razorpayInstance.contacts is null:', razorpayInstance.contacts === null);
-  console.log('[BANK_VERIFY] razorpayInstance.contacts is undefined:', razorpayInstance.contacts === undefined);
-  
-  if (razorpayInstance.contacts) {
-    console.log('[BANK_VERIFY] contacts.create:', typeof (razorpayInstance.contacts as any).create);
-    console.log('[BANK_VERIFY] contacts keys:', Object.keys(razorpayInstance.contacts));
-  }
-  
-  console.log('[BANK_VERIFY] ========== FUND_ACCOUNTS PROPERTY ==========');
-  console.log('[BANK_VERIFY] razorpayInstance.fund_accounts:', razorpayInstance.fund_accounts);
-  console.log('[BANK_VERIFY] typeof razorpayInstance.fund_accounts:', typeof razorpayInstance.fund_accounts);
-  console.log('[BANK_VERIFY] razorpayInstance.fund_accounts is null:', razorpayInstance.fund_accounts === null);
-  console.log('[BANK_VERIFY] razorpayInstance.fund_accounts is undefined:', razorpayInstance.fund_accounts === undefined);
-  
-  if (razorpayInstance.fund_accounts) {
-    console.log('[BANK_VERIFY] fund_accounts.create:', typeof (razorpayInstance.fund_accounts as any).create);
-    console.log('[BANK_VERIFY] fund_accounts keys:', Object.keys(razorpayInstance.fund_accounts));
-  }
-  
-  console.log('[BANK_VERIFY] ========== FULL INSTANCE DUMP ==========');
-  try {
-    console.log('[BANK_VERIFY] FULL INSTANCE:', JSON.stringify(razorpayInstance, null, 2));
-  } catch (e) {
-    console.log('[BANK_VERIFY] Could not stringify instance (circular reference)');
-  }
-  console.log('[BANK_VERIFY] ========== END DEBUG ==========');
-  
-  if (!razorpayInstance.contacts) {
-    console.error('[BANK_VERIFY] CRITICAL: razorpayInstance.contacts is undefined');
-    throw new functions.https.HttpsError(
-      'failed-precondition',
-      'Razorpay instance.contacts is undefined - SDK not properly initialized'
-    );
-  }
-
-  if (typeof (razorpayInstance.contacts as any).create !== 'function') {
-    console.error('[BANK_VERIFY] CRITICAL: contacts.create is not a function');
-    throw new functions.https.HttpsError(
-      'failed-precondition',
-      'Razorpay instance not properly initialized - contacts.create is not a function'
-    );
-  }
-  
-  if (!razorpayInstance.fund_accounts) {
-    console.error('[BANK_VERIFY] CRITICAL: razorpayInstance.fund_accounts is undefined');
-    throw new functions.https.HttpsError(
-      'failed-precondition',
-      'Razorpay instance.fund_accounts is undefined - SDK not properly initialized'
-    );
-  }
-
-  if (typeof (razorpayInstance.fund_accounts as any).create !== 'function') {
-    console.error('[BANK_VERIFY] CRITICAL: fund_accounts.create is not a function');
-    throw new functions.https.HttpsError(
-      'failed-precondition',
-      'Razorpay instance not properly initialized - fund_accounts.create is not a function'
-    );
-  }
-  
-  console.log('[BANK_VERIFY] ✅ Razorpay SDK initialized successfully');
-  return razorpayInstance;
-};
 
 // Rate limiting constants
 const MAX_ATTEMPTS = 5;
@@ -324,15 +182,7 @@ export const verifyTechnicianBankAccountSecure = functions.region('asia-south1')
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
-      // Initialize Razorpay SDK
-      let razorpay;
-      try {
-        razorpay = getRazorpayInstance();
-      } catch (initError: any) {
-        console.error('[BANK_VERIFY] Razorpay initialization failed:', initError.message);
-        throw initError;
-      }
-      
+      // Razorpay SDK is already initialized via direct import
       if (!razorpay) {
         throw new functions.https.HttpsError(
           'failed-precondition',

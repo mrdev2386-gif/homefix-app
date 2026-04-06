@@ -139,11 +139,6 @@ class TechnicianProvider extends ChangeNotifier {
         _profileApprovalRequested = tech.profileApprovalRequested;
         _profileRejected = tech.profileRejected;
         
-        // Check if profile completion reached 100% and trigger admin review
-        final completion = tech.getProfileCompletion();
-        if (completion == 100 && !tech.profileApprovalRequested && tech.status != "approved" && !tech.profileRejected) {
-          await _requestAdminVerification(tech.uid);
-        }
       }
       
       _isLoading = false;
@@ -189,8 +184,15 @@ class TechnicianProvider extends ChangeNotifier {
     if (_technician == null) return;
 
     try {
-      await _techService.updateOnlineStatus(_technician!.uid, isOnline);
-      // Stream takes care of local update
+      // Call Cloud Function to update online status
+      final functions = FirebaseFunctionsService.instance;
+      final callable = functions.httpsCallable('updateTechnicianStatus');
+      
+      await callable.call({
+        'isOnline': isOnline,
+      });
+      
+      // Stream will update local state automatically
     } catch (e) {
       debugPrint("Error updating online status: $e");
       rethrow;
@@ -235,7 +237,7 @@ class TechnicianProvider extends ChangeNotifier {
           final step = result['step'] ?? 'basicDetails';
           final status = result['status'] ?? 'pending';
           
-          print('[Provider] Technician already exists, step: $step, status: $status');
+          debugPrint('[Provider] Technician already exists, step: $step, status: $status');
           
           // Route based on existing state
           if (status == 'approved') {
@@ -478,10 +480,11 @@ class TechnicianProvider extends ChangeNotifier {
           throw Exception('Provider disposed - upload cancelled');
         }
       } finally {
-        // Clean up temp file
-        if (compressedFile != null && await compressedFile.exists()) {
-          await compressedFile.delete().catchError((_) {});
-        }
+        try {
+          if (compressedFile != null && await compressedFile.exists()) {
+            await compressedFile.delete();
+          }
+        } catch (_) {}
       }
     }
     
@@ -697,25 +700,6 @@ class TechnicianProvider extends ChangeNotifier {
   }
 
   bool _isDisposed = false;
-
-  /// Request admin verification when profile reaches 100%
-  Future<void> _requestAdminVerification(String uid) async {
-    try {
-      await FirebaseFirestore.instance
-          .collection('technicians')
-          .doc(uid)
-          .update({
-        'profileApprovalRequested': true,
-        'profileApproved': false,
-        'profileRejected': false,
-        'reviewRequestedAt': FieldValue.serverTimestamp(),
-      });
-      debugPrint('[Provider] Admin verification requested for $uid');
-    } catch (e) {
-      debugPrint('[Provider] Failed to request admin verification: $e');
-    }
-  }
-  
 
 
   /// Check if technician can create services

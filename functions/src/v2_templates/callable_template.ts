@@ -10,10 +10,7 @@ import { onCall } from "firebase-functions/v2/https";
 import { CallableRequest } from "firebase-functions/v2/https";
 import * as https from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
-
-// Environment variables - REQUIRED for 2nd Gen functions
-const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || '';
-const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
+const { razorpay } = require('../config/razorpay');
 
 const db = admin.firestore();
 
@@ -125,12 +122,7 @@ export const initiateRazorpayPayment = onCall(
         }
 
         try {
-            const Razorpay = (await import("razorpay")).default;
-            const razorpay = new Razorpay({
-                key_id: RAZORPAY_KEY_ID,
-                key_secret: RAZORPAY_KEY_SECRET,
-            });
-
+            // Use direct Razorpay instance
             const order = await razorpay.orders.create({
                 amount: amount * 100, // Convert to paise
                 currency: "INR",
@@ -150,9 +142,14 @@ export const initiateRazorpayPayment = onCall(
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
 
+            // Get key_id from Firebase config for client-side Razorpay checkout
+            const functions = await import('firebase-functions');
+            const config = functions.config();
+            const keyId = config.razorpay?.key_id || '';
+
             return {
                 orderId: order.id,
-                keyId: RAZORPAY_KEY_ID,
+                keyId: keyId,
             };
         } catch (error: any) {
             console.error("Razorpay order creation error:", error);

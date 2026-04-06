@@ -1,297 +1,10 @@
-import 'package:flutter/material.dart';
-You are working inside the HomeFix Technician Flutter app.
-
-GOAL:
-Build a fully working, modern, production-ready Technician Profile Screen with secure Firebase-first architecture.
-
-STRICT RULES:
-
-* DO NOT change project architecture.
-* DO NOT allow direct sensitive Firestore writes from client.
-* Profile updates, services updates, and bank updates must use existing callable Cloud Functions.
-* KYC status must be read-only.
-* Follow null safety and clean Flutter practices.
-
----
-
-## SCREEN PURPOSE
-
-This screen shows technician profile, verification status, services, documents, payout details, and app settings.
-
----
-
-## PART 1 — PROFILE HEADER (TOP)
-
-Create modern profile header showing:
-
-* Profile photo (circle avatar)
-* Technician name
-* Phone number
-* Rating ⭐
-* Small "Edit Profile" button
-
-REQUIREMENTS:
-
-* Avatar tappable → open full image
-* Edit button → navigate to edit profile screen
-* Handle missing photo gracefully
-* Use clean hero-style design
-
-DATA:
-
-* Read-only Firestore listener via StreamBuilder
-
----
-
-## PART 2 — VERIFICATION / KYC STATUS
-
-Create status card showing:
-
-* Aadhaar verification status
-* Bank verification status
-* Profile completion %
-
-UI:
-
-* Color coded badges:
-
-  * Verified → Green
-  * Pending → Orange
-  * Rejected → Red
-* Progress bar for profile completion
-
-IMPORTANT:
-
-* Status must be read-only
-* DO NOT calculate completion on client if backend provides value
-* Graceful fallback if data missing
-
----
-
-## PART 3 — PERSONAL DETAILS SECTION
-
-Show technician details:
-
-* Full name
-* Phone
-* Email (if exists)
-* City / Service area
-* Years of experience
-
-Add button:
-
-* "Edit Details"
-
-ON TAP:
-
-* Navigate to edit screen
-* Updates must use callable function
-
-UI:
-
-* Clean list tiles
-* Proper spacing
-* Responsive layout
-
----
-
-## PART 4 — SERVICES OFFERED
-
-Create services card.
-
-Show:
-
-* List of technician selected services
-* Optional price range
-
-Add button:
-
-* "Edit Services"
-
-IMPORTANT:
-
-* Editing must call callable function
-* DO NOT allow direct Firestore write
-* Handle empty services state
-
----
-
-## PART 5 — DOCUMENTS SECTION
-
-Create documents area showing:
-
-* Aadhaar
-* PAN (if used)
-* Profile photo
-* Certificates (optional)
-
-Each item:
-
-* View button
-* Re-upload button
-
-REQUIREMENTS:
-
-* Show verification status
-* Handle missing documents
-* Use clean grid/list layout
-
-IMPORTANT:
-
-* Upload flow must remain secure
-* Do not mark verified from client
-
----
-
-## PART 6 — BANK & PAYOUT DETAILS
-
-Create payout card.
-
-Show:
-
-* Masked bank/UPI
-* Verification status
-* Last updated date (if available)
-
-Button:
-
-* "Update Payout Method"
-
-IMPORTANT SECURITY:
-
-* Updates must use callable function
-* Never expose full sensitive details
-* Mask account numbers
-
----
-
-## PART 7 — PERFORMANCE SUMMARY
-
-Create compact stats card.
-
-Show:
-
-* Jobs completed
-* Completion rate %
-* Cancellation rate %
-* Average rating
-
-DATA:
-
-* Read-only Firestore stats doc
-* Use StreamBuilder
-* Handle loading state
-
----
-
-## PART 8 — AVAILABILITY / WORKING HOURS (OPTIONAL BUT INCLUDE)
-
-Create availability section.
-
-Show:
-
-* Working days
-* Time slots
-* Holiday mode (if exists)
-
-Button:
-
-* "Edit Availability"
-
-IMPORTANT:
-
-* Updates via callable function
-* Handle empty state
-
----
-
-## PART 9 — SUPPORT & HELP
-
-Create support section with list tiles:
-
-* Help Center
-* Raise Dispute
-* Contact Support
-* FAQs
-
-Each item navigates to respective screen.
-
----
-
-## PART 10 — APP SETTINGS
-
-Create settings area.
-
-Include:
-
-* Notifications toggle (local preference)
-* Logout button (Firebase Auth signOut)
-
-Logout requirements:
-
-* Show confirmation dialog
-* Clear local state
-* Navigate to login screen safely
-
----
-
-## PART 11 — UX POLISH
-
-Apply premium UI:
-
-* SafeArea
-* Single scroll view
-* Proper spacing (16–20)
-* Border radius (12–16)
-* Soft shadows
-* Shimmer loaders
-* Pull-to-refresh
-* Smooth interactions
-* No RenderFlex overflow
-* Responsive layout
-
----
-
-## CODE QUALITY
-
-* Full null safety
-* Modular reusable widgets
-* Dispose controllers properly
-* Use const where possible
-* Follow existing theme
-* No hardcoded sensitive values
-* Optimized StreamBuilder usage
-
----
-
-## SECURITY REMINDERS (CRITICAL)
-
-NEVER:
-
-* Verify KYC on client
-* Update bank directly from client
-* Trust client profile completion
-* Expose full bank details
-
-ALWAYS:
-
-* Use callable functions for updates
-* Keep Firestore mostly read-only
-* Mask sensitive data
-* Validate on backend
-
----
-
-## OUTPUT
-
-Provide the FULL Flutter Technician Profile Screen code ready to paste into the app.
-
-Do NOT include explanations — only code.
-vimport 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+
 
 class EarningsScreen extends StatefulWidget {
   const EarningsScreen({super.key});
@@ -361,10 +74,8 @@ class _EarningsScreenState extends State<EarningsScreen> {
   Widget _buildEarningsHero(String uid) {
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
-          .collection('technicians')
+          .collection('technician_wallets')
           .doc(uid)
-          .collection('stats')
-          .doc('earnings')
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -372,7 +83,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
         }
 
         final data = snapshot.data?.data() as Map<String, dynamic>?;
-        final lifetime = (data?['lifetime'] ?? 0.0).toDouble();
+        final lifetime = (data?['lifetimeEarnings'] ?? 0.0).toDouble();
         final thisMonth = (data?['thisMonth'] ?? 0.0).toDouble();
         final thisWeek = (data?['thisWeek'] ?? 0.0).toDouble();
         final today = (data?['today'] ?? 0.0).toDouble();
@@ -478,10 +189,8 @@ class _EarningsScreenState extends State<EarningsScreen> {
   Widget _buildWalletCard(String uid) {
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
-          .collection('technicians')
+          .collection('technician_wallets')
           .doc(uid)
-          .collection('wallet')
-          .doc('balance')
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -489,9 +198,9 @@ class _EarningsScreenState extends State<EarningsScreen> {
         }
 
         final data = snapshot.data?.data() as Map<String, dynamic>?;
-        final available = (data?['available'] ?? 0.0).toDouble();
-        final pending = (data?['pending'] ?? 0.0).toDouble();
-        final lastPayout = data?['lastPayoutDate'] as Timestamp?;
+        final available = (data?['availableBalance'] ?? 0.0).toDouble();
+        final pending = (data?['pendingBalance'] ?? 0.0).toDouble();
+        final lastPayout = data?['lastPayoutAt'] as Timestamp?;
 
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -937,7 +646,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
     setState(() => _isWithdrawing = true);
 
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('requestPayout');
+      final callable = FirebaseFunctions.instance.httpsCallable('requestWithdrawal');
       await callable.call({'amount': amount});
 
       if (mounted) {

@@ -19,7 +19,7 @@ class BookingService {
   Stream<List<Booking>> getPendingBookings(String techId) {
     return _db.collection('bookings')
         .where('technicianId', isEqualTo: techId)
-        .where('status', whereIn: ['ASSIGNED', 'approved_by_admin'])
+        .where('status', whereIn: [BookingStatus.assigned, 'approved_by_admin'])
         .limit(20)
         .snapshots()
         .map((snapshot) {
@@ -96,7 +96,7 @@ class BookingService {
   Stream<List<Booking>> getActiveBookings(String techId) {
     return _db.collection('bookings')
         .where('technicianId', isEqualTo: techId)
-        .where('status', whereIn: ['ASSIGNED', 'assigned', 'accepted', 'service_in_progress'])
+        .where('status', whereIn: BookingStatus.activeStatuses)
         .snapshots()
         .map((snapshot) {
           return snapshot.docs
@@ -115,7 +115,7 @@ class BookingService {
   /// NEW FLOW: Accept a booking (technician accepts)
   Future<Map<String, dynamic>> acceptBooking(String bookingId, {String? idempotencyKey}) async {
     try {
-      print("CALLING FUNCTION: technicianAcceptBooking");
+      debugPrint("CALLING FUNCTION: technicianAcceptBooking");
       final HttpsCallable callable = _functions.httpsCallable('technicianAcceptBooking');
       final payload = {
         'bookingId': bookingId,
@@ -138,7 +138,7 @@ class BookingService {
   /// NEW FLOW: Reject a booking (technician declines)
   Future<Map<String, dynamic>> rejectBooking(String bookingId, {String? reason, String? idempotencyKey}) async {
     try {
-      print("CALLING FUNCTION: technicianRejectBooking");
+      debugPrint("CALLING FUNCTION: technicianRejectBooking");
       final HttpsCallable callable = _functions.httpsCallable('technicianRejectBooking');
       final payload = {
         'bookingId': bookingId,
@@ -168,7 +168,7 @@ class BookingService {
     required String time,
     String? note,
   }) async {
-    print("CALLING FUNCTION: updateBookingStatusNew");
+    debugPrint("CALLING FUNCTION: updateBookingStatusNew");
     await _functions.httpsCallable('updateBookingStatusNew').call({
       'bookingId': bookingId,
       'status': 'quote_sent',
@@ -187,7 +187,7 @@ class BookingService {
   }
 
   Future<Map<String, dynamic>> markWorkCompleted(String bookingId) async {
-    print("CALLING FUNCTION: completeService");
+    debugPrint("CALLING FUNCTION: completeService");
     final result = await _functions.httpsCallable('completeService').call({
       'bookingId': bookingId,
     });

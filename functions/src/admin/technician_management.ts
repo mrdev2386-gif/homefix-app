@@ -7,47 +7,13 @@ import { sendPushNotification } from '../shared/notifications';
 const db = admin.firestore();
 
 export const approveKYC = functions.region('asia-south1').https.onCall(async (data, context) => {
-    await assertAdmin(context);
-    const { technicianId, approved, reason } = data;
-
-    if (!technicianId) {
-        throw new functions.https.HttpsError('invalid-argument', 'Technician ID required');
-    }
-
-    const appRef = db.collection('technicianApplications').doc(technicianId);
-
-    if (approved) {
-        await appRef.update({
-            'kyc.status': 'approved',
-            'kyc.approvedBy': context.auth!.uid,
-            'kyc.approvedAt': admin.firestore.FieldValue.serverTimestamp(),
-            status: 'kyc_verified',
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        await sendPushNotification(technicianId, 'technicians', {
-            title: 'KYC Approved',
-            body: 'Your KYC documents have been verified. You can proceed to the next step.',
-            data: { type: 'kyc_status', status: 'approved' }
-        });
-    } else {
-        await appRef.update({
-            'kyc.status': 'rejected',
-            'kyc.rejectedBy': context.auth!.uid,
-            'kyc.rejectedAt': admin.firestore.FieldValue.serverTimestamp(),
-            'kyc.rejectionReason': reason || 'Documentation unclear',
-            status: 'rejected', // Or back to draft? Design implies lifecycle.
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        await sendPushNotification(technicianId, 'technicians', {
-            title: 'KYC Rejected',
-            body: `Your KYC was rejected: ${reason || 'Please re-upload documents.'}`,
-            data: { type: 'kyc_status', status: 'rejected' }
-        });
-    }
-
-    return { success: true };
+    // DEPRECATED: This function is no longer used
+    // Use approveTechnician() instead for all approval operations
+    console.error('[DEPRECATED] approveKYC() called - use approveTechnician() instead');
+    throw new functions.https.HttpsError(
+        'failed-precondition',
+        'DEPRECATED: Use approveTechnician() instead'
+    );
 });
 
 export const approveTechnician = functions.region('asia-south1').https.onCall(async (data, context) => {

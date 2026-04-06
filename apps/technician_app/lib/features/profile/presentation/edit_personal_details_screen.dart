@@ -107,9 +107,7 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
       }
 
       // Step 1: Attach email to Firebase user (for phone-auth users)
-      if (user.email != email) {
-        await user.updateEmail(email);
-      }
+        await user.verifyBeforeUpdateEmail(email);
 
       // Step 2: Send verification email
       if (user != null && !user.emailVerified) {
@@ -155,22 +153,6 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
     });
   }
 
-  String _getErrorMessage(String code) {
-    switch (code) {
-      case 'invalid-verification-code':
-        return 'Invalid OTP. Please try again.';
-      case 'too-many-requests':
-        return 'Too many attempts. Please try again later.';
-      case 'network-request-failed':
-        return 'Network error. Please check your connection.';
-      case 'session-expired':
-        return 'Session expired. Please request a new OTP.';
-      case 'requires-recent-login':
-        return 'Please re-authenticate to continue.';
-      default:
-        return 'An error occurred. Please try again.';
-    }
-  }
 
   void _showErrorSnackbar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -205,18 +187,12 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
         });
       }
 
-      // Update Firestore when email becomes verified
-      if (isVerified) {
+        // UPDATE: Request profile refresh from backend to sync verification status
         try {
-          await FirebaseFirestore.instance
-              .collection('technicians')
-              .doc(refreshedUser.uid)
-              .update({'emailVerified': true});
+          await context.read<TechnicianProvider>().refreshTechnician();
         } catch (e) {
-          // Don't block on Firestore update failure
-          print('Failed to update emailVerified in Firestore: $e');
+          debugPrint('Failed to refresh profile after email verify: $e');
         }
-      }
 
       if (!mounted) return;
       

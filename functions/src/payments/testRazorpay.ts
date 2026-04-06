@@ -1,5 +1,5 @@
 import * as functions from 'firebase-functions';
-const Razorpay = require('razorpay');
+const { razorpay } = require('../config/razorpay');
 
 /**
  * TEST FUNCTION: Verify Razorpay connection and keys
@@ -90,26 +90,21 @@ export const testRazorpayConnection = functions
       console.log('[TEST_RAZORPAY] ✓ Key mode:', keyMode);
 
       // ========================================================================
-      // STEP 3: INITIALIZE SDK
+      // STEP 3: USE DIRECT SDK INSTANCE
       // ========================================================================
-      console.log('[TEST_RAZORPAY] STEP 3: Initializing Razorpay SDK...');
+      console.log('[TEST_RAZORPAY] STEP 3: Using direct Razorpay SDK instance...');
       
-      let razorpay: any;
-      try {
-        razorpay = new Razorpay({
-          key_id: keyId,
-          key_secret: keySecret
-        });
-        console.log('[TEST_RAZORPAY] ✓ Razorpay SDK initialized successfully');
-      } catch (initError: any) {
-        console.error('[TEST_RAZORPAY] ERROR: Failed to initialize SDK:', initError.message);
+      if (!razorpay) {
+        console.error('[TEST_RAZORPAY] ERROR: Razorpay instance is null');
         return {
           success: false,
           step: 'sdk_initialization',
-          message: 'Failed to initialize Razorpay SDK',
-          error: initError.message
+          message: 'Razorpay SDK instance is null',
+          error: 'Direct import failed'
         };
       }
+      
+      console.log('[TEST_RAZORPAY] ✓ Razorpay SDK instance available (direct import)');
 
       // ========================================================================
       // STEP 4: TEST API CALL - CREATE ORDER
@@ -284,13 +279,15 @@ export const testBankVerification = functions
         };
       }
 
-      // Initialize Razorpay
-      const razorpay = new Razorpay({
-        key_id: keyId,
-        key_secret: keySecret
-      });
+      // Use direct Razorpay instance
+      if (!razorpay) {
+        return {
+          success: false,
+          message: 'Razorpay instance is null'
+        };
+      }
 
-      console.log('[TEST_BANK_VERIFY] Razorpay SDK initialized');
+      console.log('[TEST_BANK_VERIFY] Razorpay SDK instance available (direct import)');
 
       // Test contact creation
       console.log('[TEST_BANK_VERIFY] Testing contact creation...');
@@ -309,7 +306,7 @@ export const testBankVerification = functions
 
       // Test fund account creation
       console.log('[TEST_BANK_VERIFY] Testing fund account creation...');
-      const fundAccount = await (razorpay as any).fundAccount.create({
+      const fundAccount = await (razorpay as any).fund_accounts.create({
         contact_id: contact.id,
         account_type: 'bank_account',
         bank_account: {

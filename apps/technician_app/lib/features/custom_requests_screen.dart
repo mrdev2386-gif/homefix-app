@@ -3,8 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:provider/provider.dart';
-import 'package:technician_app/core/services/auth_service.dart';
-import 'package:technician_app/core/theme/app_theme.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:technician_app/core/firebase/firebase_functions.dart';
 
 class CustomRequestsScreen extends StatefulWidget {
@@ -20,8 +19,7 @@ class _CustomRequestsScreenState extends State<CustomRequestsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = Provider.of<AuthService>(context);
-    final technicianId = auth.currentUser?.uid;
+    final technicianId = FirebaseAuth.instance.currentUser?.uid;
 
     return Scaffold(
       backgroundColor: Colors.grey[50],

@@ -5,6 +5,7 @@ import * as crypto from 'crypto';
 import { db } from '../shared/config';
 import { assertAdmin, logAdminAction } from '../shared/utils';
 import * as notify from '../shared/notification_helper';
+const { razorpay } = require('../config/razorpay');
 
 const LOG_PREFIX = '[PAYOUT_LOGIC]';
 
@@ -16,12 +17,6 @@ function getRazorpayConfig() {
         key_secret: config.razorpay?.key_secret || '',
         payout_account: config.razorpay?.payout_account || '',
     };
-}
-
-async function getRazorpay() {
-    const { key_id, key_secret } = getRazorpayConfig();
-    const Razorpay = (await import('razorpay')).default;
-    return new Razorpay({ key_id, key_secret });
 }
 
 /**
@@ -74,7 +69,7 @@ export const triggerTechnicianPayout = functions.region('asia-south1').https.onC
             throw new Error('Technician bank details missing');
         }
 
-        const rzp = await getRazorpay();
+        const rzp = razorpay;
         const { payout_account } = getRazorpayConfig();
 
         let contactId = techData.rzpContactId;
@@ -345,7 +340,7 @@ export async function initiateRefund(bookingId: string) {
     const paymentData = paymentDoc.data();
 
     try {
-        const rzp = await getRazorpay();
+        const rzp = razorpay;
         const refund = await rzp.payments.refund(paymentData.razorpayPaymentId, {
             amount: Math.round(paymentData.amount * 100),
             notes: { bookingId, reason: 'Cancellation Refund' }

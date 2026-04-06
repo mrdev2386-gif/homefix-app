@@ -9,7 +9,7 @@ import '../../../core/services/booking_service.dart';
 import '../../payment/presentation/payment_screen.dart';
 import '../widgets/status_tracker.dart';
 import 'rating_screen.dart';
-
+8
 class BookingDetailScreen extends StatefulWidget {
   final Booking booking;
 

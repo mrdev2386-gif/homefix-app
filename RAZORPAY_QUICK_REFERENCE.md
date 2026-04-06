@@ -1,142 +1,156 @@
-# Razorpay Configuration - Quick Reference
+# 🚀 Razorpay System - Quick Reference Card
 
-## ✅ Current Status
-- **Build**: ✅ Successful
-- **Deployment**: ✅ Successful  
-- **Configuration**: ✅ Verified
-- **Keys**: ✅ Present in Firebase config
+## 📊 SYSTEM STATUS
+
+**✅ ALL SYSTEMS OPERATIONAL - PRODUCTION READY**
 
 ---
 
-## 🔑 Configuration Source
+## 🔧 QUICK FIXES
 
-### CORRECT (Current Implementation)
-```typescript
-// functions/src/payments/razorpay.ts
-const getRazorpayConfig = () => {
-    const config = functions.config();
-    const { key_id, key_secret } = config.razorpay;
-    return { key_id, key_secret };
-};
+### Flutter Hot Reload Error
+
+```bash
+# Error: generateTechnicianWalletQR not found
+# Solution: Hot restart (not hot reload)
 ```
 
-### WRONG (Previous Implementation)
-```javascript
-// OLD - DO NOT USE
-const razorpayKeyId = process.env.RAZORPAY_KEY_ID || '';
-const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || '';
-```
+**Steps:**
+1. Stop app (red square)
+2. Run again (green play)
 
 ---
 
-## 🛠️ How to Update Razorpay Keys
+## 🚀 DEPLOYMENT
 
-### Step 1: Set Configuration
 ```bash
-firebase functions:config:set razorpay.key_id="your_key_id"
-firebase functions:config:set razorpay.key_secret="your_key_secret"
-firebase functions:config:set razorpay.webhook_secret="your_webhook_secret"
-```
-
-### Step 2: Verify Configuration
-```bash
-firebase functions:config:get
-```
-
-### Step 3: Deploy Functions
-```bash
-firebase deploy --only functions
-```
-
----
-
-## 📍 Key Locations
-
-| File | Purpose | Status |
-|------|---------|--------|
-| `functions/src/payments/razorpay.ts` | Payment integration | ✅ Correct |
-| `functions/src/payments/razorpayWebhookV2.ts` | Webhook handler | ✅ Correct |
-| `functions/lib/payments/razorpay.js` | Compiled (auto-generated) | ✅ Correct |
-| `functions/lib/payments/razorpayWebhookV2.js` | Compiled (auto-generated) | ✅ Correct |
-
----
-
-## 🔍 Verification Checklist
-
-- [x] TypeScript source uses `functions.config()`
-- [x] Compiled JavaScript uses `functions.config()`
-- [x] Firebase config has razorpay keys
-- [x] Functions deployed successfully
-- [x] No compilation errors
-- [x] No duplicate exports
-
----
-
-## 🚨 Common Issues & Solutions
-
-### Issue: "Razorpay configuration not found"
-**Solution**: Set config using Firebase CLI
-```bash
-firebase functions:config:set razorpay.key_id="xxx" razorpay.key_secret="xxx"
-```
-
-### Issue: "Invalid payment signature"
-**Solution**: Ensure webhook_secret is set
-```bash
+# 1. Set config
+firebase functions:config:set razorpay.key_id="xxx"
+firebase functions:config:set razorpay.key_secret="xxx"
 firebase functions:config:set razorpay.webhook_secret="xxx"
-```
+firebase functions:config:set razorpay.payout_account="xxx"
 
-### Issue: Payment fails with authentication error
-**Solution**: Verify keys are correct
-```bash
-firebase functions:config:get | grep razorpay
-```
+# 2. Build
+cd functions && npm run build
 
----
-
-## 📚 Related Functions
-
-### Payment Functions
-- `initiateRazorpayPayment` - Create payment order
-- `verifyRazorpayPayment` - Verify payment after checkout
-- `createRazorpayOrder` - Create wallet credit order
-- `initiateRefund` - Process refund
-
-### Webhook Functions
-- `razorpayWebhookV2` - Handle payment webhooks
-
----
-
-## 🔐 Security Notes
-
-1. **Never commit keys** to version control
-2. **Use Firebase config** for sensitive data
-3. **Verify webhook signatures** before processing
-4. **Validate amounts** server-side (never trust client)
-5. **Log all transactions** for audit trail
-
----
-
-## 📞 Quick Commands
-
-```bash
-# View current config
-firebase functions:config:get
-
-# Set a key
-firebase functions:config:set razorpay.key_id="value"
-
-# Deploy functions
+# 3. Deploy
 firebase deploy --only functions
-
-# View function logs
-firebase functions:log
-
-# Test a function
-firebase functions:shell
 ```
 
 ---
 
-**Last Updated**: 2024
-**Status**: ✅ PRODUCTION READY
+## 🧪 TESTING
+
+### Bank KYC
+```
+Profile → Bank Details → Submit → "Bank Verified ✅"
+```
+
+### QR Payment
+```
+Wallet → Receive Payment → Generate QR → Pay ₹100 → Wallet +₹90
+```
+
+### Withdrawal
+```
+Wallet → Withdraw → ₹500 → Submit → Bank credit in 30 mins
+```
+
+---
+
+## 🔍 MONITORING
+
+```bash
+# Logs
+firebase functions:log --only razorpayWebhookV2
+
+# Firestore
+payment_logs - All events
+platform_fees - QR fees (10%)
+payouts - Withdrawals
+```
+
+---
+
+## 🐛 TROUBLESHOOTING
+
+| Issue | Solution |
+|-------|----------|
+| SDK not initialized | Check `firebase functions:config:get razorpay` |
+| Bank verification failed | Check logs for specific error |
+| Webhook signature invalid | Verify webhook secret matches dashboard |
+| Withdrawal failed | Check `bankVerified` and `fundAccountId` |
+
+---
+
+## 📋 KEY FUNCTIONS
+
+| Function | Purpose | Region |
+|----------|---------|--------|
+| `verifyTechnicianBankAccountSecure` | Bank KYC | asia-south1 |
+| `generateTechnicianWalletQR` | QR generation | asia-south1 |
+| `requestWithdrawal` | Withdrawal | asia-south1 |
+| `razorpayWebhookV2` | Payment webhook | us-central1 |
+
+---
+
+## 💰 PLATFORM FEE
+
+**QR Payments:** 10% platform fee auto-deducted
+
+```
+Customer pays: ₹100
+Platform fee: ₹10 (10%)
+Technician gets: ₹90
+```
+
+---
+
+## 🔐 SECURITY
+
+- ✅ Signature verification (HMAC SHA256)
+- ✅ Idempotency protection
+- ✅ Replay attack prevention (24h)
+- ✅ Rate limiting (5 KYC/hour, 3 withdrawals/day)
+- ✅ Atomic transactions
+
+---
+
+## 📊 DATA FLOW
+
+```
+Bank KYC:
+technicians/{uid} → bankVerified: true
+
+QR Payment:
+Razorpay → Webhook → Wallet +90% → platform_fees +10%
+
+Withdrawal:
+Wallet -₹X → Razorpay Payout → Bank +₹X
+```
+
+---
+
+## 📞 SUPPORT DOCS
+
+1. **RAZORPAY_AUDIT_EXECUTIVE_SUMMARY.md** - Overview
+2. **RAZORPAY_COMPLETE_AUDIT_AND_FIX.md** - Detailed audit
+3. **RAZORPAY_DEPLOYMENT_QUICK_START.md** - Deployment guide
+4. **WALLET_HOT_RELOAD_FIX.md** - Flutter issue fix
+
+---
+
+## ✅ CHECKLIST
+
+- [x] Razorpay SDK initialized
+- [x] Bank KYC working
+- [x] QR payments working
+- [x] Withdrawals working
+- [x] Webhook secure
+- [x] Build passing
+- [x] Ready for production
+
+---
+
+**Status:** ✅ PRODUCTION READY  
+**Last Updated:** $(Get-Date)

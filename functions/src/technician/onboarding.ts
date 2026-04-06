@@ -168,6 +168,14 @@ export const saveTechnicianBasicDetails = functions.region('asia-south1').https.
     const techData = techDoc.data();
     const currentStep = techData?.onboardingStep;
 
+    // FIX: Check if profile is locked (submitted for review)
+    if (techData?.isLocked === true) {
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            'Profile is locked. Contact support to make changes.'
+        );
+    }
+
     // ALLOWED STEPS FOR BASIC DETAILS UPDATE:
     // - undefined/null: draft state (profile created but no step assigned)
     // - 'phone': after OTP, before basic details
@@ -301,6 +309,14 @@ export const saveTechnicianDocuments = functions.region('asia-south1').https.onC
 
     const techData = techDoc.data();
     const currentStep = techData?.onboardingStep;
+
+    // FIX: Check if profile is locked (submitted for review)
+    if (techData?.isLocked === true) {
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            'Profile is locked. Contact support to make changes.'
+        );
+    }
 
     // Allow if in documents step or earlier
     if (currentStep && currentStep !== 'documents' && currentStep !== 'basicDetails') {
@@ -448,13 +464,29 @@ export const submitTechnicianKyc = functions.region('asia-south1').https.onCall(
 
     console.log('[KYC SUBMIT] Marking technician as KYC complete:', uid);
 
-    // Submit the application - this marks KYC as complete
+    // Validate Step 4 (Work Portfolio) fields before submission
+    if (!techData?.experienceDescription || techData.experienceDescription.length < 20) {
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            'Experience description must be at least 20 characters'
+        );
+    }
+
+    if (!techData?.workPreference) {
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            'Work preference is required'
+        );
+    }
+
+    // Submit the application - this marks KYC as complete and locks profile
     await db.collection('technicians').doc(uid).update({
         isKycComplete: true,
         onboardingCompleted: true, // keep for backward compatibility
         onboardingStep: 'submitted',
         status: 'pending',
         kycStatus: 'pending',
+        isLocked: true, // FIX: Lock profile after submission to prevent edits during review
         'stepsCompleted.review': true,
         submittedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -594,6 +626,15 @@ export const saveTechnicianStepData = functions.region('asia-south1').https.onCa
         throw new functions.https.HttpsError(
             'not-found',
             'Technician profile not found'
+        );
+    }
+
+    // FIX: Check if profile is locked (submitted for review)
+    const techData = techDoc.data();
+    if (techData?.isLocked === true) {
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            'Profile is locked. Contact support to make changes.'
         );
     }
 
