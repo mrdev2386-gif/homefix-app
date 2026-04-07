@@ -108,7 +108,10 @@ class _SearchableDropdownState<T extends DropdownItem> extends State<SearchableD
     _debounceTimer = Timer(const Duration(milliseconds: 300), () {
       if (!mounted || _isDisposed) return;
       if (query.isEmpty) {
-        setState(() => _filteredItems = widget.items);
+        setState(() {
+          _filteredItems = widget.items;
+          _overlayEntry?.markNeedsBuild();
+        });
       } else {
         final lowercaseQuery = query.toLowerCase().trim();
         setState(() {
@@ -117,6 +120,7 @@ class _SearchableDropdownState<T extends DropdownItem> extends State<SearchableD
                   item.label.toLowerCase().contains(lowercaseQuery) ||
                   (item.subtitle?.toLowerCase().contains(lowercaseQuery) ?? false))
               .toList();
+          _overlayEntry?.markNeedsBuild();
         });
       }
     });
@@ -280,8 +284,8 @@ class _SearchableDropdownState<T extends DropdownItem> extends State<SearchableD
     return ListView.builder(
       padding: const EdgeInsets.only(top: 4, bottom: 8),
       shrinkWrap: true,
-      itemCount: _filteredItems.length,
       itemBuilder: (context, index) {
+        if (index >= _filteredItems.length) return const SizedBox.shrink();
         final item = _filteredItems[index];
         final isSelected = widget.selectedItem?.id == item.id;
 

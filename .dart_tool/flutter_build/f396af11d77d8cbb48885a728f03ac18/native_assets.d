@@ -1,0 +1,1 @@
+ C:\\Users\\yash\\projects\\homefix\\.dart_tool\\flutter_build\\f396af11d77d8cbb48885a728f03ac18\\native_assets.yaml: 

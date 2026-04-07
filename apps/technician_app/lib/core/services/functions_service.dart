@@ -223,6 +223,8 @@ class FunctionsService {
         'offerPrice': offerPrice,  // Discounted price
         'imageUrl': imageUrl,
         'description': description ?? 'Professional service provided by experienced technician',
+        if (urgentBooking != null) 'urgentBooking': urgentBooking,
+        if (nightService != null) 'nightService': nightService,
       };
       
       debugPrint('[FunctionsService] addService DATA: $data');

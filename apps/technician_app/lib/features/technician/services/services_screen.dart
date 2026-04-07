@@ -8,7 +8,6 @@ import '../../../core/services/functions_service.dart';
 import '../../../core/utils/firestore_safe_parser.dart';
 import '../../../core/providers/technician_provider.dart';
 import 'add_service_screen.dart';
-import 'widgets/quick_add_service_dialog.dart';
 
 class ServicesScreen extends StatefulWidget {
   const ServicesScreen({super.key});
@@ -222,7 +221,13 @@ class _ServicesScreenState extends State<ServicesScreen> {
             child: SizedBox(
               height: 56,
               child: ElevatedButton.icon(
-                onPressed: () => _openAddServiceSheet(context),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const AddServiceScreen(),
+                    ),
+                  );
+                },
                 icon: const Icon(Icons.add),
                 label: const Text(
                   'Add New Service',
@@ -315,14 +320,6 @@ class _ServicesScreenState extends State<ServicesScreen> {
     );
   }
 
-  void _openAddServiceSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => const AddServiceSheet(),
-    );
-  }
 }
 
 class _ServicesListStream extends StatelessWidget {
@@ -616,6 +613,56 @@ class _ServiceCardState extends State<_ServiceCard> {
                 ),
               ),
             ),
+            // NEW: Night Service Indicator
+            if (FirestoreSafeParser.toSafeBool(widget.service['nightService']?['enabled']))
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFFDBEAFE)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.nightlight_round, size: 10, color: Color(0xFF2563EB)),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Night Service',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 10,
+                        color: const Color(0xFF2563EB),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            // NEW: Urgent Booking Indicator
+            if (FirestoreSafeParser.toSafeBool(widget.service['urgentBooking']?['enabled']))
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF2F2),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFFFEE2E2)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.bolt, size: 12, color: Color(0xFFDC2626)),
+                    const SizedBox(width: 2),
+                    Text(
+                      'Urgent',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 10,
+                        color: const Color(0xFFDC2626),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             if (reviewCount > 0)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
@@ -777,179 +824,5 @@ class _ServiceCardState extends State<_ServiceCard> {
         setState(() => _isLoading = false);
       }
     }
-  }
-}
-
-
-// ============ ADD SERVICE BOTTOM SHEET ============
-
-class AddServiceSheet extends StatelessWidget {
-  const AddServiceSheet({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.9,
-      ),
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 12,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Handle bar
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 20),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              // Title
-              Text(
-                'Add New Service',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: const Color(0xFF0F172A),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Choose how you want to add your service',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  color: Colors.grey[600],
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 28),
-              // Quick Add Option
-              _buildOptionCard(
-                context: context,
-                icon: Icons.flash_on,
-                iconColor: const Color(0xFFF59E0B),
-                title: 'Quick Add',
-                subtitle: 'Add service with basic details',
-                onTap: () async {
-                  Navigator.pop(context);
-                  await Future.delayed(const Duration(milliseconds: 150));
-                  if (!context.mounted) return;
-                  _showQuickAddDialog(context);
-                },
-              ),
-              const SizedBox(height: 14),
-              // Full Form Option
-              _buildOptionCard(
-                context: context,
-                icon: Icons.edit_note,
-                iconColor: const Color(0xFF6366F1),
-                title: 'Detailed Form',
-                subtitle: 'Add service with complete information',
-                onTap: () async {
-                  // 🔥 SAFE ROOT CONTEXT NAVIGATION - FIXES REDIRECT TO HOME
-                  final rootContext = Navigator.of(context, rootNavigator: true).context;
-                  
-                  Navigator.of(context).pop(); // close sheet
-                  
-                  await Future.delayed(const Duration(milliseconds: 200));
-                  
-                  if (!rootContext.mounted) return;
-                  
-                  Navigator.of(rootContext).push(
-                    MaterialPageRoute(
-                      builder: (_) => const AddServiceScreen(),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildOptionCard({
-    required BuildContext context,
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.grey[50],
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey[200]!),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: iconColor, size: 28),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF0F172A),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 13,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.arrow_forward_ios, size: 18, color: Colors.grey[400]),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showQuickAddDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) => const QuickAddServiceDialog(),
-    );
   }
 }

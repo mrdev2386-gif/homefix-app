@@ -971,20 +971,23 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
   }
 
   Widget _buildImagePickerSection() {
-    return GestureDetector(
-      onTap: _pickImage,
-      child: Container(
-        width: double.infinity,
-        height: 200,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: const Color(0xFFE2E8F0),
-            width: 2,
-          ),
-        ),
-        child: _selectedImage != null
+    return Center(
+      child: SizedBox(
+        width: 240, 
+        child: AspectRatio(
+          aspectRatio: 1.0,
+          child: GestureDetector(
+            onTap: _pickImage,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: const Color(0xFFE2E8F0),
+                  width: 2,
+                ),
+              ),
+              child: _selectedImage != null
             ? Stack(
                 fit: StackFit.expand,
                 children: [
@@ -1065,6 +1068,9 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                     ],
                   )
                 : _buildImagePlaceholder(),
+            ),
+          ),
+        ),
       ),
     );
   }
