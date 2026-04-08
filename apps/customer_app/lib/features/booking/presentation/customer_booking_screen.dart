@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import '../../../core/services/functions_helper.dart';
+import 'package:provider/provider.dart';
+import '../../../core/services/firestore_service.dart';
+import '../../../core/providers/booking_provider.dart';
 
 class CustomerBookingScreen extends StatefulWidget {
   final String serviceId;
@@ -516,36 +516,38 @@ class _CustomerBookingScreenState extends State<CustomerBookingScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('Not authenticated');
 
-      // Get user's primary address (simplified for demo)
-      final userDoc = await FirebaseFirestore.instance
-          .collection('customers')
-          .doc(user.uid)
-          .get();
+      // REFACTORED: Use FirestoreService to get user profile
+      final firestoreService = FirestoreService();
+      final userData = await firestoreService.getUserProfile(user.uid);
       
-      final userData = userDoc.data() ?? {};
-      final address = userData['primaryAddress'] ?? {
+      final address = userData?['primaryAddress'] ?? {
         'fullAddress': 'Default Address',
         'district': 'Default District',
       };
 
-      final callable = await FunctionsHelper.getCallable('createBookingRequest');
-      final result = await callable.call({
-        'serviceId': widget.serviceId,
-        'technicianId': widget.technicianId,
-        'serviceName': widget.serviceData['name'] ?? 'Service',
-        'category': widget.serviceData['category'] ?? 'Category',
-        'price': widget.serviceData['price'] ?? 0,
-        'address': address,
-        'description': 'Service booking request',
-        'scheduledDate': DateTime.now().add(const Duration(days: 1)).toIso8601String(),
-        'scheduledTime': '10:00 AM',
-        'paymentMode': _selectedPaymentMode,
-      });
+      // REFACTORED: Use BookingProvider instead of direct function call
+      final bookingProvider = Provider.of<BookingProvider>(context, listen: false);
+      
+      final result = await bookingProvider.createBookingRequest(
+        serviceId: widget.serviceId,
+        technicianId: widget.technicianId,
+        categoryId: widget.serviceData['categoryId'] ?? 'default-category',
+        categoryName: widget.serviceData['category'] ?? 'Category',
+        scheduledDate: DateTime.now().add(const Duration(days: 1)).toIso8601String(),
+        scheduledTime: '10:00 AM',
+        address: address is Map<String, dynamic> ? address : {
+          'fullAddress': address.toString(),
+          'district': userData?['district'] ?? 'Default District',
+          'state': userData?['state'] ?? 'Default State',
+        },
+        price: (widget.serviceData['price'] ?? 0).toDouble(),
+        paymentMode: _selectedPaymentMode,
+      );
 
-      if (result.data['success']) {
+      if (result['success']) {
         setState(() {
-          _bookingId = result.data['bookingId'];
-          _bookingStatus = result.data['status'];
+          _bookingId = result['bookingId'];
+          _bookingStatus = result['status'];
         });
 
         if (mounted) {

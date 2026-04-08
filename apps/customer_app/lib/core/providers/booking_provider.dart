@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:math';
 import '../services/booking_service.dart';
 import '../models/booking.dart';
 
@@ -11,6 +13,38 @@ class BookingProvider extends ChangeNotifier {
   
   bool _isBooking = false;
   bool get isBooking => _isBooking;
+  
+  // FIX: Idempotency key persistence - generate ONCE per booking session
+  String? _currentBookingIdempotencyKey;
+  DateTime? _idempotencyKeyCreatedAt;
+
+  /// Generate or reuse idempotency key for booking session
+  String _getOrCreateIdempotencyKey() {
+    // If key exists and was created less than 5 minutes ago, reuse it
+    if (_currentBookingIdempotencyKey != null && _idempotencyKeyCreatedAt != null) {
+      final age = DateTime.now().difference(_idempotencyKeyCreatedAt!);
+      if (age.inMinutes < 5) {
+        if (kDebugMode) debugPrint('[BookingProvider] Reusing idempotency key: $_currentBookingIdempotencyKey');
+        return _currentBookingIdempotencyKey!;
+      }
+    }
+    
+    // Generate new key
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final random = Random().nextInt(9999);
+    _currentBookingIdempotencyKey = 'BK_${timestamp}_$random';
+    _idempotencyKeyCreatedAt = DateTime.now();
+    
+    if (kDebugMode) debugPrint('[BookingProvider] Generated new idempotency key: $_currentBookingIdempotencyKey');
+    return _currentBookingIdempotencyKey!;
+  }
+  
+  /// Clear idempotency key after successful booking
+  void _clearIdempotencyKey() {
+    _currentBookingIdempotencyKey = null;
+    _idempotencyKeyCreatedAt = null;
+    if (kDebugMode) debugPrint('[BookingProvider] Cleared idempotency key');
+  }
 
   /// Live verification before creating a booking request
   /// 
@@ -34,7 +68,14 @@ class BookingProvider extends ChangeNotifier {
     int? durationMinutes,
     String? couponCode,
     String? paymentMode,
+    bool isUrgent = false, // NEW: Support for urgent bookings
   }) async {
+    // Prevent duplicate booking requests
+    if (_isBooking) {
+      if (kDebugMode) debugPrint('[BookingProvider] ⚠️ Booking already in progress, ignoring duplicate request');
+      throw Exception('Booking already in progress. Please wait.');
+    }
+    
     _isBooking = true;
     notifyListeners();
     
@@ -130,9 +171,11 @@ class BookingProvider extends ChangeNotifier {
       }
 
       // ─────────────────────────────────────────────────────────────────────
-      // 5. CREATE BOOKING REQUEST
+      // 5. CREATE BOOKING REQUEST WITH PERSISTENT IDEMPOTENCY KEY
       // ─────────────────────────────────────────────────────────────────────
-      print('[BOOKING_FLOW] Booking created successfully');
+      print('[BOOKING_FLOW] Creating booking with idempotency key');
+      final idempotencyKey = _getOrCreateIdempotencyKey();
+      
       final response = await _bookingService.createBookingRequest(
         serviceId: serviceId,
         technicianId: technicianId,
@@ -147,9 +190,29 @@ class BookingProvider extends ChangeNotifier {
         durationMinutes: durationMinutes,
         couponCode: couponCode,
         paymentMode: paymentMode,
+        idempotencyKey: idempotencyKey,
+        isUrgent: isUrgent, // NEW: Pass urgent flag to service
       );
+      
+      // Clear idempotency key after successful booking
+      _clearIdempotencyKey();
+      print('[BOOKING_FLOW] Booking created successfully');
+      
       return response;
     } catch (e) {
+      // Clear idempotency key on PERMANENT errors (not network errors)
+      final errorStr = e.toString().toLowerCase();
+      final isPermanentError = errorStr.contains('not found') || 
+                               errorStr.contains('invalid') || 
+                               errorStr.contains('not approved') ||
+                               errorStr.contains('not verified');
+      
+      if (isPermanentError) {
+        if (kDebugMode) debugPrint('[BookingProvider] ⚠️ Permanent error, clearing idempotency key: $e');
+        _clearIdempotencyKey();
+      } else {
+        if (kDebugMode) debugPrint('[BookingProvider] ⚠️ Temporary error, keeping idempotency key for retry: $e');
+      }
       rethrow;
     } finally {
       _isBooking = false;

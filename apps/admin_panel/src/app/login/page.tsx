@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { auth } from '@/lib/firebaseClient';
 import { signInWithGoogle, verifyAdminClaim, handleAuthError, signOutUser } from '@/lib/auth';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Shield, Mail, Lock, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';

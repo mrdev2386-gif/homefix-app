@@ -46,14 +46,21 @@ export function normalizeBookingStatus(status: string): BookingStatus {
     'pending_admin_approval': BOOKING_STATUS.PENDING_ADMIN_APPROVAL,
     'pending_admin_review': BOOKING_STATUS.PENDING_ADMIN_APPROVAL,
     'pending_admin': BOOKING_STATUS.PENDING_ADMIN_APPROVAL,
+    'pending': BOOKING_STATUS.PENDING_ADMIN_APPROVAL,
     'approved_by_admin': BOOKING_STATUS.APPROVED_BY_ADMIN,
     'admin_approved': BOOKING_STATUS.APPROVED_BY_ADMIN,
+    'assigned': BOOKING_STATUS.APPROVED_BY_ADMIN,
     'technician_accepted': BOOKING_STATUS.TECHNICIAN_ACCEPTED,
+    'confirmed': BOOKING_STATUS.TECHNICIAN_ACCEPTED,
     'service_in_progress': BOOKING_STATUS.SERVICE_IN_PROGRESS,
     'in_progress': BOOKING_STATUS.SERVICE_IN_PROGRESS,
     'service_completed': BOOKING_STATUS.SERVICE_COMPLETED,
     'completed': BOOKING_STATUS.SERVICE_COMPLETED,
     'rejected': BOOKING_STATUS.REJECTED,
+    'rejected_by_admin': BOOKING_STATUS.REJECTED,
+    'admin_rejected': BOOKING_STATUS.REJECTED,
+    'technician_rejected': BOOKING_STATUS.REJECTED,
+    'cancelled': BOOKING_STATUS.REJECTED,
   };
   
   return variantMap[normalized] || (status as BookingStatus);

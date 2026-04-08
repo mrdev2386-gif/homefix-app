@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../home/home_screen.dart';
 import '../bookings/presentation/booking_history_screen.dart';
 import '../services/presentation/request_screen.dart';
@@ -51,47 +50,11 @@ class _MainWrapperScreenState extends State<MainWrapperScreen> {
         return;
       }
 
-      final doc = await FirebaseFirestore.instance.collection('customers').doc(user.uid).get();
+      // Use AuthService to check profile completion (includes district check)
+      final hasCompletedProfile = await authService.hasUserCompletedProfile(user.uid);
       if (!mounted) return;
       
-      if (!doc.exists) {
-        _forceProfileCompletion();
-        return;
-      }
-
-      final data = doc.data();
-      
-      // CRITICAL: Check for primaryAddressId (required for service queries)
-      final primaryAddressId = data?['primaryAddressId'];
-      
-      if (primaryAddressId == null || primaryAddressId.toString().isEmpty) {
-        // No primary address - force location completion
-        _forceProfileCompletion();
-        return;
-      }
-      
-      // Verify address document exists and has state/district
-      final addressDoc = await FirebaseFirestore.instance
-          .collection('customers')
-          .doc(user.uid)
-          .collection('addresses')
-          .doc(primaryAddressId)
-          .get();
-      
-      if (!mounted) return;
-      
-      if (!addressDoc.exists) {
-        // Address document missing - force location completion
-        _forceProfileCompletion();
-        return;
-      }
-      
-      final addressData = addressDoc.data();
-      final state = addressData?['state'];
-      final district = addressData?['district'];
-      
-      if (state == null || district == null || state.toString().isEmpty || district.toString().isEmpty) {
-        // Address missing state/district - force location completion
+      if (!hasCompletedProfile) {
         _forceProfileCompletion();
         return;
       }

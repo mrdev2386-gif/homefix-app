@@ -6,7 +6,7 @@
 ```diff
 - const Razorpay = require('razorpay');
 + const RazorpayLib = require('razorpay');
-+ const Razorpay = RazorpayLib.default || RazorpayLib;
++ const Razorpay = RazorpayLib.default || Razor`payLib;
 ```
 
 ### 2. **bank_verification.ts** (Lines 30-50)

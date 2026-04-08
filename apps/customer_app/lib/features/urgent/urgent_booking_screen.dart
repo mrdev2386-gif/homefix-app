@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/models/address.dart';
 import '../../core/services/firestore_service.dart';
 import 'package:provider/provider.dart';
-import '../../core/services/functions_helper.dart';
+import '../../core/providers/booking_provider.dart';
 
 class UrgentBookingScreen extends StatefulWidget {
   const UrgentBookingScreen({super.key});
@@ -40,14 +38,12 @@ class _UrgentBookingScreenState extends State<UrgentBookingScreen> {
         return;
       }
 
-      // Read district and state directly from user profile in Firestore
-      final userDoc = await FirebaseFirestore.instance
-          .collection('customers')
-          .doc(user.uid)
-          .get();
+      // REFACTORED: Use FirestoreService instead of direct Firestore access
+      final firestoreService = FirestoreService();
+      final userData = await firestoreService.getUserProfile(user.uid);
 
-      final district = userDoc.data()?['district'];
-      final state = userDoc.data()?['state'];
+      final district = userData?['district'];
+      final state = userData?['state'];
 
       if (district == null || district.isEmpty || state == null || state.isEmpty) {
         setState(() {
@@ -116,13 +112,14 @@ class _UrgentBookingScreenState extends State<UrgentBookingScreen> {
   }
 
   Widget _buildTechnicianList() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('technicians')
-          .where('isOnline', isEqualTo: true)
-          .where('state', isEqualTo: _userState)
-          .where('district', isEqualTo: _userDistrict)
-          .snapshots(),
+    // REFACTORED: Use FirestoreService instead of direct Firestore stream
+    final firestoreService = FirestoreService();
+    
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: firestoreService.streamOnlineTechnicians(
+        state: _userState!,
+        district: _userDistrict!,
+      ),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -134,19 +131,19 @@ class _UrgentBookingScreenState extends State<UrgentBookingScreen> {
           );
         }
 
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
           return _buildEmptyView();
         }
 
-        final technicians = snapshot.data!.docs;
+        final technicians = snapshot.data!;
 
         return ListView.builder(
           padding: const EdgeInsets.all(16),
           itemCount: technicians.length,
           itemBuilder: (context, index) {
-            final techDoc = technicians[index];
-            final techData = techDoc.data() as Map<String, dynamic>;
-            return _buildTechnicianCard(techDoc.id, techData);
+            final techData = technicians[index];
+            final techId = techData['id'] as String;
+            return _buildTechnicianCard(techId, techData);
           },
         );
       },
@@ -348,24 +345,33 @@ class _UrgentBookingScreenState extends State<UrgentBookingScreen> {
         builder: (context) => const Center(child: CircularProgressIndicator()),
       );
 
-      final callable = await FunctionsHelper.getCallable('createBookingRequest');
-      await callable.call({
-        'technicianId': techId,
-        'technicianName': techData['name'] ?? 'Unknown',
-        'serviceType': (techData['skills'] as List<dynamic>?)?.first ?? 'General Service',
-        'district': _userDistrict,
-        'urgentFee': 100,
-        'isUrgent': true,
-      });
+      // REFACTORED: Use BookingProvider instead of direct function call
+      final bookingProvider = Provider.of<BookingProvider>(context, listen: false);
+      
+      await bookingProvider.createBookingRequest(
+        serviceId: (techData['skills'] as List<dynamic>?)?.first ?? 'general-service',
+        technicianId: techId,
+        categoryId: 'urgent-service',
+        categoryName: 'Urgent Service',
+        scheduledDate: DateTime.now().toIso8601String(),
+        scheduledTime: 'ASAP',
+        address: {
+          'district': _userDistrict,
+          'state': _userState,
+          'fullAddress': 'User location',
+        },
+        price: 100.0, // Urgent fee
+        isUrgent: true, // Mark as urgent booking
+      );
 
       if (mounted) {
         Navigator.pop(context);
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text('Urgent booking created! Technician will contact you soon.'),
             backgroundColor: Colors.green,
-            duration: const Duration(seconds: 3),
+            duration: Duration(seconds: 3),
           ),
         );
       }

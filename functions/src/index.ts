@@ -122,11 +122,14 @@ export const verifyBookingStatuses = migrateBookingStatus.verifyBookingStatuses;
 import * as unifiedBookingLifecycle from './booking/unified_booking_lifecycle';
 export const createBookingRequest = unifiedBookingLifecycle.createBookingRequest;
 export const approveBookingByAdmin = unifiedBookingLifecycle.approveBookingByAdmin;
+export const rejectBookingByAdmin = unifiedBookingLifecycle.rejectBookingByAdmin;
 export const technicianAcceptBooking = unifiedBookingLifecycle.technicianAcceptBooking;
 export const startService = unifiedBookingLifecycle.startService;
 export const completeService = unifiedBookingLifecycle.completeService;
 export const technicianRejectBooking = unifiedBookingLifecycle.technicianRejectBooking;
 export const cancelBooking = unifiedBookingLifecycle.cancelBooking;
+export const adminChangeTechnician = unifiedBookingLifecycle.adminChangeTechnician;
+export const getAllTechniciansForAdmin = unifiedBookingLifecycle.getAllTechniciansForAdmin;
 
 // Legacy aliases for backward compatibility
 export const approveBookingRequest = unifiedBookingLifecycle.approveBookingByAdmin;
@@ -146,6 +149,16 @@ export const confirmQRPayment = paymentQR.confirmQRPayment;
 // Stale Booking Cleanup
 import * as bookingCleanup from './booking/cleanup';
 export const cleanupStaleBookings = bookingCleanup.cleanupStaleBookings;
+
+// Idempotency Cleanup (Scheduled & Manual)
+import * as idempotencyCleanup from './booking/idempotency_cleanup';
+export const cleanupExpiredIdempotencyRecords = idempotencyCleanup.cleanupExpiredIdempotencyRecords;
+export const manualCleanupIdempotency = idempotencyCleanup.manualCleanupIdempotency;
+
+// OTP Rate Limiting (Backend Protection)
+import * as otpRateLimiting from './auth/otp_rate_limiting';
+export const checkOTPRateLimitCallable = otpRateLimiting.checkOTPRateLimitCallable;
+export const cleanupOTPRateLimits = otpRateLimiting.cleanupOTPRateLimits;
 
 // ================================================
 // BOOKING & CUSTOM REQUEST NOTIFICATIONS TRIGGERS

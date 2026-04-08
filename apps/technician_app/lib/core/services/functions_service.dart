@@ -223,8 +223,6 @@ class FunctionsService {
         'offerPrice': offerPrice,  // Discounted price
         'imageUrl': imageUrl,
         'description': description ?? 'Professional service provided by experienced technician',
-        if (urgentBooking != null) 'urgentBooking': urgentBooking,
-        if (nightService != null) 'nightService': nightService,
       };
       
       debugPrint('[FunctionsService] addService DATA: $data');
@@ -320,9 +318,9 @@ class FunctionsService {
         throw Exception('User not authenticated');
       }
       
-      debugPrint('[AUTH DEBUG] UID: ${user.uid}');
+      print('[AUTH DEBUG] UID: ${user.uid}');
       await user.getIdToken(true);
-      debugPrint('[AUTH DEBUG] TOKEN REFRESHED');
+      print('[AUTH DEBUG] TOKEN REFRESHED');
       
       debugPrint('[FunctionsService] deleteService: Current user UID: ${user.uid}');
       debugPrint('[FunctionsService] deleteService: Token refreshed successfully');
@@ -405,13 +403,13 @@ class FunctionsService {
     }
 
     try {
-      await user.verifyBeforeUpdateEmail(newEmail);
+      await user.updateEmail(newEmail);
       
-      if (!user.emailVerified) {
+      if (user != null && !user.emailVerified) {
         await user.sendEmailVerification();
       }
       
-      debugPrint('Verification email sent');
+      print('Verification email sent');
     } catch (e) {
       debugPrint('[FunctionsService] updateEmail error: $e');
       rethrow;

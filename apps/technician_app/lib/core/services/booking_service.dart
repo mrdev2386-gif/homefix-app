@@ -19,7 +19,7 @@ class BookingService {
   Stream<List<Booking>> getPendingBookings(String techId) {
     return _db.collection('bookings')
         .where('technicianId', isEqualTo: techId)
-        .where('status', whereIn: [BookingStatus.assigned, 'approved_by_admin'])
+        .where('bookingStatus', whereIn: [BookingStatus.assigned, 'approved_by_admin'])
         .limit(20)
         .snapshots()
         .map((snapshot) {
@@ -96,7 +96,7 @@ class BookingService {
   Stream<List<Booking>> getActiveBookings(String techId) {
     return _db.collection('bookings')
         .where('technicianId', isEqualTo: techId)
-        .where('status', whereIn: BookingStatus.activeStatuses)
+        .where('bookingStatus', whereIn: BookingStatus.activeStatuses)
         .snapshots()
         .map((snapshot) {
           return snapshot.docs

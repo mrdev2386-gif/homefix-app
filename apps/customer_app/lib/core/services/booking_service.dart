@@ -32,6 +32,7 @@ class BookingService {
     String? couponCode,
     String? idempotencyKey,
     String? paymentMode,
+    bool isUrgent = false, // NEW: Support for urgent bookings
   }) async {
     try {
       // Sanitize address - remove FieldValue and non-JSON types
@@ -55,7 +56,8 @@ class BookingService {
         'scheduledTime': scheduledTime,
         'address': cleanAddress,
         'price': price,
-        'idempotencyKey': idempotencyKey ?? 'BK_${DateTime.now().millisecondsSinceEpoch}',
+        'idempotencyKey': idempotencyKey, // Required parameter from provider
+        'isUrgent': isUrgent, // NEW: Pass urgent flag to backend
       };
       
       // Add optional fields only if provided

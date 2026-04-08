@@ -6,6 +6,7 @@ import '../models/category.dart';
 import '../models/service.dart';
 import '../models/banner_model.dart';
 import '../models/service_result.dart';
+import 'user_location_service.dart';
 
 Stream<T> _errorToData<T>(Stream<T> source, T Function(Object error) fallback) {
   return source.transform(StreamTransformer<T, T>.fromHandlers(
@@ -20,87 +21,20 @@ Stream<T> _errorToData<T>(Stream<T> source, T Function(Object error) fallback) {
 class CategoryService extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  
+  // Shared location service for user location caching
+  final UserLocationService _locationService;
 
-  // Location caching to prevent repeated Firestore reads
-  Map<String, String>? _cachedLocation;
-  bool _locationFetched = false;
-
-  /// Get user's location with caching to prevent repeated Firestore reads
-  Future<Map<String, String>?> getUserLocationCached() async {
-    if (_locationFetched) {
-      return _cachedLocation;
-    }
-
-    _cachedLocation = await _getUserLocation();
-    _locationFetched = true;
-    
-    return _cachedLocation;
-  }
+  CategoryService({UserLocationService? locationService})
+      : _locationService = locationService ?? UserLocationService();
 
   /// Clear location cache (call when user updates address)
+  /// Notifies listeners to trigger UI updates
   void clearLocationCache() {
-    _cachedLocation = null;
-    _locationFetched = false;
+    _locationService.clearLocationCache();
     
     // Notify listeners when cache is cleared
     notifyListeners();
-  }
-
-  /// Get user's location from their primary address with safe fallback handling
-  Future<Map<String, String>?> _getUserLocation() async {
-    try {
-      final user = _auth.currentUser;
-      if (user == null) {
-        if (kDebugMode) debugPrint('⚠️ [CategoryService] No authenticated user');
-        return null;
-      }
-
-      // Get user document
-      final userDoc = await _firestore.collection('customers').doc(user.uid).get();
-      if (!userDoc.exists) {
-        if (kDebugMode) debugPrint('⚠️ [CategoryService] User document not found');
-        return null;
-      }
-
-      // Get primary address ID
-      final primaryAddressId = userDoc.data()?['primaryAddressId'];
-      if (primaryAddressId == null) {
-        if (kDebugMode) debugPrint('⚠️ [CategoryService] No primary address set');
-        return null;
-      }
-
-      // Get address document
-      final addressDoc = await _firestore
-          .collection('customers')
-          .doc(user.uid)
-          .collection('addresses')
-          .doc(primaryAddressId)
-          .get();
-
-      if (!addressDoc.exists) {
-        if (kDebugMode) debugPrint('⚠️ [CategoryService] Primary address document not found');
-        return null;
-      }
-
-      // Extract location data
-      final addressData = addressDoc.data();
-      final state = addressData?['state'];
-      final district = addressData?['district'];
-
-      if (state == null || district == null || state.isEmpty || district.isEmpty) {
-        if (kDebugMode) debugPrint('⚠️ [CategoryService] Incomplete location data: state=$state, district=$district');
-        return null;
-      }
-
-      if (kDebugMode) debugPrint('✅ [CategoryService] User location: $state/$district');
-      return {
-        'state': state,
-        'district': district,
-      };
-    } catch (e) {
-      if (kDebugMode) debugPrint('❌ [CategoryService] Error getting user location: $e');
-      return null;
-    }
   }
 
   Stream<List<Category>> streamCategories() {
@@ -149,7 +83,7 @@ class CategoryService extends ChangeNotifier {
   }
 
   Stream<List<HomeService>> getRecentlyAddedServices({int limit = 10}) async* {
-    final location = await getUserLocationCached();
+    final location = await _locationService.getUserLocationCached();
 
     if (location == null) {
       if (kDebugMode) debugPrint('⚠️ [CategoryService] No location data - returning empty results');
@@ -187,7 +121,7 @@ class CategoryService extends ChangeNotifier {
       return;
     }
 
-    final location = await getUserLocationCached();
+    final location = await _locationService.getUserLocationCached();
 
     if (location == null) {
       if (kDebugMode) debugPrint('⚠️ [CategoryService] No location data - returning empty results for category');
@@ -346,7 +280,7 @@ class CategoryService extends ChangeNotifier {
   }
 
   Stream<List<HomeService>> getAllServices() async* {
-    final location = await getUserLocationCached();
+    final location = await _locationService.getUserLocationCached();
 
     if (location == null) {
       if (kDebugMode) debugPrint('⚠️ [CategoryService] No location data - returning empty results');
@@ -398,7 +332,7 @@ class CategoryService extends ChangeNotifier {
   }
 
   Stream<List<HomeService>> getTopServices({int limit = 10}) async* {
-    final location = await getUserLocationCached();
+    final location = await _locationService.getUserLocationCached();
 
     if (location == null) {
       if (kDebugMode) debugPrint('⚠️ [CategoryService] No location data - returning empty results');
@@ -638,7 +572,7 @@ class CategoryService extends ChangeNotifier {
 
   Future<List<HomeService>> getAllServicesOnce() async {
     try {
-      final location = await getUserLocationCached();
+      final location = await _locationService.getUserLocationCached();
 
       if (location == null) {
         if (kDebugMode) debugPrint('⚠️ [CategoryService] No location data - returning empty results');

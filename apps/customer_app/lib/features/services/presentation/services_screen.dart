@@ -67,6 +67,7 @@ class _ServicesScreenState extends State<ServicesScreen>
     _searchController.dispose();
     _scrollController.dispose();
     _debounceTimer?.cancel();
+    _debounceTimer = null; // Set to null after cancel to prevent memory leak
     super.dispose();
   }
   
@@ -158,10 +159,9 @@ class _ServicesScreenState extends State<ServicesScreen>
   void _onSearchChanged(String value) {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 400), () {
-      if (mounted) {
-        debugPrint('🔍 [ServicesScreen] Search query: "$value"');
-        setState(() => _searchQuery = value);
-      }
+      if (!mounted) return; // Check mounted FIRST to prevent memory leak
+      debugPrint('🔍 [ServicesScreen] Search query: "$value"');
+      setState(() => _searchQuery = value);
     });
   }
   

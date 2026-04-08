@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:customer_app/core/services/auth_service.dart';
 import 'package:customer_app/core/services/functions_service.dart';
+import 'package:customer_app/core/services/category_service.dart';
 import '../../../core/providers/location_provider.dart';
 import '../../../core/widgets/location_selector.dart';
 import '../../home/main_wrapper_screen.dart';
@@ -67,6 +68,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         });
         
         if (!mounted) return;
+        
+        // CRITICAL: Clear location cache BEFORE navigation (MANDATORY)
+        debugPrint('[Onboarding] Clearing location cache...');
+        final categoryService = Provider.of<CategoryService>(context, listen: false);
+        categoryService.clearLocationCache();
+        categoryService.notifyListeners();
+        debugPrint('[Onboarding] ✅ Location cache cleared successfully');
+        
         Navigator.of(context).pushReplacementNamed('/home');
       }
     } catch (e) {

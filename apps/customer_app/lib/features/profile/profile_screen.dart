@@ -221,30 +221,8 @@ class _ProfileContentState extends State<_ProfileContent> {
     try {
       final firestore = Provider.of<FirestoreService>(context, listen: false);
       
-      // Batch update: set all addresses isPrimary = false, then selected isPrimary = true
-      final batch = FirebaseFirestore.instance.batch();
-      
-      // Get all user addresses
-      final addressesRef = FirebaseFirestore.instance.collection('customers').doc(userId).collection('addresses');
-      final addressesSnapshot = await addressesRef.get();
-      
-      // Set all addresses isPrimary = false
-      for (final doc in addressesSnapshot.docs) {
-        batch.update(doc.reference, {'isPrimary': false});
-      }
-      
-      // Set selected address isPrimary = true
-      batch.update(addressesRef.doc(address.id), {'isPrimary': true});
-      
-      // Update user document with service location fields
-      final userRef = FirebaseFirestore.instance.collection('customers').doc(userId);
-      batch.update(userRef, {
-        'serviceState': address.state,
-        'serviceDistrict': address.district,
-        'primaryAddressId': address.id,
-      });
-      
-      await batch.commit();
+      // Update primary address in Firestore
+      await firestore.updateUserDefaultAddress(userId, address.label);
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

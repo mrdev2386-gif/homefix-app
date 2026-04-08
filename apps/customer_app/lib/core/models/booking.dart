@@ -13,7 +13,7 @@ class Booking {
   final DateTime? scheduledDate;
   final String? scheduledTime;
   final Map<String, dynamic> addressSnapshot;
-  final String status;
+  final String bookingStatus;
   final List<Map<String, dynamic>>? statusHistory;
   final String paymentStatus;
   final String? paymentMode; // 'pay_before_work' or 'pay_after_work'
@@ -42,7 +42,7 @@ class Booking {
     this.scheduledDate,
     this.scheduledTime,
     required this.addressSnapshot,
-    required this.status,
+    required this.bookingStatus,
     this.statusHistory,
     this.paymentStatus = 'pending',
     this.paymentMode,
@@ -58,6 +58,9 @@ class Booking {
     required this.createdAt,
     required this.updatedAt,
   });
+
+  // Backward compatibility getter
+  String get status => bookingStatus;
 
   factory Booking.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
@@ -80,7 +83,7 @@ class Booking {
           : null,
       scheduledTime: data['scheduledTime']?.toString(),
       addressSnapshot: Map<String, dynamic>.from(data['addressSnapshot'] ?? data['address'] ?? {}),
-      status: (data['status'] ?? data['bookingStatus'] ?? 'pending').toString(),
+      bookingStatus: (data['bookingStatus'] ?? data['status'] ?? 'pending').toString(),
       statusHistory: data['statusHistory'] != null 
           ? List<Map<String, dynamic>>.from(data['statusHistory'])
           : null,
@@ -117,7 +120,8 @@ class Booking {
       'scheduledDate': scheduledDate != null ? Timestamp.fromDate(scheduledDate!) : null,
       'scheduledTime': scheduledTime,
       'addressSnapshot': addressSnapshot,
-      'status': status,
+      'bookingStatus': bookingStatus,
+      'status': bookingStatus, // Backward compatibility
       'statusHistory': statusHistory,
       'paymentStatus': paymentStatus,
       'paymentMode': paymentMode,

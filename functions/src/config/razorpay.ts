@@ -1,76 +1,41 @@
 /**
- * Razorpay SDK - DIRECT INSTANCE (NO ABSTRACTION)
- * 
- * CRITICAL: This is the ONLY Razorpay instance.
- * Import directly: const { razorpay } = require('./config/razorpay')
+ * Razorpay SDK - LAZY INITIALIZATION
+ *
+ * Credentials are validated only when razorpay is first accessed,
+ * NOT at module load time. This prevents the emulator/deployment
+ * from crashing when env vars are absent during cold start.
  */
 
 import * as functions from 'firebase-functions';
 
-// DIRECT require - NO fallback, NO factory
 const Razorpay = require('razorpay');
 
-// Get config
-const config = functions.config();
-const keyId = config.razorpay?.key_id;
-const keySecret = config.razorpay?.key_secret;
+let _razorpay: any = null;
 
-if (!keyId || !keySecret) {
-    throw new Error('Razorpay credentials not configured');
+function getRazorpay() {
+    if (_razorpay) return _razorpay;
+
+    const config = functions.config();
+    const keyId = config.razorpay?.key_id || process.env.RAZORPAY_KEY_ID;
+    const keySecret = config.razorpay?.key_secret || process.env.RAZORPAY_KEY_SECRET;
+
+    if (!keyId || !keySecret) {
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            'Razorpay credentials not configured. Set razorpay.key_id and razorpay.key_secret via firebase functions:config:set.'
+        );
+    }
+
+    _razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
+    console.log('[RAZORPAY] Instance created for key:', keyId.substring(0, 8) + '...');
+    return _razorpay;
 }
 
-console.log('[RAZORPAY] Initializing with key:', keyId);
-
-// DIRECT instantiation - NO singleton pattern
-const razorpay = new Razorpay({
-    key_id: keyId,
-    key_secret: keySecret,
+// Proxy so existing callers using `razorpay.orders.create(...)` keep working
+const razorpay = new Proxy({} as any, {
+    get(_target, prop: string) {
+        return getRazorpay()[prop];
+    }
 });
 
-console.log('[RAZORPAY] Instance created');
-console.log('[RAZORPAY] Instance keys:', Object.keys(razorpay));
-
-// HARD CHECK - Fail fast if methods missing
-if (!razorpay.contacts || typeof razorpay.contacts.create !== 'function') {
-    console.error('[RAZORPAY ERROR] contacts.create missing');
-    console.error('[RAZORPAY ERROR] Instance:', razorpay);
-    console.error('[RAZORPAY ERROR] contacts:', razorpay.contacts);
-    throw new Error('Razorpay contacts.create not available');
-}
-
-if (!razorpay.fund_accounts || typeof razorpay.fund_accounts.create !== 'function') {
-    console.error('[RAZORPAY ERROR] fund_accounts.create missing');
-    console.error('[RAZORPAY ERROR] Instance:', razorpay);
-    throw new Error('Razorpay fund_accounts.create not available');
-}
-
-if (!razorpay.orders || typeof razorpay.orders.create !== 'function') {
-    console.error('[RAZORPAY ERROR] orders.create missing');
-    throw new Error('Razorpay orders.create not available');
-}
-
-if (!razorpay.payments || typeof razorpay.payments.fetch !== 'function') {
-    console.error('[RAZORPAY ERROR] payments.fetch missing');
-    throw new Error('Razorpay payments.fetch not available');
-}
-
-if (!razorpay.payouts || typeof razorpay.payouts.create !== 'function') {
-    console.error('[RAZORPAY ERROR] payouts.create missing');
-    throw new Error('Razorpay payouts.create not available');
-}
-
-if (!razorpay.qrCodes || typeof razorpay.qrCodes.create !== 'function') {
-    console.error('[RAZORPAY ERROR] qrCodes.create missing');
-    throw new Error('Razorpay qrCodes.create not available');
-}
-
-console.log('[RAZORPAY] ✅ All methods validated');
-console.log('[RAZORPAY] ✅ contacts.create available');
-console.log('[RAZORPAY] ✅ fund_accounts.create available');
-console.log('[RAZORPAY] ✅ orders.create available');
-console.log('[RAZORPAY] ✅ payments.fetch available');
-console.log('[RAZORPAY] ✅ payouts.create available');
-console.log('[RAZORPAY] ✅ qrCodes.create available');
-
-// DIRECT export - NO function wrapper
 module.exports = { razorpay };

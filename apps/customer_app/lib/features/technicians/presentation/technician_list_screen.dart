@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/models/technician.dart';
 import 'package:customer_app/core/models/service.dart';
 import '../../../core/widgets/safe_network_image.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
+import '../../../core/services/technician_discovery_service.dart';
 
 import 'package:google_fonts/google_fonts.dart';
 
-class TechnicianListScreen extends StatelessWidget {
+class TechnicianListScreen extends StatefulWidget {
   final HomeService? service;
   final String? categoryId;
   final String? categoryName;
@@ -20,23 +20,16 @@ class TechnicianListScreen extends StatelessWidget {
   });
 
   @override
+  State<TechnicianListScreen> createState() => _TechnicianListScreenState();
+}
+
+class _TechnicianListScreenState extends State<TechnicianListScreen> {
+  final TechnicianDiscoveryService _technicianService = TechnicianDiscoveryService();
+
+  @override
   Widget build(BuildContext context) {
     // Determine title
-    final String title = categoryName ?? service?.title ?? 'Experts';
-    
-    // Determine query
-    Query query = FirebaseFirestore.instance.collection('technicians')
-      .where('status', isEqualTo: 'active')
-      .where('isApproved', isEqualTo: true)
-      .where('isOnline', isEqualTo: true);
-    if (categoryId != null) {
-      query = query.where('supportedCategories', arrayContains: categoryId);
-    } else if (service != null) {
-      query = query.where('skills', arrayContains: service!.title);
-    } else {
-      // Default query or empty
-      query = query.limit(20);
-    }
+    final String title = widget.categoryName ?? widget.service?.title ?? 'Experts';
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
@@ -50,7 +43,7 @@ class TechnicianListScreen extends StatelessWidget {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (service != null) _buildServiceSummary(),
+          if (widget.service != null) _buildServiceSummary(),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
             child: Text(
@@ -59,20 +52,18 @@ class TechnicianListScreen extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: query.snapshots(),
+            child: FutureBuilder<List<Technician>>(
+              future: _fetchTechnicians(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                if (!snapshot.hasData || snapshot.data == null || snapshot.data!.docs.isEmpty) {
+                if (!snapshot.hasData || snapshot.data == null || snapshot.data!.isEmpty) {
                   return _buildEmpty();
                 }
 
-                final technicians = snapshot.data!.docs
-                    .map((doc) => Technician.fromFirestore(doc))
-                    .toList();
+                final technicians = snapshot.data!;
 
                 return ListView.builder(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
@@ -90,8 +81,16 @@ class TechnicianListScreen extends StatelessWidget {
     );
   }
 
+  Future<List<Technician>> _fetchTechnicians() async {
+    // Use existing TechnicianDiscoveryService
+    return await _technicianService.discoverTechnicians(
+      categoryId: widget.categoryId,
+      limit: 20,
+    );
+  }
+
   Widget _buildServiceSummary() {
-    if (service == null) return const SizedBox();
+    if (widget.service == null) return const SizedBox();
     return Container(
       margin: const EdgeInsets.all(20),
       padding: const EdgeInsets.all(16),
@@ -105,7 +104,7 @@ class TechnicianListScreen extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: SafeNetworkImage(
-              imageUrl: service!.imageUrl,
+              imageUrl: widget.service!.imageUrl,
               width: 50,
               height: 50,
             ),
@@ -116,11 +115,11 @@ class TechnicianListScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  service!.title,
+                  widget.service!.title,
                   style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w800),
                 ),
                 Text(
-                  '₹${service!.basePrice.toStringAsFixed(0)} base price',
+                  '₹${widget.service!.basePrice.toStringAsFixed(0)} base price',
                   style: GoogleFonts.outfit(color: AppTheme.primaryColor, fontSize: 13, fontWeight: FontWeight.w700),
                 ),
               ],

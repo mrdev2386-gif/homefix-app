@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import '../models/booking.dart';
 import '../models/service.dart';
@@ -14,10 +13,17 @@ import '../models/user_model.dart';
 import '../models/cart_item.dart';
 import '../models/dashboard_models.dart';
 import '../utils/firestore_guards.dart';
+import 'user_location_service.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseFunctions functions = FirebaseFunctions.instanceFor(region: 'asia-south1');
+  
+  // Shared location service for user location caching
+  final UserLocationService _locationService;
+
+  FirestoreService({UserLocationService? locationService})
+      : _locationService = locationService ?? UserLocationService();
 
   // --- Authentication Helper ---
   /// Ensures user is authenticated and token is fresh with stability delay
@@ -84,14 +90,28 @@ class FirestoreService {
   }
   
   /// CRITICAL: Stream for Home Screen "All Services"
-  /// FIX: Query technician_services collection directly (not collectionGroup)
-  /// Filters: status='approved' (not 'active'), no isPublished/technicianApproved checks
+  /// FIX: Query technician_services collection WITH location filtering
+  /// Filters: status='approved' + state + district (matches CategoryService logic)
   /// Includes error handling and reconnection resilience
   /// BROADCAST: Safe for multiple listeners
-  Stream<List<HomeService>> streamAllTechnicianServices({int limit = 50}) {
-    return _withErrorHandling(
+  Stream<List<HomeService>> streamAllTechnicianServices({int limit = 50}) async* {
+    // CRITICAL FIX: Get user location from shared service
+    final location = await _locationService.getUserLocationCached();
+    
+    if (location == null) {
+      if (kDebugMode) debugPrint('⚠️ [FirestoreService] No location data - returning empty results');
+      yield [];
+      return;
+    }
+
+    if (kDebugMode) debugPrint('✅ [FirestoreService] Filtering by location: ${location['state']}/${location['district']}');
+
+    // CRITICAL FIX: Add location filtering to match CategoryService
+    yield* _withErrorHandling(
       _db.collection('technician_services')
           .where('status', isEqualTo: 'approved')
+          .where('state', isEqualTo: location['state'])
+          .where('district', isEqualTo: location['district'])
           .limit(limit)
           .snapshots()
           .map((snapshot) {
@@ -244,6 +264,10 @@ class FirestoreService {
         district: address.district,
         state: address.state,
       );
+      
+      // CRITICAL FIX: Clear location cache when primary address changes
+      _locationService.clearLocationCache();
+      if (kDebugMode) debugPrint('✅ [ADDRESS_SAVE] Location cache cleared');
     }
     
     debugPrint('[ADDRESS_SAVE] Address saved successfully for user $userId');
@@ -283,12 +307,20 @@ class FirestoreService {
     
     try {
       await callable.call(data);
+      
+      // CRITICAL FIX: Clear location cache when default address changes
+      _locationService.clearLocationCache();
+      if (kDebugMode) debugPrint('✅ [ADDRESS] Location cache cleared after setDefault');
     } catch (e) {
       if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
         await user.getIdToken(true);
         
         final retryCallable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('manageAddress');
         await retryCallable.call(data);
+        
+        // Clear cache on retry success too
+        _locationService.clearLocationCache();
+        if (kDebugMode) debugPrint('✅ [ADDRESS] Location cache cleared after setDefault (retry)');
       } else {
         rethrow;
       }
@@ -988,26 +1020,28 @@ class FirestoreService {
     return subcategories;
   }
 
-  Stream<List<HomeService>> streamRecommendedServices(String userId, {int limit = 10}) {
-    return _withErrorHandling(
+  Stream<List<HomeService>> streamRecommendedServices(String userId, {int limit = 10}) async* {
+    final userLocation = await _locationService.getUserLocationCached();
+    
+    if (userLocation == null) {
+      if (kDebugMode) debugPrint('⚠️ [FirestoreService] No location data - returning empty results');
+      yield [];
+      return;
+    }
+
+    yield* _withErrorHandling(
       _db.collection('technician_services')
           .where('status', isEqualTo: 'approved')
-          .limit(limit * 3)
+          .where('state', isEqualTo: userLocation['state'])
+          .where('district', isEqualTo: userLocation['district'])
+          .limit(limit)
           .snapshots()
-          .asyncMap((snapshot) async {
-            final userLocation = await _getUserLocation(userId);
+          .map((snapshot) {
             final services = snapshot.docs
                 .map((doc) => HomeService.fromFirestore(doc))
                 .whereType<HomeService>()
                 .toList();
-            
-            if (userLocation != null && userLocation['district']!.isNotEmpty) {
-              return services
-                  .where((s) => _normalizeLocation(s.technicianDistrict ?? '') == userLocation['district'])
-                  .take(limit)
-                  .toList();
-            }
-            return services.take(limit).toList();
+            return services;
           })
           .asBroadcastStream(),
     );
@@ -1048,45 +1082,28 @@ class FirestoreService {
     );
   }
 
-  String _normalizeLocation(String value) {
-    return value.trim().toLowerCase();
-  }
-
-  Future<Map<String, String>?> _getUserLocation(String userId) async {
-    try {
-      final userDoc = await _db.collection('customers').doc(userId).get();
-      if (!userDoc.exists) return null;
-      final data = userDoc.data();
-      return {
-        'state': _normalizeLocation(data?['state'] ?? ''),
-        'district': _normalizeLocation(data?['district'] ?? ''),
-      };
-    } catch (e) {
-      debugPrint('Error getting user location: $e');
-      return null;
+  Stream<List<HomeService>> streamNearbyServices(String userId, {int limit = 10}) async* {
+    final userLocation = await _locationService.getUserLocationCached();
+    
+    if (userLocation == null) {
+      if (kDebugMode) debugPrint('⚠️ [FirestoreService] No location data - returning empty results');
+      yield [];
+      return;
     }
-  }
 
-  Stream<List<HomeService>> streamNearbyServices(String userId, {int limit = 10}) {
-    return _withErrorHandling(
+    yield* _withErrorHandling(
       _db.collection('technician_services')
           .where('status', isEqualTo: 'approved')
-          .limit(limit * 3)
+          .where('state', isEqualTo: userLocation['state'])
+          .where('district', isEqualTo: userLocation['district'])
+          .limit(limit)
           .snapshots()
-          .asyncMap((snapshot) async {
-            final userLocation = await _getUserLocation(userId);
+          .map((snapshot) {
             final services = snapshot.docs
                 .map((doc) => HomeService.fromFirestore(doc))
                 .whereType<HomeService>()
                 .toList();
-            
-            if (userLocation != null && userLocation['district']!.isNotEmpty) {
-              return services
-                  .where((s) => _normalizeLocation(s.technicianDistrict ?? '') == userLocation['district'])
-                  .take(limit)
-                  .toList();
-            }
-            return services.take(limit).toList();
+            return services;
           })
           .asBroadcastStream(),
     );
@@ -1155,6 +1172,45 @@ class FirestoreService {
         .snapshots()
         .map((snapshot) => 
             snapshot.docs.map((doc) => {...doc.data(), "id": doc.id}).toList());
+  }
+
+  // --- NEW METHODS FOR CLEAN ARCHITECTURE ---
+
+  /// Get user profile data
+  /// Replaces direct FirebaseFirestore.instance access in UI components
+  Future<Map<String, dynamic>?> getUserProfile(String userId) async {
+    if (userId.isEmpty) {
+      if (kDebugMode) debugPrint('[PATH GUARD] blocked empty id in getUserProfile');
+      return null;
+    }
+    
+    try {
+      final doc = await _db.collection('customers').doc(userId).get();
+      return doc.data();
+    } catch (e) {
+      if (kDebugMode) debugPrint('❌ [FirestoreService] Failed to get user profile: $e');
+      return null;
+    }
+  }
+
+  /// Stream online technicians filtered by location
+  /// Replaces direct Firestore queries for technicians in UI
+  Stream<List<Map<String, dynamic>>> streamOnlineTechnicians({
+    required String state,
+    required String district,
+  }) {
+    return _withErrorHandling(
+      _db.collection('technicians')
+          .where('isOnline', isEqualTo: true)
+          .where('state', isEqualTo: state)
+          .where('district', isEqualTo: district)
+          .snapshots()
+          .map((snapshot) => snapshot.docs.map((doc) => {
+            'id': doc.id,
+            ...doc.data(),
+          }).toList())
+          .asBroadcastStream(),
+    );
   }
 }
 

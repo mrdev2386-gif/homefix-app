@@ -110,4 +110,32 @@ class TechnicianService {
     }
     return counts;
   }
+
+  /// Stream technicians with filters
+  Stream<List<TechnicianModel>> streamTechnicians({
+    String? category,
+    String? district,
+    bool? isOnline,
+    bool? isApproved,
+  }) {
+    Query query = _db.collection('technicians');
+
+    // FIX: Use normalized district field for case-insensitive matching
+    if (district != null && district.isNotEmpty) {
+      final normalizedDistrict = district.trim().toLowerCase();
+      query = query.where('districtNormalized', isEqualTo: normalizedDistrict);
+    }
+    if (isOnline != null) {
+      query = query.where('status', isEqualTo: isOnline ? 'active' : 'inactive');
+    }
+    if (isApproved != null) {
+      query = query.where('isApproved', isEqualTo: isApproved);
+    }
+    if (category != null && category.isNotEmpty) {
+      query = query.where('skills', arrayContains: category.toLowerCase());
+    }
+
+    return query.snapshots().map((snapshot) =>
+        snapshot.docs.map((doc) => TechnicianModel.fromFirestore(doc)).toList());
+  }
 }

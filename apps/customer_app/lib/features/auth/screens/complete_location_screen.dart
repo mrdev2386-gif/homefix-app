@@ -45,14 +45,16 @@ class _CompleteLocationScreenState extends State<CompleteLocationScreen> {
       });
 
       if (mounted) {
-        // Clear location cache to force refresh
-        try {
-          final categoryService = Provider.of<CategoryService>(context, listen: false);
-          categoryService.clearLocationCache();
-        } catch (e) {
-          debugPrint('Could not clear location cache: $e');
-        }
+        // CRITICAL: Clear location cache BEFORE navigation (MANDATORY)
+        debugPrint('[CompleteLocation] Clearing location cache...');
+        final categoryService = Provider.of<CategoryService>(context, listen: false);
+        categoryService.clearLocationCache();
         
+        // Force immediate refresh by notifying listeners
+        categoryService.notifyListeners();
+        debugPrint('[CompleteLocation] ✅ Location cache cleared successfully');
+        
+        // Navigate AFTER cache is cleared
         Navigator.of(context).pushNamedAndRemoveUntil(
           '/home',
           (route) => false,

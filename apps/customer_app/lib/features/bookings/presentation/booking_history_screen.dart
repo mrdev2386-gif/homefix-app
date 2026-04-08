@@ -26,6 +26,22 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
   bool _isInitialLoad = true;
 
   @override
+  void initState() {
+    super.initState();
+    // FIX: Add timeout to prevent infinite loading
+    _startLoadingTimeout();
+  }
+  
+  /// Timeout mechanism - if no data after 10 seconds, stop showing loading
+  Future<void> _startLoadingTimeout() async {
+    await Future.delayed(const Duration(seconds: 10));
+    if (mounted && _isInitialLoad) {
+      debugPrint('[BOOKING_STREAM] ⏱️ Loading timeout reached, stopping shimmer');
+      setState(() => _isInitialLoad = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final authService = Provider.of<AuthService>(context);
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);

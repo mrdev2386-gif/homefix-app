@@ -1,7 +1,6 @@
-'use client';
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
+import { getFirestore, Firestore } from "firebase/firestore";
+import { getFunctions, Functions, connectFunctionsEmulator } from "firebase/functions";
 
 const firebaseConfig = {
     apiKey: "AIzaSyADfM4cMfTlz3Cth0QwalYntQv3AoU9daI",
@@ -12,15 +11,9 @@ const firebaseConfig = {
     appId: "1:663243229047:web:generic_web_id"
 };
 
-import { getFunctions } from "firebase/functions";
+// Initialize Firebase (shared config - NO AUTH here to prevent SSR issues)
+const app: FirebaseApp = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+const db: Firestore = getFirestore(app);
+const functions: Functions = getFunctions(app, 'asia-south1');
 
-let app, auth, db, functions;
-
-if (typeof window !== 'undefined') {
-    app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-    auth = getAuth(app);
-    db = getFirestore(app);
-    functions = getFunctions(app);
-}
-
-export { app, auth, db, functions };
+export { app, db, functions };

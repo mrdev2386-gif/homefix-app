@@ -48,17 +48,20 @@ void main() async {
   );
   print('✅ Firebase initialized successfully');
   
-  // CRITICAL: Disable Firestore cache for debugging price issues
-  print('⚠️ [DEBUG] Disabling Firestore persistence cache...');
+  // CRITICAL: Enable Firestore cache for production performance
+  print('✅ [PRODUCTION] Enabling Firestore persistence cache...');
   FirebaseFirestore.instance.settings = const Settings(
-    persistenceEnabled: false,
+    persistenceEnabled: true,
+    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
   );
-  print('✅ Firestore cache disabled - all data will be fetched fresh');
+  print('✅ Firestore cache enabled - data will be cached locally');
 
-  // DISABLED FOR DEBUG (fix unauthenticated issue)
-  // await FirebaseAppCheck.instance.activate(
-  //   androidProvider: AndroidProvider.debug,
-  // );
+  // Enable Firebase App Check for production security
+  print('🔒 [SECURITY] Enabling Firebase App Check...');
+  await FirebaseAppCheck.instance.activate(
+    androidProvider: kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+  );
+  print('✅ Firebase App Check enabled');
 
   // STEP 3: Wait for Firebase Auth to be ready
   print('🔑 Waiting for Firebase Auth to initialize...');

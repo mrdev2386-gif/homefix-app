@@ -78,30 +78,28 @@ export const approveBookingByAdmin = functions
 
         const booking = bookingSnap.data()!;
 
-        if (booking.bookingStatus !== 'pending_admin_approval' && booking.bookingStatus !== 'pending') {
+        const pendingStatuses = ['pending_admin_review', 'pending_admin_approval', 'pending_admin', 'pending'];
+        if (!pendingStatuses.includes(booking.bookingStatus) && !pendingStatuses.includes(booking.status)) {
             throw new functions.https.HttpsError(
                 'failed-precondition',
                 `Cannot approve booking with status: ${booking.bookingStatus}`
             );
         }
 
-        if (!booking.technicianId) {
+        // Use overrideTechnicianId if admin is changing technician, else keep original
+        const { overrideTechnicianId } = data;
+        const assignedTechnicianId = overrideTechnicianId || booking.technicianId;
+
+        if (!assignedTechnicianId) {
             throw new functions.https.HttpsError('failed-precondition', 'No technician assigned to booking');
         }
 
-        const techDoc = await db.collection('technicians').doc(booking.technicianId).get();
+        const techDoc = await db.collection('technicians').doc(assignedTechnicianId).get();
         if (!techDoc.exists) {
             throw new functions.https.HttpsError('not-found', 'Technician not found');
         }
 
         const techData = techDoc.data()!;
-
-        if (techData.verificationStatus !== 'approved') {
-            throw new functions.https.HttpsError(
-                'failed-precondition',
-                'Technician is not verified. Please select another technician.'
-            );
-        }
 
         await db.runTransaction(async (t) => {
             const freshDoc = await t.get(bookingRef);
@@ -109,23 +107,23 @@ export const approveBookingByAdmin = functions
             const freshBooking = freshDoc.data()!;
             updateBookingStatus(t, bookingRef, 'approved_by_admin', freshBooking, {
                 bookingStatus: 'approved_by_admin',
+                status: 'approved_by_admin',
+                technicianId: assignedTechnicianId,
+                technicianName: techData.name || freshBooking.technicianName || 'Technician',
+                technicianPhone: techData.phone || freshBooking.technicianPhone || '',
                 approvedAt: admin.firestore.FieldValue.serverTimestamp(),
                 approvedBy: uid,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
         });
 
-        if (booking.technicianId) {
-            const techDoc = await db.collection('technicians').doc(booking.technicianId).get();
-            const techData = techDoc.data();
-
-            if (techData?.fcmToken) {
-                await sendNotificationToToken({
-                    token: techData.fcmToken,
-                    title: 'New Job Available',
-                    body: `Admin approved a booking for ${booking.serviceName || 'service'}. Please accept or reject.`,
-                    data: { bookingId, type: 'booking_approved' },
-                });
-            }
+        if (techData?.fcmToken) {
+            await sendNotificationToToken({
+                token: techData.fcmToken,
+                title: 'New Job Assigned',
+                body: `You have a new booking for ${booking.serviceName || 'service'}. Please accept or reject.`,
+                data: { bookingId, type: 'booking_approved' },
+            });
         }
 
         return { success: true, bookingStatus: 'approved_by_admin' };
@@ -480,7 +478,83 @@ export const cancelBooking = functions
 );
 
 // ==========================================
-// 7️⃣ CREATE BOOKING REQUEST
+// 7️⃣ ADMIN REJECT BOOKING
+// ==========================================
+export const rejectBookingByAdmin = functions
+  .region('asia-south1')
+  .https.onCall(
+    secureCallable(async (data, context) => {
+      console.log('✅ [rejectBookingByAdmin] Auth UID:', context.auth?.uid);
+      
+      const { bookingId, reason } = data;
+      const uid = context.auth?.uid;
+
+      if (!uid) {
+        console.error('❌ [rejectBookingByAdmin] context.auth is NULL');
+        throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
+      }
+      if (!bookingId) {
+        throw new functions.https.HttpsError('invalid-argument', 'bookingId required');
+      }
+
+      // Verify admin
+      const adminDoc = await db.collection('admins').doc(uid).get();
+      if (!adminDoc.exists) {
+        throw new functions.https.HttpsError('permission-denied', 'Only admins can reject bookings');
+      }
+
+      const bookingRef = db.collection('bookings').doc(bookingId);
+      const bookingSnap = await bookingRef.get();
+
+      if (!bookingSnap.exists) {
+        throw new functions.https.HttpsError('not-found', 'Booking not found');
+      }
+
+      const booking = bookingSnap.data()!;
+
+      const rejectablePendingStatuses = ['pending_admin_review', 'pending_admin_approval', 'pending_admin', 'pending', 'awaiting_payment'];
+      if (!rejectablePendingStatuses.includes(booking.bookingStatus) && !rejectablePendingStatuses.includes(booking.status)) {
+        throw new functions.https.HttpsError(
+          'failed-precondition',
+          `Cannot reject booking with status: ${booking.bookingStatus}`
+        );
+      }
+
+      // Update booking
+      await db.runTransaction(async (t) => {
+        const freshDoc = await t.get(bookingRef);
+        if (!freshDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
+        const freshBooking = freshDoc.data()!;
+        
+        updateBookingStatus(t, bookingRef, 'rejected_by_admin', freshBooking, {
+          bookingStatus: 'rejected_by_admin',
+          status: 'rejected_by_admin', // Backward compatibility
+          rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
+          rejectedBy: uid,
+          rejectionReason: sanitize(reason) || 'Rejected by admin',
+        });
+      });
+
+      // Notify customer
+      const customerDoc = await db.collection('customers').doc(booking.customerId).get();
+      const customerData = customerDoc.data();
+
+      if (customerData?.fcmToken) {
+        await sendNotificationToToken({
+          token: customerData.fcmToken,
+          title: 'Booking Rejected',
+          body: `Your booking request was rejected. ${reason || ''}`,
+          data: { bookingId, type: 'booking_rejected' },
+        });
+      }
+
+      console.log(`✅ [rejectBookingByAdmin] Booking ${bookingId} rejected by admin ${uid}`);
+      return { success: true, bookingStatus: 'rejected_by_admin' };
+    })
+  );
+
+// ==========================================
+// 8️⃣ CREATE BOOKING REQUEST
 // ==========================================
 /**
  * Create a new booking request
@@ -607,13 +681,23 @@ export const createBookingRequest = functions
         throw new functions.https.HttpsError('invalid-argument', 'Service does not belong to the selected technician');
       }
 
-      // ENFORCE Database Price (use client price if service price is missing)
-      const basePrice = serviceData.price || price || 0;
+      // CRITICAL SECURITY FIX: NEVER trust client price - ONLY use database price
+      const basePrice = serviceData.price;
       if (typeof basePrice !== 'number' || basePrice <= 0) {
-        console.error('❌ [createBookingRequest] Invalid price. Service price:', serviceData.price, 'Client price:', price);
-        throw new functions.https.HttpsError('internal', 'Invalid service price configuration. Please contact support.');
+        console.error('❌ [createBookingRequest] Invalid service price in database. Service price:', serviceData.price, 'Client sent:', price);
+        throw new functions.https.HttpsError('internal', 'Service price not configured. Please contact support.');
       }
-      console.log('✅ [createBookingRequest] Using price:', basePrice);
+      
+      // Validate client price matches database price (within ₹1 tolerance for quantity calculations)
+      if (price !== undefined) {
+        const priceDiff = Math.abs(basePrice - price);
+        if (priceDiff > 1.0) {
+          console.warn('⚠️ [createBookingRequest] Price mismatch detected. Database:', basePrice, 'Client:', price, 'Diff:', priceDiff);
+          // Use database price regardless - client price is ignored
+        }
+      }
+      
+      console.log('✅ [createBookingRequest] Using database price:', basePrice, '(client sent:', price, ')');
 
       console.log('🔍 [createBookingRequest] Fetching technician data...');
       const techDoc = await db.collection('technicians').doc(technicianId).get();
@@ -631,7 +715,7 @@ export const createBookingRequest = functions
       }
       console.log('✅ [createBookingRequest] Technician verified');
 
-      const finalIdempotencyKey = idempotencyKey || `BK_${uid}_${Date.now()}`;
+      const finalIdempotencyKey = idempotencyKey || `BK_${require('crypto').randomBytes(16).toString('hex')}`;
       const bookingId = db.collection('bookings').doc().id;
       
       console.log('🔑 [createBookingRequest] Idempotency key:', finalIdempotencyKey);
@@ -639,7 +723,8 @@ export const createBookingRequest = functions
 
       // PHASE 5: Protect Booking Integrity - Define outside transaction
       const finalPaymentMethod = paymentMethod || (paymentMode === 'before_work' || paymentMode === 'pay_before_work' ? 'online' : 'after_service');
-      const initialStatus = finalPaymentMethod === 'online' ? 'awaiting_payment' : 'pending';
+      // All bookings go through admin review first
+      const initialStatus = 'pending_admin_review';
 
       try {
       await db.runTransaction(async (transaction) => {
@@ -655,10 +740,13 @@ export const createBookingRequest = functions
           bookingId,
           customerId: uid,
           customerName: customerDoc.data()?.name || 'Customer',
+          customerPhone: customerDoc.data()?.phone || '',
           technicianId,
           technicianName: techData.name || 'Technician',
+          technicianPhone: techData.phone || '',
           serviceId,
-          serviceName: serviceData.name || 'Service',
+          serviceName: serviceData.name || serviceData.title || 'Service',
+          price: basePrice,
           categoryId: serviceData.categoryId || categoryId,
           categoryName: categoryName || serviceData.category || 'Service',
           subcategoryId: subcategoryId || null,
@@ -667,14 +755,12 @@ export const createBookingRequest = functions
           scheduledDate,
           scheduledTime,
           address: sanitizeAddress(address),
-          // ENFORCE PRICE AND INITIAL STATUS
-          price: basePrice,
           discountAmount: 0,
           finalAmount: basePrice,
           paymentMode: paymentMode || 'after_work',
           paymentMethod: finalPaymentMethod,
-          bookingStatus: initialStatus,
-          status: initialStatus,
+          bookingStatus: 'pending_admin_review',
+          status: 'pending_admin_review',
           // INITIALIZE STATUS HISTORY
           statusHistory: [
             {
@@ -720,20 +806,14 @@ export const createBookingRequest = functions
 
         console.log(`✅ [BOOKING] Created booking: ${bookingId} for customer: ${uid} with price: ${basePrice}, paymentMethod: ${finalPaymentMethod}`);
         
-        if (finalPaymentMethod === 'online') {
-          await sendAdminNotification(bookingId, 'New Booking - Payment Required');
-        } else {
-          await sendAdminNotification(bookingId, 'New Booking Pending Approval');
-        }
+        await sendAdminNotification(bookingId, 'New Booking Pending Approval');
 
         return {
           success: true,
           bookingId,
-          bookingStatus: initialStatus,
+          bookingStatus: 'pending_admin_review',
           paymentMethod: finalPaymentMethod,
-          message: finalPaymentMethod === 'online' 
-            ? 'Booking created. Please complete payment to proceed.' 
-            : 'Booking created successfully. Awaiting admin approval.',
+          message: 'Booking created successfully. Awaiting admin approval.',
         };
       } catch (error: any) {
         if (error.message?.startsWith('IDEMPOTENCY_DUPLICATE:')) {
@@ -765,6 +845,76 @@ export const createBookingRequest = functions
       throw new functions.https.HttpsError('internal', error.message || 'Unknown error');
     }
   })
+);
+
+// ==========================================
+// 9️⃣ ADMIN CHANGE TECHNICIAN
+// ==========================================
+export const adminChangeTechnician = functions
+  .region('asia-south1')
+  .https.onCall(
+    secureCallable(async (data, context) => {
+        const { bookingId, technicianId: newTechnicianId } = data;
+        const uid = context.auth?.uid;
+
+        if (!uid) throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
+        if (!bookingId) throw new functions.https.HttpsError('invalid-argument', 'bookingId required');
+        if (!newTechnicianId) throw new functions.https.HttpsError('invalid-argument', 'technicianId required');
+
+        const adminDoc = await db.collection('admins').doc(uid).get();
+        if (!adminDoc.exists) throw new functions.https.HttpsError('permission-denied', 'Admin access required');
+
+        const bookingRef = db.collection('bookings').doc(bookingId);
+        const bookingSnap = await bookingRef.get();
+        if (!bookingSnap.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
+
+        const techDoc = await db.collection('technicians').doc(newTechnicianId).get();
+        if (!techDoc.exists) throw new functions.https.HttpsError('not-found', 'Technician not found');
+        const techData = techDoc.data()!;
+
+        // Only update technician fields — do NOT change status
+        await bookingRef.update({
+            technicianId: newTechnicianId,
+            technicianName: techData.name || 'Technician',
+            technicianPhone: techData.phone || '',
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        return { success: true, technicianId: newTechnicianId, technicianName: techData.name };
+    })
+);
+
+// ==========================================
+// 🔟 GET ALL TECHNICIANS (for admin change-technician modal)
+// ==========================================
+export const getAllTechniciansForAdmin = functions
+  .region('asia-south1')
+  .https.onCall(
+    secureCallable(async (data, context) => {
+        const uid = context.auth?.uid;
+        if (!uid) throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
+
+        const adminDoc = await db.collection('admins').doc(uid).get();
+        if (!adminDoc.exists) throw new functions.https.HttpsError('permission-denied', 'Admin access required');
+
+        const snapshot = await db.collection('technicians')
+            .where('status', 'in', ['approved', 'active'])
+            .limit(100)
+            .get();
+
+        const technicians = snapshot.docs.map(doc => {
+            const d = doc.data();
+            return {
+                id: doc.id,
+                name: d.name || 'Unknown',
+                phone: d.phone || '',
+                rating: d.rating || 0,
+                completedJobs: d.completedJobs || d.totalJobs || 0,
+            };
+        });
+
+        return { success: true, technicians };
+    })
 );
 
 /**
@@ -819,20 +969,44 @@ function sanitizeAddress(address: any): Record<string, any> {
 async function sendAdminNotification(bookingId: string, title: string) {
   try {
     const adminsSnapshot = await db.collection('admins').limit(10).get();
+    const notificationPromises = [];
+    
     for (const adminDoc of adminsSnapshot.docs) {
       const adminData = adminDoc.data();
-      if (adminData?.fcmToken) {
-        await db.collection('notifications').add({
+      
+      // Write to Firestore notifications collection
+      notificationPromises.push(
+        db.collection('notifications').add({
           userId: adminDoc.id,
           title,
           body: `New booking #${bookingId} requires approval`,
           type: 'booking_pending_approval',
           bookingId,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
+        })
+      );
+      
+      // Send FCM notification if token exists
+      if (adminData?.fcmToken) {
+        notificationPromises.push(
+          sendNotificationToToken({
+            token: adminData.fcmToken,
+            title,
+            body: `New booking #${bookingId} requires approval`,
+            data: { 
+              bookingId, 
+              type: 'booking_pending_approval',
+            },
+          })
+        );
       }
     }
+    
+    // Use Promise.allSettled to not block booking creation if notifications fail
+    await Promise.allSettled(notificationPromises);
+    console.log(`📧 [BOOKING] Notified ${adminsSnapshot.size} admins about booking ${bookingId}`);
   } catch (error) {
     console.error('[BOOKING] Error sending admin notification:', error);
+    // Non-fatal - don't throw
   }
 }

@@ -3,21 +3,25 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageHeader, StatusBadge, Column, ConfirmDialog, StatCard } from '@/components/ui';
-import { Search, Filter, X, CheckCircle, XCircle, Calendar, Clock, TrendingUp, Package, Eye, Phone, MapPin, IndianRupee } from 'lucide-react';
+import { Search, X, CheckCircle, XCircle, Clock, TrendingUp, Package, Eye, UserCog, Star } from 'lucide-react';
 import { Timestamp } from 'firebase/firestore';
-import { subscribeToBookings, AdminBooking, approveBookingAction, rejectBookingAction } from '@/lib/services/adminBookingService';
+import { subscribeToBookings, AdminBooking, approveBookingAction, rejectBookingAction, approveBookingWithTechnician, fetchAllTechnicians, TechnicianOption } from '@/lib/services/adminBookingService';
+import { normalizeBookingStatus, canApproveBooking } from '@/lib/bookingStatus';
 
 export default function BookingsPage() {
   const router = useRouter();
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
   const [filteredBookings, setFilteredBookings] = useState<AdminBooking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [paymentFilter, setPaymentFilter] = useState('all');
   const [selectedBooking, setSelectedBooking] = useState<AdminBooking | null>(null);
-  const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [showChangeTechModal, setShowChangeTechModal] = useState(false);
+  const [technicians, setTechnicians] = useState<TechnicianOption[]>([]);
+  const [selectedTechId, setSelectedTechId] = useState<string>('');
+  const [techLoading, setTechLoading] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -27,46 +31,83 @@ export default function BookingsPage() {
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   useEffect(() => {
-    const unsubscribe = subscribeToBookings((bookingsData) => {
-      console.log('Fetched bookings:', bookingsData.length);
-      setBookings(bookingsData);
-      setLoading(false);
-    });
+    console.log('[BookingsPage] Mounting, starting subscription...');
+    let unsubscribe: (() => void) | undefined;
 
-    return () => unsubscribe();
+    try {
+      unsubscribe = subscribeToBookings((bookingsData) => {
+        console.log('[BookingsPage] Received bookings:', bookingsData.length);
+        setBookings(bookingsData);
+        setLoading(false);
+        setError(null);
+      });
+    } catch (err: any) {
+      console.error('[BookingsPage] Failed to start subscription:', err);
+      setError('Failed to load bookings. Please refresh.');
+      setLoading(false);
+    }
+
+    return () => unsubscribe?.();
   }, []);
 
   useEffect(() => {
-    filterBookings();
-  }, [bookings, searchTerm, statusFilter, paymentFilter]);
-
-  const filterBookings = () => {
     let filtered = [...bookings];
-
     if (statusFilter !== 'all') {
-      filtered = filtered.filter(b => b.status === statusFilter);
+      filtered = filtered.filter(b => normalizeBookingStatus(b.status) === statusFilter);
     }
-
-    if (paymentFilter !== 'all') {
-      filtered = filtered.filter(b => b.paymentStatus === paymentFilter);
-    }
-
     if (searchTerm) {
-      filtered = filtered.filter(b => 
-        b.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        b.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        b.technicianName?.toLowerCase().includes(searchTerm.toLowerCase())
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(b =>
+        b.id.toLowerCase().includes(term) ||
+        b.customerName?.toLowerCase().includes(term) ||
+        b.technicianName?.toLowerCase().includes(term) ||
+        b.serviceName?.toLowerCase().includes(term)
       );
     }
-
     setFilteredBookings(filtered);
-  };
+  }, [bookings, searchTerm, statusFilter]);
 
   const stats = {
     total: bookings.length,
-    pending: bookings.filter(b => b.status === 'PENDING_ADMIN_APPROVAL').length,
-    active: bookings.filter(b => ['ADMIN_APPROVED', 'TECHNICIAN_ACCEPTED', 'IN_PROGRESS'].includes(b.status)).length,
-    completed: bookings.filter(b => b.status === 'COMPLETED').length,
+    pending: bookings.filter(b => canApproveBooking(b.status)).length,
+    active: bookings.filter(b => ['approved_by_admin', 'technician_accepted', 'service_in_progress'].includes(normalizeBookingStatus(b.status))).length,
+    completed: bookings.filter(b => normalizeBookingStatus(b.status) === 'service_completed').length,
+  };
+
+  const openChangeTechModal = async (booking: AdminBooking) => {
+    setSelectedBooking(booking);
+    setSelectedTechId(booking.technicianId || '');
+    setShowChangeTechModal(true);
+    setTechLoading(true);
+    try {
+      const techs = await fetchAllTechnicians();
+      setTechnicians(techs);
+    } catch (e) {
+      console.error('Failed to load technicians', e);
+    } finally {
+      setTechLoading(false);
+    }
+  };
+
+  const handleChangeTechAndApprove = () => {
+    if (!selectedBooking || !selectedTechId) return;
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Approve with Technician',
+      message: 'Approve booking and assign selected technician?',
+      onConfirm: async () => {
+        setProcessing(true);
+        try {
+          await approveBookingWithTechnician(selectedBooking.id, selectedTechId);
+          setShowChangeTechModal(false);
+          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+        } catch (error: any) {
+          alert(`Failed: ${error.message}`);
+        } finally {
+          setProcessing(false);
+        }
+      },
+    });
   };
 
   const handleApprove = (bookingId: string) => {
@@ -78,9 +119,8 @@ export default function BookingsPage() {
         setProcessing(true);
         try {
           await approveBookingAction(bookingId);
-          setConfirmDialog({ ...confirmDialog, isOpen: false });
+          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
         } catch (error: any) {
-          console.error('Error approving booking:', error);
           alert(`Failed: ${error.message}`);
         } finally {
           setProcessing(false);
@@ -99,9 +139,8 @@ export default function BookingsPage() {
         setProcessing(true);
         try {
           await rejectBookingAction(bookingId, 'Rejected by admin');
-          setConfirmDialog({ ...confirmDialog, isOpen: false });
+          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
         } catch (error: any) {
-          console.error('Error rejecting booking:', error);
           alert(`Failed: ${error.message}`);
         } finally {
           setProcessing(false);
@@ -111,46 +150,33 @@ export default function BookingsPage() {
   };
 
   const getStatusVariant = (status: string): 'success' | 'warning' | 'error' | 'info' | 'default' => {
+    const n = normalizeBookingStatus(status);
     const map: Record<string, 'success' | 'warning' | 'error' | 'info' | 'default'> = {
-      'PENDING_ADMIN_APPROVAL': 'warning',
-      'ADMIN_APPROVED': 'info',
-      'TECHNICIAN_ACCEPTED': 'info',
-      'IN_PROGRESS': 'info',
-      'COMPLETED': 'success',
-      'CANCELLED': 'error',
+      'pending_admin_approval': 'warning',
+      'approved_by_admin': 'info',
+      'technician_accepted': 'info',
+      'service_in_progress': 'info',
+      'service_completed': 'success',
+      'rejected': 'error',
     };
-    return map[status] || 'default';
+    return map[n] || 'default';
   };
-
-  const formatStatus = (status: string) => status.replace(/_/g, ' ');
 
   const formatDate = (timestamp: any) => {
     if (!timestamp) return '-';
     if (timestamp instanceof Timestamp) return timestamp.toDate().toLocaleDateString();
-    if (timestamp.toDate) return timestamp.toDate().toLocaleDateString();
-    if (timestamp instanceof Date) return timestamp.toLocaleDateString();
+    if (timestamp?.toDate) return timestamp.toDate().toLocaleDateString();
     return '-';
   };
 
-  const getTimeline = (booking: any) => {
-    const timeline = [
-      { label: 'Booking Created', date: booking.createdAt, completed: true },
-      { label: 'Admin Approved', date: booking.adminApprovedAt, completed: ['ADMIN_APPROVED', 'TECHNICIAN_ACCEPTED', 'IN_PROGRESS', 'COMPLETED'].includes(booking.status) },
-      { label: 'Technician Accepted', date: booking.technicianAcceptedAt, completed: ['TECHNICIAN_ACCEPTED', 'IN_PROGRESS', 'COMPLETED'].includes(booking.status) },
-      { label: 'Service Started', date: booking.serviceStartedAt, completed: ['IN_PROGRESS', 'COMPLETED'].includes(booking.status) },
-      { label: 'Service Completed', date: booking.completedAt, completed: booking.status === 'COMPLETED' },
-    ];
-    return timeline;
-  };
-
   const columns: Column[] = [
-    { 
-      key: 'id', 
+    {
+      key: 'id',
       label: 'Booking ID',
       render: (item) => <span className="text-sm font-mono text-[#6366F1]">{item.id.substring(0, 8)}</span>
     },
-    { 
-      key: 'customerName', 
+    {
+      key: 'customerName',
       label: 'Customer',
       render: (item) => (
         <div>
@@ -159,18 +185,18 @@ export default function BookingsPage() {
         </div>
       )
     },
-    { 
-      key: 'technicianName', 
+    {
+      key: 'technicianName',
       label: 'Technician',
       render: (item) => (
         <div>
-          <p className="text-sm text-[#E5E7EB]">{item.technicianName || 'Not assigned yet'}</p>
+          <p className="text-sm text-[#E5E7EB]">{item.technicianName || 'Not assigned'}</p>
           <p className="text-xs text-[#6B7280]">{item.technicianPhone || ''}</p>
         </div>
       )
     },
-    { 
-      key: 'serviceName', 
+    {
+      key: 'serviceName',
       label: 'Service',
       render: (item) => (
         <div>
@@ -179,40 +205,20 @@ export default function BookingsPage() {
         </div>
       )
     },
-    { 
-      key: 'location', 
-      label: 'City / Address',
-      render: (item) => <span className="text-sm text-[#9CA3AF]">{item.city || '-'}</span>
-    },
-    { 
-      key: 'bookingDate', 
-      label: 'Booking Date',
-      render: (item) => (
-        <div>
-          <p className="text-sm text-[#E5E7EB]">{formatDate(item.bookingDate)}</p>
-          <p className="text-xs text-[#6B7280]">{item.timeSlot || ''}</p>
-        </div>
-      )
-    },
-    { 
-      key: 'servicePrice', 
+    {
+      key: 'servicePrice',
       label: 'Price',
       render: (item) => <span className="text-sm font-medium text-[#E5E7EB]">₹{item.servicePrice}</span>
     },
     {
-      key: 'paymentStatus',
-      label: 'Payment',
-      render: (item) => (
-        <StatusBadge 
-          status={item.paymentStatus || 'PENDING'} 
-          variant={item.paymentStatus === 'PAID' ? 'success' : item.paymentStatus === 'FAILED' ? 'error' : 'warning'}
-        />
-      )
+      key: 'bookingDate',
+      label: 'Date',
+      render: (item) => <span className="text-sm text-[#E5E7EB]">{formatDate(item.bookingDate)}</span>
     },
     {
       key: 'status',
       label: 'Status',
-      render: (item) => <StatusBadge status={formatStatus(item.status)} variant={getStatusVariant(item.status)} />
+      render: (item) => <StatusBadge status={normalizeBookingStatus(item.status).replace(/_/g, ' ')} variant={getStatusVariant(item.status)} />
     },
     {
       key: 'actions',
@@ -224,31 +230,32 @@ export default function BookingsPage() {
             onClick={() => router.push(`/bookings/${item.id}`)}
             className="px-3 py-1 text-xs bg-[#1F2937] text-[#E5E7EB] rounded-lg hover:bg-[#374151]"
           >
-            <Eye size={12} className="inline mr-1" />
-            View
+            <Eye size={12} className="inline mr-1" />View
           </button>
-          {item.status === 'PENDING_ADMIN_APPROVAL' && (
+          {canApproveBooking(item.status) && (
             <>
+              <button
+                onClick={() => openChangeTechModal(item)}
+                disabled={processing}
+                className="px-3 py-1 text-xs bg-[#6366F1] text-white rounded-lg hover:bg-[#4F46E5]"
+              >
+                <UserCog size={12} className="inline mr-1" />Change Tech
+              </button>
               <button
                 onClick={() => handleApprove(item.id)}
                 disabled={processing}
                 className="px-3 py-1 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700"
               >
-                <CheckCircle size={12} className="inline mr-1" />
-                Approve
+                <CheckCircle size={12} className="inline mr-1" />Approve
               </button>
               <button
                 onClick={() => handleReject(item.id)}
                 disabled={processing}
                 className="px-3 py-1 text-xs bg-red-600 text-white rounded-lg hover:bg-red-700"
               >
-                <XCircle size={12} className="inline mr-1" />
-                Reject
+                <XCircle size={12} className="inline mr-1" />Reject
               </button>
             </>
-          )}
-          {item.status === 'ADMIN_APPROVED' && (
-            <span className="text-xs text-[#6B7280] italic">Waiting for technician</span>
           )}
         </div>
       )
@@ -267,7 +274,7 @@ export default function BookingsPage() {
       </div>
 
       <div className="admin-card p-3 sm:p-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" size={18} />
             <input
@@ -281,18 +288,12 @@ export default function BookingsPage() {
           </div>
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="input-field">
             <option value="all">All Status</option>
-            <option value="PENDING_ADMIN_APPROVAL">Pending Approval</option>
-            <option value="ADMIN_APPROVED">Admin Approved</option>
-            <option value="TECHNICIAN_ACCEPTED">Technician Accepted</option>
-            <option value="IN_PROGRESS">In Progress</option>
-            <option value="COMPLETED">Completed</option>
-            <option value="CANCELLED">Cancelled</option>
-          </select>
-          <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)} className="input-field">
-            <option value="all">All Payments</option>
-            <option value="PENDING">Pending</option>
-            <option value="PAID">Paid</option>
-            <option value="FAILED">Failed</option>
+            <option value="pending_admin_approval">Pending Approval</option>
+            <option value="approved_by_admin">Admin Approved</option>
+            <option value="technician_accepted">Technician Accepted</option>
+            <option value="service_in_progress">In Progress</option>
+            <option value="service_completed">Completed</option>
+            <option value="rejected">Rejected / Cancelled</option>
           </select>
           <div className="flex items-center justify-end">
             <span className="text-sm text-[#9CA3AF]">Showing {filteredBookings.length} of {bookings.length}</span>
@@ -303,131 +304,116 @@ export default function BookingsPage() {
       <div className="admin-card p-4 sm:p-6">
         {loading ? (
           <div className="space-y-4">{[1,2,3].map(i => <div key={i} className="h-16 bg-[#1F2937] rounded animate-pulse" />)}</div>
+        ) : error ? (
+          <div className="text-center py-12">
+            <p className="text-red-400 text-sm mb-3">{error}</p>
+            <button
+              onClick={() => { setError(null); setLoading(true); }}
+              className="px-4 py-2 text-xs bg-[#6366F1] text-white rounded-lg hover:bg-[#4F46E5]"
+            >
+              Retry
+            </button>
+          </div>
         ) : filteredBookings.length === 0 ? (
           <div className="text-center py-12 text-[#6B7280]">No bookings found</div>
         ) : (
           <div className="overflow-x-auto -mx-4 sm:mx-0">
-            <div className="inline-block min-w-full align-middle">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-[#1F2937]">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-[#1F2937]">
+                  {columns.map(col => (
+                    <th key={col.key} className={`text-left text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider py-3 px-3 sm:px-4 ${col.align === 'right' ? 'text-right' : ''}`}>
+                      {col.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredBookings.map((item, index) => (
+                  <tr key={item.id} className="border-b border-[#1F2937] hover:bg-[#1F2937]/50">
                     {columns.map(col => (
-                      <th key={col.key} className={`text-left text-xs font-semibold text-[#9CA3AF] uppercase tracking-wider py-3 px-3 sm:px-4 ${col.align === 'right' ? 'text-right' : ''}`}>
-                        {col.label}
-                      </th>
+                      <td key={col.key} className={`py-3 sm:py-4 px-3 sm:px-4 ${col.align === 'right' ? 'text-right' : ''}`}>
+                        {col.render ? col.render(item, index) : (item as any)[col.key]}
+                      </td>
                     ))}
                   </tr>
-                </thead>
-                <tbody>
-                  {filteredBookings.map((item, index) => (
-                    <tr key={item.id} className="border-b border-[#1F2937] hover:bg-[#1F2937]/50">
-                      {columns.map(col => (
-                        <td key={col.key} className={`py-3 sm:py-4 px-3 sm:px-4 ${col.align === 'right' ? 'text-right' : ''}`}>
-                          {col.render ? col.render(item, index) : item[col.key]}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
 
-      {showDetailsModal && selectedBooking && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
-          <div className="bg-[#111827] rounded-xl sm:rounded-2xl max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto border border-[#1F2937]">
-            <div className="sticky top-0 bg-[#111827] border-b border-[#1F2937] p-4 sm:p-6 flex items-center justify-between z-10">
-              <h2 className="text-lg sm:text-xl font-bold text-[#E5E7EB]">Booking Details</h2>
-              <button onClick={() => setShowDetailsModal(false)} className="text-[#6B7280] hover:text-[#E5E7EB]"><X size={24} /></button>
+      {/* Change Technician Modal */}
+      {showChangeTechModal && selectedBooking && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-[#111827] rounded-2xl max-w-lg w-full max-h-[80vh] flex flex-col border border-[#1F2937]">
+            <div className="sticky top-0 bg-[#111827] border-b border-[#1F2937] p-5 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-[#E5E7EB]">Change Technician</h2>
+                <p className="text-xs text-[#6B7280] mt-0.5">Booking: {selectedBooking.id.substring(0, 10)}</p>
+              </div>
+              <button onClick={() => setShowChangeTechModal(false)} className="text-[#6B7280] hover:text-[#E5E7EB]"><X size={20} /></button>
             </div>
-            <div className="p-4 sm:p-6 space-y-6">
-              {/* Customer, Technician, Service Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
-                {/* Customer */}
-                <div className="space-y-3 bg-[#1F2937] p-4 rounded-lg">
-                  <h3 className="text-xs sm:text-sm font-bold text-[#E5E7EB] uppercase tracking-wider">Customer</h3>
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-[#E5E7EB]">{selectedBooking.customerName}</p>
-                    <div className="flex items-center gap-2 text-[#9CA3AF]"><Phone size={14} /><span className="text-xs sm:text-sm">{selectedBooking.customerPhone}</span></div>
-                    {selectedBooking.customerAddress && <div className="flex items-start gap-2 text-[#9CA3AF]"><MapPin size={14} className="mt-1" /><span className="text-xs sm:text-sm">{selectedBooking.customerAddress}</span></div>}
-                    {selectedBooking.city && <p className="text-xs text-[#6B7280]">{selectedBooking.city}</p>}
-                  </div>
-                </div>
-                {/* Technician */}
-                <div className="space-y-3 bg-[#1F2937] p-4 rounded-lg">
-                  <h3 className="text-xs sm:text-sm font-bold text-[#E5E7EB] uppercase tracking-wider">Technician</h3>
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-[#E5E7EB]">{selectedBooking.technicianName || 'Not assigned yet'}</p>
-                    {selectedBooking.technicianPhone && <div className="flex items-center gap-2 text-[#9CA3AF]"><Phone size={14} /><span className="text-xs sm:text-sm">{selectedBooking.technicianPhone}</span></div>}
-                    {selectedBooking.technicianRating && <p className="text-xs text-[#6B7280]">⭐ {selectedBooking.technicianRating.toFixed(1)}</p>}
-                    {selectedBooking.technicianExperience && <p className="text-xs text-[#6B7280]">{selectedBooking.technicianExperience}</p>}
-                  </div>
-                </div>
-                {/* Service */}
-                <div className="space-y-3 bg-[#1F2937] p-4 rounded-lg">
-                  <h3 className="text-xs sm:text-sm font-bold text-[#E5E7EB] uppercase tracking-wider">Service</h3>
-                  <div className="space-y-2">
-                    {selectedBooking.serviceImage && <img src={selectedBooking.serviceImage} alt={selectedBooking.serviceName} className="w-full h-24 object-cover rounded" />}
-                    <p className="text-sm font-medium text-[#E5E7EB]">{selectedBooking.serviceName}</p>
-                    <p className="text-xs text-[#6B7280]">{selectedBooking.categoryName}</p>
-                    <div className="flex items-center gap-2 text-[#10B981]"><IndianRupee size={14} /><span className="text-sm font-bold">₹{selectedBooking.servicePrice}</span></div>
-                  </div>
-                </div>
+
+            <div className="p-5 overflow-y-auto flex-1">
+              <div className="bg-[#1F2937] rounded-lg p-4 mb-4 space-y-1">
+                <p className="text-xs text-[#6B7280]">Customer</p>
+                <p className="text-sm font-medium text-[#E5E7EB]">{selectedBooking.customerName} · {selectedBooking.customerPhone}</p>
+                <p className="text-xs text-[#6B7280] mt-2">Service</p>
+                <p className="text-sm font-medium text-[#E5E7EB]">{selectedBooking.serviceName} · ₹{selectedBooking.servicePrice}</p>
+                <p className="text-xs text-[#6B7280] mt-2">Current Technician</p>
+                <p className="text-sm font-medium text-[#E5E7EB]">{selectedBooking.technicianName || 'None'} · {selectedBooking.technicianPhone || '-'}</p>
               </div>
 
-              {/* Booking & Payment Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                {/* Booking */}
-                <div className="space-y-3 bg-[#1F2937] p-4 rounded-lg">
-                  <h3 className="text-xs sm:text-sm font-bold text-[#E5E7EB] uppercase tracking-wider">Booking</h3>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2"><Calendar size={14} className="text-[#6B7280]" /><span className="text-xs sm:text-sm text-[#E5E7EB]">{formatDate(selectedBooking.bookingDate)}</span></div>
-                    <div className="flex items-center gap-2"><Clock size={14} className="text-[#6B7280]" /><span className="text-xs sm:text-sm text-[#E5E7EB]">{selectedBooking.timeSlot}</span></div>
-                    <StatusBadge status={formatStatus(selectedBooking.status)} variant={getStatusVariant(selectedBooking.status)} />
-                  </div>
-                </div>
-                {/* Payment */}
-                <div className="space-y-3 bg-[#1F2937] p-4 rounded-lg">
-                  <h3 className="text-xs sm:text-sm font-bold text-[#E5E7EB] uppercase tracking-wider">Payment</h3>
-                  <div className="space-y-2">
-                    <p className="text-xs sm:text-sm text-[#9CA3AF]">Method: {selectedBooking.paymentMethod || 'Not specified'}</p>
-                    <StatusBadge status={selectedBooking.paymentStatus || 'PENDING'} variant={selectedBooking.paymentStatus === 'PAID' ? 'success' : 'warning'} />
-                    {selectedBooking.transactionId && <p className="text-xs text-[#6B7280] font-mono break-all">TXN: {selectedBooking.transactionId}</p>}
-                  </div>
-                </div>
-              </div>
+              <p className="text-sm font-semibold text-[#E5E7EB] mb-3">Select Technician</p>
 
-              {/* Booking Timeline */}
-              <div className="space-y-3 bg-[#1F2937] p-4 rounded-lg">
-                <h3 className="text-xs sm:text-sm font-bold text-[#E5E7EB] uppercase tracking-wider">Booking Timeline</h3>
-                <div className="space-y-3">
-                  {getTimeline(selectedBooking).map((step, idx) => (
-                    <div key={idx} className="flex items-center gap-3 sm:gap-4">
-                      <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${step.completed ? 'bg-green-600' : 'bg-[#374151]'}`}>
-                        {step.completed ? <CheckCircle size={14} className="text-white" /> : <div className="w-2 h-2 rounded-full bg-[#6B7280]" />}
+              {techLoading ? (
+                <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-14 bg-[#1F2937] rounded animate-pulse" />)}</div>
+              ) : (
+                <div className="space-y-2">
+                  {technicians.map(tech => (
+                    <button
+                      key={tech.id}
+                      onClick={() => setSelectedTechId(tech.id)}
+                      className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                        selectedTechId === tech.id
+                          ? 'border-[#6366F1] bg-[#6366F1]/10'
+                          : 'border-[#374151] bg-[#1F2937] hover:border-[#6366F1]/50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-[#E5E7EB]">{tech.name}</p>
+                          <p className="text-xs text-[#6B7280]">{tech.phone}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-[#9CA3AF] flex items-center gap-1 justify-end">
+                            <Star size={10} className="fill-yellow-400 text-yellow-400" />{tech.rating.toFixed(1)}
+                          </p>
+                          <p className="text-xs text-[#6B7280]">{tech.completedJobs} jobs</p>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-xs sm:text-sm ${step.completed ? 'text-[#E5E7EB] font-medium' : 'text-[#6B7280]'}`}>{step.label}</p>
-                        {step.date && <p className="text-xs text-[#6B7280]">{formatDate(step.date)}</p>}
-                      </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
-              </div>
-
-              {/* Action Buttons */}
-              {selectedBooking.status === 'PENDING_ADMIN_APPROVAL' && (
-                <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-[#1F2937]">
-                  <button onClick={() => { setShowDetailsModal(false); handleApprove(selectedBooking.id); }} className="flex-1 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm sm:text-base">
-                    <CheckCircle size={16} className="inline mr-2" />Approve Booking
-                  </button>
-                  <button onClick={() => { setShowDetailsModal(false); handleReject(selectedBooking.id); }} className="flex-1 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium text-sm sm:text-base">
-                    <XCircle size={16} className="inline mr-2" />Reject Booking
-                  </button>
-                </div>
               )}
+            </div>
+
+            <div className="border-t border-[#1F2937] p-5 flex gap-3">
+              <button
+                onClick={() => setShowChangeTechModal(false)}
+                className="flex-1 px-4 py-2.5 bg-[#1F2937] text-[#E5E7EB] rounded-lg hover:bg-[#374151] text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleChangeTechAndApprove}
+                disabled={!selectedTechId || processing}
+                className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm font-medium"
+              >
+                <CheckCircle size={14} className="inline mr-1" />Approve with this Tech
+              </button>
             </div>
           </div>
         </div>
@@ -438,7 +424,7 @@ export default function BookingsPage() {
         title={confirmDialog.title}
         message={confirmDialog.message}
         onConfirm={confirmDialog.onConfirm}
-        onCancel={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
         variant={confirmDialog.variant}
       />
     </div>

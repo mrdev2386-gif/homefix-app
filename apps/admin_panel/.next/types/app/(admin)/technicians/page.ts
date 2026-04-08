@@ -1,4 +1,4 @@
-// File: c:\Users\yash\projects\homefix\apps\admin_panel\src\app\(admin)\technicians\page.tsx
+// File: C:\Users\yash\projects\homefix\apps\admin_panel\src\app\(admin)\technicians\page.tsx
 import * as entry from '../../../../../src/app/(admin)/technicians/page.js'
 import type { ResolvingMetadata } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

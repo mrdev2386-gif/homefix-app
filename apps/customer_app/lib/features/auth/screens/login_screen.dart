@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:customer_app/core/services/auth_service.dart';
 import '../../../core/widgets/safe_network_image.dart';
 import 'otp_screen.dart';
@@ -26,6 +27,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   // Country code for India
   final String _countryCode = '+91';
+  
+  // FIX: OTP rate limiting - 60 second cooldown with persistence
+  DateTime? _lastOtpSentTime;
+  static const Duration _otpCooldown = Duration(seconds: 60);
+  static const String _otpTimestampKey = 'last_otp_timestamp';
+  static const String _otpAttemptsKey = 'otp_attempts_count';
+  static const int _maxOtpAttempts = 5;
+  int _remainingCooldownSeconds = 0;
+  int _otpAttemptsCount = 0;
 
   @override
   void initState() {
@@ -42,6 +52,44 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeOut));
     _animationController.forward();
+    
+    // Load OTP timestamp from SharedPreferences
+    _loadOtpTimestamp();
+  }
+
+  /// Load OTP timestamp from SharedPreferences (survives app restart)
+  Future<void> _loadOtpTimestamp() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final timestamp = prefs.getInt(_otpTimestampKey);
+      final attempts = prefs.getInt(_otpAttemptsKey) ?? 0;
+      
+      if (timestamp != null) {
+        _lastOtpSentTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
+        _otpAttemptsCount = attempts;
+        
+        // Check if cooldown is still active
+        final timeSinceLastOtp = DateTime.now().difference(_lastOtpSentTime!);
+        if (timeSinceLastOtp < _otpCooldown) {
+          setState(() {
+            _remainingCooldownSeconds = (_otpCooldown - timeSinceLastOtp).inSeconds;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('[Login] Error loading OTP timestamp: $e');
+    }
+  }
+  
+  /// Save OTP timestamp to SharedPreferences
+  Future<void> _saveOtpTimestamp() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_otpTimestampKey, DateTime.now().millisecondsSinceEpoch);
+      await prefs.setInt(_otpAttemptsKey, _otpAttemptsCount + 1);
+    } catch (e) {
+      debugPrint('[Login] Error saving OTP timestamp: $e');
+    }
   }
 
   @override
@@ -101,7 +149,43 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 
   Future<void> _handlePhoneSignIn() async {
-    if (_isSendingOtp) return;
+    // Check max attempts
+    if (_otpAttemptsCount >= _maxOtpAttempts) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Maximum OTP attempts reached. Please try again later.'),
+          backgroundColor: Colors.red.shade600,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+      return;
+    }
+    
+    // Check cooldown timer (persists across app restarts)
+    if (_lastOtpSentTime != null) {
+      final timeSinceLastOtp = DateTime.now().difference(_lastOtpSentTime!);
+      if (timeSinceLastOtp < _otpCooldown) {
+        final remainingSeconds = (_otpCooldown - timeSinceLastOtp).inSeconds;
+        setState(() => _remainingCooldownSeconds = remainingSeconds);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Please wait $remainingSeconds seconds before requesting another OTP'),
+            backgroundColor: Colors.orange.shade600,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
+    }
+    
+    // Hard lock - prevent parallel OTP calls
+    if (_isSendingOtp) {
+      debugPrint('[Login] ⚠️ OTP request already in progress, ignoring duplicate');
+      return;
+    }
 
     if (!_validatePhone()) return;
     
@@ -114,6 +198,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     }
     
     setState(() => _isSendingOtp = true);
+    
+    // Set cooldown timer IMMEDIATELY and save to SharedPreferences
+    _lastOtpSentTime = DateTime.now();
+    await _saveOtpTimestamp();
+    
     try {
       final authService = Provider.of<AuthService>(context, listen: false);
       final phoneNumber = _getFullPhoneNumber();
@@ -159,7 +248,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         },
         codeSent: (verificationId, resendToken) {
           if (mounted) {
-            setState(() => _isSendingOtp = false);
+            setState(() {
+              _isSendingOtp = false;
+              _remainingCooldownSeconds = 0;
+            });
             debugPrint('[Login] OTP sent successfully');
             Navigator.push(
               context,
@@ -523,20 +615,28 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const Icon(Icons.send_rounded, size: 20),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'Continue',
+                              : _remainingCooldownSeconds > 0
+                                  ? Text(
+                                      'Wait ${_remainingCooldownSeconds}s',
                                       style: GoogleFonts.outfit(
                                         fontWeight: FontWeight.w600,
                                         fontSize: 16,
                                       ),
+                                    )
+                                  : Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        const Icon(Icons.send_rounded, size: 20),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Continue',
+                                          style: GoogleFonts.outfit(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ],
-                                ),
                         ),
                       ),
                       const SizedBox(height: 28),

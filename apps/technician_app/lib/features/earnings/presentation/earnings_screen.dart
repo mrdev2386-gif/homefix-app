@@ -414,7 +414,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
     Query query = FirebaseFirestore.instance
         .collection('bookings')
         .where('technicianId', isEqualTo: uid)
-        .where('status', isEqualTo: 'completed')
+        .where('bookingStatus', isEqualTo: 'completed')
         .orderBy('completedAt', descending: true)
         .limit(50);
 

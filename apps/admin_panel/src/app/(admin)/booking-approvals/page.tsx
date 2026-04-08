@@ -57,7 +57,7 @@ export default function BookingApprovalsPage() {
   useEffect(() => {
     const q = query(
       collection(db, 'bookings'),
-      where('status', '==', 'PENDING_ADMIN_APPROVAL')
+      where('status', 'in', ['pending_admin_review', 'pending_admin_approval', 'pending'])
     );
 
     const unsubscribe = onSnapshot(q, 
@@ -112,12 +112,10 @@ export default function BookingApprovalsPage() {
   const handleApprove = async (bookingId: string) => {
     setProcessingId(bookingId);
     try {
-      const approveBooking = httpsCallable(functions, 'approveBooking');
+      const approveBooking = httpsCallable(functions, 'approveBookingByAdmin');
       await approveBooking({ bookingId });
-      
       setShowApproveDialog(false);
       setSelectedBooking(null);
-      // Show success toast
     } catch (error) {
       console.error('Error approving booking:', error);
       alert('Failed to approve booking');
@@ -129,16 +127,14 @@ export default function BookingApprovalsPage() {
   const handleReject = async (bookingId: string) => {
     setProcessingId(bookingId);
     try {
-      const rejectBooking = httpsCallable(functions, 'rejectBooking');
-      await rejectBooking({ 
+      const rejectBooking = httpsCallable(functions, 'rejectBookingByAdmin');
+      await rejectBooking({
         bookingId,
         reason: rejectionReason.trim() || undefined
       });
-      
       setShowRejectDialog(false);
       setSelectedBooking(null);
       setRejectionReason('');
-      // Show success toast
     } catch (error) {
       console.error('Error rejecting booking:', error);
       alert('Failed to reject booking');
