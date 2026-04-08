@@ -6,7 +6,7 @@ class HomeService {
   final String key;
   final String title;
   final String imageAssetPath;
-  final double basePrice;
+  final double price;
   final bool isActive;
 
   HomeService({
@@ -35,7 +35,7 @@ class HomeService {
       'serviceId': key,
       'name': title,
       'image': imageAssetPath,
-      'price': basePrice,
+      'price': price,
       'isActive': isActive,
     };
   }

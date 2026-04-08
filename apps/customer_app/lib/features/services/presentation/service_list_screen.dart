@@ -107,7 +107,11 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
         filtered.sort((a, b) => b.rating.compareTo(a.rating));
         break;
       case 'lowestprice':
-        filtered.sort((a, b) => a.price.compareTo(b.price));
+        filtered.sort((a, b) {
+          final aFinal = (a.offerPrice != null && a.offerPrice! < a.price) ? a.offerPrice! : a.price;
+          final bFinal = (b.offerPrice != null && b.offerPrice! < b.price) ? b.offerPrice! : b.price;
+          return aFinal.compareTo(bFinal);
+        });
         break;
       case 'popular':
         filtered.sort((a, b) => (b.reviewCount ?? 0).compareTo(a.reviewCount ?? 0));

@@ -63,16 +63,14 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
   Widget build(BuildContext context) {
     final service = widget.service;
     
-    final double price = service.price ?? 0;
-    final double offerPrice = service.offerPrice ?? 0;
+    final double price = service.price;
+    final double? offerPrice = service.offerPrice;
     
-    final bool hasOffer = offerPrice > 0 && offerPrice < price;
-    final double finalPrice = hasOffer ? offerPrice : price;
-    
-    print("UI PRICE CHECK -> price: $price, offer: $offerPrice, final: $finalPrice");
+    final bool hasOffer = offerPrice != null && offerPrice > 0 && offerPrice < price;
+    final double finalPrice = service.finalPrice;
     
     final discount = hasOffer 
-        ? ((price - offerPrice) / price * 100).round()
+        ? ((price - offerPrice!) / price * 100).round()
         : 0;
 
     return GestureDetector(
@@ -252,7 +250,7 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
 
                     const SizedBox(height: 6),
 
-                    // PRICE ROW
+                    // PRICE ROW - Using finalPrice
                     Row(
                       children: [
                         Text(

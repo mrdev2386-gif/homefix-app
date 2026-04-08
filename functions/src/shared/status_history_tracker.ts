@@ -74,6 +74,8 @@ export function updateBookingStatus(
     // Still update other fields if provided
     if (Object.keys(additionalUpdates).length > 0) {
       transaction.update(bookingRef, {
+        status: newStatus,
+        bookingStatus: newStatus,
         ...additionalUpdates,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
@@ -92,6 +94,7 @@ export function updateBookingStatus(
     // Update status and other fields without adding to history
     transaction.update(bookingRef, {
       status: newStatus,
+      bookingStatus: newStatus,
       ...additionalUpdates,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -99,14 +102,16 @@ export function updateBookingStatus(
   }
 
   // Create new history entry
+  // NOTE: FieldValue.serverTimestamp() cannot be used inside arrayUnion — use Timestamp.now() instead
   const newHistoryEntry: StatusHistoryEntry = {
     status: newStatus,
-    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    timestamp: admin.firestore.Timestamp.now(),
   };
 
   // Update booking with new status and append to history
   transaction.update(bookingRef, {
     status: newStatus,
+    bookingStatus: newStatus,
     statusHistory: admin.firestore.FieldValue.arrayUnion(newHistoryEntry),
     ...additionalUpdates,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),

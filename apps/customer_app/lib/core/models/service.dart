@@ -10,9 +10,8 @@ class HomeService {
   final String imageAssetPath;
   final String imageUrl;
   final String description;
-  final double basePrice;
-  final double? originalPrice;  // NEW: For strikethrough display
-  final double? offerPrice;     // NEW: For offer display
+  final double price;
+  final double? offerPrice;
   final bool urgentBookingEnabled; // NEW: For urgent badge
   final bool isActive;
   final String category;
@@ -36,9 +35,14 @@ class HomeService {
   // Derived status helper
   bool get isActiveStatus => status;
 
-  // Aliases for user requested fields
   String get name => title;
-  double get price => basePrice;
+
+  double get finalPrice {
+    if (offerPrice != null && offerPrice! > 0 && offerPrice! < price) {
+      return offerPrice!;
+    }
+    return price;
+  }
 
   HomeService({
     required this.id,
@@ -47,8 +51,7 @@ class HomeService {
     required this.imageAssetPath,
     this.imageUrl = AppConstants.fallbackServiceImage,
     this.description = '',
-    required this.basePrice,
-    this.originalPrice,
+    required this.price,
     this.offerPrice,
     this.urgentBookingEnabled = false,
     required this.isActive,
@@ -89,39 +92,15 @@ class HomeService {
     // Extract and validate image URL with global fallback
     final String imageUrl = _extractImageUrl(id, title, data);
     
-    // ============================================================================
-    // PRICE EXTRACTION: Safe number parsing for all price fields
-    // PRICING STRUCTURE:
-    // - price: Original price (before discount) - used for strikethrough
-    // - offerPrice: Discounted price - the actual selling price
-    // - basePrice: Legacy field, same as price
-    // ============================================================================
+    double price = 0.0;
+    double? offerPrice;
     
-    double price = 0.0;  // Original price (before discount)
-    double? offerPrice;  // Discounted price (actual selling price)
-    
-    // Extract price (original price before discount)
     price = _parsePrice(data['price']);
-    
-    // Extract offerPrice (discounted price - actual selling price)
     offerPrice = _parsePrice(data['offerPrice']);
     
-    // Fallback: if price is 0, try basePrice field (legacy support)
-    if (price == 0.0) {
-      price = _parsePrice(data['basePrice']);
+    if (offerPrice == null || offerPrice == 0.0 || offerPrice >= price) {
+      offerPrice = null;
     }
-    
-    // Backward compatibility: If offerPrice is 0 or null, use price as offerPrice
-    if (offerPrice == null || offerPrice == 0.0) {
-      offerPrice = price;
-    }
-    
-    // DEBUG: Print parsed values for EVERY service
-    print('💰 [MODEL PARSE] ${data['name'] ?? data['title'] ?? 'Unknown'}:');
-    print('   Firestore price: ${data['price']} → Parsed: $price');
-    print('   Firestore offerPrice: ${data['offerPrice']} → Parsed: $offerPrice');
-    print('   Firestore basePrice: ${data['basePrice']}');
-    print('   Final: price=$price (strikethrough), offerPrice=$offerPrice (display)');
     
     // Log price information only for services with special offers (reduce spam)
     if (kDebugMode && offerPrice != null && offerPrice > 0 && offerPrice < price) {
@@ -168,9 +147,8 @@ class HomeService {
       imageAssetPath: '', // Deprecated: No longer used for network images
       imageUrl: imageUrl,
       description: (data['description'] ?? '').toString(),
-      basePrice: price,  // Original price (for strikethrough)
-      originalPrice: price,  // Same as basePrice (for backward compatibility)
-      offerPrice: offerPrice,  // Discounted price (actual selling price)
+      price: price,
+      offerPrice: offerPrice,
       urgentBookingEnabled: data['urgentBookingEnabled'] ?? false,
       isActive: isActive,
       category: finalCategory,
@@ -307,7 +285,8 @@ class HomeService {
       'name': title,
       'imageUrl': imageUrl,
       'description': description,
-      'price': basePrice,
+      'price': price,
+      'offerPrice': offerPrice,
       'isActive': isActive,
       'category': category,
       'categoryName': categoryName,

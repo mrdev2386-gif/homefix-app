@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { PageHeader, StatusBadge, Column, ConfirmDialog, StatCard } from '@/components/ui';
 import { Search, X, CheckCircle, XCircle, Clock, TrendingUp, Package, Eye, UserCog, Star } from 'lucide-react';
 import { Timestamp } from 'firebase/firestore';
-import { subscribeToBookings, AdminBooking, approveBookingAction, rejectBookingAction, approveBookingWithTechnician, fetchAllTechnicians, TechnicianOption } from '@/lib/services/adminBookingService';
+import { subscribeToBookings, AdminBooking, approveBookingAction, rejectBookingAction, approveBookingWithTechnician, fetchAllTechnicians, TechnicianOption, getBookingById } from '@/lib/services/adminBookingService';
 import { normalizeBookingStatus, canApproveBooking } from '@/lib/bookingStatus';
 
 export default function BookingsPage() {
@@ -15,7 +15,7 @@ export default function BookingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('pending_admin_approval');
   const [selectedBooking, setSelectedBooking] = useState<AdminBooking | null>(null);
   const [processing, setProcessing] = useState(false);
   const [showChangeTechModal, setShowChangeTechModal] = useState(false);
@@ -35,6 +35,7 @@ export default function BookingsPage() {
     let unsubscribe: (() => void) | undefined;
 
     try {
+      // Fetch ALL bookings without status filter — filter client-side
       unsubscribe = subscribeToBookings((bookingsData) => {
         console.log('[BookingsPage] Received bookings:', bookingsData.length);
         setBookings(bookingsData);
@@ -53,7 +54,11 @@ export default function BookingsPage() {
   useEffect(() => {
     let filtered = [...bookings];
     if (statusFilter !== 'all') {
-      filtered = filtered.filter(b => normalizeBookingStatus(b.status) === statusFilter);
+      // CRITICAL FIX: Use consistent status normalization
+      filtered = filtered.filter(b => {
+        const normalized = normalizeBookingStatus(b.bookingStatus ?? b.status ?? '');
+        return normalized === statusFilter;
+      });
     }
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
@@ -65,13 +70,17 @@ export default function BookingsPage() {
       );
     }
     setFilteredBookings(filtered);
+    console.log('[BookingsPage] Filtered:', filtered.length, 'from', bookings.length, 'status:', statusFilter);
   }, [bookings, searchTerm, statusFilter]);
 
   const stats = {
     total: bookings.length,
-    pending: bookings.filter(b => canApproveBooking(b.status)).length,
-    active: bookings.filter(b => ['approved_by_admin', 'technician_accepted', 'service_in_progress'].includes(normalizeBookingStatus(b.status))).length,
-    completed: bookings.filter(b => normalizeBookingStatus(b.status) === 'service_completed').length,
+    pending: bookings.filter(b => canApproveBooking(b.bookingStatus ?? b.status ?? '')).length,
+    active: bookings.filter(b => {
+      const normalized = normalizeBookingStatus(b.bookingStatus ?? b.status ?? '');
+      return ['approved_by_admin', 'technician_accepted', 'service_in_progress'].includes(normalized);
+    }).length,
+    completed: bookings.filter(b => normalizeBookingStatus(b.bookingStatus ?? b.status ?? '') === 'service_completed').length,
   };
 
   const openChangeTechModal = async (booking: AdminBooking) => {
@@ -99,6 +108,11 @@ export default function BookingsPage() {
         setProcessing(true);
         try {
           await approveBookingWithTechnician(selectedBooking.id, selectedTechId);
+          // CRITICAL FIX: Refresh booking data after approval with technician
+          const updated = await getBookingById(selectedBooking.id);
+          if (updated) {
+            setBookings(prev => prev.map(b => b.id === selectedBooking.id ? updated : b));
+          }
           setShowChangeTechModal(false);
           setConfirmDialog(prev => ({ ...prev, isOpen: false }));
         } catch (error: any) {
@@ -119,6 +133,11 @@ export default function BookingsPage() {
         setProcessing(true);
         try {
           await approveBookingAction(bookingId);
+          // CRITICAL FIX: Refresh booking data after approval
+          const updated = await getBookingById(bookingId);
+          if (updated) {
+            setBookings(prev => prev.map(b => b.id === bookingId ? updated : b));
+          }
           setConfirmDialog(prev => ({ ...prev, isOpen: false }));
         } catch (error: any) {
           alert(`Failed: ${error.message}`);
@@ -139,6 +158,11 @@ export default function BookingsPage() {
         setProcessing(true);
         try {
           await rejectBookingAction(bookingId, 'Rejected by admin');
+          // CRITICAL FIX: Refresh booking data after rejection
+          const updated = await getBookingById(bookingId);
+          if (updated) {
+            setBookings(prev => prev.map(b => b.id === bookingId ? updated : b));
+          }
           setConfirmDialog(prev => ({ ...prev, isOpen: false }));
         } catch (error: any) {
           alert(`Failed: ${error.message}`);
@@ -208,7 +232,24 @@ export default function BookingsPage() {
     {
       key: 'servicePrice',
       label: 'Price',
-      render: (item) => <span className="text-sm font-medium text-[#E5E7EB]">₹{item.servicePrice}</span>
+      render: (item) => {
+        const hasOffer = item.offerPrice && item.offerPrice < item.price;
+        console.log('[UI RENDER PRICE DEBUG]', item.id, {
+          item_price: item.price,
+          item_finalAmount: item.finalAmount,
+          item_offerPrice: item.offerPrice,
+          hasOffer: hasOffer,
+          condition_result: item.offerPrice && item.offerPrice < item.price,
+        });
+        return hasOffer ? (
+          <div>
+            <span className="text-sm font-semibold text-emerald-400">₹{item.finalAmount}</span>
+            <span className="text-xs text-[#6B7280] line-through ml-1">₹{item.price}</span>
+          </div>
+        ) : (
+          <span className="text-sm font-medium text-[#E5E7EB]">₹{item.finalAmount}</span>
+        );
+      }
     },
     {
       key: 'bookingDate',
@@ -218,7 +259,10 @@ export default function BookingsPage() {
     {
       key: 'status',
       label: 'Status',
-      render: (item) => <StatusBadge status={normalizeBookingStatus(item.status).replace(/_/g, ' ')} variant={getStatusVariant(item.status)} />
+      render: (item) => {
+        const normalized = normalizeBookingStatus(item.bookingStatus ?? item.status ?? '');
+        return <StatusBadge status={normalized.replace(/_/g, ' ')} variant={getStatusVariant(item.bookingStatus ?? item.status ?? '')} />;
+      }
     },
     {
       key: 'actions',
@@ -273,30 +317,59 @@ export default function BookingsPage() {
         <StatCard title="Completed" value={stats.completed} icon={CheckCircle} color="green" />
       </div>
 
+      {/* Status Tabs with badge counts */}
       <div className="admin-card p-3 sm:p-4">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="relative">
+        <div className="flex flex-wrap gap-2 mb-3">
+          {([
+            { value: 'pending_admin_approval', label: 'Pending Approval', color: 'orange' },
+            { value: 'approved_by_admin',    label: 'Approved',         color: 'blue'   },
+            { value: 'technician_accepted',  label: 'Accepted',         color: 'indigo' },
+            { value: 'service_in_progress',  label: 'In Progress',      color: 'purple' },
+            { value: 'service_completed',    label: 'Completed',        color: 'green'  },
+            { value: 'rejected',             label: 'Rejected',         color: 'red'    },
+            { value: 'all',                  label: 'All',              color: 'gray'   },
+          ] as const).map(tab => {
+            const count = tab.value === 'all'
+              ? bookings.length
+              : bookings.filter(b => normalizeBookingStatus(b.bookingStatus ?? b.status ?? '') === tab.value).length;
+            const isActive = statusFilter === tab.value;
+            const colorMap: Record<string, string> = {
+              orange: isActive ? 'bg-orange-500 text-white border-orange-500' : 'border-[#374151] text-[#9CA3AF] hover:border-orange-400 hover:text-orange-400',
+              blue:   isActive ? 'bg-blue-500 text-white border-blue-500'     : 'border-[#374151] text-[#9CA3AF] hover:border-blue-400 hover:text-blue-400',
+              indigo: isActive ? 'bg-[#6366F1] text-white border-[#6366F1]'   : 'border-[#374151] text-[#9CA3AF] hover:border-[#6366F1] hover:text-[#6366F1]',
+              purple: isActive ? 'bg-purple-500 text-white border-purple-500' : 'border-[#374151] text-[#9CA3AF] hover:border-purple-400 hover:text-purple-400',
+              green:  isActive ? 'bg-green-600 text-white border-green-600'   : 'border-[#374151] text-[#9CA3AF] hover:border-green-500 hover:text-green-500',
+              red:    isActive ? 'bg-red-600 text-white border-red-600'       : 'border-[#374151] text-[#9CA3AF] hover:border-red-500 hover:text-red-500',
+              gray:   isActive ? 'bg-[#374151] text-white border-[#374151]'   : 'border-[#374151] text-[#9CA3AF] hover:border-[#6B7280] hover:text-[#E5E7EB]',
+            };
+            return (
+              <button
+                key={tab.value}
+                onClick={() => setStatusFilter(tab.value)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${colorMap[tab.color]}`}
+              >
+                {tab.label}
+                <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
+                  isActive ? 'bg-white/20' : 'bg-[#1F2937]'
+                }`}>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex gap-3">
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7280]" size={18} />
             <input
               type="text"
-              placeholder="Search..."
+              placeholder="Search customer, technician, service..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="input-field w-full pl-10 pr-4"
             />
             {searchTerm && <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B7280]"><X size={18} /></button>}
           </div>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="input-field">
-            <option value="all">All Status</option>
-            <option value="pending_admin_approval">Pending Approval</option>
-            <option value="approved_by_admin">Admin Approved</option>
-            <option value="technician_accepted">Technician Accepted</option>
-            <option value="service_in_progress">In Progress</option>
-            <option value="service_completed">Completed</option>
-            <option value="rejected">Rejected / Cancelled</option>
-          </select>
-          <div className="flex items-center justify-end">
-            <span className="text-sm text-[#9CA3AF]">Showing {filteredBookings.length} of {bookings.length}</span>
+          <div className="flex items-center text-sm text-[#9CA3AF] whitespace-nowrap">
+            {filteredBookings.length} of {bookings.length}
           </div>
         </div>
       </div>
@@ -361,7 +434,7 @@ export default function BookingsPage() {
                 <p className="text-xs text-[#6B7280]">Customer</p>
                 <p className="text-sm font-medium text-[#E5E7EB]">{selectedBooking.customerName} · {selectedBooking.customerPhone}</p>
                 <p className="text-xs text-[#6B7280] mt-2">Service</p>
-                <p className="text-sm font-medium text-[#E5E7EB]">{selectedBooking.serviceName} · ₹{selectedBooking.servicePrice}</p>
+                <p className="text-sm font-medium text-[#E5E7EB]">{selectedBooking.serviceName} · ₹{selectedBooking.finalAmount}</p>
                 <p className="text-xs text-[#6B7280] mt-2">Current Technician</p>
                 <p className="text-sm font-medium text-[#E5E7EB]">{selectedBooking.technicianName || 'None'} · {selectedBooking.technicianPhone || '-'}</p>
               </div>
@@ -369,32 +442,23 @@ export default function BookingsPage() {
               <p className="text-sm font-semibold text-[#E5E7EB] mb-3">Select Technician</p>
 
               {techLoading ? (
-                <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-14 bg-[#1F2937] rounded animate-pulse" />)}</div>
+                <div className="flex gap-4 overflow-x-auto p-1">
+                  {[1,2,3].map(i => <div key={i} className="min-w-[200px] h-28 bg-[#1F2937] rounded-xl animate-pulse flex-shrink-0" />)}
+                </div>
               ) : (
-                <div className="space-y-2">
+                <div className="flex gap-4 overflow-x-auto p-1 pb-3">
                   {technicians.map(tech => (
-                    <button
+                    <div
                       key={tech.id}
                       onClick={() => setSelectedTechId(tech.id)}
-                      className={`w-full text-left p-3 rounded-lg border transition-colors ${
-                        selectedTechId === tech.id
-                          ? 'border-[#6366F1] bg-[#6366F1]/10'
-                          : 'border-[#374151] bg-[#1F2937] hover:border-[#6366F1]/50'
+                      className={`min-w-[200px] p-4 rounded-xl border cursor-pointer flex-shrink-0 transition-colors ${
+                        selectedTechId === tech.id ? 'border-blue-500 bg-blue-500/10' : 'border-gray-700 hover:border-[#6366F1]/50'
                       }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-[#E5E7EB]">{tech.name}</p>
-                          <p className="text-xs text-[#6B7280]">{tech.phone}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs text-[#9CA3AF] flex items-center gap-1 justify-end">
-                            <Star size={10} className="fill-yellow-400 text-yellow-400" />{tech.rating.toFixed(1)}
-                          </p>
-                          <p className="text-xs text-[#6B7280]">{tech.completedJobs} jobs</p>
-                        </div>
-                      </div>
-                    </button>
+                      <p className="font-medium text-[#E5E7EB] text-sm">{tech.name}</p>
+                      <p className="text-sm text-[#9CA3AF] mt-1">{tech.phone}</p>
+                      <p className="text-xs text-[#6B7280] mt-1">⭐ {tech.rating.toFixed(1)} · {tech.completedJobs} jobs</p>
+                    </div>
                   ))}
                 </div>
               )}

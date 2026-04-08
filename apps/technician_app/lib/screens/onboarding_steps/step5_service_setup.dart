@@ -16,8 +16,6 @@ class Step5ServiceSetup extends StatefulWidget {
 }
 
 class _Step5ServiceSetupState extends State<Step5ServiceSetup> {
-  late TextEditingController _basePriceController;
-  late TextEditingController _visitingChargeController;
   late TextEditingController _maxDistanceController;
   late TextEditingController _descriptionController;
   bool _emergencyService = false;
@@ -25,12 +23,6 @@ class _Step5ServiceSetupState extends State<Step5ServiceSetup> {
   @override
   void initState() {
     super.initState();
-    _basePriceController = TextEditingController(
-      text: widget.formData['basePrice']?.toString() ?? '',
-    );
-    _visitingChargeController = TextEditingController(
-      text: widget.formData['visitingCharge']?.toString() ?? '',
-    );
     _maxDistanceController = TextEditingController(
       text: widget.formData['maxTravelDistance']?.toString() ?? '',
     );
@@ -42,8 +34,6 @@ class _Step5ServiceSetupState extends State<Step5ServiceSetup> {
 
   @override
   void dispose() {
-    _basePriceController.dispose();
-    _visitingChargeController.dispose();
     _maxDistanceController.dispose();
     _descriptionController.dispose();
     super.dispose();
@@ -89,101 +79,10 @@ class _Step5ServiceSetupState extends State<Step5ServiceSetup> {
   }
 
   Widget _buildPricingFields() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Pricing',
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: const Color(0xFF0F172A),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Flexible(
-              fit: FlexFit.loose,
-              child: _buildPriceField(
-                controller: _basePriceController,
-                label: 'Base Price',
-                hint: '₹500',
-                onChanged: (value) {
-                  final price = int.tryParse(value) ?? 0;
-                  widget.onDataChanged('basePrice', price);
-                },
-              ),
-            ),
-            const SizedBox(width: 12),
-            Flexible(
-              fit: FlexFit.loose,
-              child: _buildPriceField(
-                controller: _visitingChargeController,
-                label: 'Visiting Charge',
-                hint: '₹100',
-                onChanged: (value) {
-                  final charge = int.tryParse(value) ?? 0;
-                  widget.onDataChanged('visitingCharge', charge);
-                },
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
+    return const SizedBox.shrink();
   }
 
-  Widget _buildPriceField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    required Function(String) onChanged,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: const Color(0xFF0F172A),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: const Color(0xFFE2E8F0),
-              width: 1,
-            ),
-          ),
-          child: TextField(
-            controller: controller,
-            keyboardType: TextInputType.number,
-            onChanged: onChanged,
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: const TextStyle(color: Color(0xFF9CA3AF)),
-              prefixIcon: const Icon(
-                Icons.currency_rupee_outlined,
-                color: Color(0xFF6366F1),
-                size: 18,
-              ),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 12,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+
 
   Widget _buildDistanceField() {
     return Column(

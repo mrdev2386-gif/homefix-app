@@ -360,8 +360,7 @@ class _UrgentBookingScreenState extends State<UrgentBookingScreen> {
           'state': _userState,
           'fullAddress': 'User location',
         },
-        price: 100.0, // Urgent fee
-        isUrgent: true, // Mark as urgent booking
+        isUrgent: true,
       );
 
       if (mounted) {

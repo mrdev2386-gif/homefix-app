@@ -732,12 +732,8 @@ export const verifyPayment = functions
                 return;
             }
 
-            // Update booking atomically
-            const isNewFlow = currentBooking.status === 'awaiting_payment' || 
-                            currentBooking.status === 'pending_admin_review' || 
-                            currentBooking.status === 'pending';
-            const newStatus = isNewFlow ? 'confirmed' : 'completed';
-
+            // Update booking atomically — only update payment fields
+            // Status transitions happen via lifecycle functions, NOT here
             const updateData: any = {
                 'payment.status': 'paid',
                 'payment.razorpayPaymentId': razorpayPaymentId,
@@ -745,9 +741,9 @@ export const verifyPayment = functions
                 'payment.amountPaid': amount,
                 'payment.paymentMethod': payment.method,
                 'payment.paidAt': admin.firestore.FieldValue.serverTimestamp(),
-                'status': newStatus,
-                'updatedAt': admin.firestore.FieldValue.serverTimestamp(),
                 'paymentStatus': 'paid',
+                'paidAt': admin.firestore.FieldValue.serverTimestamp(),
+                'updatedAt': admin.firestore.FieldValue.serverTimestamp(),
 
                 // Initialize payout
                 'payout.status': 'pending',

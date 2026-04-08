@@ -225,7 +225,8 @@ class FunctionsService {
         'description': description ?? 'Professional service provided by experienced technician',
       };
       
-      debugPrint('[FunctionsService] addService DATA: $data');
+      debugPrint('[FunctionsService] addService REQUEST PAYLOAD: $data');
+      debugPrint('[FunctionsService] addService - Sending ONLY price + offerPrice (NO basePrice)');
       
       final result = await callable.call(data);
       return Map<String, dynamic>.from(result.data);
@@ -274,7 +275,8 @@ class FunctionsService {
       if (urgentBooking != null) data['urgentBooking'] = urgentBooking;
       if (nightService != null) data['nightService'] = nightService;
 
-      debugPrint('[FunctionsService] updateService DATA: $data');
+      debugPrint('[FunctionsService] updateService REQUEST PAYLOAD: $data');
+      debugPrint('[FunctionsService] updateService - Sending ONLY price + offerPrice (NO basePrice)');
 
       final result = await callable.call(data);
       return Map<String, dynamic>.from(result.data);

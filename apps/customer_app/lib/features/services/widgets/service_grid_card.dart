@@ -239,19 +239,33 @@ class _ServiceGridCardState extends State<ServiceGridCard>
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          // Price
+                          // Price - Using finalPrice
                           Flexible(
-                            child: Text(
-                              widget.service.basePrice > 0
-                                  ? '₹${widget.service.basePrice.toStringAsFixed(0)}'
-                                  : 'Free',
-                              style: GoogleFonts.outfit(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                                color: AppTheme.primaryColor,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  widget.service.finalPrice > 0 ? '₹${widget.service.finalPrice.toStringAsFixed(0)}' : 'Free',
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppTheme.primaryColor,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (widget.service.offerPrice != null && widget.service.offerPrice! > 0 && widget.service.offerPrice! < widget.service.basePrice)
+                                  Text(
+                                    '₹${widget.service.basePrice.toStringAsFixed(0)}',
+                                    style: GoogleFonts.outfit(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.subtitleColor,
+                                      decoration: TextDecoration.lineThrough,
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
                           const SizedBox(width: 4),

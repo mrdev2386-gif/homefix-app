@@ -132,7 +132,10 @@ class _CustomerBookingScreenState extends State<CustomerBookingScreen> {
                 ),
               ),
               Text(
-                '₹${widget.serviceData['price']?.toString() ?? '0'}',
+                '₹${(() {
+                  final hasOffer = widget.serviceData['hasOffer'] == true && widget.serviceData['offerPrice'] != null;
+                  return hasOffer ? widget.serviceData['offerPrice']?.toString() : widget.serviceData['price']?.toString();
+                })() ?? '0'}',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -499,7 +502,11 @@ class _CustomerBookingScreenState extends State<CustomerBookingScreen> {
                 ),
               )
             : Text(
-                'Book Service - ₹${widget.serviceData['price']?.toString() ?? '0'}',
+                () {
+                  final hasOffer = widget.serviceData['hasOffer'] == true && widget.serviceData['offerPrice'] != null;
+                  final displayPrice = hasOffer ? widget.serviceData['offerPrice']?.toString() : widget.serviceData['price']?.toString();
+                  return 'Book Service - ₹${displayPrice ?? '0'}';
+                }(),
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -540,7 +547,6 @@ class _CustomerBookingScreenState extends State<CustomerBookingScreen> {
           'district': userData?['district'] ?? 'Default District',
           'state': userData?['state'] ?? 'Default State',
         },
-        price: (widget.serviceData['price'] ?? 0).toDouble(),
         paymentMode: _selectedPaymentMode,
       );
 

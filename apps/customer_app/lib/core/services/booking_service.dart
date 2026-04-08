@@ -25,14 +25,13 @@ class BookingService {
     required String scheduledDate,
     required String scheduledTime,
     required Map<String, dynamic> address,
-    required double price,
     String? subcategoryId,
     int? quantity,
     int? durationMinutes,
     String? couponCode,
     String? idempotencyKey,
     String? paymentMode,
-    bool isUrgent = false, // NEW: Support for urgent bookings
+    bool isUrgent = false,
   }) async {
     try {
       // Sanitize address - remove FieldValue and non-JSON types
@@ -55,9 +54,8 @@ class BookingService {
         'scheduledDate': scheduledDate,
         'scheduledTime': scheduledTime,
         'address': cleanAddress,
-        'price': price,
-        'idempotencyKey': idempotencyKey, // Required parameter from provider
-        'isUrgent': isUrgent, // NEW: Pass urgent flag to backend
+        'idempotencyKey': idempotencyKey,
+        'isUrgent': isUrgent,
       };
       
       // Add optional fields only if provided
@@ -131,16 +129,13 @@ class BookingService {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception("User not logged in");
       await user.getIdToken(true);
-      
-      
-      final HttpsCallable callable = FunctionsService.instance.httpsCallable('updateBookingStatusNew');
+      final HttpsCallable callable = FunctionsService.instance.httpsCallable('cancelBooking');
       await callable.call({
         'bookingId': bookingId,
-        'status': 'cancelled',
         'reason': reason,
       });
     } catch (e) {
-      if (kDebugMode) debugPrint("Error cancelling booking via Function: $e");
+      if (kDebugMode) debugPrint("Error cancelling booking: $e");
       rethrow;
     }
   }

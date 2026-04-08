@@ -14,7 +14,7 @@ const variantClasses = {
 
 export default function StatusBadge({ status, variant = 'default' }: StatusBadgeProps) {
   return (
-    <span className={`badge ${variantClasses[variant]}`}>
+    <span className={`badge ${variantClasses[variant]} whitespace-nowrap px-3 py-1 text-xs font-medium`}>
       {status}
     </span>
   );

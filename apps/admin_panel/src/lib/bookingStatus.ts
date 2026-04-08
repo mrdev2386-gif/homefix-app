@@ -39,14 +39,16 @@ export const BOOKING_STATUS_VARIANTS: Record<BookingStatus, 'success' | 'warning
 export function normalizeBookingStatus(status: string): BookingStatus {
   if (!status) return BOOKING_STATUS.PENDING_ADMIN_APPROVAL;
   
-  const normalized = status.toLowerCase().replace(/-/g, '_');
+  const normalized = status.toLowerCase().trim().replace(/-/g, '_');
+  
+  // Map all pending variants to standard pending status
+  const pendingVariants = ['pending_admin_review', 'pending_admin_approval', 'pending_admin', 'pending'];
+  if (pendingVariants.includes(normalized)) {
+    return BOOKING_STATUS.PENDING_ADMIN_APPROVAL;
+  }
   
   // Map common variants to standard status
   const variantMap: Record<string, BookingStatus> = {
-    'pending_admin_approval': BOOKING_STATUS.PENDING_ADMIN_APPROVAL,
-    'pending_admin_review': BOOKING_STATUS.PENDING_ADMIN_APPROVAL,
-    'pending_admin': BOOKING_STATUS.PENDING_ADMIN_APPROVAL,
-    'pending': BOOKING_STATUS.PENDING_ADMIN_APPROVAL,
     'approved_by_admin': BOOKING_STATUS.APPROVED_BY_ADMIN,
     'admin_approved': BOOKING_STATUS.APPROVED_BY_ADMIN,
     'assigned': BOOKING_STATUS.APPROVED_BY_ADMIN,

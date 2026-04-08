@@ -1,0 +1,20 @@
+/**
+ * ⚠️ DEPRECATED - DO NOT USE
+ * 
+ * This file has been DISABLED as part of booking creation consolidation.
+ * 
+ * REASON: Duplicate booking creation logic with inconsistent pricing calculations
+ * 
+ * MIGRATION: All booking creation now uses unified_booking_lifecycle.ts
+ * 
+ * PRICING ISSUE FIXED:
+ * - Old: Used hasOffer && offerPrice logic (inconsistent)
+ * - New: Uses Number() parsing with strict validation (correct)
+ * 
+ * If you need to restore this file, contact the development team.
+ * 
+ * Last disabled: 2026-01-XX
+ * Reason: Consolidation to single source of truth
+ */
+
+// This file is intentionally empty to prevent accidental imports

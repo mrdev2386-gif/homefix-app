@@ -249,7 +249,7 @@ class _FeaturedServiceCardState extends State<_FeaturedServiceCard>
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            // Price
+                            // Price - Using finalPrice as single source of truth
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 12,
@@ -260,8 +260,8 @@ class _FeaturedServiceCardState extends State<_FeaturedServiceCard>
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
-                                widget.service.basePrice > 0
-                                    ? '₹${widget.service.basePrice.toStringAsFixed(0)}'
+                                widget.service.finalPrice > 0
+                                    ? '₹${widget.service.finalPrice.toStringAsFixed(0)}'
                                     : 'Free Est.',
                                 style: const TextStyle(
                                   fontSize: 14,

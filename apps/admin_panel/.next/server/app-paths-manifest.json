@@ -1,5 +1,3 @@
 {
-  "/page": "app/page.js",
-  "/(admin)/booking-approvals/page": "app/(admin)/booking-approvals/page.js",
-  "/(admin)/technicians/page": "app/(admin)/technicians/page.js"
+  "/(admin)/bookings/page": "app/(admin)/bookings/page.js"
 }

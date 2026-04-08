@@ -218,13 +218,11 @@ export const addTechnicianService = functions
     // PRICING STRUCTURE:
     // - price: Original price (before discount) - used for strikethrough display
     // - offerPrice: Discounted price - the actual selling price
-    // - basePrice: Same as price (for backward compatibility)
     const serviceData: any = {
       id: serviceId,
       name: sanitizedName,
       price,  // Original price (before discount)
       offerPrice,  // Discounted price (actual selling price)
-      basePrice: price,  // Same as price (for backward compatibility)
       categoryId: sanitizedCategory,
       imageUrl: imageUrl.trim(),
       category: sanitizedCategory,
@@ -243,7 +241,7 @@ export const addTechnicianService = functions
       updatedAt: now,
     };
 
-    console.log(`[PRICING DEBUG] Service ${serviceId}: price=${price}, offerPrice=${offerPrice}, basePrice=${price}`);
+    console.log(`[PRICING DEBUG] Service ${serviceId}: price=${price}, offerPrice=${offerPrice}`);
 
     // Add urgent booking configuration if provided
     if (urgentBooking) {
@@ -275,6 +273,13 @@ export const addTechnicianService = functions
       };
     }
 
+    console.log("🔥 [FINAL DATA GOING TO FIRESTORE]", JSON.stringify(serviceData, null, 2));
+    if ('basePrice' in serviceData) {
+      console.error("❌ [CRITICAL BUG] basePrice found in serviceData! Deleting...");
+      delete serviceData.basePrice;
+    }
+    console.log("✅ [ASSERTION PASSED] basePrice NOT present in final data");
+    console.log("✅ [FIELDS PRESENT]", Object.keys(serviceData).sort());
     await db.collection('technician_services').doc(serviceId).set(serviceData);
 
     // ENHANCED DEBUG LOGGING
@@ -340,7 +345,6 @@ export const updateTechnicianService = functions
         throw new functions.https.HttpsError("invalid-argument", "Original price must be greater than 0");
       }
       updateData.price = updates.price;
-      updateData.basePrice = updates.price;  // Keep basePrice in sync
     }
 
     if (updates.offerPrice !== undefined) {
@@ -397,6 +401,12 @@ export const updateTechnicianService = functions
     // - averageRating (calculated)
     // - totalReviews (calculated)
 
+    console.log("🔥 [UPDATE DATA GOING TO FIRESTORE]", JSON.stringify(updateData, null, 2));
+    if ('basePrice' in updateData) {
+      console.error("❌ [CRITICAL BUG] basePrice found in updateData! Deleting...");
+      delete updateData.basePrice;
+    }
+    console.log("✅ [ASSERTION PASSED] basePrice NOT present in update data");
     await serviceRef.update(updateData);
 
     console.log(`[SERVICE_UPDATE] Service ${serviceId} updated for technician ${technicianId}`);

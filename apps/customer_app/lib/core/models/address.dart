@@ -74,7 +74,7 @@ class Address {
       'lng': longitude,
       'isDefault': isDefault,
       'isPrimary': isDefault,
-      'createdAt': FieldValue.serverTimestamp(),
+      'createdAt': createdAt.millisecondsSinceEpoch,
     };
   }
 

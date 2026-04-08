@@ -77,8 +77,8 @@ class FavoriteServicesScreen extends StatelessWidget {
   Widget _buildFavoriteServiceCard(BuildContext context, HomeService service) {
     final hasOffer = service.offerPrice != null && 
                      service.offerPrice! > 0 && 
-                     service.offerPrice! < service.basePrice;
-    final finalPrice = hasOffer ? service.offerPrice! : service.basePrice;
+                     service.offerPrice! < service.price;
+    final finalPrice = hasOffer ? service.offerPrice! : service.price;
     
     return GestureDetector(
       onTap: () {
@@ -216,7 +216,7 @@ class FavoriteServicesScreen extends StatelessWidget {
                       children: [
                         if (hasOffer) ...[
                           Text(
-                            '₹${service.basePrice.toStringAsFixed(0)}',
+                            '₹${service.price.toStringAsFixed(0)}',
                             style: GoogleFonts.outfit(
                               fontSize: 12,
                               fontWeight: FontWeight.w500,

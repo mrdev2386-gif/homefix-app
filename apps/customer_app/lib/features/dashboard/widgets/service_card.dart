@@ -44,15 +44,15 @@ class ServiceCard extends StatelessWidget {
                 ),
               ],
             ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Image Section - Using SafeNetworkImage with proper handling
-              Expanded(
-                flex: 12,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Image Section - Using SafeNetworkImage with proper handling
+                Expanded(
+                  flex: 12,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
                     // Dynamic Network Image with shimmer loading
                     ClipRRect(
                       borderRadius: const BorderRadius.vertical(
@@ -154,55 +154,39 @@ class ServiceCard extends StatelessWidget {
                 ),
               ),
 
-          // Details Section
-          Expanded(
-            flex: 11,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
+              // Details Section
+              Expanded(
+                flex: 11,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // Service Name
-                      Text(
-                        service.title,
-                        style: GoogleFonts.outfit(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF111827),
-                          height: 1.2,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 6),
-                      // MODERN PRICE SECTION
-                      // PRICING LOGIC:
-                      // - basePrice/originalPrice: Original price (for strikethrough)
-                      // - offerPrice: Discounted price (actual selling price)
-                      // - Display offerPrice as main price
-                      // - Show basePrice with strikethrough if offerPrice < basePrice
-                      Builder(
-                        builder: (context) {
-                          final double originalPrice = service.basePrice ?? 0;
-                          final double offerPrice = service.offerPrice ?? originalPrice;
-                          
-                          // Show offer only if offerPrice is less than originalPrice
-                          final bool hasOffer = offerPrice > 0 && offerPrice < originalPrice;
-                          final double displayPrice = offerPrice > 0 ? offerPrice : originalPrice;
-                          
-                          print("[UI PRICE] ${service.title}: original=$originalPrice, offer=$offerPrice, display=$displayPrice, hasOffer=$hasOffer");
-                          
-                          return Row(
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Service Name
+                          Text(
+                            service.title,
+                            style: GoogleFonts.outfit(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF111827),
+                              height: 1.2,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 6),
+                          // PRICE SECTION - Using finalPrice as single source of truth
+                          Row(
                             crossAxisAlignment: CrossAxisAlignment.baseline,
                             textBaseline: TextBaseline.alphabetic,
                             children: [
-                              // Main price (offerPrice or originalPrice)
+                              // Main price (finalPrice)
                               Text(
-                                "₹${displayPrice.toStringAsFixed(0)}",
+                                "₹${service.finalPrice.toStringAsFixed(0)}",
                                 style: const TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
@@ -211,9 +195,9 @@ class ServiceCard extends StatelessWidget {
                               ),
                               const SizedBox(width: 8),
                               // Strikethrough original price (only if offer exists)
-                              if (hasOffer)
+                              if (service.offerPrice != null && service.offerPrice! > 0 && service.offerPrice! < service.price)
                                 Text(
-                                  "₹${originalPrice.toStringAsFixed(0)}",
+                                  "₹${service.price.toStringAsFixed(0)}",
                                   style: const TextStyle(
                                     fontSize: 13,
                                     color: Colors.grey,
@@ -234,78 +218,76 @@ class ServiceCard extends StatelessWidget {
                                 ),
                               ),
                             ],
-                          );
-                        },
+                          ),
+                          const SizedBox(height: 8),
+                          // Rating Row
+                          if (service.rating > 0)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.star,
+                                  size: 14,
+                                  color: Colors.amber[400],
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  service.rating.toStringAsFixed(1),
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.grey[700],
+                                  ),
+                                ),
+                                if (service.reviewCount > 0)
+                                  Text(
+                                    ' (${service.reviewCount})',
+                                    style: GoogleFonts.outfit(
+                                      fontSize: 11,
+                                      color: Colors.grey[500],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                        ],
                       ),
-                      const SizedBox(height: 8),
-                      // Rating Row
-                      if (service.rating > 0)
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.star,
-                              size: 14,
-                              color: Colors.amber[400],
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              service.rating.toStringAsFixed(1),
-                              style: GoogleFonts.outfit(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey[700],
-                              ),
-                            ),
-                            if (service.reviewCount > 0)
-                              Text(
-                                ' (${service.reviewCount})',
-                                style: GoogleFonts.outfit(
-                                  fontSize: 11,
-                                  color: Colors.grey[500],
+                      const SizedBox(height: 12),
+                      // Book Now Button
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: onBookNow,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF6366F1),
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
                                 ),
                               ),
-                          ],
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // Book Now Button
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: onBookNow,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF6366F1),
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
+                              child: Text(
+                                'Book Now',
+                                style: GoogleFonts.outfit(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                             ),
                           ),
-                          child: Text(
-                            'Book Now',
-                            style: GoogleFonts.outfit(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
+                        ],
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     ),
-  ),
-),
-);
+  );
   }
 }
 

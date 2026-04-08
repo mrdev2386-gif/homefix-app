@@ -62,13 +62,12 @@ class BookingProvider extends ChangeNotifier {
     required String scheduledDate,
     required String scheduledTime,
     required Map<String, dynamic> address,
-    required double price,
     String? subcategoryId,
     int? quantity,
     int? durationMinutes,
     String? couponCode,
     String? paymentMode,
-    bool isUrgent = false, // NEW: Support for urgent bookings
+    bool isUrgent = false,
   }) async {
     // Prevent duplicate booking requests
     if (_isBooking) {
@@ -105,17 +104,7 @@ class BookingProvider extends ChangeNotifier {
         throw Exception('This service is no longer available. Please select another.');
       }
       
-      // Price integrity check - verify against stored price (quantity-aware)
-      // Strict ₹1 tolerance to prevent price manipulation
-      final storedPrice = ((data['price'] ?? data['finalPrice'] ?? 0) as num).toDouble();
-      final qty = quantity ?? 1;
-      final expectedPrice = storedPrice * qty;
-      final priceDiff = (price - expectedPrice).abs();
-      
-      if (priceDiff > kPriceToleranceRupees && expectedPrice > 0) {
-        if (kDebugMode) debugPrint('⚠️ [BookingProvider] Price mismatch: stored=$storedPrice, qty=$qty, expected=$expectedPrice, provided=$price, diff=₹$priceDiff');
-        throw Exception('Price has changed. Please refresh and try again.');
-      }
+      // Price computed by backend from offerPrice/price - no client validation needed
 
       // ─────────────────────────────────────────────────────────────────────
       // 2. RE-FETCH AND VERIFY TECHNICIAN
@@ -184,14 +173,13 @@ class BookingProvider extends ChangeNotifier {
         scheduledDate: scheduledDate,
         scheduledTime: scheduledTime,
         address: address,
-        price: price,
         subcategoryId: subcategoryId,
         quantity: quantity,
         durationMinutes: durationMinutes,
         couponCode: couponCode,
         paymentMode: paymentMode,
         idempotencyKey: idempotencyKey,
-        isUrgent: isUrgent, // NEW: Pass urgent flag to service
+        isUrgent: isUrgent,
       );
       
       // Clear idempotency key after successful booking

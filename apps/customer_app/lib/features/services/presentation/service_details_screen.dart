@@ -40,7 +40,15 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
   List<SubService> _subServices = [];
   bool _isSubServicesLoading = true;
   SubService? _selectedSubService;
+  bool _subServicesExpanded = true;
   final CategoryService _categoryService = CategoryService();
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -118,7 +126,7 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
           id: hs.id,
           name: hs.title,
           imageUrl: hs.imageUrl,
-          price: hs.basePrice,
+          price: hs.price,
           order: hs.order,
           isActive: hs.isActive,
         )).toList();
@@ -200,6 +208,7 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: CustomScrollView(
+        controller: _scrollController,
         physics: const BouncingScrollPhysics(),
         slivers: [
           _buildSliverAppBar(context, service),
@@ -234,16 +243,24 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Text(
-                  'Available Sub-Services',
-                  style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.textColor),
+                child: GestureDetector(
+                  onTap: () => setState(() => _subServicesExpanded = !_subServicesExpanded),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Available Sub-Services',
+                          style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.textColor)),
+                      Icon(_subServicesExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                          color: AppTheme.primaryColor),
+                    ],
+                  ),
                 ),
               ),
             ),
             
           if (_isSubServicesLoading)
             const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator())))
-          else if (_subServices.isNotEmpty)
+          else if (_subServices.isNotEmpty && _subServicesExpanded)
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               sliver: SliverList(
@@ -285,6 +302,7 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
       onTap: () {
         setState(() {
           _selectedSubService = sub;
+          _subServicesExpanded = false; // collapse after selection
         });
         HapticFeedback.selectionClick();
       },
@@ -589,9 +607,9 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
   Widget _buildBottomAction(BuildContext context, HomeService service) {
     final hasSubServices = _subServices.isNotEmpty;
     final canBook = !hasSubServices || _selectedSubService != null;
-    final displayPrice = _selectedSubService?.price ?? (service.offerPrice ?? service.basePrice);
-    final originalPrice = service.basePrice;
-    final hasOffer = service.offerPrice != null && service.offerPrice! > 0 && service.offerPrice! < service.basePrice;
+    final displayPrice = _selectedSubService?.price ?? (service.offerPrice ?? service.price);
+    final originalPrice = service.price;
+    final hasOffer = service.offerPrice != null && service.offerPrice! > 0 && service.offerPrice! < service.price;
     final priceLabel = _selectedSubService != null 
         ? _selectedSubService!.name 
         : (hasSubServices ? 'Select an option below' : 'Starting at');
@@ -620,26 +638,17 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
                 ),
                 Row(
                   children: [
-                    if (hasOffer && !hasSubServices)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: Text(
-                          '₹${originalPrice.toStringAsFixed(0)}',
-                          style: GoogleFonts.outfit(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey[500],
-                            decoration: TextDecoration.lineThrough,
-                          ),
-                        ),
+                    Flexible(
+                      child: Text(
+                        '₹${displayPrice.toStringAsFixed(0)}',
+                        overflow: TextOverflow.visible,
+                        softWrap: true,
+                        style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w900, color: AppTheme.textColor),
                       ),
-                    Text(
-                      '₹${displayPrice.toStringAsFixed(0)}',
-                      style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.textColor),
                     ),
                     if (hasOffer && !hasSubServices)
                       Padding(
-                        padding: const EdgeInsets.only(left: 8),
+                        padding: const EdgeInsets.only(left: 6),
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
@@ -729,8 +738,64 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
     try {
       print('🛒 [ADD TO CART] Getting CartProvider');
       final cart = Provider.of<CartProvider>(context, listen: false);
+
+      // Check if already in cart
+      final alreadyInCart = cart.items.any((i) =>
+          i.serviceId == service.id &&
+          i.subServiceId == _selectedSubService?.id);
+
+      if (alreadyInCart) {
+        HapticFeedback.mediumImpact();
+        setState(() => _isAddingToCart = false);
+        if (!mounted) return;
+        showModalBottomSheet(
+          context: context,
+          backgroundColor: Colors.white,
+          isScrollControlled: true,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          builder: (ctx) => Padding(
+            padding: EdgeInsets.fromLTRB(20, 24, 20, MediaQuery.of(ctx).padding.bottom + 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.green, size: 52),
+                const SizedBox(height: 12),
+                Text('Already in Cart', style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 8),
+                Text('This service is already added to your cart.', textAlign: TextAlign.center, style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 14)),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                        child: Text('Continue', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const CartScreen()));
+                        },
+                        style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                        child: Text('Go to Cart', style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+        return;
+      }
       
-      final itemPrice = _selectedSubService?.price ?? (service.offerPrice ?? service.basePrice);
+      final itemPrice = _selectedSubService?.price ?? (service.offerPrice ?? service.price);
       final itemName = _selectedSubService?.name ?? service.title;
       final finalPrice = itemPrice; // Use the actual price that will be charged
       print('🛒 [ADD TO CART] Item: $itemName, Price: $itemPrice, FinalPrice: $finalPrice');
@@ -770,40 +835,56 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
       
       print('✅ [ADD TO CART] Showing success dialog');
       HapticFeedback.mediumImpact();
+      setState(() => _isAddingToCart = false);
       if (!mounted) return;
-      
-      showDialog(
+      showModalBottomSheet(
         context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text('Added to Cart', style: GoogleFonts.outfit(fontWeight: FontWeight.w800)),
-          content: Text('$itemName added successfully', style: GoogleFonts.outfit()),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text('Continue', style: GoogleFonts.outfit(color: AppTheme.primaryColor)),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const CartScreen()));
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor),
-              child: Text('Go to Cart', style: GoogleFonts.outfit(color: Colors.white)),
-            ),
-          ],
+        backgroundColor: Colors.white,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (ctx) => Padding(
+          padding: EdgeInsets.fromLTRB(20, 24, 20, MediaQuery.of(ctx).padding.bottom + 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.shopping_cart_checkout_rounded, color: AppTheme.primaryColor, size: 52),
+              const SizedBox(height: 12),
+              Text('Added to Cart!', style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              Text('$itemName added successfully.', textAlign: TextAlign.center, style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 14)),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                      child: Text('Continue', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => const CartScreen()));
+                      },
+                      style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                      child: Text('Go to Cart', style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       );
       
     } catch (e) {
-      print('❌ [ADD TO CART] Error: $e');
       debugPrint('Error adding to cart: $e');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isAddingToCart = false;
-        });
-      }
+      if (mounted) setState(() => _isAddingToCart = false);
     }
   }
 

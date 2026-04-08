@@ -13,14 +13,12 @@ import {
   AlertTriangle,
   Wrench,
   Shield,
-  Settings,
-  ClipboardList
+  Settings
 } from 'lucide-react';
 
 const menuItems = [
   { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
   { name: 'Bookings', href: '/bookings', icon: Calendar },
-  { name: 'Booking Approvals', href: '/booking-approvals', icon: ClipboardList },
   { name: 'Custom Requests', href: '/custom-requests', icon: FileText },
   { name: 'Technicians', href: '/technicians', icon: Users },
   { name: 'Technician Approvals', href: '/technician-approvals', icon: Shield },

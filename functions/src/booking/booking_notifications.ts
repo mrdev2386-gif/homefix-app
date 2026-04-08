@@ -21,8 +21,8 @@ export const onBookingStatusChange = functions.firestore
 
     if (!before || !after) return;
 
-    const previousStatus = before.status;
-    const newStatus = after.status;
+    const previousStatus = before.bookingStatus || before.status;
+    const newStatus = after.bookingStatus || after.status;
     const customerId = after.customerId;
     const technicianId = after.technicianId;
 
@@ -37,7 +37,7 @@ export const onBookingStatusChange = functions.firestore
       // ================================================
       // Set by: Admin (when admin approves booking)
       // Transitions from: pending_admin → ASSIGNED
-      if (newStatus === 'ASSIGNED' || newStatus === 'admin_approved' || newStatus === 'adminApproved') {
+      if (newStatus === 'approved_by_admin' || newStatus === 'ASSIGNED' || newStatus === 'admin_approved') {
         await handleAdminApproved(customerId, technicianId, bookingId, after);
       }
 
@@ -61,15 +61,11 @@ export const onBookingStatusChange = functions.firestore
       // STATUS: workStarted
       // ================================================
       // Set by: Technician (when work begins)
-      if (newStatus === 'work_started' || newStatus === 'workStarted') {
+      if (newStatus === 'service_in_progress' || newStatus === 'work_started' || newStatus === 'workStarted') {
         await handleWorkStarted(customerId, bookingId, after);
       }
 
-      // ================================================
-      // STATUS: completed
-      // ================================================
-      // Set by: Technician (when service is complete)
-      if (newStatus === 'completed') {
+      if (newStatus === 'service_completed' || newStatus === 'completed') {
         await handleCompleted(customerId, technicianId, bookingId, after);
       }
 

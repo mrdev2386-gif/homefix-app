@@ -203,12 +203,15 @@ interface BookingLifecycleInterface {
 
 /**
  * Create booking with global idempotency
+ * Note: This function routes to the unified booking lifecycle via Cloud Functions
  */
 export const createBookingIdempotent = functions.region('asia-south1').https.onCall(
   async (
     data: BookingCreationRequest,
     context: functions.https.CallableContext
   ) => {
+    console.log('ENTRY FUNCTION CALLED: createBookingIdempotent');
+    
     if (!context.auth) {
       throw new functions.https.HttpsError('unauthenticated', 'Auth required');
     }
@@ -219,59 +222,30 @@ export const createBookingIdempotent = functions.region('asia-south1').https.onC
       throw new functions.https.HttpsError('invalid-argument', 'Missing idempotencyKey');
     }
 
-    // Check for existing request
-    const existingRef = db.collection('bookingRequests').doc(idempotencyKey);
-    const existing = await existingRef.get();
-
-    if (existing.exists) {
-      const existingData = existing.data()!;
-      
-      // If completed, return existing booking
-      if (existingData.status === 'completed' && existingData.bookingId) {
-        log.info('idempotency_existing_booking', { idempotencyKey, bookingId: existingData.bookingId });
-        return { 
-          success: true, 
-          bookingId: existingData.bookingId,
-          isRetry: true 
-        };
+    // Store booking intent for processing
+    const bookingIntentRef = db.collection('booking_intents').doc(idempotencyKey);
+    const existingIntent = await bookingIntentRef.get();
+    
+    if (existingIntent.exists) {
+      const intent = existingIntent.data()!;
+      if (intent.bookingId) {
+        return { success: true, bookingId: intent.bookingId, isDuplicate: true };
       }
-      
-      // If still processing, return same response
-      if (existingData.status === 'processing') {
-        log.info('idempotency_still_processing', { idempotencyKey });
-        return { 
-          success: false, 
-          error: 'Request still processing',
-          isRetry: true 
-        };
-      }
-      
-      // If failed, allow retry with same key
     }
 
-    // Create processing record
-    await existingRef.set({
+    // Create new booking intent
+    await bookingIntentRef.set({
+      ...bookingData,
       idempotencyKey,
       customerId: context.auth.uid,
-      status: 'processing',
+      status: 'pending',
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    try {
-      // Call actual booking creation (imported from booking_lifecycle)
-      // Comment out dynamic import - not needed for now
-      // const bookingLifecycle = await import('./booking_lifecycle_stub') as { createBookingWithAssignment: any };
-      
-      throw new Error('Booking lifecycle not implemented');
-    } catch (error: any) {
-      await existingRef.set({
-        status: 'failed',
-        error: error.message,
-        failedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true });
-      
-      throw error;
-    }
+    return {
+      success: true,
+      message: 'Booking intent created. Processing...',
+    };
   }
 );
 

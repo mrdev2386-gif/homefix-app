@@ -460,6 +460,25 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
             _isLoadingSubCategories
                 ? const Center(child: CircularProgressIndicator())
                 : _buildSubcategorySelector(),
+            if (_selectedSubCategory == 'custom' && _customSubCategoryController.text.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.edit_note_rounded, size: 16, color: AppTheme.primaryColor),
+                    const SizedBox(width: 8),
+                    Text(_customSubCategoryController.text,
+                        style: GoogleFonts.outfit(fontSize: 13, color: AppTheme.primaryColor, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 20),
           ],
 
@@ -1052,178 +1071,76 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
   }
   
   Widget _buildSubcategorySelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Search Input
-        TextFormField(
-          controller: _searchController,
-          decoration: _buildInputDecoration('Search subcategory...').copyWith(
-            prefixIcon: const Icon(Icons.search, size: 20),
-            suffixIcon: _searchController.text.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.clear, size: 20),
-                    onPressed: () {
-                      _searchController.clear();
-                      _onSearchChanged('');
-                    },
-                  )
-                : null,
-          ),
-          onChanged: _onSearchChanged,
-        ),
-        const SizedBox(height: 12),
-        
-        // Subcategory List
-        if (_filteredSubCategories.isEmpty && _subCategories.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(24),
+    // Build list: all subcategories + Custom at the very end
+    final allItems = [
+      ..._filteredSubCategories,
+      {'id': 'custom', 'name': '+ Custom'},
+    ];
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: allItems.map((subCat) {
+        final id = subCat['id'] as String;
+        final name = subCat['name'] as String;
+        final isSelected = _selectedSubCategory == id;
+        final isCustom = id == 'custom';
+
+        return GestureDetector(
+          onTap: () {
+            if (isCustom) {
+              _showCustomSubcategoryDialog();
+            } else {
+              setState(() => _selectedSubCategory = id);
+            }
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              color: Colors.grey[100],
+              color: isSelected
+                  ? AppTheme.primaryColor
+                  : isCustom
+                      ? AppTheme.primaryColor.withOpacity(0.06)
+                      : Colors.white,
               borderRadius: BorderRadius.circular(12),
-            ),
-            child: Center(
-              child: Column(
-                children: [
-                  Icon(Icons.inbox_outlined, size: 48, color: Colors.grey[400]),
-                  const SizedBox(height: 12),
-                  Text(
-                    'No subcategories available',
-                    style: GoogleFonts.outfit(
-                      color: Colors.grey[600],
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Use custom option below',
-                    style: GoogleFonts.outfit(
-                      fontSize: 12,
-                      color: Colors.grey[500],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          )
-        else if (_filteredSubCategories.isEmpty && _searchController.text.isNotEmpty)
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.orange[50],
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.search_off, color: Colors.orange[700]),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'No results for "${_searchController.text}"',
-                    style: GoogleFonts.outfit(
-                      color: Colors.orange[900],
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          )
-        else
-          Container(
-            constraints: const BoxConstraints(maxHeight: 250),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey[300]!),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount: _filteredSubCategories.length,
-              separatorBuilder: (context, index) => Divider(height: 1, color: Colors.grey[200]),
-              itemBuilder: (context, index) {
-                final subCat = _filteredSubCategories[index];
-                final isSelected = _selectedSubCategory == subCat['id'];
-                return ListTile(
-                  title: Text(
-                    subCat['name'] as String,
-                    style: GoogleFonts.outfit(
-                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                      color: isSelected ? AppTheme.primaryColor : AppTheme.textColor,
-                    ),
-                  ),
-                  trailing: isSelected
-                      ? Icon(Icons.check_circle, color: AppTheme.primaryColor)
-                      : null,
-                  tileColor: isSelected ? AppTheme.primaryColor.withOpacity(0.1) : Colors.white,
-                  onTap: () {
-                    setState(() {
-                      _selectedSubCategory = subCat['id'] as String;
-                    });
-                  },
-                );
-              },
-            ),
-          ),
-        
-        // Always show Custom Option
-        const SizedBox(height: 12),
-        GestureDetector(
-          onTap: () => _showCustomSubcategoryDialog(),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
               border: Border.all(
-                color: _selectedSubCategory == 'custom' ? AppTheme.primaryColor : Colors.grey[300]!,
-                width: _selectedSubCategory == 'custom' ? 2 : 1,
+                color: isSelected
+                    ? AppTheme.primaryColor
+                    : isCustom
+                        ? AppTheme.primaryColor.withOpacity(0.4)
+                        : Colors.grey.shade200,
+                width: isSelected ? 2 : 1,
               ),
-              borderRadius: BorderRadius.circular(12),
+              boxShadow: isSelected
+                  ? [BoxShadow(color: AppTheme.primaryColor.withOpacity(0.2), blurRadius: 8, offset: const Offset(0, 3))]
+                  : [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 4, offset: const Offset(0, 2))],
             ),
             child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
+                if (isSelected)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 6),
+                    child: Icon(Icons.check_circle_rounded, color: Colors.white, size: 16),
                   ),
-                  child: Icon(
-                    Icons.add_circle_outline,
-                    color: AppTheme.primaryColor,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '+ Add Custom Service',
-                        style: GoogleFonts.outfit(
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.primaryColor,
-                          fontSize: 15,
-                        ),
-                      ),
-                      if (_selectedSubCategory == 'custom' && _customSubCategoryController.text.isNotEmpty)
-                        Text(
-                          _customSubCategoryController.text,
-                          style: GoogleFonts.outfit(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                    ],
+                Text(
+                  name,
+                  style: GoogleFonts.outfit(
+                    fontSize: 13,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    color: isSelected
+                        ? Colors.white
+                        : isCustom
+                            ? AppTheme.primaryColor
+                            : AppTheme.textColor,
                   ),
                 ),
-                if (_selectedSubCategory == 'custom')
-                  Icon(Icons.check_circle, color: AppTheme.primaryColor),
               ],
             ),
           ),
-        ),
-      ],
+        );
+      }).toList(),
     );
   }
   

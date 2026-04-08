@@ -126,15 +126,49 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       // ── NEW BOOKING FLOW: Check if technician is selected ─────────────
       if (checkout.hasSelectedTechnician) {
-        // Use new booking flow with pre-selected technician
-        debugPrint('🔄 [Checkout] Using NEW booking flow with technician: ${checkout.selectedTechnicianId}');
-        
-        // Get first item for service details
         final firstItem = checkout.items.isNotEmpty ? checkout.items.first : null;
-        if (firstItem == null) {
-          throw Exception('No service selected. Please add a service first.');
+        if (firstItem == null) throw Exception('No service selected. Please add a service first.');
+
+        // PAY BEFORE WORK: payment first, booking created only after verified payment
+        if (_paymentMode == 'before_work') {
+          setState(() { _isProcessing = false; _submitLock = false; }); // release lock before navigation
+
+          final bookingParams = {
+            'serviceId': firstItem.serviceId,
+            'technicianId': checkout.selectedTechnicianId!,
+            'categoryId': firstItem.categoryId,
+            'categoryName': firstItem.categoryName,
+            'scheduledDate': scheduledDate.toIso8601String(),
+            'scheduledTime': timeSlot,
+            'address': checkout.selectedAddress!.toMap(),
+            if (firstItem.subServiceId != null) 'subcategoryId': firstItem.subServiceId,
+            'paymentMode': 'before_work',
+          };
+
+          final bookingId = await Navigator.push<String?>(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PaymentScreen(bookingParams: bookingParams),
+            ),
+          );
+
+          if (!mounted) return;
+
+          if (bookingId != null && bookingId.isNotEmpty) {
+            // Payment verified + booking created on backend
+            try {
+              await Provider.of<CartProvider>(context, listen: false).clearCart();
+              Provider.of<CheckoutProvider>(context, listen: false).clear();
+            } catch (_) {}
+            _showBookingPendingSheet(bookingId);
+          } else {
+            // Payment cancelled or failed — no booking was created
+            _showError('Payment was not completed. No booking was created.');
+          }
+          return;
         }
 
+        // PAY AFTER WORK: create booking first, pay later
         final result = await bookingProvider.createBookingRequest(
           serviceId: firstItem.serviceId,
           technicianId: checkout.selectedTechnicianId!,
@@ -143,53 +177,28 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           scheduledDate: scheduledDate.toIso8601String(),
           scheduledTime: timeSlot,
           address: checkout.selectedAddress!.toMap(),
-          price: checkout.grandTotal,
           subcategoryId: firstItem.subServiceId,
           paymentMode: _paymentMode,
         );
 
-        debugPrint('✅ [Checkout] New booking request created: $result');
-
         final bookingId = result['bookingId'] as String?;
-        final status = result['status'] as String?;
-        
         if (bookingId == null || bookingId.isEmpty) {
           throw Exception('Server returned no bookingId. Please try again.');
         }
 
-        // Clear cart
         try {
           await Provider.of<CartProvider>(context, listen: false).clearCart();
           Provider.of<CheckoutProvider>(context, listen: false).clear();
-        } catch (clearErr) {
-          debugPrint('⚠️ [Checkout] Cart clear failed (non-fatal): $clearErr');
-        }
+        } catch (_) {}
 
         if (!mounted) return;
-
-        // In new flow: status = pending_admin → wait for admin approval
-        debugPrint('🔍 [Checkout] Booking status: $status');
-        
-        if (status == 'pending_admin') {
-          // Show success - booking is pending admin approval
-          _showBookingPendingSheet(bookingId);
-        } else {
-          // Fallback to status screen
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => BookingStatusScreen(bookingId: bookingId),
-            ),
-          );
-        }
+        _showBookingPendingSheet(bookingId);
         return;
       }
 
-      // NEW FLOW: Require technician selection - no fallback to legacy
       if (checkout.selectedTechnicianId == null) {
-        throw Exception('Please select a technician before booking. This is required for the new booking flow.');
+        throw Exception('Please select a technician before booking.');
       }
-      return;
     } on Exception catch (e) {
       debugPrint('❌ [Checkout] Booking failed: $e');
       if (mounted) {
@@ -881,7 +890,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
               const SizedBox(width: 12),
               Text(
-                'Payment Mode (Wallet Only)',
+                'Payment Mode',
                 style: GoogleFonts.outfit(
                   fontWeight: FontWeight.w800,
                   fontSize: 16,
@@ -893,7 +902,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           const SizedBox(height: 16),
           RadioListTile<String>(
             title: Text('Pay Before Work', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
-            subtitle: Text('Amount deducted from wallet instantly', style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey[600])),
+            subtitle: Text('Pay online via Razorpay before service starts', style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey[600])),
             value: 'before_work',
             groupValue: _paymentMode,
             onChanged: (val) {

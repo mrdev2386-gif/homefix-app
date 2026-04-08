@@ -14,7 +14,7 @@ import {
   DocumentSnapshot
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
-import { functions } from '@/lib/firebase';
+import { functions } from '@/lib/firebaseClient';
 
 export interface AdminBooking {
   id: string;
@@ -35,9 +35,14 @@ export interface AdminBooking {
   serviceName: string;
   serviceDescription?: string;
   categoryName: string;
+  price: number;          // original price before offer (source of truth for strikethrough)
+  offerPrice?: number;    // discounted price (if any)
+  finalAmount: number;    // what customer actually pays — source of truth for main display
+  originalPrice?: number; // original price (for reference)
+  /** @deprecated use finalAmount */
   servicePrice: number;
-  offerPrice?: number;
   serviceImage?: string;
+  bookingStatus?: string;
   bookingDate: any;
   timeSlot: string;
   notes?: string;
@@ -74,10 +79,13 @@ function parseBookingData(bookingDoc: any, user: any, technician: any, service: 
     addressText = typeof user.address === 'string' ? user.address : user.address.text || user.address.line1 || '';
   }
 
-  // Normalize status: bookingStatus takes priority over status
-  const effectiveStatus = data.bookingStatus || data.status || 'pending_admin_review';
+  // Normalize status: bookingStatus takes priority, then status, then default
+  // Handle all variants: pending_admin_review, pending_admin_approval, pending, etc.
+  let effectiveStatus = data.bookingStatus || data.status || 'pending_admin_review';
+  effectiveStatus = effectiveStatus.toLowerCase().trim();
+  console.log('[parseBookingData] Booking', bookingDoc.id, 'raw status:', data.bookingStatus || data.status, '-> normalized:', effectiveStatus);
 
-  return {
+  const parsed = {
     id: bookingDoc.id,
     customerId: data.customerId,
     customerName: data.customerName || user?.name || 'Unknown Customer',
@@ -96,8 +104,12 @@ function parseBookingData(bookingDoc: any, user: any, technician: any, service: 
     serviceName: data.serviceName || service?.name || 'Unknown Service',
     serviceDescription: service?.description || data.serviceDescription || '',
     categoryName: data.categoryName || service?.category || '',
-    servicePrice: data.finalAmount || data.price || 0,
-    offerPrice: service?.offerPrice || data.offerPrice,
+    price: data.price || 0,
+    offerPrice: data.offerPrice || service?.offerPrice,
+    finalAmount: data.finalAmount || data.offerPrice || data.price || 0,
+    originalPrice: data.originalPrice || data.price,
+    servicePrice: data.finalAmount || data.offerPrice || data.price || 0, // kept for compat
+    bookingStatus: data.bookingStatus,
     serviceImage: service?.image || data.serviceImage,
     bookingDate: data.bookingDate || data.scheduledDate,
     timeSlot: data.timeSlot || data.scheduledTime || '',
@@ -114,6 +126,24 @@ function parseBookingData(bookingDoc: any, user: any, technician: any, service: 
     cancelledAt: data.cancelledAt,
     rejectionReason: data.rejectionReason || data.cancellationReason
   } as AdminBooking;
+  
+  console.log('[PARSE BOOKING DATA] Firestore raw data:', {
+    data_price: data.price,
+    data_finalAmount: data.finalAmount,
+    data_offerPrice: data.offerPrice,
+    data_bookingStatus: data.bookingStatus,
+    data_status: data.status,
+  });
+  
+  console.log('[PARSE BOOKING DATA] Parsed result:', {
+    parsed_price: parsed.price,
+    parsed_finalAmount: parsed.finalAmount,
+    parsed_offerPrice: parsed.offerPrice,
+    parsed_bookingStatus: parsed.bookingStatus,
+    parsed_status: parsed.status,
+  });
+  
+  return parsed;
 }
 
 // Subscribe to single booking with real-time updates
@@ -238,9 +268,7 @@ export async function getBookingById(bookingId: string): Promise<AdminBooking | 
 }
 
 // Subscribe to bookings with real-time updates.
-// The onSnapshot error handler guarantees setLoading(false) even on
-// permission-denied / network errors — the async-callback catch alone
-// is NOT enough because Firestore snapshot errors bypass it.
+// Handles all status variants and ensures loading always completes.
 export function subscribeToBookings(
   callback: (bookings: AdminBooking[]) => void,
   pageSize: number = 20,
@@ -251,41 +279,49 @@ export function subscribeToBookings(
     firestoreLimit(pageSize)
   ];
 
-  if (filters?.status) {
-    constraints.push(where('status', '==', filters.status));
+  // Map frontend status to all possible backend variants
+  if (filters?.status && filters.status !== 'all') {
+    const statusVariants: Record<string, string[]> = {
+      'pending_admin_approval': ['pending_admin_approval', 'pending_admin_review', 'pending_admin', 'pending'],
+      'approved_by_admin': ['approved_by_admin', 'admin_approved', 'assigned'],
+      'technician_accepted': ['technician_accepted', 'confirmed'],
+      'service_in_progress': ['service_in_progress', 'in_progress'],
+      'service_completed': ['service_completed', 'completed'],
+      'rejected': ['rejected', 'rejected_by_admin', 'admin_rejected', 'technician_rejected', 'cancelled'],
+    };
+    const variants = statusVariants[filters.status] || [filters.status];
+    constraints.push(where('status', 'in', variants));
   }
+
   if (filters?.paymentStatus) {
     constraints.push(where('paymentStatus', '==', filters.paymentStatus));
   }
 
   const q = query(collection(db, 'bookings'), ...constraints);
 
-  // Timeout failsafe: if the first snapshot never arrives, stop loading.
   let firstSnapshotReceived = false;
   const timeoutId = setTimeout(() => {
     if (!firstSnapshotReceived) {
-      console.warn('[subscribeToBookings] Timeout — no snapshot after 10s. Resolving empty.');
-      callback([]);
+      console.warn('[subscribeToBookings] Timeout — no snapshot after 10s, preserving existing state');
     }
   }, 10_000);
 
   return onSnapshot(
     q,
-    // ✅ success handler
     async (snapshot) => {
       firstSnapshotReceived = true;
       clearTimeout(timeoutId);
       try {
         const docs = snapshot.docs;
-        console.log('[subscribeToBookings] Snapshot received, docs:', docs.length);
+        console.log('[subscribeToBookings] Snapshot received:', docs.length, 'docs');
 
+        // CRITICAL FIX: Do NOT reset state on empty snapshot
+        // Empty snapshot can be transient Firestore issue
         if (docs.length === 0) {
-          callback([]);
+          console.log('[subscribeToBookings] Empty snapshot — skipping state update');
           return;
         }
 
-        // Booking docs already contain denormalized customerName / technicianName
-        // so secondary lookups are best-effort only — failures must not block loading.
         const customerIds = [...new Set(docs.map(d => d.data().customerId).filter(Boolean))];
         const technicianIds = [...new Set(docs.map(d => d.data().technicianId).filter(Boolean))];
         const serviceIds = [...new Set(docs.map(d => d.data().serviceId).filter(Boolean))];
@@ -314,21 +350,18 @@ export function subscribeToBookings(
           return parseBookingData(bookingDoc, user, technician, service);
         });
 
-        console.log('[subscribeToBookings] Parsed bookings:', bookings.length);
+        console.log('[subscribeToBookings] Parsed:', bookings.length, 'bookings');
         callback(bookings);
       } catch (error) {
         console.error('[subscribeToBookings] Error processing snapshot:', error);
-        // Still resolve so loading stops — use raw booking data without enrichment
-        const bookings = snapshot.docs.map(d => parseBookingData(d, null, null, null));
-        callback(bookings);
+        // Do not reset state on processing error
       }
     },
-    // ✅ error handler — this is the path that was previously missing
     (error) => {
       firstSnapshotReceived = true;
       clearTimeout(timeoutId);
-      console.error('[subscribeToBookings] Firestore snapshot error:', error.code, error.message);
-      callback([]);
+      console.error('[subscribeToBookings] Snapshot error:', error.code, error.message);
+      // Do not clear state on error — preserve existing bookings
     }
   );
 }
@@ -346,18 +379,42 @@ export async function getCustomerBookingCount(customerId: string): Promise<numbe
 
 // Cloud Function calls
 export async function approveBookingAction(bookingId: string) {
-  const approve = httpsCallable(functions, 'approveBookingByAdmin');
-  await approve({ bookingId });
+  try {
+    console.log('[approveBookingAction] Calling approveBookingByAdmin with bookingId:', bookingId);
+    const approve = httpsCallable(functions, 'approveBookingByAdmin');
+    const result = await approve({ bookingId });
+    console.log('[approveBookingAction] Success:', result.data);
+    return result.data;
+  } catch (error: any) {
+    console.error('[approveBookingAction] Error:', error.code, error.message);
+    throw new Error(`Failed to approve booking: ${error.message}`);
+  }
 }
 
 export async function rejectBookingAction(bookingId: string, reason?: string) {
-  const reject = httpsCallable(functions, 'rejectBookingByAdmin');
-  await reject({ bookingId, reason });
+  try {
+    console.log('[rejectBookingAction] Calling rejectBookingByAdmin with bookingId:', bookingId);
+    const reject = httpsCallable(functions, 'rejectBookingByAdmin');
+    const result = await reject({ bookingId, reason });
+    console.log('[rejectBookingAction] Success:', result.data);
+    return result.data;
+  } catch (error: any) {
+    console.error('[rejectBookingAction] Error:', error.code, error.message);
+    throw new Error(`Failed to reject booking: ${error.message}`);
+  }
 }
 
 export async function approveBookingWithTechnician(bookingId: string, technicianId: string) {
-  const approve = httpsCallable(functions, 'approveBookingByAdmin');
-  await approve({ bookingId, overrideTechnicianId: technicianId });
+  try {
+    console.log('[approveBookingWithTechnician] Calling approveBookingByAdmin with bookingId:', bookingId, 'technicianId:', technicianId);
+    const approve = httpsCallable(functions, 'approveBookingByAdmin');
+    const result = await approve({ bookingId, overrideTechnicianId: technicianId });
+    console.log('[approveBookingWithTechnician] Success:', result.data);
+    return result.data;
+  } catch (error: any) {
+    console.error('[approveBookingWithTechnician] Error:', error.code, error.message);
+    throw new Error(`Failed to approve booking with technician: ${error.message}`);
+  }
 }
 
 export async function changeTechnicianAction(bookingId: string, technicianId: string) {
@@ -374,9 +431,24 @@ export interface TechnicianOption {
 }
 
 export async function fetchAllTechnicians(): Promise<TechnicianOption[]> {
-  const fn = httpsCallable<unknown, { success: boolean; technicians: TechnicianOption[] }>(functions, 'getAllTechniciansForAdmin');
-  const result = await fn({});
-  return result.data.technicians;
+  // Direct Firestore query — avoids auth requirement of the Cloud Function
+  const snapshot = await getDocs(
+    query(
+      collection(db, 'technicians'),
+      where('status', 'in', ['approved', 'active']),
+      firestoreLimit(100)
+    )
+  );
+  return snapshot.docs.map(d => {
+    const data = d.data();
+    return {
+      id: d.id,
+      name: data.name || 'Unknown',
+      phone: data.phone || '',
+      rating: data.rating || 0,
+      completedJobs: data.completedJobs || data.totalJobs || 0,
+    };
+  });
 }
 
 export async function assignTechnician(bookingId: string, technicianId: string) {
@@ -385,16 +457,40 @@ export async function assignTechnician(bookingId: string, technicianId: string) 
 }
 
 export async function markBookingActive(bookingId: string) {
-  const markActive = httpsCallable(functions, 'markBookingActive');
-  await markActive({ bookingId });
+  try {
+    console.log('[markBookingActive] Calling markBookingActive with bookingId:', bookingId);
+    const markActive = httpsCallable(functions, 'markBookingActive');
+    const result = await markActive({ bookingId });
+    console.log('[markBookingActive] Success:', result.data);
+    return result.data;
+  } catch (error: any) {
+    console.error('[markBookingActive] Error:', error.code, error.message);
+    throw new Error(`Failed to mark booking active: ${error.message}`);
+  }
 }
 
 export async function markBookingCompleted(bookingId: string) {
-  const complete = httpsCallable(functions, 'completeBooking');
-  await complete({ bookingId });
+  try {
+    console.log('[markBookingCompleted] Calling completeService with bookingId:', bookingId);
+    const complete = httpsCallable(functions, 'completeService');
+    const result = await complete({ bookingId });
+    console.log('[markBookingCompleted] Success:', result.data);
+    return result.data;
+  } catch (error: any) {
+    console.error('[markBookingCompleted] Error:', error.code, error.message);
+    throw new Error(`Failed to complete booking: ${error.message}`);
+  }
 }
 
 export async function updatePaymentStatus(bookingId: string, paymentStatus: string) {
-  const updatePayment = httpsCallable(functions, 'updateBookingPayment');
-  await updatePayment({ bookingId, paymentStatus });
+  try {
+    console.log('[updatePaymentStatus] Calling updateBookingPayment with bookingId:', bookingId, 'status:', paymentStatus);
+    const updatePayment = httpsCallable(functions, 'updateBookingPayment');
+    const result = await updatePayment({ bookingId, paymentStatus });
+    console.log('[updatePaymentStatus] Success:', result.data);
+    return result.data;
+  } catch (error: any) {
+    console.error('[updatePaymentStatus] Error:', error.code, error.message);
+    throw new Error(`Failed to update payment status: ${error.message}`);
+  }
 }

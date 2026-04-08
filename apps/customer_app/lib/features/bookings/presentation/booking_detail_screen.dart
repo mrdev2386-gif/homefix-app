@@ -21,22 +21,35 @@ class BookingDetailScreen extends StatefulWidget {
 
 class _BookingDetailScreenState extends State<BookingDetailScreen> {
   bool _ratingShown = false;
+  late Booking _booking;
 
   @override
   void initState() {
     super.initState();
-    if (widget.booking.status == 'completed' && 
-        widget.booking.paymentStatus == 'paid' && 
-        !widget.booking.isRated) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _rateService(context);
-      });
+    _booking = widget.booking;
+    final status = _booking.bookingStatus.isNotEmpty ? _booking.bookingStatus : _booking.status;
+    if (status == 'completed' && _booking.paymentStatus == 'paid' && !_booking.isRated) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _rateService(context));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final booking = widget.booking;
+    return StreamBuilder<Booking?>(
+      stream: BookingService().getBookingStream(_booking.id),
+      builder: (context, snapshot) {
+        if (snapshot.hasData && snapshot.data != null) {
+          _booking = snapshot.data!;
+        }
+        return _buildScaffold(context, _booking);
+      },
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context, Booking booking) {
+    // Use bookingStatus as source of truth, fall back to status
+    final currentStatus = booking.bookingStatus.isNotEmpty ? booking.bookingStatus : booking.status;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FE),
       appBar: AppBar(
@@ -47,9 +60,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.share),
-            onPressed: () {
-              _shareBooking(context);
-            },
+            onPressed: () => _shareBooking(context),
           ),
         ],
       ),
@@ -63,24 +74,14 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
               context,
               child: Column(
                 children: [
-                  Text(
-                    'Booking ID',
-                    style: GoogleFonts.outfit(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
-                  ),
+                  Text('Booking ID', style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey[600])),
                   const SizedBox(height: 4),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
                         booking.id.substring(0, 12).toUpperCase(),
-                        style: GoogleFonts.outfit(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.2,
-                        ),
+                        style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.2),
                       ),
                       IconButton(
                         icon: const Icon(Icons.copy, size: 18),
@@ -99,10 +100,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
             const SizedBox(height: 20),
 
             // Status Tracker
-            _buildInfoCard(
-              context,
-              child: StatusTracker(status: booking.status),
-            ),
+            _buildInfoCard(context, child: StatusTracker(status: currentStatus)),
             const SizedBox(height: 20),
 
             // Service Details
@@ -114,23 +112,15 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                 children: [
                   _buildDetailRow(Icons.home_repair_service, 'Service', booking.serviceTitle),
                   const Divider(height: 24),
-                  _buildDetailRow(
-                    Icons.calendar_today,
-                    'Scheduled',
-                    DateFormat('MMM dd, yyyy').format(booking.scheduledAt),
-                  ),
+                  _buildDetailRow(Icons.calendar_today, 'Scheduled', DateFormat('MMM dd, yyyy').format(booking.scheduledAt)),
                   const Divider(height: 24),
-                  _buildDetailRow(
-                    Icons.access_time,
-                    'Time',
-                    DateFormat('hh:mm a').format(booking.scheduledAt),
-                  ),
+                  _buildDetailRow(Icons.access_time, 'Time', DateFormat('hh:mm a').format(booking.scheduledAt)),
                 ],
               ),
             ),
             const SizedBox(height: 20),
 
-            // Address Details
+            // Address
             _buildSectionTitle('Service Location'),
             const SizedBox(height: 12),
             _buildInfoCard(
@@ -138,34 +128,20 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Icon(Icons.location_on, color: Colors.red[400], size: 20),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Address',
-                        style: GoogleFonts.outfit(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
+                  Row(children: [
+                    Icon(Icons.location_on, color: Colors.red[400], size: 20),
+                    const SizedBox(width: 8),
+                    Text('Address', style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.bold)),
+                  ]),
                   const SizedBox(height: 8),
-                  Text(
-                    _getFullAddress(booking.addressSnapshot),
-                    style: GoogleFonts.outfit(
-                      fontSize: 14,
-                      color: Colors.grey[700],
-                      height: 1.5,
-                    ),
-                  ),
+                  Text(_getFullAddress(booking.addressSnapshot),
+                      style: GoogleFonts.outfit(fontSize: 14, color: Colors.grey[700], height: 1.5)),
                 ],
               ),
             ),
             const SizedBox(height: 20),
 
-            // Technician Details (if assigned)
+            // Technician
             if (booking.technicianName != null) ...[
               _buildSectionTitle('Technician Details'),
               const SizedBox(height: 12),
@@ -183,30 +159,16 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            booking.technicianName!,
-                            style: GoogleFonts.outfit(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                          Text(booking.technicianName!, style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 4),
-                          Text(
-                            'Assigned Technician',
-                            style: GoogleFonts.outfit(
-                              fontSize: 12,
-                              color: Colors.grey[600],
-                            ),
-                          ),
+                          Text('Assigned Technician', style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey[600])),
                         ],
                       ),
                     ),
-                    if (booking.status != 'completed' && booking.status != 'cancelled')
+                    if (currentStatus != 'completed' && currentStatus != 'cancelled' && currentStatus != 'cancelled_by_customer')
                       IconButton(
                         icon: const Icon(Icons.phone, color: Color(0xFF6366F1)),
-                        onPressed: () {
-                          _callTechnician();
-                        },
+                        onPressed: _callTechnician,
                       ),
                   ],
                 ),
@@ -228,20 +190,12 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                   ],
                   if (booking.couponCode != null) ...[
                     const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Icon(Icons.local_offer, size: 14, color: Colors.green[600]),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Coupon: ${booking.couponCode}',
-                          style: GoogleFonts.outfit(
-                            fontSize: 12,
-                            color: Colors.green[600],
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
+                    Row(children: [
+                      Icon(Icons.local_offer, size: 14, color: Colors.green[600]),
+                      const SizedBox(width: 6),
+                      Text('Coupon: ${booking.couponCode}',
+                          style: GoogleFonts.outfit(fontSize: 12, color: Colors.green[600], fontWeight: FontWeight.w500)),
+                    ]),
                   ],
                   const Divider(height: 24),
                   _buildPriceRow('Total Amount', booking.finalAmount, isTotal: true),
@@ -250,31 +204,18 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Pay After Work QR Code
-            if (booking.status == 'awaiting_customer_payment') ...[
+            // QR for pay-after-work
+            if (currentStatus == 'awaiting_customer_payment') ...[
               _buildSectionTitle('Payment Required'),
               const SizedBox(height: 12),
               _buildInfoCard(
                 context,
                 child: Column(
                   children: [
-                    Text(
-                      'Job Completed!',
-                      style: GoogleFonts.outfit(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green,
-                      ),
-                    ),
+                    Text('Job Completed!', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
                     const SizedBox(height: 8),
-                    Text(
-                      'Please show this QR to the technician to complete the payment from your wallet.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.outfit(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
-                    ),
+                    Text('Show this QR to the technician to complete payment.',
+                        textAlign: TextAlign.center, style: GoogleFonts.outfit(fontSize: 14, color: Colors.grey[600])),
                     const SizedBox(height: 24),
                     QrImageView(
                       data: 'homefix_pay:${booking.id}:${booking.customerId}:${booking.finalAmount}',
@@ -285,18 +226,9 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                     const SizedBox(height: 24),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF0F9FF),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        'Amount to Pay: ₹${booking.finalAmount.toStringAsFixed(0)}',
-                        style: GoogleFonts.outfit(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF0369A1),
-                        ),
-                      ),
+                      decoration: BoxDecoration(color: const Color(0xFFF0F9FF), borderRadius: BorderRadius.circular(8)),
+                      child: Text('Amount to Pay: ₹${booking.finalAmount.toStringAsFixed(0)}',
+                          style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: const Color(0xFF0369A1))),
                     ),
                   ],
                 ),
@@ -304,206 +236,104 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
               const SizedBox(height: 20),
             ],
 
-            // Booking Timeline
+            // Timeline
             _buildSectionTitle('Booking Timeline'),
             const SizedBox(height: 12),
             _buildInfoCard(
               context,
               child: Column(
                 children: [
-                  _buildTimelineRow(
-                    'Booking Created',
-                    DateFormat('MMM dd, yyyy • hh:mm a').format(booking.createdAt),
-                  ),
+                  _buildTimelineRow('Booking Created', DateFormat('MMM dd, yyyy • hh:mm a').format(booking.createdAt)),
                   const Divider(height: 24),
-                  _buildTimelineRow(
-                    'Last Updated',
-                    DateFormat('MMM dd, yyyy • hh:mm a').format(booking.updatedAt),
-                  ),
+                  _buildTimelineRow('Last Updated', DateFormat('MMM dd, yyyy • hh:mm a').format(booking.updatedAt)),
                 ],
               ),
             ),
             const SizedBox(height: 32),
 
-            // Action Buttons
-            if (['pending_admin_review', 'admin_approved', 'pending', 'assigned'].contains(booking.status)) ...[
+            // ── ACTION BUTTONS ──
+            // Cancel: only for pending_admin_review (customer can only cancel before admin approves)
+            if (currentStatus == 'pending_admin_review') ...[
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
-                  onPressed: () {
-                    _cancelBooking(context);
-                  },
+                  onPressed: () => _cancelBooking(context),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.red,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: Text(
-                    'Cancel Booking',
-                    style: GoogleFonts.outfit(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
+                  child: Text('Cancel Booking', style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                 ),
               ),
             ],
 
-            if (booking.status == 'awaiting_payment') ...[
+            // Pay Now button
+            if (currentStatus == 'awaiting_payment') ...[
               SizedBox(
                 width: double.infinity,
                 height: 55,
                 child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => PaymentScreen(
-                          bookingId: booking.id,
-                          amount: booking.finalAmount,
-                        ),
-                      ),
-                    );
-                  },
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => PaymentScreen(bookingId: booking.id),
+                  )),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF6366F1),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 4,
                   ),
-                  child: Text(
-                    'PAY NOW (₹${booking.finalAmount.toStringAsFixed(0)})',
-                    style: GoogleFonts.outfit(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: OutlinedButton(
-                  onPressed: () => _cancelBooking(context),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.red),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: Text(
-                    'Cancel Booking',
-                    style: GoogleFonts.outfit(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red,
-                    ),
-                  ),
+                  child: Text('PAY NOW (₹${booking.finalAmount.toStringAsFixed(0)})',
+                      style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                 ),
               ),
             ],
 
-            if (booking.status == 'confirmed') ...[
-               Center(
-                 child: Text(
-                   'Waiting for technician to start work',
-                   style: GoogleFonts.outfit(color: Colors.grey[600], fontStyle: FontStyle.italic),
-                 ),
-               ),
-               const SizedBox(height: 12),
-               SizedBox(
+            // Cancelled state
+            if (currentStatus == 'cancelled' || currentStatus == 'cancelled_by_customer') ...[
+              Container(
                 width: double.infinity,
-                height: 50,
-                child: OutlinedButton(
-                  onPressed: () => _cancelBooking(context),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.red),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: Text(
-                    'Cancel Booking',
-                    style: GoogleFonts.outfit(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red,
-                    ),
-                  ),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
+                child: Row(
+                  children: [
+                    const Icon(Icons.cancel_outlined, color: Colors.red),
+                    const SizedBox(width: 12),
+                    Text('This booking has been cancelled.',
+                        style: GoogleFonts.outfit(color: Colors.red, fontWeight: FontWeight.w600)),
+                  ],
                 ),
               ),
             ],
 
-            if (booking.status == 'completed') ...[
-              if (!booking.isRated) 
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: () {
-                    _rateService(context);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF6366F1),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+            // Rate service
+            if (currentStatus == 'completed' || currentStatus == 'service_completed') ...[
+              if (!booking.isRated)
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: () => _rateService(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF6366F1),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
+                    child: Text('Rate Service', style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                   ),
-                  child: Text(
-                    'Rate Service',
-                    style: GoogleFonts.outfit(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ) else Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Center(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.check_circle, color: Colors.green, size: 20),
-                      const SizedBox(width: 8),
-                      Text(
-                        'You have rated this service',
-                        style: GoogleFonts.outfit(color: Colors.green, fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: OutlinedButton(
-                  onPressed: () {
-                    _bookAgain(context);
-                  },
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(0xFF6366F1)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: Text(
-                    'Book Again',
-                    style: GoogleFonts.outfit(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: const Color(0xFF6366F1),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.check_circle, color: Colors.green, size: 20),
+                        const SizedBox(width: 8),
+                        Text('You have rated this service', style: GoogleFonts.outfit(color: Colors.green, fontWeight: FontWeight.bold)),
+                      ],
                     ),
                   ),
                 ),
-              ),
             ],
           ],
         ),
@@ -511,15 +341,8 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: GoogleFonts.outfit(
-        fontSize: 16,
-        fontWeight: FontWeight.bold,
-      ),
-    );
-  }
+  Widget _buildSectionTitle(String title) =>
+      Text(title, style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold));
 
   Widget _buildInfoCard(BuildContext context, {required Widget child}) {
     return Container(
@@ -528,13 +351,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: child,
     );
@@ -549,21 +366,9 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                label,
-                style: GoogleFonts.outfit(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                ),
-              ),
+              Text(label, style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey[600])),
               const SizedBox(height: 2),
-              Text(
-                value,
-                style: GoogleFonts.outfit(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              Text(value, style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w600)),
             ],
           ),
         ),
@@ -575,22 +380,16 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: GoogleFonts.outfit(
-            fontSize: isTotal ? 16 : 14,
-            fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
-            color: isTotal ? Colors.black : Colors.grey[700],
-          ),
-        ),
-        Text(
-          '${isDiscount ? '-' : ''}₹${amount.toStringAsFixed(0)}',
-          style: GoogleFonts.outfit(
-            fontSize: isTotal ? 18 : 14,
-            fontWeight: isTotal ? FontWeight.bold : FontWeight.w600,
-            color: isDiscount ? Colors.green[600] : (isTotal ? const Color(0xFF6366F1) : Colors.black),
-          ),
-        ),
+        Text(label, style: GoogleFonts.outfit(
+          fontSize: isTotal ? 16 : 14,
+          fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+          color: isTotal ? Colors.black : Colors.grey[700],
+        )),
+        Text('${isDiscount ? '-' : ''}₹${amount.toStringAsFixed(0)}', style: GoogleFonts.outfit(
+          fontSize: isTotal ? 18 : 14,
+          fontWeight: isTotal ? FontWeight.bold : FontWeight.w600,
+          color: isDiscount ? Colors.green[600] : (isTotal ? const Color(0xFF6366F1) : Colors.black),
+        )),
       ],
     );
   }
@@ -599,27 +398,14 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: GoogleFonts.outfit(
-            fontSize: 14,
-            color: Colors.grey[700],
-          ),
-        ),
-        Text(
-          value,
-          style: GoogleFonts.outfit(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        Text(label, style: GoogleFonts.outfit(fontSize: 14, color: Colors.grey[700])),
+        Text(value, style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w600)),
       ],
     );
   }
 
   String _getFullAddress(Map<String, dynamic> addressSnapshot) {
     if (addressSnapshot.isEmpty) return 'Address not available';
-    
     final parts = <String>[];
     if (addressSnapshot['houseNo'] != null) parts.add(addressSnapshot['houseNo']);
     if (addressSnapshot['street'] != null) parts.add(addressSnapshot['street']);
@@ -627,75 +413,54 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
     if (addressSnapshot['landmark'] != null) parts.add('Near ${addressSnapshot['landmark']}');
     if (addressSnapshot['city'] != null) parts.add(addressSnapshot['city']);
     if (addressSnapshot['pincode'] != null) parts.add(addressSnapshot['pincode']);
-    
     return parts.isEmpty ? 'Address not available' : parts.join(', ');
   }
 
   void _shareBooking(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Share functionality coming soon!')),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Share functionality coming soon!')));
   }
 
-  void _callTechnician() {
-    // Implement call if needed
-  }
+  void _callTechnician() {}
 
   void _cancelBooking(BuildContext context) {
-    final TextEditingController reasonController = TextEditingController();
-    
+    final reasonController = TextEditingController();
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: Text('Cancel Booking?', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              'Are you sure you want to cancel this booking? This action cannot be undone.',
-              style: GoogleFonts.outfit(),
-            ),
+            Text('Are you sure you want to cancel? This cannot be undone.', style: GoogleFonts.outfit()),
             const SizedBox(height: 16),
             TextField(
               controller: reasonController,
-              decoration: const InputDecoration(
-                hintText: 'Reason for cancellation',
-                border: OutlineInputBorder(),
-              ),
+              decoration: const InputDecoration(hintText: 'Reason for cancellation', border: OutlineInputBorder()),
               maxLines: 2,
             ),
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('No', style: GoogleFonts.outfit()),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('No', style: GoogleFonts.outfit())),
           TextButton(
             onPressed: () async {
               final reason = reasonController.text.trim();
               if (reason.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please provide a reason')),
-                );
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please provide a reason')));
                 return;
               }
-              
-              Navigator.pop(context);
-              
+              Navigator.pop(ctx);
               try {
-                await BookingService().cancelBooking(widget.booking.id, reason);
+                await BookingService().cancelBooking(_booking.id, reason);
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Booking cancelled successfully')),
+                    const SnackBar(content: Text('Booking cancelled successfully'), backgroundColor: Colors.green),
                   );
-                  Navigator.pop(context); // Go back after cancellation
+                  // StreamBuilder will auto-refresh UI — no manual pop needed
                 }
               } catch (e) {
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Failed to cancel: $e')),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to cancel: $e')));
                 }
               }
             },
@@ -709,21 +474,10 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
   void _rateService(BuildContext context) async {
     if (_ratingShown) return;
     _ratingShown = true;
-    final result = await Navigator.of(context).push(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (context) => RatingScreen(booking: widget.booking),
-      ),
-    );
-    if (result == true) {
-      // Reload or update state if needed
-      if (mounted) Navigator.pop(context); // Go back after successful rating
-    }
-  }
-
-  void _bookAgain(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Redirecting to service booking...')),
-    );
+    final result = await Navigator.of(context).push(MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) => RatingScreen(booking: _booking),
+    ));
+    if (result == true && mounted) Navigator.pop(context);
   }
 }

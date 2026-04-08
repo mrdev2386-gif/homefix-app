@@ -119,6 +119,21 @@ export const verifyBookingStatuses = migrateBookingStatus.verifyBookingStatuses;
 // ==========================================
 // UNIFIED BOOKING LIFECYCLE FUNCTIONS (SINGLE SOURCE OF TRUTH)
 // ==========================================
+// CONSOLIDATION: All booking creation logic is now in unified_booking_lifecycle.ts
+// DEPRECATED FILES (disabled to prevent accidental imports):
+//   - new_booking_flow.ts.DISABLED (had inconsistent pricing logic)
+//   - complete_booking_flow.ts.DISABLED (had inconsistent pricing logic)
+// 
+// PRICING LOGIC (UNIFIED):
+//   const price = Number(basePrice) || 0;
+//   const offer = service.offerPrice != null ? Number(service.offerPrice) : null;
+//   let finalPrice = price;
+//   if (offer !== null && offer > 0 && offer < price) {
+//     finalPrice = offer;
+//   }
+//   finalAmount = finalPrice
+// 
+// VERIFICATION LOG: 🔥 CREATE BOOKING FUNCTION HIT - unified_booking_lifecycle.ts
 import * as unifiedBookingLifecycle from './booking/unified_booking_lifecycle';
 export const createBookingRequest = unifiedBookingLifecycle.createBookingRequest;
 export const approveBookingByAdmin = unifiedBookingLifecycle.approveBookingByAdmin;
@@ -607,6 +622,11 @@ export { razorpayWebhookV2 };
 export const createRazorpayOrder = razorpayPayments.createRazorpayOrder;
 export const initiateRefund = razorpayPayments.initiateRefund;
 export const confirmAfterServicePayment = afterServicePayment.confirmAfterServicePayment;
+
+// Pre-Payment Flow (Pay Before Work)
+import * as prePayment from './payments/pre_payment';
+export const createPrePaymentOrder = prePayment.createPrePaymentOrder;
+export const verifyAndCreateBooking = prePayment.verifyAndCreateBooking;
 
 // Payout Functions (Admin)
 export const getPendingPayouts = technicianPayouts.getPendingPayouts;

@@ -133,11 +133,39 @@ class FunctionsService {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception("User not logged in");
       await user.getIdToken(true);
-      debugPrint('[AUTH DEBUG] UID: ${user.uid}');
-      
-      
       HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('initiateRazorpayPayment');
       final result = await callable.call({'bookingId': bookingId});
+      return Map<String, dynamic>.from(result.data);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Pay Before Work Step 1: Create Razorpay order WITHOUT creating a booking.
+  /// Booking params are stored server-side as a pending intent.
+  Future<Map<String, dynamic>> createPrePaymentOrder(Map<String, dynamic> bookingParams) async {
+    _debugCheckParameters(bookingParams);
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('User not logged in');
+      await user.getIdToken(true);
+      final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('createPrePaymentOrder');
+      final result = await callable.call(bookingParams);
+      return Map<String, dynamic>.from(result.data);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Pay Before Work Step 2: Verify Razorpay payment + atomically create booking.
+  Future<Map<String, dynamic>> verifyAndCreateBooking(Map<String, dynamic> verifyParams) async {
+    _debugCheckParameters(verifyParams);
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('User not logged in');
+      await user.getIdToken(true);
+      final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('verifyAndCreateBooking');
+      final result = await callable.call(verifyParams);
       return Map<String, dynamic>.from(result.data);
     } catch (e) {
       rethrow;
