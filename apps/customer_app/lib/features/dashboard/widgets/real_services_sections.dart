@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shimmer/shimmer.dart';
 import 'package:provider/provider.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
 import 'package:customer_app/core/models/service.dart';
 import 'package:customer_app/core/services/auth_service.dart';
@@ -33,23 +31,13 @@ class _BaseServicesSection extends StatelessWidget {
     return StreamBuilder<List<HomeService>>(
       stream: stream,
       builder: (context, snapshot) {
-        // STATE 1: WAITING - Show loader with proper layout
+        // STATE 1: WAITING - Hide section (no loader to avoid layout jump)
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(),
-              const SizedBox(height: 16),
-              _buildShimmer(context),
-            ],
-          );
+          return const SizedBox.shrink();
         }
 
         // STATE 2: ERROR - Hide section
         if (snapshot.hasError) {
-          if (kDebugMode) {
-            print('[ERROR] $title: ${snapshot.error}');
-          }
           return const SizedBox.shrink();
         }
 
@@ -59,21 +47,14 @@ class _BaseServicesSection extends StatelessWidget {
         }
 
         final allServices = snapshot.data!;
-        var services = filterFunction(allServices);
+        final services = filterFunction(allServices);
         
-        if (displayedServiceIds != null) {
-          services = services.where((s) => !displayedServiceIds!.contains(s.id)).toList();
-        }
-        
-        if (kDebugMode) {
-          print('[REAL CHECK] $title: ${services.length} services (from ${allServices.length} total)');
-        }
-        
-        // Hide section if filtered result is empty
+        // Hide section if no services after filtering
         if (services.isEmpty) {
           return const SizedBox.shrink();
         }
         
+        // Optional: Track displayed IDs (but don't filter by them to avoid 0 count)
         if (displayedServiceIds != null) {
           for (final service in services) {
             displayedServiceIds!.add(service.id);
@@ -172,36 +153,6 @@ class _BaseServicesSection extends StatelessWidget {
       ),
     );
   }
-
-  Widget _buildShimmer(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: SizedBox(
-        height: MediaQuery.of(context).size.width * 0.65,
-        child: ListView.builder(
-          scrollDirection: Axis.horizontal,
-          itemCount: 2,
-          itemBuilder: (context, index) {
-            final itemWidth = (MediaQuery.of(context).size.width - 48) / 2;
-            return Container(
-              width: itemWidth,
-              margin: EdgeInsets.only(right: index < 1 ? 16 : 0),
-              child: Shimmer.fromColors(
-                baseColor: Colors.grey[200]!,
-                highlightColor: Colors.white,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
 }
 
 /// Top Rated Services Section
@@ -222,9 +173,6 @@ class _TopRatedRealServicesSectionState extends State<TopRatedRealServicesSectio
     super.initState();
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
     _servicesStream = firestoreService.getCachedServicesStream();
-    if (kDebugMode) {
-      print('[CACHE] TopRatedServicesSection using shared stream');
-    }
   }
 
   @override
@@ -240,10 +188,6 @@ class _TopRatedRealServicesSectionState extends State<TopRatedRealServicesSectio
             .where((s) => (s.rating ?? 0) >= 4.0)
             .toList()
           ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
-        
-        if (kDebugMode) {
-          print('[REAL CHECK] TopRated: ${topRated.length} services with rating >= 4.0');
-        }
         
         return topRated.take(20).toList();
       },
@@ -269,9 +213,6 @@ class _RecentlyAddedServicesSectionState extends State<RecentlyAddedServicesSect
     super.initState();
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
     _servicesStream = firestoreService.getCachedServicesStream();
-    if (kDebugMode) {
-      print('[CACHE] RecentlyAddedServicesSection using shared stream');
-    }
   }
 
   @override
@@ -290,7 +231,7 @@ class _RecentlyAddedServicesSectionState extends State<RecentlyAddedServicesSect
           s.createdAt != null
         ).toList();
         
-        // STRICT: Force sort by createdAt DESC
+        // Sort by createdAt DESC
         validServices.sort((a, b) {
           final aTime = a.createdAt;
           final bTime = b.createdAt;
@@ -298,14 +239,7 @@ class _RecentlyAddedServicesSectionState extends State<RecentlyAddedServicesSect
           return bTime.compareTo(aTime);
         });
         
-        // Take latest 15 services
-        final recent = validServices.take(15).toList();
-        
-        if (kDebugMode) {
-          print('[FINAL CHECK] RecentlyAdded: ${recent.length} (from ${validServices.length} valid services, sorted by createdAt DESC)');
-        }
-        
-        return recent;
+        return validServices.take(15).toList();
       },
     );
   }
@@ -334,9 +268,6 @@ class _RecommendedServicesSectionState extends State<RecommendedServicesSection>
     if (_userId != null) {
       final firestoreService = Provider.of<FirestoreService>(context, listen: false);
       _servicesStream = firestoreService.getCachedServicesStream();
-      if (kDebugMode) {
-        print('[CACHE] RecommendedServicesSection using shared stream');
-      }
     } else {
       _servicesStream = null;
     }
@@ -345,97 +276,15 @@ class _RecommendedServicesSectionState extends State<RecommendedServicesSection>
   Future<Map<String, dynamic>> _getUserInteractionData() async {
     if (_userId == null) return {'categories': <String>{}, 'serviceIds': <String>{}};
     
-    final categories = <String>{};
-    final serviceIds = <String>{};
-    
     try {
-      final db = FirebaseFirestore.instance;
-      
-      // Fetch cart items
-      final cartSnapshot = await db
-          .collection('customers')
-          .doc(_userId)
-          .collection('cart')
-          .limit(10)
-          .get();
-      
-      for (final doc in cartSnapshot.docs) {
-        final data = doc.data();
-        final serviceId = data['serviceId'] as String?;
-        final categoryId = data['categoryId'] as String?;
-        final categoryName = data['categoryName'] as String?;
-        
-        if (serviceId != null && serviceId.isNotEmpty) {
-          serviceIds.add(serviceId.toLowerCase());
-        }
-        if (categoryId != null && categoryId.isNotEmpty) {
-          categories.add(categoryId.toLowerCase());
-        }
-        if (categoryName != null && categoryName.isNotEmpty) {
-          categories.add(categoryName.toLowerCase());
-        }
-      }
-      
-      // Fetch favorites
-      final favoritesSnapshot = await db
-          .collection('customers')
-          .doc(_userId)
-          .collection('favorites')
-          .limit(10)
-          .get();
-      
-      for (final doc in favoritesSnapshot.docs) {
-        final data = doc.data();
-        final serviceId = data['serviceId'] as String?;
-        final categoryId = data['categoryId'] as String?;
-        final categoryName = data['categoryName'] as String?;
-        
-        if (serviceId != null && serviceId.isNotEmpty) {
-          serviceIds.add(serviceId.toLowerCase());
-        }
-        if (categoryId != null && categoryId.isNotEmpty) {
-          categories.add(categoryId.toLowerCase());
-        }
-        if (categoryName != null && categoryName.isNotEmpty) {
-          categories.add(categoryName.toLowerCase());
-        }
-      }
-      
-      // Fetch past bookings
-      final bookingsSnapshot = await db
-          .collection('bookings')
-          .where('customerId', isEqualTo: _userId)
-          .orderBy('createdAt', descending: true)
-          .limit(5)
-          .get();
-      
-      for (final doc in bookingsSnapshot.docs) {
-        final data = doc.data();
-        final serviceId = data['serviceId'] as String?;
-        final categoryId = data['categoryId'] as String?;
-        final categoryName = data['categoryName'] as String?;
-        
-        if (serviceId != null && serviceId.isNotEmpty) {
-          serviceIds.add(serviceId.toLowerCase());
-        }
-        if (categoryId != null && categoryId.isNotEmpty) {
-          categories.add(categoryId.toLowerCase());
-        }
-        if (categoryName != null && categoryName.isNotEmpty) {
-          categories.add(categoryName.toLowerCase());
-        }
-      }
-      
-      if (kDebugMode) {
-        print('[Recommended] User data - categories: ${categories.length}, serviceIds: ${serviceIds.length}');
-      }
+      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+      return await firestoreService.getUserInteractionData(_userId!);
     } catch (e) {
       if (kDebugMode) {
         print('[Recommended] Error fetching user interactions: $e');
       }
+      return {'categories': <String>{}, 'serviceIds': <String>{}};
     }
-    
-    return {'categories': categories, 'serviceIds': serviceIds};
   }
 
   @override
@@ -456,28 +305,19 @@ class _RecommendedServicesSectionState extends State<RecommendedServicesSection>
             final userCategories = userData['categories'] as Set<String>;
             final userServiceIds = userData['serviceIds'] as Set<String>;
             
-            // STRICT: If no user data, show ONLY top rated (rating >= 4)
+            // If no user data, show top rated services
             if (userCategories.isEmpty && userServiceIds.isEmpty) {
-              if (kDebugMode) {
-                print('[Recommended] No user data - showing ONLY top rated services');
-              }
-              
               final topRated = allServices
                   .where((s) => (s.rating ?? 0) >= 4.0)
                   .toList()
                 ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
               
-              final result = topRated.take(10).toList();
-              if (kDebugMode) {
-                print('[FINAL CHECK] Recommended: ${result.length} (fallback to top rated)');
-              }
-              return result;
+              return topRated.take(10).toList();
             }
             
-            // STRICT PERSONALIZATION with cascading priority
+            // Personalization with cascading priority
             final highPriority = <HomeService>[]; // Exact serviceId match
-            final mediumPriority = <HomeService>[]; // SubCategory match
-            final lowPriority = <HomeService>[]; // Category match (last resort)
+            final mediumPriority = <HomeService>[]; // Category match
             
             for (final service in allServices) {
               // Safety filter
@@ -488,54 +328,35 @@ class _RecommendedServicesSectionState extends State<RecommendedServicesSection>
               final serviceCategoryLower = (service.category ?? '').toLowerCase();
               final serviceCategoryNameLower = (service.categoryName ?? '').toLowerCase();
               
-              // HIGH PRIORITY: Exact serviceId match
+              // High priority: Exact serviceId match
               if (userServiceIds.contains(serviceIdLower)) {
                 highPriority.add(service);
-                continue; // Skip other checks
+                continue;
               }
               
-              // MEDIUM PRIORITY: Category match (only if no high priority matches yet)
+              // Medium priority: Category match
               if (userCategories.contains(serviceCategoryLower) || 
                   userCategories.contains(serviceCategoryNameLower)) {
                 mediumPriority.add(service);
               }
             }
             
-            // Sort each priority group by rating DESC
+            // Sort by rating
             highPriority.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
             mediumPriority.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
             
-            // CASCADING LOGIC: Use highest priority available
-            List<HomeService> result;
+            // Use highest priority available
             if (highPriority.isNotEmpty) {
-              // If HIGH matches exist → use ONLY high priority
-              result = highPriority.take(10).toList();
-              if (kDebugMode) {
-                print('[STRICT REC] high: ${highPriority.length}, medium: 0 (ignored), final: ${result.length}');
-              }
+              return highPriority.take(10).toList();
             } else if (mediumPriority.isNotEmpty) {
-              // If no HIGH → use MEDIUM priority
-              result = mediumPriority.take(10).toList();
-              if (kDebugMode) {
-                print('[STRICT REC] high: 0, medium: ${mediumPriority.length}, final: ${result.length}');
-              }
+              return mediumPriority.take(10).toList();
             } else {
-              // If nothing → fallback to top rated
               final topRated = allServices
                   .where((s) => (s.rating ?? 0) >= 4.0)
                   .toList()
                 ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
-              result = topRated.take(10).toList();
-              if (kDebugMode) {
-                print('[STRICT REC] high: 0, medium: 0, final: ${result.length} (fallback to top rated)');
-              }
+              return topRated.take(10).toList();
             }
-            
-            if (kDebugMode) {
-              print('[FINAL CHECK] Recommended: ${result.length}');
-            }
-            
-            return result;
           },
         );
       },
@@ -561,9 +382,6 @@ class _AllServicesSectionState extends State<AllServicesSection> {
     super.initState();
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
     _servicesStream = firestoreService.getCachedServicesStream();
-    if (kDebugMode) {
-      print('[CACHE] AllServicesSection using shared stream');
-    }
   }
 
   @override

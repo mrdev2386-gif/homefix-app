@@ -9,7 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:customer_app/core/services/auth_service.dart';
 import 'package:customer_app/core/services/firestore_service.dart';
-import 'package:customer_app/core/services/location_service.dart';
+import 'package:customer_app/core/services/user_location_service.dart';
 import 'package:customer_app/core/models/user_model.dart';
 import 'package:customer_app/core/models/address.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
@@ -79,7 +79,7 @@ class _ProfileContent extends StatefulWidget {
 
 class _ProfileContentState extends State<_ProfileContent> {
   bool _isUploading = false;
-  final LocationService _locationService = LocationService();
+  final UserLocationService _locationService = UserLocationService();
 
   Future<void> _changeProfileImage() async {
     if (_isUploading) return; // Prevent multiple taps during upload
@@ -418,7 +418,7 @@ class _ProfileContentState extends State<_ProfileContent> {
                   ),
                   child: Column(
                     children: [
-                      FutureBuilder<Map<String, String?>>(
+                      FutureBuilder<Map<String, String>?>(
                         future: _locationService.getLocation(),
                         builder: (context, snapshot) {
                           final state = snapshot.data?['state'] ?? 'Select';

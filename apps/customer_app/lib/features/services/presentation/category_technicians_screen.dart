@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:customer_app/core/services/location_service.dart';
+import 'package:customer_app/core/services/user_location_service.dart';
 
 class CategoryTechniciansScreen extends StatefulWidget {
   final String categoryName;
@@ -16,7 +16,7 @@ class CategoryTechniciansScreen extends StatefulWidget {
 }
 
 class _CategoryTechniciansScreenState extends State<CategoryTechniciansScreen> {
-  final LocationService _locationService = LocationService();
+  final UserLocationService _locationService = UserLocationService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
@@ -28,7 +28,7 @@ class _CategoryTechniciansScreenState extends State<CategoryTechniciansScreen> {
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
       ),
-      body: FutureBuilder<Map<String, String?>>(
+      body: FutureBuilder<Map<String, String>?>(
         future: _locationService.getLocation(),
         builder: (context, locationSnapshot) {
           if (!locationSnapshot.hasData) {

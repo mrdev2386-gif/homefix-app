@@ -143,6 +143,8 @@ export async function sendUserNotification(input: SendNotificationInput): Promis
     priority = 'normal',
   } = input;
 
+  console.log(`[NOTIFICATION] 🚀 Sending ${type} to ${userType}:${userId}`);
+
   try {
     // Step 0: Duplicate check
     const dedupeKey = generateDedupeKey(userId, type, data);
@@ -257,9 +259,21 @@ export async function sendUserNotification(input: SendNotificationInput): Promis
     // Use allSettled to never fail due to individual token failures
     const results = await Promise.allSettled(tokenPromises);
     const failedCount = results.filter(r => r.status === 'rejected').length;
+    const successCount = tokenPromises.length - failedCount;
 
+    console.log(`[NOTIFICATION] 💰 Delivery Summary: ${successCount}/${tokenPromises.length} devices`);
     if (failedCount > 0) {
-      console.warn(`[NOTIFICATION] ${failedCount}/${tokenPromises.length} tokens failed for ${userType}:${userId}`);
+      console.warn(`[NOTIFICATION] ⚠️ ${failedCount} devices failed to receive notification`);
+      // Track failures for monitoring
+      await db.collection('notification_delivery_stats').add({
+        userId,
+        userType,
+        type,
+        totalAttempts: tokenPromises.length,
+        successCount,
+        failedCount,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      }).catch(() => {});
     }
 
     return { success: true, notificationId: notificationRef.id };

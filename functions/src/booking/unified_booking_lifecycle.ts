@@ -141,34 +141,10 @@ export const approveBookingByAdmin = functions
             console.log('[APPROVE PRICE DEBUG] Approval complete - pricing unchanged');
         });
 
-        try {
-            const finalAmount = booking.finalAmount ?? booking.price ?? 0;
-            const tokensSnap = await db.collection('technicians')
-                .doc(assignedTechnicianId)
-                .collection('fcmTokens')
-                .where('isActive', '==', true)
-                .limit(1)
-                .get();
-
-            if (!tokensSnap.empty) {
-                const tokenData = tokensSnap.docs[0].data();
-                await sendNotificationToToken({
-                    token: tokenData.token,
-                    title: 'New Job Assigned',
-                    body: `You have a new booking for ${booking.serviceName || 'service'}. Price: ₹${finalAmount}`,
-                    data: { bookingId, type: 'booking_approved' },
-                });
-            } else if (techData?.fcmToken) {
-                await sendNotificationToToken({
-                    token: techData.fcmToken,
-                    title: 'New Job Assigned',
-                    body: `You have a new booking for ${booking.serviceName || 'service'}. Price: ₹${finalAmount}`,
-                    data: { bookingId, type: 'booking_approved' },
-                });
-            }
-        } catch (notifError) {
-            console.error(`[approveBookingByAdmin] Failed to send notification:`, notifError);
-        }
+        // ✅ NOTIFICATION FIX: Remove duplicate notification sending
+        // The onBookingStatusChange trigger will handle all notifications
+        // This prevents duplicate notifications to technicians
+        console.log(`[approveBookingByAdmin] Booking approved. Notification will be sent by trigger.`);
 
         return { success: true, bookingStatus: 'approved_by_admin' };
     })

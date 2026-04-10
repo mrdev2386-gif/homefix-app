@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:customer_app/core/services/location_service.dart';
+import 'package:customer_app/core/services/user_location_service.dart';
 import 'package:customer_app/core/services/functions_service.dart';
 import 'package:customer_app/core/services/category_service.dart';
 import 'package:customer_app/core/widgets/location_selector.dart';
@@ -21,7 +21,7 @@ class EditLocationScreen extends StatefulWidget {
 }
 
 class _EditLocationScreenState extends State<EditLocationScreen> {
-  final LocationService _locationService = LocationService();
+  final UserLocationService _locationService = UserLocationService();
   final FunctionsService _functionsService = FunctionsService();
   late String? selectedState;
   late String? selectedDistrict;

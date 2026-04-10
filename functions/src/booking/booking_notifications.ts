@@ -33,11 +33,14 @@ export const onBookingStatusChange = functions.firestore
       console.log(`[BOOKING NOTIFICATION] Status change: ${previousStatus} → ${newStatus}`);
 
       // ================================================
-      // STATUS: ASSIGNED
+      // STATUS: approved_by_admin (SINGLE SOURCE OF TRUTH)
       // ================================================
       // Set by: Admin (when admin approves booking)
-      // Transitions from: pending_admin → ASSIGNED
-      if (newStatus === 'approved_by_admin' || newStatus === 'ASSIGNED' || newStatus === 'admin_approved') {
+      // Transitions from: pending_admin_review → approved_by_admin
+      // 
+      // ✅ CONSOLIDATED: Only check for 'approved_by_admin' (the actual status used)
+      // Removed legacy status checks: 'ASSIGNED', 'admin_approved'
+      if (newStatus === 'approved_by_admin') {
         await handleAdminApproved(customerId, technicianId, bookingId, after);
       }
 
@@ -81,7 +84,29 @@ export const onBookingStatusChange = functions.firestore
       // STATUS: paid_escrow (Pay Before Work)
       // ================================================
       if (newStatus === 'paid_escrow' || after.paymentStatus === 'paid_escrow') {
-        // Notify admin about paid booking
+        // Notify customer about payment confirmation
+        await sendUserNotification({
+          userId: customerId,
+          userType: 'customer',
+          title: '💳 Payment Confirmed!',
+          body: 'Your payment has been received. Technician will arrive soon.',
+          type: 'payment_success',
+          data: { bookingId, screen: 'booking_details' },
+          priority: 'high',
+        }).catch(err => console.error('[BOOKING] Payment confirmation notification failed:', err));
+
+        // Notify technician about payment received
+        if (technicianId) {
+          await sendUserNotification({
+            userId: technicianId,
+            userType: 'technician',
+            title: '💰 Payment Received!',
+            body: `Payment confirmed for booking #${bookingId.substring(0, 6)}. You can now proceed.`,
+            type: 'payment_received',
+            data: { bookingId, screen: 'booking_details' },
+            priority: 'high',
+          }).catch(err => console.error('[BOOKING] Technician payment notification failed:', err));
+        }
       }
 
       // ================================================
@@ -96,12 +121,18 @@ export const onBookingStatusChange = functions.firestore
           type: 'job_completed',
           data: { bookingId, screen: 'payment_qr' },
           priority: 'high'
-        });
+        }).catch(err => console.error('[BOOKING] Payment notification failed:', err));
       }
 
-      console.log(`[BOOKING NOTIFICATION] Notifications sent for booking: ${bookingId}`);
+      console.log(`[BOOKING NOTIFICATION] ✅ All notifications sent for booking: ${bookingId}`);
     } catch (error) {
-      console.error(`[BOOKING NOTIFICATION] Error for booking ${bookingId}:`, error);
+      console.error(`[BOOKING NOTIFICATION] ❌ Error for booking ${bookingId}:`, error);
+      // Track notification failure
+      await db.collection('notification_failures').add({
+        bookingId,
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      }).catch(err => console.error('[BOOKING] Failed to log notification error:', err));
       // Don't fail the function - notifications are best-effort
     }
   });
@@ -118,6 +149,7 @@ async function handleAdminApproved(
   // Fetch booking details for better messaging
   const serviceName = booking.serviceName || 'Service';
   const technicianName = booking.technicianName || 'A technician';
+  const customerName = booking.customerName || 'A customer';
 
   // Notify customer
   await sendUserNotification({
@@ -135,7 +167,6 @@ async function handleAdminApproved(
 
   // Notify technician (if assigned)
   if (technicianId) {
-    const customerName = booking.customerName || 'A customer';
     await sendUserNotification({
       userId: technicianId,
       userType: 'technician',
@@ -149,6 +180,8 @@ async function handleAdminApproved(
       priority: 'high',
     }).catch(err => console.error('[BOOKING] Technician notification failed:', err));
   }
+
+  console.log(`[BOOKING NOTIFICATION] Admin approved booking ${bookingId} - notifications sent to customer and technician`);
 }
 
 // ================================================

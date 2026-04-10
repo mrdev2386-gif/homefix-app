@@ -203,7 +203,8 @@ export {
     cleanupStaleTechnicianHeartbeats,
     cleanupRateLimitRecords,
     checkSystemHealth,
-    onBookingStateChange,
+    // ❌ DISABLED: onBookingStateChange - duplicate trigger (use onBookingStatusChange instead)
+    // onBookingStateChange,
     generateAnalyticsSnapshot,
     trackTechnicianMetrics
 } from './booking/production_hardening';

@@ -24,6 +24,12 @@ class FirestoreService {
   
   // GLOBAL CACHED STREAM - Single Firestore connection for all sections
   Stream<List<HomeService>>? _cachedServicesStream;
+  
+  // CACHED USER INTERACTION DATA - Prevents repeated Firestore reads
+  Map<String, dynamic>? _cachedUserInteractionData;
+  String? _cachedUserId;
+  DateTime? _lastInteractionFetch;
+  static const Duration _interactionCacheDuration = Duration(minutes: 5);
 
   FirestoreService({UserLocationService? locationService})
       : _locationService = locationService ?? UserLocationService();
@@ -100,18 +106,14 @@ class FirestoreService {
     int limit = 50,
     bool filterByLocation = true,
   }) async* {
-    print('[SERVICES] streamTechnicianServices called: sortBy=$sortBy, limit=$limit, filterByLocation=$filterByLocation');
-    
     Map<String, String>? location;
     
     // STEP 1: Get user location (if filtering enabled)
     if (filterByLocation) {
       location = await _locationService.getUserLocationCached();
-      print('[SERVICES] User location: $location');
       
       // FIX: Don't return empty if no location - fallback to all services
       if (location == null) {
-        print('[SERVICES] ⚠️ No location found - will load ALL services as fallback');
         filterByLocation = false; // Disable location filtering
       }
     }
@@ -119,8 +121,6 @@ class FirestoreService {
     // STEP 2: Build base query
     Query query = _db.collection('technician_services')
         .where('status', isEqualTo: 'approved');
-    
-    print('[SERVICES] Base query: status=approved');
     
     // STEP 3: Apply location filters with CASE-INSENSITIVE comparison
     if (filterByLocation && location != null) {
@@ -132,9 +132,7 @@ class FirestoreService {
         query = query
             .where('state', isEqualTo: userState)
             .where('district', isEqualTo: userDistrict);
-        print('[SERVICES] Location filters: state=$userState, district=$userDistrict');
       } else {
-        print('[SERVICES] ⚠️ Invalid location data - disabling location filter');
         filterByLocation = false;
       }
     }
@@ -142,108 +140,65 @@ class FirestoreService {
     // STEP 4: Apply sorting
     if (sortBy == 'recent') {
       query = query.orderBy('createdAt', descending: true);
-      print('[SERVICES] Sorting: createdAt DESC');
     }
     
     query = query.limit(limit);
-    print('[SERVICES] Limit: $limit');
 
     // STEP 5: Execute query with fallback logic
     yield* _withErrorHandling(
       query.snapshots().asyncMap((snapshot) async {
-        print('[FIRESTORE RAW COUNT] ${snapshot.docs.length} docs from Firestore');
-        
-        // Log first 3 documents for debugging
-        for (int i = 0; i < snapshot.docs.length && i < 3; i++) {
-          final doc = snapshot.docs[i];
-          final data = doc.data() as Map<String, dynamic>;
-          print('[SERVICES DOC $i] id=${doc.id}, status=${data['status']}, state=${data['state']}, district=${data['district']}');
-        }
-        
         // Parse services
         List<HomeService> services = snapshot.docs
             .map((doc) => HomeService.fromFirestore(doc))
             .whereType<HomeService>()
             .toList();
         
-        print('[SERVICES] After parsing: ${services.length} services');
-        
         // STEP 6: FALLBACK - If no results with location filter, try without filter
         if (services.isEmpty && filterByLocation && location != null) {
-          print('[SERVICES] 🔄 FALLBACK: No services in location, loading ALL approved services');
-          
           final fallbackQuery = _db.collection('technician_services')
               .where('status', isEqualTo: 'approved')
               .orderBy('createdAt', descending: true)
               .limit(limit);
           
           final fallbackSnapshot = await fallbackQuery.get();
-          print('[SERVICES] FALLBACK: ${fallbackSnapshot.docs.length} docs found');
           
           services = fallbackSnapshot.docs
               .map((doc) => HomeService.fromFirestore(doc))
               .whereType<HomeService>()
               .toList();
-          
-          print('[SERVICES] FALLBACK: ${services.length} services after parsing');
         }
         
         // STEP 7: Apply top-rated filter if needed
         if (sortBy == 'topRated') {
           services.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
-          final filtered = services.where((s) => (s.rating ?? 0) >= 4.0).toList();
-          print('[SERVICES] Top rated filter: ${services.length} → ${filtered.length}');
-          services = filtered;
+          services = services.where((s) => (s.rating ?? 0) >= 4.0).toList();
         }
         
-        print('[SERVICES] ✅ FINAL RESULT: ${services.length} services');
         return services;
       }).asBroadcastStream(),
     );
   }
 
   Stream<List<HomeService>> getCachedServicesStream() {
-    if (_cachedServicesStream == null) {
-      if (kDebugMode) {
-        print('[FIRESTORE RAW COUNT] Creating new shared stream - this should only happen ONCE');
-      }
-      _cachedServicesStream = streamTechnicianServices(
-        sortBy: 'recent',
-        limit: 50, // OPTIMIZED: Reduced from 100 to minimize data transfer
-        filterByLocation: true,
-      ).asBroadcastStream();
-    } else {
-      if (kDebugMode) {
-        print('[FIRESTORE RAW COUNT] Using cached stream - ZERO additional Firestore reads');
-      }
-    }
+    _cachedServicesStream ??= streamTechnicianServices(
+      sortBy: 'recent',
+      limit: 50,
+      filterByLocation: true,
+    ).asBroadcastStream();
     return _cachedServicesStream!;
   }
   
-  /// DEBUG METHOD: Fetch ALL services without any filters
-  /// Use this to test if filtering is causing empty results
+  /// Fetch ALL services without any filters (for debugging)
   Stream<List<HomeService>> streamAllServicesNoFilter() async* {
-    print('[DEBUG NO FILTER] Fetching ALL services without filters');
-    
     Query query = _db.collection('technician_services');
     
     yield* _withErrorHandling(
       query.snapshots().map((snapshot) {
-        print('[DEBUG NO FILTER] Total docs in collection: ${snapshot.docs.length}');
-        
-        // Log first 5 documents
-        for (int i = 0; i < snapshot.docs.length && i < 5; i++) {
-          final doc = snapshot.docs[i];
-          final data = doc.data() as Map<String, dynamic>;
-          print('[DEBUG NO FILTER DOC $i] id=${doc.id}, status=${data['status']}, district=${data['district']}, state=${data['state']}');
-        }
-        
         final services = snapshot.docs
             .map((doc) => HomeService.fromFirestore(doc))
             .whereType<HomeService>()
             .toList();
         
-        print('[DEBUG NO FILTER] After parsing: ${services.length} services');
         return services;
       }).asBroadcastStream(),
     );
@@ -251,9 +206,6 @@ class FirestoreService {
   
   /// Clear cached stream (call when location changes)
   void clearCachedServicesStream() {
-    if (kDebugMode) {
-      print('[CACHE] Clearing cached services stream');
-    }
     _cachedServicesStream = null;
   }
 
@@ -625,17 +577,13 @@ class FirestoreService {
   }
 
   Future<void> addToCart(String userId, CartItem item) async {
-    print('📡 [addToCart] Starting function call');
-    
     // CRITICAL: Ensure authentication with delay
     await ensureAuthenticated();
     
     final user = FirebaseAuth.instance.currentUser!;
-    print('🔑 [addToCart] AUTH UID: ${user.uid}');
     
     // Validate all required fields before sending
     if (!FirestoreGuards.isValidDocumentId(userId)) {
-      print('❌ [addToCart] Invalid userId');
       throw Exception('Invalid user ID');
     }
     if (item.serviceId.isEmpty) throw Exception('serviceId is mandatory');
@@ -648,21 +596,22 @@ class FirestoreService {
     
     // CRITICAL: Ensure payload is never null/undefined
     final payload = item.toMap();
-    print('📦 [addToCart] CALL DATA: $payload');
-    print('🔑 [addToCart] AUTH UID: ${user.uid}');
 
     try {
       // CRITICAL: Pass data object, never null
       final result = await callable.call(payload);
-      print('✅ [addToCart] Success: ${result.data}');
+      
+      // Invalidate user interaction cache
+      clearUserInteractionCache();
     } catch (e) {
-      print('❌ [addToCart] Error: $e');
+      if (kDebugMode) debugPrint('❌ [Cart] Add failed: $e');
       if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
-        print('🔁 [addToCart] Retrying with fresh authentication...');
         await ensureAuthenticated();
         final retryCallable = functions.httpsCallable('addToCartCallable');
         final result = await retryCallable.call(payload);
-        print('✅ [addToCart] Success (after retry): ${result.data}');
+        
+        // Invalidate user interaction cache
+        clearUserInteractionCache();
       } else {
         rethrow;
       }
@@ -678,20 +627,24 @@ class FirestoreService {
     await ensureAuthenticated();
     
     final user = FirebaseAuth.instance.currentUser!;
-    print('🔑 [updateCartQuantity] AUTH UID: ${user.uid}');
     
     final callable = functions.httpsCallable('updateCartQuantityCallable');
     final data = {'itemId': itemId, 'quantity': quantity};
     
-    print('📦 [updateCartQuantity] CALL DATA: $data');
-    
     try {
       await callable.call(data);
+      
+      // Invalidate user interaction cache
+      clearUserInteractionCache();
     } catch (e) {
+      if (kDebugMode) debugPrint('❌ [Cart] Update quantity failed: $e');
       if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
         await ensureAuthenticated();
         final retryCallable = functions.httpsCallable('updateCartQuantityCallable');
         await retryCallable.call(data);
+        
+        // Invalidate user interaction cache
+        clearUserInteractionCache();
       } else {
         rethrow;
       }
@@ -707,20 +660,24 @@ class FirestoreService {
     await ensureAuthenticated();
     
     final user = FirebaseAuth.instance.currentUser!;
-    print('🔑 [removeFromCart] AUTH UID: ${user.uid}');
     
     final callable = functions.httpsCallable('removeFromCartCallable');
     final data = {'itemId': itemId};
     
-    print('📦 [removeFromCart] CALL DATA: $data');
-    
     try {
       await callable.call(data);
+      
+      // Invalidate user interaction cache
+      clearUserInteractionCache();
     } catch (e) {
+      if (kDebugMode) debugPrint('❌ [Cart] Remove failed: $e');
       if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
         await ensureAuthenticated();
         final retryCallable = functions.httpsCallable('removeFromCartCallable');
         await retryCallable.call(data);
+        
+        // Invalidate user interaction cache
+        clearUserInteractionCache();
       } else {
         rethrow;
       }
@@ -736,22 +693,126 @@ class FirestoreService {
     await ensureAuthenticated();
     
     final user = FirebaseAuth.instance.currentUser!;
-    print('🔑 [clearCart] AUTH UID: ${user.uid}');
     
     final callable = functions.httpsCallable('clearCartCallable');
     
-    print('📦 [clearCart] CALL DATA: {}');
-    
     try {
       await callable.call({});
+      
+      // Invalidate user interaction cache
+      clearUserInteractionCache();
     } catch (e) {
+      if (kDebugMode) debugPrint('❌ [Cart] Clear failed: $e');
       if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
         await ensureAuthenticated();
         final retryCallable = functions.httpsCallable('clearCartCallable');
         await retryCallable.call({});
+        
+        // Invalidate user interaction cache
+        clearUserInteractionCache();
       } else {
         rethrow;
       }
+    }
+  }
+
+  /// Get user interaction data for personalization (cart, favorites, bookings)
+  /// Returns categories and serviceIds that user has interacted with
+  /// CACHED: Results are cached for 5 minutes to prevent repeated Firestore reads
+  Future<Map<String, dynamic>> getUserInteractionData(String userId) async {
+    if (userId.isEmpty) {
+      return {'categories': <String>{}, 'serviceIds': <String>{}};
+    }
+    
+    // Check cache validity
+    final now = DateTime.now();
+    final isCacheValid = _cachedUserId == userId &&
+        _cachedUserInteractionData != null &&
+        _lastInteractionFetch != null &&
+        now.difference(_lastInteractionFetch!) < _interactionCacheDuration;
+    
+    if (isCacheValid) {
+      return _cachedUserInteractionData!;
+    }
+    
+    final categories = <String>{};
+    final serviceIds = <String>{};
+    
+    try {
+      // Fetch cart items
+      final cartSnapshot = await _db
+          .collection('customers')
+          .doc(userId)
+          .collection('cart')
+          .limit(10)
+          .get();
+      
+      for (final doc in cartSnapshot.docs) {
+        final data = doc.data();
+        _extractInteractionData(data, categories, serviceIds);
+      }
+      
+      // Fetch favorites
+      final favoritesSnapshot = await _db
+          .collection('customers')
+          .doc(userId)
+          .collection('favorites')
+          .limit(10)
+          .get();
+      
+      for (final doc in favoritesSnapshot.docs) {
+        final data = doc.data();
+        _extractInteractionData(data, categories, serviceIds);
+      }
+      
+      // Fetch past bookings
+      final bookingsSnapshot = await _db
+          .collection('bookings')
+          .where('customerId', isEqualTo: userId)
+          .orderBy('createdAt', descending: true)
+          .limit(5)
+          .get();
+      
+      for (final doc in bookingsSnapshot.docs) {
+        final data = doc.data();
+        _extractInteractionData(data, categories, serviceIds);
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ [UserInteraction] Error: $e');
+      }
+    }
+    
+    // Cache the result
+    final result = {'categories': categories, 'serviceIds': serviceIds};
+    _cachedUserInteractionData = result;
+    _cachedUserId = userId;
+    _lastInteractionFetch = now;
+    
+    return result;
+  }
+  
+  /// Clear user interaction cache (call when cart/favorites/bookings change)
+  void clearUserInteractionCache() {
+    _cachedUserInteractionData = null;
+    _cachedUserId = null;
+    _lastInteractionFetch = null;
+  }
+  
+  /// Helper to extract interaction data from document
+  void _extractInteractionData(Map<String, dynamic> data, Set<String> categories, Set<String> serviceIds) {
+    final serviceId = data['serviceId'] as String?;
+    final categoryId = data['categoryId'] as String?;
+    final categoryName = data['categoryName'] as String?;
+    
+    if (serviceId != null && serviceId.isNotEmpty) {
+      serviceIds.add(serviceId.toLowerCase());
+    }
+    if (categoryId != null && categoryId.isNotEmpty) {
+      categories.add(categoryId.toLowerCase());
+    }
+    if (categoryName != null && categoryName.isNotEmpty) {
+      categories.add(categoryName.toLowerCase());
     }
   }
 
@@ -949,51 +1010,30 @@ class FirestoreService {
   }
 
   Future<void> toggleFavorite(String userId, String categoryId, String serviceId, bool isFavorite) async {
-    print('📡 [toggleFavorite] Starting function call');
-
-    // CRITICAL: Ensure authentication with delay
     await ensureAuthenticated();
     
     final user = FirebaseAuth.instance.currentUser!;
-    print('🔑 [toggleFavorite] AUTH UID: ${user.uid}');
 
-    // Validate all required fields before sending
-    if (userId.isEmpty) {
-      print('❌ [toggleFavorite] Empty userId');
-      throw Exception('userId is required');
-    }
-    if (serviceId.isEmpty) {
-      print('❌ [toggleFavorite] Empty serviceId');
-      throw Exception('serviceId is required');
-    }
-    if (categoryId.isEmpty) {
-      print('❌ [toggleFavorite] Empty categoryId');
-      throw Exception('categoryId is required');
-    }
+    if (userId.isEmpty) throw Exception('userId is required');
+    if (serviceId.isEmpty) throw Exception('serviceId is required');
+    if (categoryId.isEmpty) throw Exception('categoryId is required');
 
     final callable = functions.httpsCallable('toggleFavoriteCallable');
 
-    // CRITICAL: Ensure payload is never null/undefined
     final data = {
       'serviceId': serviceId,
       'categoryId': categoryId,
       'isFavorite': isFavorite,
     };
-    print('📦 [toggleFavorite] CALL DATA: $data');
-    print('🔑 [toggleFavorite] AUTH UID: ${user.uid}');
 
     try {
-      // CRITICAL: Pass data object, never null
-      final result = await callable.call(data);
-      print('✅ [toggleFavorite] Success: ${result.data}');
+      await callable.call(data);
     } catch (e) {
-      print('❌ [toggleFavorite] Error: $e');
+      if (kDebugMode) debugPrint('❌ [Favorite] Toggle failed: $e');
       if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
-        print('🔁 [toggleFavorite] Retrying with fresh authentication...');
         await ensureAuthenticated();
         final retryCallable = functions.httpsCallable('toggleFavoriteCallable');
-        final result = await retryCallable.call(data);
-        print('✅ [toggleFavorite] Success (after retry): ${result.data}');
+        await retryCallable.call(data);
       } else {
         rethrow;
       }
