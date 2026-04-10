@@ -431,14 +431,38 @@ export interface TechnicianOption {
 }
 
 export async function fetchAllTechnicians(): Promise<TechnicianOption[]> {
-  // Direct Firestore query — avoids auth requirement of the Cloud Function
+  // ✅ CRITICAL SECURITY FIX: Only fetch APPROVED technicians
+  // Prevents admin from selecting unapproved technicians
   const snapshot = await getDocs(
     query(
       collection(db, 'technicians'),
-      where('status', 'in', ['approved', 'active']),
+      where('verificationStatus', '==', 'approved'),
       firestoreLimit(100)
     )
   );
+  
+  // Fallback: If no results with verificationStatus, try status field
+  if (snapshot.empty) {
+    console.warn('[fetchAllTechnicians] No technicians with verificationStatus=approved, trying status field');
+    const fallbackSnapshot = await getDocs(
+      query(
+        collection(db, 'technicians'),
+        where('status', '==', 'approved'),
+        firestoreLimit(100)
+      )
+    );
+    return fallbackSnapshot.docs.map(d => {
+      const data = d.data();
+      return {
+        id: d.id,
+        name: data.name || 'Unknown',
+        phone: data.phone || '',
+        rating: data.rating || 0,
+        completedJobs: data.completedJobs || data.totalJobs || 0,
+      };
+    });
+  }
+  
   return snapshot.docs.map(d => {
     const data = d.data();
     return {

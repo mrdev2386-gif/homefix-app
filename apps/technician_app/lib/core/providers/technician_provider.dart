@@ -135,7 +135,10 @@ class TechnicianProvider extends ChangeNotifier {
         
         _currentOnboardingStep = step;
         _isOnboardingComplete = tech.isKycComplete;
-        _isApproved = tech.status == "approved";
+        // BACKWARD COMPATIBLE: Check all approval indicators (handles both 'approved' and 'active' status)
+        _isApproved = tech.status == "approved" || 
+                      tech.status == "active" || 
+                      tech.profileApproved == true;
         _profileApprovalRequested = tech.profileApprovalRequested;
         _profileRejected = tech.profileRejected;
         
@@ -575,6 +578,14 @@ class TechnicianProvider extends ChangeNotifier {
     }
   }
 
+  /// Get approval status (backward compatible with all status values)
+  bool getApprovalStatus() {
+    if (_technician == null) return false;
+    return _technician!.status == "approved" || 
+           _technician!.status == "active" || 
+           _technician!.profileApproved == true;
+  }
+
   /// Check current KYC status via Cloud Function
   /// Returns current isKycComplete status without re-evaluating
   Future<bool?> checkKycStatus() async {
@@ -706,32 +717,15 @@ class TechnicianProvider extends ChangeNotifier {
   bool canCreateServices() {
     if (_technician == null) return false;
     final completion = _technician!.getProfileCompletion();
-    final approved = _technician!.status == "approved";
+    // BACKWARD COMPATIBLE: Check all approval indicators
+    final approved = _technician!.status == "approved" || 
+                     _technician!.status == "active" || 
+                     _technician!.profileApproved == true;
     
     return completion == 100 && approved;
   }
 
-  /// Get service creation block message
-  String getServiceBlockMessage() {
-    if (_technician == null) return 'Profile not loaded';
-    
-    final completion = _technician!.getProfileCompletion();
-    final approved = _technician!.status == "approved";
-    
-    if (completion < 100) {
-      return 'Please complete your profile to 100% before listing services.';
-    }
-    
-    if (_technician!.profileRejected) {
-      return 'Your profile was rejected. Please update your information and resubmit.';
-    }
-    
-    if (!approved) {
-      return 'Your profile is under admin review. You can list services after approval.';
-    }
-    
-    return 'You can now create services';
-  }
+
 
   @override
   void dispose() {

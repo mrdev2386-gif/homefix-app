@@ -111,6 +111,20 @@ export const approveBookingByAdmin = functions
 
         const techData = techDoc.data()!;
 
+        // ✅ CRITICAL SECURITY FIX: Validate technician is approved
+        // Prevents assignment of unapproved/unverified technicians
+        if (techData.verificationStatus !== 'approved' && techData.status !== 'approved') {
+            console.error('[approveBookingByAdmin] Technician not approved:', {
+                technicianId: assignedTechnicianId,
+                verificationStatus: techData.verificationStatus,
+                status: techData.status
+            });
+            throw new functions.https.HttpsError(
+                'failed-precondition',
+                'Selected technician is not approved. Please select an approved technician.'
+            );
+        }
+
         await db.runTransaction(async (t) => {
             const freshDoc = await t.get(bookingRef);
             if (!freshDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
@@ -957,6 +971,19 @@ export const adminChangeTechnician = functions
         const techDoc = await db.collection('technicians').doc(newTechnicianId).get();
         if (!techDoc.exists) throw new functions.https.HttpsError('not-found', 'Technician not found');
         const techData = techDoc.data()!;
+
+        // ✅ CRITICAL SECURITY FIX: Validate technician is approved
+        if (techData.verificationStatus !== 'approved' && techData.status !== 'approved') {
+            console.error('[adminChangeTechnician] Technician not approved:', {
+                technicianId: newTechnicianId,
+                verificationStatus: techData.verificationStatus,
+                status: techData.status
+            });
+            throw new functions.https.HttpsError(
+                'failed-precondition',
+                'Selected technician is not approved. Please select an approved technician.'
+            );
+        }
 
         // Only update technician fields — do NOT change status
         await bookingRef.update({

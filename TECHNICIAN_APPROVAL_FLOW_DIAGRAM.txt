@@ -1,0 +1,292 @@
+═══════════════════════════════════════════════════════════════════════════════
+TECHNICIAN APPROVAL FLOW - BEFORE & AFTER DIAGRAM
+═══════════════════════════════════════════════════════════════════════════════
+
+BEFORE FIX (BROKEN)
+═══════════════════════════════════════════════════════════════════════════════
+
+Admin Panel                    Firestore                  Technician App
+    │                              │                            │
+    │  1. Click "Approve"          │                            │
+    ├─────────────────────────────>│                            │
+    │                              │                            │
+    │                    2. Update status="approved"            │
+    │                              │                            │
+    │                              │  3. Firestore listener     │
+    │                              ├───────────────────────────>│
+    │                              │                            │
+    │                              │  4. Provider updates       │
+    │                              │     _isApproved = true     │
+    │                              │                            │
+    │                              │  5. UI refreshes           │
+    │                              │     (but user doesn't know)│
+    │                              │                            │
+    │                              │  ❌ NO NOTIFICATION SENT   │
+    │                              │                            │
+    │                              │  Result: Technician       │
+    │                              │  unaware of approval      │
+    │                              │  Must manually refresh    │
+    │                              │  app to see status        │
+    │                              │                            │
+
+AFTER FIX (WORKING)
+═══════════════════════════════════════════════════════════════════════════════
+
+Admin Panel                    Firestore              Cloud Functions         Technician App
+    │                              │                         │                      │
+    │  1. Click "Approve"          │                         │                      │
+    ├─────────────────────────────>│                         │                      │
+    │                              │                         │                      │
+    │                    2. Update status="approved"         │                      │
+    │                              │                         │                      │
+    │                              │  3. onTechnicianApproved trigger fires         │
+    │                              ├────────────────────────>│                      │
+    │                              │                         │                      │
+    │                              │                         │  4. Send FCM         │
+    │                              │                         │     notification     │
+    │                              │                         ├─────────────────────>│
+    │                              │                         │                      │
+    │                              │                         │                      │  5. Notification
+    │                              │                         │                      │     received:
+    │                              │                         │                      │     "✅ Profile
+    │                              │                         │                      │      Approved!"
+    │                              │                         │                      │
+    │                              │  6. Firestore listener  │                      │
+    │                              ├──────────────────────────────────────────────>│
+    │                              │                         │                      │
+    │                              │                         │  7. Provider updates │
+    │                              │                         │     _isApproved=true │
+    │                              │                         │                      │
+    │                              │                         │  8. UI refreshes     │
+    │                              │                         │     Shows approved   │
+    │                              │                         │     status           │
+    │                              │                         │                      │
+    │                              │                         │  ✅ NOTIFICATION     │
+    │                              │                         │     SENT             │
+    │                              │                         │                      │
+    │                              │                         │  Result: Technician │
+    │                              │                         │  immediately notified│
+    │                              │                         │  UI updates auto    │
+    │                              │                         │  Clear user feedback│
+    │                              │                         │                      │
+
+═══════════════════════════════════════════════════════════════════════════════
+
+COMPONENT FLOW DIAGRAM
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         TECHNICIAN APPROVAL FLOW                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────┐
+│   Admin Panel    │
+│  (Next.js)       │
+└────────┬─────────┘
+         │
+         │ updateDoc(technicians/{id}, {
+         │   status: 'active',
+         │   profileApproved: true,
+         │   approvedAt: timestamp
+         │ })
+         │
+         ▼
+┌──────────────────────────────────────────┐
+│         Firestore Database               │
+│  technicians/{id}                        │
+│  ├─ status: "approved"                   │
+│  ├─ profileApproved: true                │
+│  ├─ approvedAt: timestamp                │
+│  └─ updatedAt: timestamp                 │
+└────────┬─────────────────────────────────┘
+         │
+         │ Document updated
+         │
+         ├─────────────────────────────────────────────────┐
+         │                                                 │
+         ▼                                                 ▼
+┌──────────────────────────────┐          ┌──────────────────────────────┐
+│  onTechnicianApproved        │          │  Firestore Listener          │
+│  (Cloud Function Trigger)    │          │  (Technician App)            │
+│                              │          │                              │
+│  1. Detect status change     │          │  1. Receive update           │
+│  2. Check: before != after   │          │  2. Parse technician data    │
+│  3. Send FCM notification    │          │  3. Update provider          │
+│  4. Log delivery stats       │          │  4. Notify listeners         │
+└────────┬─────────────────────┘          └────────┬─────────────────────┘
+         │                                         │
+         │ sendPushNotification()                  │ notifyListeners()
+         │                                         │
+         ▼                                         ▼
+┌──────────────────────────────┐          ┌──────────────────────────────┐
+│  Firebase Cloud Messaging    │          │  TechnicianProvider          │
+│  (FCM)                       │          │  (State Management)          │
+│                              │          │                              │
+│  Title: "✅ Profile Approved!"          │  _isApproved = true          │
+│  Body: "Congratulations..."  │          │  _technician = updated       │
+│  Data: {                     │          │  notifyListeners()           │
+│    type: 'technician_approved'          │                              │
+│    screen: 'dashboard'       │          │  Listeners:                  │
+│  }                           │          │  - Dashboard                 │
+└────────┬─────────────────────┘          │  - Profile Screen            │
+         │                                │  - Any other UI              │
+         │ Send to device                 └────────┬─────────────────────┘
+         │                                         │
+         ▼                                         ▼
+┌──────────────────────────────┐          ┌──────────────────────────────┐
+│  Technician Device           │          │  Flutter UI                  │
+│  (Android/iOS)               │          │  (Dashboard)                 │
+│                              │          │                              │
+│  Notification received:      │          │  1. Rebuild widgets          │
+│  "✅ Profile Approved!"      │          │  2. Show approved status     │
+│                              │          │  3. Enable service creation  │
+│  User taps notification      │          │  4. Update UI elements       │
+│  App opens to dashboard      │          │                              │
+└──────────────────────────────┘          └──────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+
+SEQUENCE DIAGRAM
+═══════════════════════════════════════════════════════════════════════════════
+
+Time    Admin Panel          Firestore         Cloud Function      Technician App
+│
+├─ 0s   Click "Approve"
+│       │
+│       ├─────────────────────────────────────────────────────────────────────>
+│       │                    Update document
+│       │
+├─ 1s   │                    │
+│       │                    ├─────────────────────────────────────────────────>
+│       │                    │                  onTechnicianApproved fires
+│       │                    │
+├─ 2s   │                    │                  │
+│       │                    │                  ├─────────────────────────────>
+│       │                    │                  │                  FCM sent
+│       │                    │                  │
+├─ 3s   │                    │                  │                  │
+│       │                    │                  │                  ├─────────>
+│       │                    │                  │                  │ Notification
+│       │                    │                  │                  │ received
+│       │                    │
+├─ 4s   │                    ├─────────────────────────────────────────────────>
+│       │                    │                  │                  Listener fires
+│       │                    │                  │                  │
+├─ 5s   │                    │                  │                  ├─────────>
+│       │                    │                  │                  │ Provider
+│       │                    │                  │                  │ updated
+│       │                    │                  │                  │
+├─ 6s   │                    │                  │                  ├─────────>
+│       │                    │                  │                  │ UI
+│       │                    │                  │                  │ refreshed
+│       │                    │                  │                  │
+└─ 7s   ✅ Complete          ✅ Complete        ✅ Complete        ✅ Complete
+
+═══════════════════════════════════════════════════════════════════════════════
+
+STATE MACHINE
+═══════════════════════════════════════════════════════════════════════════════
+
+Technician States:
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│  ┌──────────────┐                                                           │
+│  │   PENDING    │  (Onboarding in progress)                                 │
+│  │   REVIEW     │                                                           │
+│  └──────┬───────┘                                                           │
+│         │                                                                   │
+│         │ Admin approves                                                    │
+│         │ (status = "approved")                                             │
+│         │                                                                   │
+│         ▼                                                                   │
+│  ┌──────────────┐                                                           │
+│  │  APPROVED    │  ✅ Notification sent                                     │
+│  │  (Active)    │  ✅ Can create services                                   │
+│  └──────┬───────┘  ✅ Can accept bookings                                   │
+│         │                                                                   │
+│         │ (Optional) Admin suspends                                         │
+│         │                                                                   │
+│         ▼                                                                   │
+│  ┌──────────────┐                                                           │
+│  │  SUSPENDED   │  ❌ Cannot accept bookings                                │
+│  │              │  ❌ Cannot create services                                │
+│  └──────────────┘                                                           │
+│                                                                              │
+│  Alternative path:                                                          │
+│                                                                              │
+│  ┌──────────────┐                                                           │
+│  │   PENDING    │                                                           │
+│  │   REVIEW     │                                                           │
+│  └──────┬───────┘                                                           │
+│         │                                                                   │
+│         │ Admin rejects                                                     │
+│         │ (profileRejected = true)                                          │
+│         │                                                                   │
+│         ▼                                                                   │
+│  ┌──────────────┐                                                           │
+│  │  REJECTED    │  ❌ Must update profile                                   │
+│  │              │  ❌ Must resubmit                                         │
+│  └──────────────┘                                                           │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+
+NOTIFICATION PAYLOAD
+═══════════════════════════════════════════════════════════════════════════════
+
+{
+  "notification": {
+    "title": "✅ Profile Approved!",
+    "body": "Congratulations! Your profile has been approved. You can now create and list services."
+  },
+  "data": {
+    "type": "technician_approved",
+    "screen": "dashboard"
+  },
+  "android": {
+    "priority": "high",
+    "notification": {
+      "channelId": "job_alerts_channel",
+      "clickAction": "FLUTTER_NOTIFICATION_CLICK"
+    }
+  },
+  "apns": {
+    "payload": {
+      "aps": {
+        "badge": 1,
+        "sound": "default"
+      }
+    }
+  }
+}
+
+═══════════════════════════════════════════════════════════════════════════════
+
+ERROR HANDLING FLOW
+═══════════════════════════════════════════════════════════════════════════════
+
+onTechnicianApproved trigger
+    │
+    ├─ Try: Send FCM notification
+    │   │
+    │   ├─ Success: Log delivery stats
+    │   │   └─ [NOTIFICATION] ✅ Notification sent
+    │   │
+    │   └─ Failure: Handle error
+    │       │
+    │       ├─ Invalid token: Delete token
+    │       │   └─ [NOTIFICATION] ⚠️ Token deleted
+    │       │
+    │       ├─ Network error: Log error
+    │       │   └─ [NOTIFICATION] ❌ Network error
+    │       │
+    │       └─ Other error: Log and continue
+    │           └─ [NOTIFICATION] ❌ Error: {message}
+    │
+    └─ Finally: Don't fail function
+        └─ Notification is best-effort
+        └─ Approval still succeeds
+
+═══════════════════════════════════════════════════════════════════════════════

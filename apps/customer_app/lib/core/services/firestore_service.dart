@@ -182,7 +182,7 @@ class FirestoreService {
   Stream<List<HomeService>> getCachedServicesStream() {
     _cachedServicesStream ??= streamTechnicianServices(
       sortBy: 'recent',
-      limit: 50,
+      limit: 20,
       filterByLocation: true,
     ).asBroadcastStream();
     return _cachedServicesStream!;

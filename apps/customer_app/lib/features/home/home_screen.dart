@@ -596,12 +596,16 @@ class _HomeScreenState extends State<HomeScreen>
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Popular Services',
-                style: GoogleFonts.outfit(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.textColor,
+              Expanded(
+                child: Text(
+                  'Popular Services',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textColor,
+                  ),
                 ),
               ),
               GestureDetector(

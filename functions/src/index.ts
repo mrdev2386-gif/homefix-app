@@ -596,6 +596,10 @@ export const onTechnicianApplicationStatusTrigger = notificationTriggers.onTechn
 export const submitKYC = techApp.submitKYC;
 export const syncTechnicianApprovalToServices = techTriggers.syncTechnicianApprovalToServices;
 
+// Technician Approval Notifications
+import * as techApprovalNotif from './technician/approval_notifications';
+export const onTechnicianApproved = techApprovalNotif.onTechnicianApproved;
+
 // KYC Evaluation (Backend-controlled)
 export const evaluateTechnicianKyc = techKyc.evaluateTechnicianKyc;
 export const checkKycStatus = techKyc.checkKycStatus;

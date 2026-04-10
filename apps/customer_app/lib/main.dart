@@ -17,6 +17,7 @@ import 'package:customer_app/core/services/functions_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/notifications_service.dart';
 import 'core/services/push_notification_service.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'core/services/category_service.dart';
 import 'core/providers/cart_provider.dart';
 import 'core/providers/favorites_provider.dart';
@@ -37,6 +38,13 @@ import 'features/profile/presentation/saved_addresses_screen.dart';
 import 'firebase_options.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+/// Background message handler - must be top-level function
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  print('[FCM] Background message received: ${message.notification?.title}');
+  // Handle background notification
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -79,6 +87,16 @@ void main() async {
   );
   print('✅ Firebase Auth ready');
   print('✅ FirebaseAuth.instance is accessible: ${FirebaseAuth.instance != null}');
+
+  // CRITICAL FIX 1: Initialize PushNotificationService AFTER Firebase init
+  print('📱 Initializing Push Notification Service...');
+  final pushNotificationService = PushNotificationService();
+  await pushNotificationService.initialize();
+  print('✅ Push Notification Service initialized');
+  
+  // Setup background message handler
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  print('✅ Background message handler registered');
 
   print('🚀 Starting HomeFix App...');
   runApp(const HomeFixApp());

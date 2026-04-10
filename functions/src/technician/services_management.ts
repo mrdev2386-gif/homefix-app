@@ -152,8 +152,14 @@ export const addTechnicianService = functions
     if (!imageUrl?.trim()) {
       throw new functions.https.HttpsError("invalid-argument", "Image is required");
     }
+    // CRITICAL VALIDATION: categoryId is REQUIRED
     if (!sanitizedCategory) {
       throw new functions.https.HttpsError("invalid-argument", "Category is required");
+    }
+    
+    // CRITICAL: Validate categoryId is not empty or 'custom'
+    if (sanitizedCategory === 'custom' || sanitizedCategory.length < 2) {
+      throw new functions.https.HttpsError("invalid-argument", "Please select a valid category");
     }
 
     // CRITICAL: Fetch technician profile to get district AND state AND validate approval
@@ -292,6 +298,7 @@ export const addTechnicianService = functions
     console.log(`[SERVICE_ADD] ✅ Service ${serviceId} created for technician ${technicianId}`);
     console.log(`[SERVICE_ADD] 📍 Location: ${normalizedDistrict}, ${normalizedState} (normalized)`);
     console.log(`[SERVICE_ADD] 📊 Status: ${serviceData.status}, isActive: ${serviceData.isActive}`);
+    console.log(`[SERVICE_ADD] 🏷️ CategoryId: ${serviceData.categoryId} (VERIFIED)`);
     console.log(`[SERVICE_ADD] 📝 Document written to: technician_services/${serviceId}`);
 
     return {
