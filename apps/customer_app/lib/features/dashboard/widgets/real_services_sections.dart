@@ -33,7 +33,8 @@ class _BaseServicesSection extends StatelessWidget {
     return StreamBuilder<List<HomeService>>(
       stream: stream,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting || !snapshot.hasData) {
+        // STATE 1: WAITING - Show loader with proper layout
+        if (snapshot.connectionState == ConnectionState.waiting) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -44,39 +45,20 @@ class _BaseServicesSection extends StatelessWidget {
           );
         }
 
+        // STATE 2: ERROR - Hide section
         if (snapshot.hasError) {
           if (kDebugMode) {
             print('[ERROR] $title: ${snapshot.error}');
           }
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(),
-              const SizedBox(height: 16),
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Column(
-                    children: [
-                      Icon(Icons.error_outline, color: Colors.grey[400], size: 48),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Something went wrong',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          );
+          return const SizedBox.shrink();
         }
 
-        final allServices = snapshot.data ?? [];
+        // STATE 3: EMPTY DATA - Hide section
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        final allServices = snapshot.data!;
         var services = filterFunction(allServices);
         
         if (displayedServiceIds != null) {
@@ -87,33 +69,9 @@ class _BaseServicesSection extends StatelessWidget {
           print('[REAL CHECK] $title: ${services.length} services (from ${allServices.length} total)');
         }
         
+        // Hide section if filtered result is empty
         if (services.isEmpty) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(),
-              const SizedBox(height: 16),
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Column(
-                    children: [
-                      Icon(Icons.inbox_outlined, color: Colors.grey[300], size: 48),
-                      const SizedBox(height: 12),
-                      Text(
-                        'No services available',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          );
+          return const SizedBox.shrink();
         }
         
         if (displayedServiceIds != null) {
@@ -122,6 +80,7 @@ class _BaseServicesSection extends StatelessWidget {
           }
         }
 
+        // STATE 4: HAS DATA - Show section
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -166,15 +125,25 @@ class _BaseServicesSection extends StatelessWidget {
   }
 
   Widget _buildHorizontalScrollingRows(BuildContext context, List<HomeService> services) {
-    // STRICT: Show ONLY 2 rows (4 services max visible initially)
-    // Remaining services accessible via horizontal scroll
-    final rows = <List<HomeService>>[];
-    for (int i = 0; i < services.length && i < 4; i += 2) {
-      rows.add(services.sublist(i, i + 2 > services.length ? services.length : i + 2));
+    // STRICT: Show ONLY 2 rows vertically
+    // Each row contains ALL its services horizontally scrollable
+    // Split services into 2 rows (alternating: row 0 gets index 0,2,4,6... row 1 gets index 1,3,5,7...)
+    final row1Services = <HomeService>[];
+    final row2Services = <HomeService>[];
+    
+    for (int i = 0; i < services.length; i++) {
+      if (i % 2 == 0) {
+        row1Services.add(services[i]);
+      } else {
+        row2Services.add(services[i]);
+      }
     }
 
     return Column(
-      children: rows.map((rowServices) => _buildRow(context, rowServices)).toList(),
+      children: [
+        if (row1Services.isNotEmpty) _buildRow(context, row1Services),
+        if (row2Services.isNotEmpty) _buildRow(context, row2Services),
+      ],
     );
   }
 
