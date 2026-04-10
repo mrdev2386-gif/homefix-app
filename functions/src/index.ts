@@ -124,11 +124,13 @@ export const verifyBookingStatuses = migrateBookingStatus.verifyBookingStatuses;
 //   - new_booking_flow.ts.DISABLED (had inconsistent pricing logic)
 //   - complete_booking_flow.ts.DISABLED (had inconsistent pricing logic)
 // 
-// PRICING LOGIC (UNIFIED):
-//   const price = Number(basePrice) || 0;
-//   const offer = service.offerPrice != null ? Number(service.offerPrice) : null;
-//   let finalPrice = price;
-//   if (offer !== null && offer > 0 && offer < price) {
+// PRICING LOGIC (UNIFIED - STRICT SAFE PARSING):
+//   const parsedPrice = Number(basePrice);
+//   const calculatedPrice = (!isNaN(parsedPrice) && parsedPrice > 0) ? parsedPrice : 0;
+//   const parsedOffer = Number(service.offerPrice);
+//   const offer = (!isNaN(parsedOffer) && parsedOffer > 0) ? parsedOffer : null;
+//   let finalPrice = calculatedPrice;
+//   if (offer !== null && offer < calculatedPrice) {
 //     finalPrice = offer;
 //   }
 //   finalAmount = finalPrice

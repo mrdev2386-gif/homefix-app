@@ -211,6 +211,12 @@ export const addTechnicianService = functions
       );
     }
 
+    // CRITICAL FIX: Normalize location to lowercase for consistent filtering
+    const normalizedDistrict = district.toString().trim().toLowerCase();
+    const normalizedState = state.toString().trim().toLowerCase();
+
+    console.log(`[LOCATION NORMALIZATION] Original: ${state}/${district} → Normalized: ${normalizedState}/${normalizedDistrict}`);
+
     const serviceId = db.collection('technician_services').doc().id;
     const now = admin.firestore.Timestamp.now();
 
@@ -227,8 +233,8 @@ export const addTechnicianService = functions
       imageUrl: imageUrl.trim(),
       category: sanitizedCategory,
       description: sanitizedDescription,
-      district: district, // SERVER-INJECTED
-      state: state, // SERVER-INJECTED (FIX #3)
+      district: normalizedDistrict, // SERVER-INJECTED (LOWERCASE)
+      state: normalizedState, // SERVER-INJECTED (LOWERCASE)
       averageRating: techData.averageRating || 0, // FROM TECHNICIAN
       totalReviews: techData.totalReviews || 0, // FROM TECHNICIAN
       technicianName: techData.fullName || techData.name || 'Unknown',
@@ -284,7 +290,7 @@ export const addTechnicianService = functions
 
     // ENHANCED DEBUG LOGGING
     console.log(`[SERVICE_ADD] ✅ Service ${serviceId} created for technician ${technicianId}`);
-    console.log(`[SERVICE_ADD] 📍 Location: ${district}, ${state}`);
+    console.log(`[SERVICE_ADD] 📍 Location: ${normalizedDistrict}, ${normalizedState} (normalized)`);
     console.log(`[SERVICE_ADD] 📊 Status: ${serviceData.status}, isActive: ${serviceData.isActive}`);
     console.log(`[SERVICE_ADD] 📝 Document written to: technician_services/${serviceId}`);
 

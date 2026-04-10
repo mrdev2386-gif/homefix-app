@@ -75,6 +75,10 @@ class _SafeNetworkImageState extends State<SafeNetworkImage> {
       return false;
     }
   }
+
+  bool _isAssetPath(String? path) {
+    return path != null && path.startsWith('assets/');
+  }
   
   double _sanitizeDimension(double? value, {double fallback = 100}) {
     if (value == null) return fallback;
@@ -95,6 +99,11 @@ class _SafeNetworkImageState extends State<SafeNetworkImage> {
 
   @override
   Widget build(BuildContext context) {
+    // If current URL is an asset path, show it as asset
+    if (_isAssetPath(_currentUrl)) {
+      return _buildAssetImage();
+    }
+
     // If no valid URL found, show fallback widget
     if (!_isValidUrl(_currentUrl)) {
       return _buildFallback();
@@ -113,6 +122,51 @@ class _SafeNetworkImageState extends State<SafeNetworkImage> {
               : (constraints.maxHeight.isFinite ? constraints.maxHeight : null),
         );
         return _buildImage(safeWidth, safeHeight);
+      },
+    );
+  }
+
+  Widget _buildAssetImage() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final safeWidth = _sanitizeDimension(
+          (widget.width != null)
+              ? widget.width
+              : (constraints.maxWidth.isFinite ? constraints.maxWidth : null),
+        );
+        final safeHeight = _sanitizeDimension(
+          (widget.height != null)
+              ? widget.height
+              : (constraints.maxHeight.isFinite ? constraints.maxHeight : null),
+        );
+
+        Widget imageWidget = Image.asset(
+          _currentUrl,
+          width: safeWidth,
+          height: safeHeight,
+          fit: widget.fit,
+          errorBuilder: (context, error, stackTrace) {
+            return widget.errorWidget ?? _buildFallback(safeWidth, safeHeight);
+          },
+        );
+
+        if (widget.borderRadius != null) {
+          imageWidget = ClipRRect(
+            borderRadius: widget.borderRadius!,
+            child: imageWidget,
+          );
+        }
+
+        if (widget.backgroundColor != null) {
+          imageWidget = Container(
+            width: safeWidth,
+            height: safeHeight,
+            color: widget.backgroundColor,
+            child: imageWidget,
+          );
+        }
+
+        return imageWidget;
       },
     );
   }

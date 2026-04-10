@@ -4,7 +4,7 @@ import 'package:customer_app/core/models/category.dart';
 import 'package:customer_app/core/models/service.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
 import 'package:customer_app/core/services/category_service.dart';
-import '../../dashboard/widgets/service_card.dart';
+import '../../dashboard/widgets/unified_service_card.dart';
 import '../../services/presentation/service_details_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -88,11 +88,9 @@ class _SubServiceScreenState extends State<SubServiceScreen> {
             separatorBuilder: (ctx, i) => const SizedBox(height: 12),
             itemBuilder: (ctx, index) {
               final subService = subServices[index];
-              return ServiceCard(
+              return UniversalServiceCard(
                 service: subService,
-                onAddToCart: () => _navigateToDetails(subService),
-                onBookNow: () => _navigateToDetails(subService),
-                onTap: () => _navigateToDetails(subService),
+                onNavigateToDetails: () => _navigateToDetails(subService),
               );
             },
           );

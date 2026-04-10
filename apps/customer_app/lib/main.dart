@@ -93,6 +93,16 @@ class HomeFixApp extends StatelessWidget {
       providers: [
         Provider<AuthService>(create: (_) => AuthService()),
         Provider<FirestoreService>(create: (_) => FirestoreService()),
+        // Wire up cache invalidation callback
+        ProxyProvider2<AuthService, FirestoreService, AuthService>(
+          update: (_, authService, firestoreService, __) {
+            authService.onAuthStateChanged = () {
+              if (kDebugMode) debugPrint('[CACHE] Auth state changed - clearing services cache');
+              firestoreService.clearCachedServicesStream();
+            };
+            return authService;
+          },
+        ),
         Provider<FunctionsService>(create: (_) => FunctionsService()),
         Provider<StorageService>(create: (_) => StorageService()),
         ChangeNotifierProvider<CategoryService>(create: (_) => CategoryService()),

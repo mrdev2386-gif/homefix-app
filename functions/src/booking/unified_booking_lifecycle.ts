@@ -757,24 +757,37 @@ export const createBookingRequest = functions
         throw new functions.https.HttpsError('internal', 'Service price not configured. Please contact support.');
       }
 
-      // FORCE TYPE SAFE PARSING - SINGLE SOURCE OF TRUTH
-      const calculatedPrice = Number(basePrice) || 0;
-      const offer = service.offerPrice != null ? Number(service.offerPrice) : null;
+      // STRICT SAFE PARSING - SINGLE SOURCE OF TRUTH
+      // Parse base price with NaN validation
+      const parsedPrice = Number(basePrice);
+      const calculatedPrice = (!isNaN(parsedPrice) && parsedPrice > 0) ? parsedPrice : 0;
+      
+      // Parse offer price with NaN validation
+      const parsedOffer = Number(service.offerPrice);
+      const offer = (!isNaN(parsedOffer) && parsedOffer > 0) ? parsedOffer : null;
 
-      // Apply offer only when hasOffer=true AND offerPrice is a valid number strictly less than basePrice
-      const hasOffer = service.hasOffer === true;
+      // CRITICAL FIX: Apply offerPrice if valid (no hasOffer check - field doesn't exist)
+      // Edge cases handled:
+      // - offerPrice null/undefined → use price
+      // - offerPrice = 0 → treat as null
+      // - offerPrice NaN → treat as null
+      // - offerPrice >= price → ignore offer
       let finalPrice = calculatedPrice;
 
-      if (offer !== null && offer > 0 && offer < calculatedPrice) {
+      if (offer !== null && offer < calculatedPrice) {
         finalPrice = offer;
       }
 
-      console.log('✅ [PRICING CALCULATION] UNIFIED LOGIC:', { 
-        basePrice: calculatedPrice, 
-        offerPrice: offer, 
-        finalAmount: finalPrice, 
-        hasOffer, 
-        validation: `offer=${offer}, price=${calculatedPrice}, valid=${offer !== null && offer > 0 && offer < calculatedPrice}`
+      console.log('[BOOKING PRICE DEBUG]', {
+        rawBasePrice: basePrice,
+        rawOfferPrice: service.offerPrice,
+        parsedPrice,
+        parsedOffer,
+        calculatedPrice,
+        offer,
+        finalPrice,
+        discountApplied: finalPrice < calculatedPrice,
+        validation: `offer=${offer}, price=${calculatedPrice}, valid=${offer !== null && offer < calculatedPrice}`
       });
 
       console.log('🔍 [createBookingRequest] Fetching technician data...');

@@ -13,6 +13,9 @@ class AuthService {
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     clientId: kIsWeb ? '663243229047-b79fr0b7ipheh02d6cqforn9u67buoet.apps.googleusercontent.com' : null,
   );
+  
+  // Callback for cache invalidation - set by main.dart
+  Function? onAuthStateChanged;
 
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
@@ -32,6 +35,11 @@ class AuthService {
 
       final userCredential = await _auth.signInWithCredential(credential);
       await _updateUserData(userCredential.user!);
+      
+      // CACHE INVALIDATION: Clear services cache on login
+      if (kDebugMode) debugPrint('[AUTH] User logged in - triggering cache invalidation');
+      onAuthStateChanged?.call();
+      
       return userCredential;
     } on FirebaseAuthException catch (e) {
       debugPrint('❌ [Auth] Firebase Auth error: ${e.message}');
@@ -130,6 +138,11 @@ class AuthService {
       );
       final userCredential = await _auth.signInWithCredential(credential);
       await _updateUserData(userCredential.user!);
+      
+      // CACHE INVALIDATION: Clear services cache on login
+      if (kDebugMode) debugPrint('[AUTH] User logged in via OTP - triggering cache invalidation');
+      onAuthStateChanged?.call();
+      
       return userCredential;
     } catch (e) {
       rethrow;
@@ -215,6 +228,10 @@ class AuthService {
   Future<void> signOut() async {
     await _googleSignIn.signOut();
     await _auth.signOut();
+    
+    // CACHE INVALIDATION: Clear services cache on logout
+    if (kDebugMode) debugPrint('[AUTH] User logged out - triggering cache invalidation');
+    onAuthStateChanged?.call();
   }
 
   /// Check if user has completed profile (has district selected)

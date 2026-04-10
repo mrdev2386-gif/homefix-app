@@ -56,11 +56,42 @@ export const createPrePaymentOrder = functions
             if (serviceData.technicianId !== technicianId) throw new functions.https.HttpsError('invalid-argument', 'Service/technician mismatch');
 
             const basePrice: number = serviceData.price;
-            const finalPrice: number = (serviceData.hasOffer && serviceData.offerPrice > 0)
-                ? serviceData.offerPrice
-                : basePrice;
+            
+            // STRICT SAFE PARSING - SINGLE SOURCE OF TRUTH
+            // Parse base price with NaN validation
+            const parsedPrice = Number(basePrice);
+            const calculatedPrice = (!isNaN(parsedPrice) && parsedPrice > 0) ? parsedPrice : 0;
+            
+            // Parse offer price with NaN validation
+            const parsedOffer = Number(serviceData.offerPrice);
+            const offer = (!isNaN(parsedOffer) && parsedOffer > 0) ? parsedOffer : null;
+
+            // CRITICAL FIX: Apply offerPrice if valid (no hasOffer check - field doesn't exist)
+            // Edge cases handled:
+            // - offerPrice null/undefined → use price
+            // - offerPrice = 0 → treat as null
+            // - offerPrice NaN → treat as null
+            // - offerPrice >= price → ignore offer
+            let finalPrice = calculatedPrice;
+            
+            if (offer !== null && offer < calculatedPrice) {
+                finalPrice = offer;
+            }
+
+            console.log('[PRE_PAYMENT PRICE DEBUG]', {
+                rawBasePrice: basePrice,
+                rawOfferPrice: serviceData.offerPrice,
+                parsedPrice,
+                parsedOffer,
+                calculatedPrice,
+                offer,
+                finalPrice,
+                discountApplied: finalPrice < calculatedPrice,
+                validation: `offer=${offer}, price=${calculatedPrice}, valid=${offer !== null && offer < calculatedPrice}`
+            });
 
             if (typeof finalPrice !== 'number' || finalPrice <= 0) {
+                console.error('❌ [PRE_PAYMENT] Invalid final price calculated:', finalPrice);
                 throw new functions.https.HttpsError('internal', 'Invalid service price');
             }
 
@@ -108,9 +139,9 @@ export const createPrePaymentOrder = functions
                 scheduledDate,
                 scheduledTime,
                 address,
-                basePrice,
+                basePrice: calculatedPrice,
                 finalPrice,
-                discountAmount: basePrice - finalPrice,
+                discountAmount: calculatedPrice - finalPrice,
                 quantity: quantity || 1,
                 paymentMode: 'before_work',
                 status: 'pending',

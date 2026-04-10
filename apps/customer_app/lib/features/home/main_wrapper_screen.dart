@@ -9,6 +9,7 @@ import '../services/presentation/request_screen.dart';
 import '../profile/profile_screen.dart';
 import '../auth/screens/complete_location_screen.dart';
 import 'package:customer_app/core/services/auth_service.dart';
+import 'package:customer_app/core/services/firestore_service.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
 
 class MainWrapperScreen extends StatefulWidget {
@@ -18,7 +19,7 @@ class MainWrapperScreen extends StatefulWidget {
   State<MainWrapperScreen> createState() => _MainWrapperScreenState();
 }
 
-class _MainWrapperScreenState extends State<MainWrapperScreen> {
+class _MainWrapperScreenState extends State<MainWrapperScreen> with WidgetsBindingObserver {
   int _currentIndex = 0;
   bool _isCheckingProfile = true;
   late final List<Widget> _screens;
@@ -33,6 +34,30 @@ class _MainWrapperScreenState extends State<MainWrapperScreen> {
       const ProfileScreen(),
     ];
     _checkProfileCompletion();
+    
+    // STEP 1: Register lifecycle observer for app resume handling
+    WidgetsBinding.instance.addObserver(this);
+  }
+  
+  @override
+  void dispose() {
+    // Clean up lifecycle observer
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+  
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    // STEP 1: Handle app resume - clear cache for fresh data
+    if (state == AppLifecycleState.resumed) {
+      if (kDebugMode) {
+        print('[LIFECYCLE] App resumed - clearing services cache for fresh data');
+      }
+      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+      firestoreService.clearCachedServicesStream();
+    }
   }
 
   void _navigateToHomeTab() {
