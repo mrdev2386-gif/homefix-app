@@ -113,14 +113,14 @@ class _HomeScreenState extends State<HomeScreen>
             // Popular Services
             SliverToBoxAdapter(child: _buildPopularServices()),
             
-            // Recommended Technicians
-            SliverToBoxAdapter(child: _buildRecommendedSection()),
+            // Recently Added Services (TOP)
+            SliverToBoxAdapter(child: _buildNearYouSection()),
             
             // Top Rated Services
             SliverToBoxAdapter(child: _buildTopRatedSection()),
             
-            // Near You Services
-            SliverToBoxAdapter(child: _buildNearYouSection()),
+            // Recommended For You (BOTTOM)
+            SliverToBoxAdapter(child: _buildRecommendedSection()),
             
             // Need Assistance
             SliverToBoxAdapter(child: _buildNeedAssistance(context)),

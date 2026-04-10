@@ -166,8 +166,10 @@ class _BaseServicesSection extends StatelessWidget {
   }
 
   Widget _buildHorizontalScrollingRows(BuildContext context, List<HomeService> services) {
+    // STRICT: Show ONLY 2 rows (4 services max visible initially)
+    // Remaining services accessible via horizontal scroll
     final rows = <List<HomeService>>[];
-    for (int i = 0; i < services.length; i += 2) {
+    for (int i = 0; i < services.length && i < 4; i += 2) {
       rows.add(services.sublist(i, i + 2 > services.length ? services.length : i + 2));
     }
 
