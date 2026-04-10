@@ -3,13 +3,14 @@ import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
 import 'package:customer_app/core/models/service.dart';
 import 'package:customer_app/core/services/auth_service.dart';
 import 'package:customer_app/core/services/firestore_service.dart';
 import 'unified_service_card.dart';
 
-/// Base section widget - OPTIMIZED WITH SHARED STREAM
+/// Base section widget with horizontal scrolling rows
 class _BaseServicesSection extends StatelessWidget {
   final String title;
   final IconData titleIcon;
@@ -32,7 +33,6 @@ class _BaseServicesSection extends StatelessWidget {
     return StreamBuilder<List<HomeService>>(
       stream: stream,
       builder: (context, snapshot) {
-        // STEP 3: LOADING STATE - Show shimmer immediately for smooth UX
         if (snapshot.connectionState == ConnectionState.waiting || !snapshot.hasData) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -44,11 +44,9 @@ class _BaseServicesSection extends StatelessWidget {
           );
         }
 
-        // ERROR STATE - STEP 2: Network recovery handled by Firestore auto-retry
         if (snapshot.hasError) {
           if (kDebugMode) {
             print('[ERROR] $title: ${snapshot.error}');
-            print('[NETWORK] Firestore will auto-retry on network recovery');
           }
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -70,14 +68,6 @@ class _BaseServicesSection extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Please try again later',
-                        style: TextStyle(
-                          color: Colors.grey[500],
-                          fontSize: 14,
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -86,21 +76,17 @@ class _BaseServicesSection extends StatelessWidget {
           );
         }
 
-        // STEP 3: FILTER IN UI (NOT FIRESTORE)
         final allServices = snapshot.data ?? [];
         var services = filterFunction(allServices);
         
-        // Filter duplicates
         if (displayedServiceIds != null) {
           services = services.where((s) => !displayedServiceIds!.contains(s.id)).toList();
         }
         
-        // STEP 4: LOGGING - Track service counts for debugging
         if (kDebugMode) {
-          print('[DATA] $title: ${services.length} services (from ${allServices.length} total)');
+          print('[REAL CHECK] $title: ${services.length} services (from ${allServices.length} total)');
         }
         
-        // EMPTY STATE
         if (services.isEmpty) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -122,14 +108,6 @@ class _BaseServicesSection extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Check back later',
-                        style: TextStyle(
-                          color: Colors.grey[500],
-                          fontSize: 14,
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -138,7 +116,6 @@ class _BaseServicesSection extends StatelessWidget {
           );
         }
         
-        // Track displayed services
         if (displayedServiceIds != null) {
           for (final service in services) {
             displayedServiceIds!.add(service.id);
@@ -150,7 +127,7 @@ class _BaseServicesSection extends StatelessWidget {
           children: [
             _buildHeader(),
             const SizedBox(height: 16),
-            _buildGrid(context, services),
+            _buildHorizontalScrollingRows(context, services),
           ],
         );
       },
@@ -188,34 +165,39 @@ class _BaseServicesSection extends StatelessWidget {
     );
   }
 
-  Widget _buildGrid(BuildContext context, List<HomeService> services) {
+  Widget _buildHorizontalScrollingRows(BuildContext context, List<HomeService> services) {
+    final rows = <List<HomeService>>[];
+    for (int i = 0; i < services.length; i += 2) {
+      rows.add(services.sublist(i, i + 2 > services.length ? services.length : i + 2));
+    }
+
+    return Column(
+      children: rows.map((rowServices) => _buildRow(context, rowServices)).toList(),
+    );
+  }
+
+  Widget _buildRow(BuildContext context, List<HomeService> rowServices) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final width = constraints.maxWidth;
-          final itemWidth = (width - 16) / 2;
-          final itemHeight = itemWidth * 1.3;
-          
-          return GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 16,
-              crossAxisSpacing: 16,
-              childAspectRatio: itemWidth / itemHeight,
-            ),
-            itemCount: services.length,
-            itemBuilder: (context, index) {
-              return UniversalServiceCard(
-                key: ValueKey(services[index].id),
-                service: services[index],
+      padding: const EdgeInsets.only(bottom: 16),
+      child: SizedBox(
+        height: MediaQuery.of(context).size.width * 0.65,
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: rowServices.length,
+          itemBuilder: (context, index) {
+            final itemWidth = (MediaQuery.of(context).size.width - 48) / 2;
+            return Container(
+              width: itemWidth,
+              margin: EdgeInsets.only(right: index < rowServices.length - 1 ? 16 : 0),
+              child: UniversalServiceCard(
+                key: ValueKey(rowServices[index].id),
+                service: rowServices[index],
                 isGrid: true,
-              );
-            },
-          );
-        },
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -223,24 +205,17 @@ class _BaseServicesSection extends StatelessWidget {
   Widget _buildShimmer(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final width = constraints.maxWidth;
-          final itemWidth = (width - 16) / 2;
-          final itemHeight = itemWidth * 1.3;
-          
-          return GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 16,
-              crossAxisSpacing: 16,
-              childAspectRatio: itemWidth / itemHeight,
-            ),
-            itemCount: 4,
-            itemBuilder: (context, index) {
-              return Shimmer.fromColors(
+      child: SizedBox(
+        height: MediaQuery.of(context).size.width * 0.65,
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          itemCount: 2,
+          itemBuilder: (context, index) {
+            final itemWidth = (MediaQuery.of(context).size.width - 48) / 2;
+            return Container(
+              width: itemWidth,
+              margin: EdgeInsets.only(right: index < 1 ? 16 : 0),
+              child: Shimmer.fromColors(
                 baseColor: Colors.grey[200]!,
                 highlightColor: Colors.white,
                 child: Container(
@@ -249,56 +224,16 @@ class _BaseServicesSection extends StatelessWidget {
                     borderRadius: BorderRadius.circular(18),
                   ),
                 ),
-              );
-            },
-          );
-        },
+              ),
+            );
+          },
+        ),
       ),
     );
   }
 }
 
-// STEP 2: USE SAME STREAM EVERYWHERE
-
-/// All Services Section - USES SHARED CACHED STREAM
-class AllServicesSection extends StatefulWidget {
-  final Set<String>? displayedServiceIds;
-  
-  const AllServicesSection({super.key, this.displayedServiceIds});
-
-  @override
-  State<AllServicesSection> createState() => _AllServicesSectionState();
-}
-
-class _AllServicesSectionState extends State<AllServicesSection> {
-  late final Stream<List<HomeService>> _servicesStream;
-
-  @override
-  void initState() {
-    super.initState();
-    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-    // STEP 2: USE CACHED STREAM
-    _servicesStream = firestoreService.getCachedServicesStream();
-    if (kDebugMode) {
-      print('[CACHE] AllServicesSection using shared stream');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return _BaseServicesSection(
-      title: 'All Services',
-      titleIcon: Icons.grid_view_rounded,
-      iconGradient: const [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-      stream: _servicesStream,
-      displayedServiceIds: widget.displayedServiceIds,
-      // STEP 3: FILTER IN UI - Take all services
-      filterFunction: (allServices) => allServices.take(50).toList(),
-    );
-  }
-}
-
-/// Top Rated Services Section - USES SHARED CACHED STREAM
+/// Top Rated Services Section
 class TopRatedRealServicesSection extends StatefulWidget {
   final Set<String>? displayedServiceIds;
   
@@ -315,7 +250,6 @@ class _TopRatedRealServicesSectionState extends State<TopRatedRealServicesSectio
   void initState() {
     super.initState();
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-    // STEP 2: USE CACHED STREAM
     _servicesStream = firestoreService.getCachedServicesStream();
     if (kDebugMode) {
       print('[CACHE] TopRatedServicesSection using shared stream');
@@ -330,19 +264,23 @@ class _TopRatedRealServicesSectionState extends State<TopRatedRealServicesSectio
       iconGradient: const [Color(0xFFFF9800), Color(0xFFFF5722)],
       stream: _servicesStream,
       displayedServiceIds: widget.displayedServiceIds,
-      // STEP 3: FILTER IN UI - Top rated only
       filterFunction: (allServices) {
         final topRated = allServices
             .where((s) => (s.rating ?? 0) >= 4.0)
             .toList()
           ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+        
+        if (kDebugMode) {
+          print('[REAL CHECK] TopRated: ${topRated.length} services with rating >= 4.0');
+        }
+        
         return topRated.take(20).toList();
       },
     );
   }
 }
 
-/// Recently Added Services Section - USES SHARED CACHED STREAM
+/// Recently Added Services Section
 class RecentlyAddedServicesSection extends StatefulWidget {
   final Set<String>? displayedServiceIds;
   
@@ -359,7 +297,6 @@ class _RecentlyAddedServicesSectionState extends State<RecentlyAddedServicesSect
   void initState() {
     super.initState();
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-    // STEP 2: USE CACHED STREAM
     _servicesStream = firestoreService.getCachedServicesStream();
     if (kDebugMode) {
       print('[CACHE] RecentlyAddedServicesSection using shared stream');
@@ -374,13 +311,20 @@ class _RecentlyAddedServicesSectionState extends State<RecentlyAddedServicesSect
       iconGradient: const [Color(0xFF4CAF50), Color(0xFF8BC34A)],
       stream: _servicesStream,
       displayedServiceIds: widget.displayedServiceIds,
-      // STEP 3: FILTER IN UI - Recent services (already sorted by createdAt)
-      filterFunction: (allServices) => allServices.take(10).toList(),
+      filterFunction: (allServices) {
+        final recent = allServices.take(15).toList();
+        
+        if (kDebugMode) {
+          print('[REAL CHECK] RecentlyAdded: ${recent.length} (sorted by createdAt DESC)');
+        }
+        
+        return recent;
+      },
     );
   }
 }
 
-/// Recommended Services Section - USES SHARED CACHED STREAM
+/// Recommended Services Section with Personalization
 class RecommendedServicesSection extends StatefulWidget {
   final Set<String>? displayedServiceIds;
   
@@ -392,16 +336,16 @@ class RecommendedServicesSection extends StatefulWidget {
 
 class _RecommendedServicesSectionState extends State<RecommendedServicesSection> {
   late final Stream<List<HomeService>>? _servicesStream;
+  String? _userId;
 
   @override
   void initState() {
     super.initState();
     final auth = Provider.of<AuthService>(context, listen: false);
-    final userId = auth.currentUser?.uid;
+    _userId = auth.currentUser?.uid;
     
-    if (userId != null) {
+    if (_userId != null) {
       final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-      // STEP 2: USE CACHED STREAM
       _servicesStream = firestoreService.getCachedServicesStream();
       if (kDebugMode) {
         print('[CACHE] RecommendedServicesSection using shared stream');
@@ -411,18 +355,162 @@ class _RecommendedServicesSectionState extends State<RecommendedServicesSection>
     }
   }
 
+  Future<Set<String>> _getUserInteractionCategories() async {
+    if (_userId == null) return {};
+    
+    final categories = <String>{};
+    
+    try {
+      final db = FirebaseFirestore.instance;
+      
+      final cartSnapshot = await db
+          .collection('customers')
+          .doc(_userId)
+          .collection('cart')
+          .limit(10)
+          .get();
+      
+      for (final doc in cartSnapshot.docs) {
+        final categoryId = doc.data()['categoryId'] as String?;
+        if (categoryId != null && categoryId.isNotEmpty) {
+          categories.add(categoryId);
+        }
+      }
+      
+      final favoritesSnapshot = await db
+          .collection('customers')
+          .doc(_userId)
+          .collection('favorites')
+          .limit(10)
+          .get();
+      
+      for (final doc in favoritesSnapshot.docs) {
+        final categoryId = doc.data()['categoryId'] as String?;
+        if (categoryId != null && categoryId.isNotEmpty) {
+          categories.add(categoryId);
+        }
+      }
+      
+      final bookingsSnapshot = await db
+          .collection('bookings')
+          .where('customerId', isEqualTo: _userId)
+          .orderBy('createdAt', descending: true)
+          .limit(5)
+          .get();
+      
+      for (final doc in bookingsSnapshot.docs) {
+        final categoryId = doc.data()['categoryId'] as String?;
+        if (categoryId != null && categoryId.isNotEmpty) {
+          categories.add(categoryId);
+        }
+      }
+      
+      if (kDebugMode) {
+        print('[Recommended] User interaction categories: $categories');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[Recommended] Error fetching user interactions: $e');
+      }
+    }
+    
+    return categories;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_servicesStream == null) return const SizedBox.shrink();
     
+    return FutureBuilder<Set<String>>(
+      future: _getUserInteractionCategories(),
+      builder: (context, categorySnapshot) {
+        return _BaseServicesSection(
+          title: 'Recommended For You',
+          titleIcon: Icons.auto_awesome_rounded,
+          iconGradient: const [Color(0xFF10B981), Color(0xFF059669)],
+          stream: _servicesStream!,
+          displayedServiceIds: widget.displayedServiceIds,
+          filterFunction: (allServices) {
+            final userCategories = categorySnapshot.data ?? {};
+            
+            if (userCategories.isEmpty) {
+              if (kDebugMode) {
+                print('[Recommended] No user data - falling back to top rated');
+              }
+              
+              final topRated = allServices
+                  .where((s) => (s.rating ?? 0) >= 4.0)
+                  .toList()
+                ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+              
+              return topRated.take(10).toList();
+            }
+            
+            final personalized = <HomeService>[];
+            final otherServices = <HomeService>[];
+            
+            for (final service in allServices) {
+              if (userCategories.contains(service.category) || 
+                  userCategories.contains(service.categoryName)) {
+                personalized.add(service);
+              } else {
+                otherServices.add(service);
+              }
+            }
+            
+            personalized.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+            
+            final result = personalized.take(10).toList();
+            
+            if (result.length < 10) {
+              otherServices.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+              result.addAll(otherServices.take(10 - result.length));
+            }
+            
+            if (kDebugMode) {
+              print('[REAL CHECK] Recommended: ${result.length} (personalized: ${personalized.length}, user categories: ${userCategories.length})');
+            }
+            
+            return result;
+          },
+        );
+      },
+    );
+  }
+}
+
+/// All Services Section
+class AllServicesSection extends StatefulWidget {
+  final Set<String>? displayedServiceIds;
+  
+  const AllServicesSection({super.key, this.displayedServiceIds});
+
+  @override
+  State<AllServicesSection> createState() => _AllServicesSectionState();
+}
+
+class _AllServicesSectionState extends State<AllServicesSection> {
+  late final Stream<List<HomeService>> _servicesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    _servicesStream = firestoreService.getCachedServicesStream();
+    if (kDebugMode) {
+      print('[CACHE] AllServicesSection using shared stream');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return _BaseServicesSection(
-      title: 'Recommended For You',
-      titleIcon: Icons.auto_awesome_rounded,
-      iconGradient: const [Color(0xFF10B981), Color(0xFF059669)],
-      stream: _servicesStream!,
+      title: 'All Services',
+      titleIcon: Icons.grid_view_rounded,
+      iconGradient: const [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+      stream: _servicesStream,
       displayedServiceIds: widget.displayedServiceIds,
-      // STEP 3: FILTER IN UI - Recommended (for now, just take first 10)
-      filterFunction: (allServices) => allServices.take(10).toList(),
+      filterFunction: (allServices) => allServices.take(50).toList(),
     );
   }
 }

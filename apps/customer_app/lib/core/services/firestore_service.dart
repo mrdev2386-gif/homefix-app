@@ -151,7 +151,7 @@ class FirestoreService {
     // STEP 5: Execute query with fallback logic
     yield* _withErrorHandling(
       query.snapshots().asyncMap((snapshot) async {
-        print('[SERVICES] RAW FIRESTORE: ${snapshot.docs.length} docs');
+        print('[FIRESTORE RAW COUNT] ${snapshot.docs.length} docs from Firestore');
         
         // Log first 3 documents for debugging
         for (int i = 0; i < snapshot.docs.length && i < 3; i++) {
@@ -202,12 +202,10 @@ class FirestoreService {
     );
   }
 
-  /// GLOBAL CACHED STREAM - Single source for all dashboard sections
-  /// Reduces Firestore reads by 70-80%
   Stream<List<HomeService>> getCachedServicesStream() {
     if (_cachedServicesStream == null) {
       if (kDebugMode) {
-        print('[CACHE] Creating new shared stream - this should only happen ONCE');
+        print('[FIRESTORE RAW COUNT] Creating new shared stream - this should only happen ONCE');
       }
       _cachedServicesStream = streamTechnicianServices(
         sortBy: 'recent',
@@ -216,7 +214,7 @@ class FirestoreService {
       ).asBroadcastStream();
     } else {
       if (kDebugMode) {
-        print('[CACHE STATUS] Using cached stream - ZERO additional Firestore reads');
+        print('[FIRESTORE RAW COUNT] Using cached stream - ZERO additional Firestore reads');
       }
     }
     return _cachedServicesStream!;
