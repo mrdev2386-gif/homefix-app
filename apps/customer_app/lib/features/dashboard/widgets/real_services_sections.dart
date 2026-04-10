@@ -312,10 +312,26 @@ class _RecentlyAddedServicesSectionState extends State<RecentlyAddedServicesSect
       stream: _servicesStream,
       displayedServiceIds: widget.displayedServiceIds,
       filterFunction: (allServices) {
-        final recent = allServices.take(15).toList();
+        // Safety filter: Remove services without required fields
+        final validServices = allServices.where((s) =>
+          s.id != null && s.id.isNotEmpty &&
+          s.category != null && s.category!.isNotEmpty &&
+          s.createdAt != null
+        ).toList();
+        
+        // STRICT: Force sort by createdAt DESC
+        validServices.sort((a, b) {
+          final aTime = a.createdAt;
+          final bTime = b.createdAt;
+          if (aTime == null || bTime == null) return 0;
+          return bTime.compareTo(aTime);
+        });
+        
+        // Take latest 15 services
+        final recent = validServices.take(15).toList();
         
         if (kDebugMode) {
-          print('[REAL CHECK] RecentlyAdded: ${recent.length} (sorted by createdAt DESC)');
+          print('[FINAL CHECK] RecentlyAdded: ${recent.length} (from ${validServices.length} valid services, sorted by createdAt DESC)');
         }
         
         return recent;
@@ -355,14 +371,16 @@ class _RecommendedServicesSectionState extends State<RecommendedServicesSection>
     }
   }
 
-  Future<Set<String>> _getUserInteractionCategories() async {
-    if (_userId == null) return {};
+  Future<Map<String, dynamic>> _getUserInteractionData() async {
+    if (_userId == null) return {'categories': <String>{}, 'serviceIds': <String>{}};
     
     final categories = <String>{};
+    final serviceIds = <String>{};
     
     try {
       final db = FirebaseFirestore.instance;
       
+      // Fetch cart items
       final cartSnapshot = await db
           .collection('customers')
           .doc(_userId)
@@ -371,12 +389,23 @@ class _RecommendedServicesSectionState extends State<RecommendedServicesSection>
           .get();
       
       for (final doc in cartSnapshot.docs) {
-        final categoryId = doc.data()['categoryId'] as String?;
+        final data = doc.data();
+        final serviceId = data['serviceId'] as String?;
+        final categoryId = data['categoryId'] as String?;
+        final categoryName = data['categoryName'] as String?;
+        
+        if (serviceId != null && serviceId.isNotEmpty) {
+          serviceIds.add(serviceId.toLowerCase());
+        }
         if (categoryId != null && categoryId.isNotEmpty) {
-          categories.add(categoryId);
+          categories.add(categoryId.toLowerCase());
+        }
+        if (categoryName != null && categoryName.isNotEmpty) {
+          categories.add(categoryName.toLowerCase());
         }
       }
       
+      // Fetch favorites
       final favoritesSnapshot = await db
           .collection('customers')
           .doc(_userId)
@@ -385,12 +414,23 @@ class _RecommendedServicesSectionState extends State<RecommendedServicesSection>
           .get();
       
       for (final doc in favoritesSnapshot.docs) {
-        final categoryId = doc.data()['categoryId'] as String?;
+        final data = doc.data();
+        final serviceId = data['serviceId'] as String?;
+        final categoryId = data['categoryId'] as String?;
+        final categoryName = data['categoryName'] as String?;
+        
+        if (serviceId != null && serviceId.isNotEmpty) {
+          serviceIds.add(serviceId.toLowerCase());
+        }
         if (categoryId != null && categoryId.isNotEmpty) {
-          categories.add(categoryId);
+          categories.add(categoryId.toLowerCase());
+        }
+        if (categoryName != null && categoryName.isNotEmpty) {
+          categories.add(categoryName.toLowerCase());
         }
       }
       
+      // Fetch past bookings
       final bookingsSnapshot = await db
           .collection('bookings')
           .where('customerId', isEqualTo: _userId)
@@ -399,14 +439,24 @@ class _RecommendedServicesSectionState extends State<RecommendedServicesSection>
           .get();
       
       for (final doc in bookingsSnapshot.docs) {
-        final categoryId = doc.data()['categoryId'] as String?;
+        final data = doc.data();
+        final serviceId = data['serviceId'] as String?;
+        final categoryId = data['categoryId'] as String?;
+        final categoryName = data['categoryName'] as String?;
+        
+        if (serviceId != null && serviceId.isNotEmpty) {
+          serviceIds.add(serviceId.toLowerCase());
+        }
         if (categoryId != null && categoryId.isNotEmpty) {
-          categories.add(categoryId);
+          categories.add(categoryId.toLowerCase());
+        }
+        if (categoryName != null && categoryName.isNotEmpty) {
+          categories.add(categoryName.toLowerCase());
         }
       }
       
       if (kDebugMode) {
-        print('[Recommended] User interaction categories: $categories');
+        print('[Recommended] User data - categories: ${categories.length}, serviceIds: ${serviceIds.length}');
       }
     } catch (e) {
       if (kDebugMode) {
@@ -414,16 +464,16 @@ class _RecommendedServicesSectionState extends State<RecommendedServicesSection>
       }
     }
     
-    return categories;
+    return {'categories': categories, 'serviceIds': serviceIds};
   }
 
   @override
   Widget build(BuildContext context) {
     if (_servicesStream == null) return const SizedBox.shrink();
     
-    return FutureBuilder<Set<String>>(
-      future: _getUserInteractionCategories(),
-      builder: (context, categorySnapshot) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _getUserInteractionData(),
+      builder: (context, userDataSnapshot) {
         return _BaseServicesSection(
           title: 'Recommended For You',
           titleIcon: Icons.auto_awesome_rounded,
@@ -431,11 +481,14 @@ class _RecommendedServicesSectionState extends State<RecommendedServicesSection>
           stream: _servicesStream!,
           displayedServiceIds: widget.displayedServiceIds,
           filterFunction: (allServices) {
-            final userCategories = categorySnapshot.data ?? {};
+            final userData = userDataSnapshot.data ?? {'categories': <String>{}, 'serviceIds': <String>{}};
+            final userCategories = userData['categories'] as Set<String>;
+            final userServiceIds = userData['serviceIds'] as Set<String>;
             
-            if (userCategories.isEmpty) {
+            // STRICT: If no user data, show ONLY top rated (rating >= 4)
+            if (userCategories.isEmpty && userServiceIds.isEmpty) {
               if (kDebugMode) {
-                print('[Recommended] No user data - falling back to top rated');
+                print('[Recommended] No user data - showing ONLY top rated services');
               }
               
               final topRated = allServices
@@ -443,32 +496,72 @@ class _RecommendedServicesSectionState extends State<RecommendedServicesSection>
                   .toList()
                 ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
               
-              return topRated.take(10).toList();
+              final result = topRated.take(10).toList();
+              if (kDebugMode) {
+                print('[FINAL CHECK] Recommended: ${result.length} (fallback to top rated)');
+              }
+              return result;
             }
             
-            final personalized = <HomeService>[];
-            final otherServices = <HomeService>[];
+            // STRICT PERSONALIZATION with cascading priority
+            final highPriority = <HomeService>[]; // Exact serviceId match
+            final mediumPriority = <HomeService>[]; // SubCategory match
+            final lowPriority = <HomeService>[]; // Category match (last resort)
             
             for (final service in allServices) {
-              if (userCategories.contains(service.category) || 
-                  userCategories.contains(service.categoryName)) {
-                personalized.add(service);
-              } else {
-                otherServices.add(service);
+              // Safety filter
+              if (service.id == null || service.id.isEmpty) continue;
+              if (service.category == null || service.category!.isEmpty) continue;
+              
+              final serviceIdLower = service.id.toLowerCase();
+              final serviceCategoryLower = (service.category ?? '').toLowerCase();
+              final serviceCategoryNameLower = (service.categoryName ?? '').toLowerCase();
+              
+              // HIGH PRIORITY: Exact serviceId match
+              if (userServiceIds.contains(serviceIdLower)) {
+                highPriority.add(service);
+                continue; // Skip other checks
+              }
+              
+              // MEDIUM PRIORITY: Category match (only if no high priority matches yet)
+              if (userCategories.contains(serviceCategoryLower) || 
+                  userCategories.contains(serviceCategoryNameLower)) {
+                mediumPriority.add(service);
               }
             }
             
-            personalized.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+            // Sort each priority group by rating DESC
+            highPriority.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+            mediumPriority.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
             
-            final result = personalized.take(10).toList();
-            
-            if (result.length < 10) {
-              otherServices.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
-              result.addAll(otherServices.take(10 - result.length));
+            // CASCADING LOGIC: Use highest priority available
+            List<HomeService> result;
+            if (highPriority.isNotEmpty) {
+              // If HIGH matches exist → use ONLY high priority
+              result = highPriority.take(10).toList();
+              if (kDebugMode) {
+                print('[STRICT REC] high: ${highPriority.length}, medium: 0 (ignored), final: ${result.length}');
+              }
+            } else if (mediumPriority.isNotEmpty) {
+              // If no HIGH → use MEDIUM priority
+              result = mediumPriority.take(10).toList();
+              if (kDebugMode) {
+                print('[STRICT REC] high: 0, medium: ${mediumPriority.length}, final: ${result.length}');
+              }
+            } else {
+              // If nothing → fallback to top rated
+              final topRated = allServices
+                  .where((s) => (s.rating ?? 0) >= 4.0)
+                  .toList()
+                ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+              result = topRated.take(10).toList();
+              if (kDebugMode) {
+                print('[STRICT REC] high: 0, medium: 0, final: ${result.length} (fallback to top rated)');
+              }
             }
             
             if (kDebugMode) {
-              print('[REAL CHECK] Recommended: ${result.length} (personalized: ${personalized.length}, user categories: ${userCategories.length})');
+              print('[FINAL CHECK] Recommended: ${result.length}');
             }
             
             return result;
