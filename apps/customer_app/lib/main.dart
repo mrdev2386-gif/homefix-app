@@ -17,7 +17,7 @@ import 'package:customer_app/core/services/functions_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/notifications_service.dart';
 import 'core/services/push_notification_service.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
+import 'core/services/fcm_service.dart';
 import 'core/services/category_service.dart';
 import 'core/providers/cart_provider.dart';
 import 'core/providers/favorites_provider.dart';
@@ -42,8 +42,9 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 /// Background message handler - must be top-level function
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  print('[FCM] Background message received: ${message.notification?.title}');
-  // Handle background notification
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  print('[FCM BACKGROUND] ${message.notification?.title}');
+  print('[FCM BACKGROUND] Data: ${message.data}');
 }
 
 void main() async {
@@ -88,27 +89,17 @@ void main() async {
   print('✅ Firebase Auth ready');
   print('✅ FirebaseAuth.instance is accessible: ${FirebaseAuth.instance != null}');
 
-  // CRITICAL FIX 1: Initialize PushNotificationService AFTER Firebase init
-  print('📱 Initializing Push Notification Service...');
-  final pushNotificationService = PushNotificationService();
-  await pushNotificationService.initialize();
-  print('✅ Push Notification Service initialized');
-  
-  // Setup background message handler
+  // CRITICAL FIX 1: Initialize FCM Service AFTER Firebase init
+  print('📱 Initializing FCM Service...');
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-  print('✅ Background message handler registered');
-
+  await FCMService().initialize();
+  print('✅ FCM Service initialized');
+  
   // STEP 7: Setup foreground message handler (CRITICAL for real-time notifications)
   FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-    print('[FCM RECEIVED] Foreground message');
-    print('[FCM] Title: ${message.notification?.title}');
-    print('[FCM] Body: ${message.notification?.body}');
-    print('[FCM] Data: ${message.data}');
-    
-    // Show notification even when app is in foreground
-    if (message.notification != null) {
-      print('[FCM] ✅ Notification received in foreground: ${message.notification!.title}');
-    }
+    print('[FCM FOREGROUND] ${message.notification?.title}');
+    print('[FCM FOREGROUND] Body: ${message.notification?.body}');
+    print('[FCM FOREGROUND] Data: ${message.data}');
   });
   print('✅ Foreground message handler registered');
 

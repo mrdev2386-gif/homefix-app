@@ -102,7 +102,7 @@ export const onBookingStatusChange = functions.firestore
             userType: 'technician',
             title: '💰 Payment Received!',
             body: `Payment confirmed for booking #${bookingId.substring(0, 6)}. You can now proceed.`,
-            type: 'payment_received',
+            type: 'new_payment_received',
             data: { bookingId, screen: 'booking_details' },
             priority: 'high',
           }).catch(err => console.error('[BOOKING] Technician payment notification failed:', err));

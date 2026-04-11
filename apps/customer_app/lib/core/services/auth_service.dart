@@ -3,6 +3,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../models/user_model.dart';
 import '../firebase/functions_instance.dart';
 import 'dart:math';
@@ -180,6 +181,20 @@ class AuthService {
       } catch (e) {
         debugPrint('❌ [Auth] Profile creation failed: $e');
       }
+    }
+    
+    // CRITICAL: Update FCM token after login
+    try {
+      final fcmToken = await FirebaseMessaging.instance.getToken();
+      if (fcmToken != null) {
+        await userDoc.update({
+          'fcmToken': fcmToken,
+          'fcmTokenUpdatedAt': FieldValue.serverTimestamp(),
+        });
+        debugPrint('✅ [FCM] Token saved after login: ${fcmToken.substring(0, 20)}...');
+      }
+    } catch (e) {
+      debugPrint('⚠️ [FCM] Failed to save token after login: $e');
     }
   }
 

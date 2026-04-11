@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "com.homefix.customer"
-    compileSdk = 35
+    compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -23,31 +23,16 @@ android {
     defaultConfig {
         applicationId = "com.homefix.customer"
         minSdk = 23
-        targetSdk = 35
+        targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
-    signingConfigs {
-        release {
-            def keystoreProperties = new Properties()
-            def keystorePropertiesFile = rootProject.file('key.properties')
-            if (keystorePropertiesFile.exists()) {
-                keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-                storeFile = file(keystoreProperties['storeFile'])
-                storePassword = keystoreProperties['storePassword']
-                keyAlias = keystoreProperties['keyAlias']
-                keyPassword = keystoreProperties['keyPassword']
-            }
-        }
-    }
-
     buildTypes {
         release {
-            signingConfig signingConfigs.release.storeFile != null ? signingConfigs.release : signingConfigs.debug
-            minifyEnabled true
-            shrinkResources true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig = signingConfigs.debug
+            minifyEnabled = true
+            shrinkResources = true
         }
     }
 }
@@ -57,8 +42,6 @@ flutter {
 }
 
 dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
-    
     // Firebase BOM - manages all Firebase versions
     implementation platform('com.google.firebase:firebase-bom:33.5.1')
     
@@ -68,8 +51,8 @@ dependencies {
     implementation 'com.google.firebase:firebase-functions'
     implementation 'com.google.firebase:firebase-messaging'
     implementation 'com.google.firebase:firebase-storage'
-    // App Check REMOVED for debugging UNAUTHENTICATED errors
+    implementation 'com.google.firebase:firebase-crashlytics'
     
     // Google Play Services
-    implementation 'com.google.android.gms:play-services-auth:21.0.1'
+    implementation 'com.google.android.gms:play-services-auth:21.2.0'
 }

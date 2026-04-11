@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- App Check Debug Token - Replace with your actual debug token from Firebase Console -->
-    <string name="firebase_app_check_debug_token">YOUR_DEBUG_TOKEN_HERE</string>
-</resources>
