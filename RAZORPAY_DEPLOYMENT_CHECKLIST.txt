@@ -1,0 +1,271 @@
+RAZORPAY PAYMENT SYSTEM - DEPLOYMENT CHECKLIST
+
+═══════════════════════════════════════════════════════════════════════════════
+
+PRE-DEPLOYMENT VERIFICATION:
+────────────────────────────
+
+BACKEND (Cloud Functions):
+□ Verify unified_booking_lifecycle.ts:
+  - completeService() sets status to "awaiting_payment"
+  - startService() requires payment before starting
+  - Payment method enforced as "after_service"
+
+□ Verify payments/razorpay.ts:
+  - createPaymentOrder() validates booking status = "awaiting_payment"
+  - createPaymentOrder() validates paymentMethod = "after_service"
+  - verifyPayment() uses Firestore transaction
+  - verifyPayment() credits technician wallet atomically
+  - Signature verification implemented
+
+□ Verify functions/src/index.ts:
+  - createPaymentOrder exported
+  - verifyPayment exported
+  - createRazorpayOrder exported
+  - initiateRefund exported
+
+FRONTEND (Flutter Customer App):
+□ Verify payment_screen.dart:
+  - Razorpay checkout integration
+  - Payment success handler calls verifyPayment()
+  - Payment failure handler shows retry option
+  - Loading states implemented
+
+□ Verify booking_detail_screen.dart:
+  - "Pay Now" button shows ONLY for "awaiting_payment" status
+  - Rating button shows ONLY for "completed" status AND paymentStatus = "paid"
+  - QR payment system removed
+  - Imports updated (removed qr_flutter)
+
+□ Verify functions_service.dart:
+  - createPaymentOrder() method added
+  - verifyPayment() method added
+  - Both methods call correct Cloud Functions
+
+═══════════════════════════════════════════════════════════════════════════════
+
+DEPLOYMENT STEPS:
+─────────────────
+
+STEP 1: Deploy Cloud Functions
+───────────────────────────────
+cd functions
+npm run build
+firebase deploy --only functions
+
+Verify:
+□ createPaymentOrder function deployed
+□ verifyPayment function deployed
+□ No errors in deployment logs
+
+STEP 2: Update Customer App
+────────────────────────────
+□ Update payment_screen.dart
+□ Update booking_detail_screen.dart
+□ Update functions_service.dart
+□ Run: flutter pub get
+□ Build APK: flutter build apk --release
+□ Test on device
+
+STEP 3: Configure Razorpay
+──────────────────────────
+□ Get Razorpay Key ID from dashboard
+□ Get Razorpay Key Secret from dashboard
+□ Set in Firebase Functions config:
+   firebase functions:config:set razorpay.key_id="xxx" razorpay.key_secret="xxx"
+
+□ Deploy config:
+   firebase deploy --only functions
+
+STEP 4: Test Payment Flow
+─────────────────────────
+□ Create booking as customer
+□ Admin approves booking
+□ Technician accepts booking
+□ Technician starts service (should fail - payment required)
+□ Technician completes service (status = "awaiting_payment")
+□ Customer taps "Pay Now"
+□ Razorpay checkout opens
+□ Complete payment
+□ Verify booking status = "paid"
+□ Verify technician wallet credited
+□ Verify rating button appears
+
+STEP 5: Monitor Logs
+────────────────────
+□ Check Cloud Functions logs for errors
+□ Check payment_logs collection for all transactions
+□ Check technician_wallets for balance updates
+□ Check razorpayOrders collection for order records
+
+═══════════════════════════════════════════════════════════════════════════════
+
+TESTING SCENARIOS:
+──────────────────
+
+SCENARIO 1: Successful Payment
+───────────────────────────────
+1. Create booking → pending_admin_review
+2. Admin approves → approved_by_admin
+3. Technician accepts → technician_accepted
+4. Technician starts service → service_in_progress
+5. Technician completes service → awaiting_payment
+6. Customer pays via Razorpay → paid
+7. Technician wallet credited
+8. Customer can rate service
+
+Expected Results:
+✓ Booking status = "paid"
+✓ Payment status = "paid"
+✓ Technician wallet balance increased
+✓ Transaction logged in wallet_transactions
+✓ Payment logged in payment_logs
+
+SCENARIO 2: Payment Failure
+────────────────────────────
+1. Customer initiates payment
+2. Payment fails in Razorpay
+3. Error message shown
+4. Retry button available
+5. Customer retries payment
+
+Expected Results:
+✓ Booking status remains "awaiting_payment"
+✓ Payment status remains "awaiting_payment"
+✓ No wallet credit
+✓ Error logged in payment_logs
+
+SCENARIO 3: Duplicate Payment Attempt
+──────────────────────────────────────
+1. Customer pays successfully
+2. Booking status = "paid"
+3. Customer tries to pay again
+4. Backend detects duplicate (transaction-safe)
+5. No double charge
+
+Expected Results:
+✓ Second payment rejected
+✓ Wallet not credited twice
+✓ Error message shown to customer
+✓ Logged as duplicate attempt
+
+SCENARIO 4: Invalid Signature
+──────────────────────────────
+1. Customer completes payment
+2. Signature verification fails
+3. Payment rejected
+
+Expected Results:
+✓ Booking status remains "awaiting_payment"
+✓ No wallet credit
+✓ Error logged
+✓ Customer shown error message
+
+SCENARIO 5: Amount Mismatch
+────────────────────────────
+1. Customer pays different amount than booking total
+2. Backend detects mismatch
+3. Payment rejected
+
+Expected Results:
+✓ Booking status remains "awaiting_payment"
+✓ No wallet credit
+✓ Error logged
+✓ Customer shown error message
+
+═══════════════════════════════════════════════════════════════════════════════
+
+ROLLBACK PLAN:
+──────────────
+
+If issues occur:
+
+1. Revert Cloud Functions:
+   git revert <commit-hash>
+   firebase deploy --only functions
+
+2. Revert Flutter App:
+   git revert <commit-hash>
+   flutter build apk --release
+
+3. Check Firestore data:
+   - Verify no orphaned payment records
+   - Verify wallet balances are correct
+   - Check payment_logs for issues
+
+4. Manual fixes if needed:
+   - Use admin panel to adjust wallet balances
+   - Mark bookings as paid if needed
+   - Create refund records if needed
+
+═══════════════════════════════════════════════════════════════════════════════
+
+POST-DEPLOYMENT MONITORING:
+───────────────────────────
+
+Daily Checks:
+□ Monitor Cloud Functions error rate
+□ Check payment_logs for failed payments
+□ Verify technician_wallets are updating correctly
+□ Check for duplicate payment attempts
+□ Monitor customer complaints
+
+Weekly Checks:
+□ Generate payment report
+□ Verify total payments match wallet credits
+□ Check for any anomalies in payment_logs
+□ Review failed payment reasons
+
+Monthly Checks:
+□ Audit all payment transactions
+□ Verify wallet reconciliation
+□ Check for any security issues
+□ Review payment success rate
+
+═══════════════════════════════════════════════════════════════════════════════
+
+TROUBLESHOOTING:
+────────────────
+
+Issue: Payment order creation fails
+Solution:
+- Check Razorpay credentials in Firebase config
+- Verify booking exists and status = "awaiting_payment"
+- Check Cloud Functions logs for errors
+- Verify Razorpay API is accessible
+
+Issue: Payment verification fails
+Solution:
+- Check signature verification logic
+- Verify amount matches booking total
+- Check booking status is "awaiting_payment"
+- Verify Razorpay payment exists
+
+Issue: Technician wallet not credited
+Solution:
+- Check wallet_transactions collection
+- Verify transaction was created
+- Check for errors in transaction
+- Manually credit if needed
+
+Issue: Duplicate payment detected
+Solution:
+- Check payment_logs for duplicate entries
+- Verify transaction-safe check is working
+- Check for race conditions
+- Review logs for timing issues
+
+═══════════════════════════════════════════════════════════════════════════════
+
+SIGN-OFF:
+─────────
+
+Deployment Date: _______________
+Deployed By: _______________
+Verified By: _______________
+
+All tests passed: □ Yes □ No
+All monitoring in place: □ Yes □ No
+Rollback plan ready: □ Yes □ No
+
+═══════════════════════════════════════════════════════════════════════════════

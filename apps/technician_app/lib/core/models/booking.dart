@@ -73,6 +73,29 @@ class Booking {
 
   factory Booking.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
+    
+    // Safe Timestamp parsing for scheduledAt
+    DateTime scheduledAt;
+    final scheduledAtRaw = data['scheduledAt'] ?? data['scheduledDate'];
+    if (scheduledAtRaw is Timestamp) {
+      scheduledAt = scheduledAtRaw.toDate();
+    } else if (scheduledAtRaw is String) {
+      scheduledAt = DateTime.tryParse(scheduledAtRaw) ?? DateTime.now();
+    } else {
+      scheduledAt = DateTime.now();
+    }
+    
+    // Safe Timestamp parsing for createdAt
+    DateTime createdAt;
+    final createdAtRaw = data['createdAt'];
+    if (createdAtRaw is Timestamp) {
+      createdAt = createdAtRaw.toDate();
+    } else if (createdAtRaw is String) {
+      createdAt = DateTime.tryParse(createdAtRaw) ?? DateTime.now();
+    } else {
+      createdAt = DateTime.now();
+    }
+    
     return Booking(
       bookingId: data['bookingId'] ?? doc.id,
       customerId: data['customerId'] ?? '',
@@ -84,9 +107,7 @@ class Booking {
       assignedTechnicianId: data['technicianId'] ?? data['assignedTechnicianId'],
       assignedTechnicianName: data['technicianName'] ?? data['assignedTechnicianName'],
       slotId: data['slotId'] ?? '',
-      scheduledAt: data['scheduledAt'] != null 
-          ? (data['scheduledAt'] as Timestamp).toDate() 
-          : (data['scheduledDate'] != null ? (data['scheduledDate'] as Timestamp).toDate() : DateTime.now()),
+      scheduledAt: scheduledAt,
       scheduledTime: data['scheduledTime'] ?? '',
       status: FirestoreSafeParser.toSafeString(data['status'] ?? data['bookingStatus'], fallback: 'pending'),
       paymentStatus: FirestoreSafeParser.toSafeString(data['paymentStatus'], fallback: 'unpaid'),
@@ -96,7 +117,7 @@ class Booking {
       addressSnapshot: FirestoreSafeParser.toSafeMap(data['addressSnapshot'] ?? data['address']),
       category: data['category']?.toString(),
       description: data['description']?.toString(),
-      createdAt: data['createdAt'] != null ? (data['createdAt'] as Timestamp).toDate() : DateTime.now(),
+      createdAt: createdAt,
       quoteData: data['quoteData'] != null ? Map<String, dynamic>.from(data['quoteData']) : null,
     );
   }

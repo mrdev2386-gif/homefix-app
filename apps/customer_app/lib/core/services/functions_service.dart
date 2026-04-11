@@ -67,10 +67,84 @@ class FunctionsService {
     return value.toString();
   }
 
-  // Booking logic consolidated in BookingService and BookingProvider
+  // ==========================================
+  // PAYMENT FUNCTIONS
+  // ==========================================
 
+  /// Create Razorpay payment order (backend only)
+  Future<Map<String, dynamic>> createPaymentOrder({required String bookingId}) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception("User not logged in");
+      await user.getIdToken(true);
+      
+      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('createPaymentOrder');
+      final result = await callable.call({'bookingId': bookingId});
+      return Map<String, dynamic>.from(result.data);
+    } catch (e) {
+      rethrow;
+    }
+  }
 
+  /// Verify payment after Razorpay checkout
+  Future<Map<String, dynamic>> verifyPayment({
+    required String bookingId,
+    required String razorpayOrderId,
+    required String razorpayPaymentId,
+    required String razorpaySignature,
+  }) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception("User not logged in");
+      await user.getIdToken(true);
+      
+      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('verifyPayment');
+      final result = await callable.call({
+        'bookingId': bookingId,
+        'razorpayOrderId': razorpayOrderId,
+        'razorpayPaymentId': razorpayPaymentId,
+        'razorpaySignature': razorpaySignature,
+      });
+      return Map<String, dynamic>.from(result.data);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Handle payment failure or cancellation
+  Future<Map<String, dynamic>> handlePaymentFailure({
+    required String bookingId,
+    required String razorpayOrderId,
+    required String razorpayPaymentId,
+    required String errorCode,
+    required String errorDescription,
+  }) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception("User not logged in");
+      await user.getIdToken(true);
+      
+      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('handlePaymentFailure');
+      final result = await callable.call({
+        'bookingId': bookingId,
+        'razorpayOrderId': razorpayOrderId,
+        'razorpayPaymentId': razorpayPaymentId,
+        'errorCode': errorCode,
+        'errorDescription': errorDescription,
+      });
+      return Map<String, dynamic>.from(result.data);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // ==========================================
+  // END PAYMENT FUNCTIONS
+  // ==========================================
+
+  /// Update user profile
   Future<void> updateUserProfile(Map<String, dynamic> userData) async {
+    _debugCheckParameters(userData);
     try {
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) {
@@ -127,65 +201,9 @@ class FunctionsService {
     }
   }
 
-  // Payment System
-  Future<Map<String, dynamic>> initiateRazorpayPayment(String bookingId) async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception("User not logged in");
-      await user.getIdToken(true);
-      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('initiateRazorpayPayment');
-      final result = await callable.call({'bookingId': bookingId});
-      return Map<String, dynamic>.from(result.data);
-    } catch (e) {
-      rethrow;
-    }
-  }
 
-  /// Pay Before Work Step 1: Create Razorpay order WITHOUT creating a booking.
-  /// Booking params are stored server-side as a pending intent.
-  Future<Map<String, dynamic>> createPrePaymentOrder(Map<String, dynamic> bookingParams) async {
-    _debugCheckParameters(bookingParams);
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('User not logged in');
-      await user.getIdToken(true);
-      final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('createPrePaymentOrder');
-      final result = await callable.call(bookingParams);
-      return Map<String, dynamic>.from(result.data);
-    } catch (e) {
-      rethrow;
-    }
-  }
 
-  /// Pay Before Work Step 2: Verify Razorpay payment + atomically create booking.
-  Future<Map<String, dynamic>> verifyAndCreateBooking(Map<String, dynamic> verifyParams) async {
-    _debugCheckParameters(verifyParams);
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('User not logged in');
-      await user.getIdToken(true);
-      final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('verifyAndCreateBooking');
-      final result = await callable.call(verifyParams);
-      return Map<String, dynamic>.from(result.data);
-    } catch (e) {
-      rethrow;
-    }
-  }
 
-  Future<void> verifyRazorpayPayment(Map<String, dynamic> paymentData) async {
-    _debugCheckParameters(paymentData);
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception("User not logged in");
-      await user.getIdToken(true);
-      
-      
-      HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('verifyRazorpayPayment');
-      await callable.call(paymentData);
-    } catch (e) {
-      rethrow;
-    }
-  }
 
   // Referral System
   Future<Map<String, dynamic>> validateReferralCode(String code) async {

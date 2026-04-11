@@ -725,6 +725,34 @@ class TechnicianProvider extends ChangeNotifier {
     return completion == 100 && approved;
   }
 
+  /// Get message explaining why service creation is blocked
+  String getServiceBlockMessage() {
+    if (_technician == null) {
+      return 'Profile not loaded. Please try again.';
+    }
+    
+    final completion = _technician!.getProfileCompletion();
+    final approved = _technician!.status == "approved" || 
+                     _technician!.status == "active" || 
+                     _technician!.profileApproved == true;
+    
+    if (!approved) {
+      if (_technician!.profileRejected) {
+        return 'Your profile was rejected. Please update your information and resubmit.';
+      }
+      if (_technician!.profileApprovalRequested) {
+        return 'Your profile is pending admin approval. You can create services once approved.';
+      }
+      return 'Your profile needs to be approved before you can create services.';
+    }
+    
+    if (completion < 100) {
+      return 'Please complete your profile (${completion}% complete) before creating services.';
+    }
+    
+    return 'Unable to create services at this time.';
+  }
+
 
 
   @override

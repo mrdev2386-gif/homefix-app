@@ -219,14 +219,12 @@ export const createRazorpayOrder = functions
  * 
  * Security:
  * - Validates user is booking owner
- * - Validates booking is in payable state (awaiting_payment OR completed)
+ * - Validates booking is in payable state (awaiting_payment)
  * - Validates pricing is locked
  * - Amount comes ONLY from Firestore
- * - Supports DUAL PAYMENT FLOW:
- *   1. Online payment (before service) - status: awaiting_payment
- *   2. After-service payment - status: completed
+ * - SINGLE PAYMENT MODE: after_service only
  * 
- * Called by: Customer app after booking creation (online) OR after work completion (after-service)
+ * Called by: Customer app when customer taps "Pay Now" after service completion
  */
 export const createPaymentOrder = functions
   .region('asia-south1')
@@ -259,28 +257,22 @@ export const createPaymentOrder = functions
         throw new functions.https.HttpsError('permission-denied', 'You are not authorized to pay for this booking');
     }
 
-    // Validation 2: Check payment method
+    // Validation 2: ENFORCE SINGLE PAYMENT MODE - after_service ONLY
     const paymentMethod = booking.payment?.paymentMethod || booking.paymentMethod || 'after_service';
-    
-    // Validation 3: Booking must be in a payable state based on payment method
-    if (paymentMethod === 'online') {
-        // Online payment: must be in awaiting_payment or pending state
-        const validStatuses = ['awaiting_payment', 'pending', 'approved_by_admin', 'pending_admin_approval'];
-        if (!validStatuses.includes(booking.status) && !validStatuses.includes(booking.bookingStatus)) {
-            throw new functions.https.HttpsError(
-                'failed-precondition',
-                `Online payment not allowed. Booking status is "${booking.status || booking.bookingStatus}".`
-            );
-        }
-    } else {
-        // After-service payment: must be completed
-        const validStatuses = ['awaiting_payment', 'completed', 'service_completed'];
-        if (!validStatuses.includes(booking.status) && !validStatuses.includes(booking.bookingStatus)) {
-            throw new functions.https.HttpsError(
-                'failed-precondition',
-                `Payment not allowed. Booking status is "${booking.status || booking.bookingStatus}".`
-            );
-        }
+    if (paymentMethod !== 'after_service') {
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            'Invalid payment method. Only after-service payment is supported.'
+        );
+    }
+
+    // Validation 3: Booking must be in awaiting_payment state
+    const currentStatus = booking.bookingStatus || booking.status;
+    if (currentStatus !== 'awaiting_payment') {
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            `Payment not allowed. Booking status is "${currentStatus}". Payment is only allowed after service completion.`
+        );
     }
 
     // Validation 4: Check if already paid
@@ -326,7 +318,7 @@ export const createPaymentOrder = functions
                 serviceName: booking.serviceName,
                 technicianId: booking.technicianId || '',
                 technicianName: booking.technicianName || '',
-                paymentMethod
+                paymentMethod: 'after_service'
             }
         });
 
@@ -343,11 +335,11 @@ export const createPaymentOrder = functions
             'payment.status': 'processing',
             'payment.currency': 'INR',
             'payment.receipt': booking.bookingNumber,
-            'payment.paymentMethod': paymentMethod,
+            'payment.paymentMethod': 'after_service',
             'payment.retryCount': admin.firestore.FieldValue.increment(1),
             'razorpayOrderId': order.id,
             'paymentStatus': 'processing',
-            'paymentMethod': paymentMethod
+            'paymentMethod': 'after_service'
         });
 
         // Log the order creation
@@ -356,7 +348,7 @@ export const createPaymentOrder = functions
             orderId: order.id,
             amount: bookingTotal,
             currency: 'INR',
-            paymentMethod,
+            paymentMethod: 'after_service',
             action: 'order_created',
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             createdBy: userId
@@ -371,7 +363,8 @@ export const createPaymentOrder = functions
             customerName: booking.customerName,
             customerEmail: context.auth.token.email || '',
             customerPhone: booking.customerPhone,
-            paymentMethod
+            paymentMethod: 'after_service',
+            keyId: getRazorpayConfig().key_id
         };
 
     } catch (error: any) {
@@ -650,11 +643,20 @@ async function handlePaymentFailed(payload: any) {
 // ============================================================================
 
 /**
- * Verify payment (called by client after Razorpay checkout success)
+ * PAYMENT VERIFICATION (Client-side fallback) - COMPLETE FIX
  * 
- * This is a fallback in case webhook fails or is delayed
- * Still verifies signature for security
- * FIX 4: TRANSACTION SAFETY - Prevents race conditions
+ * CRITICAL SECURITY:
+ * - Verifies Razorpay signature
+ * - Validates booking is in awaiting_payment state
+ * - Updates booking atomically in transaction
+ * - Credits technician wallet atomically
+ * - Prevents duplicate payments via idempotency
+ * - Handles all edge cases safely
+ * 
+ * FIX 1: TRANSACTION SAFETY - Prevents race conditions
+ * FIX 2: IDEMPOTENCY - Prevents duplicate wallet credits
+ * FIX 3: WALLET INTEGRATION - Credits technician immediately
+ * FIX 4: RAZORPAY ORDER STATUS - Updates order status to paid
  */
 export const verifyPayment = functions
   .region('asia-south1')
@@ -686,6 +688,15 @@ export const verifyPayment = functions
         throw new functions.https.HttpsError('permission-denied', 'Unauthorized');
     }
 
+    // CRITICAL: Verify booking is in awaiting_payment state
+    const currentStatus = booking.bookingStatus || booking.status;
+    if (currentStatus !== 'awaiting_payment') {
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            `Cannot verify payment for booking in status: ${currentStatus}`
+        );
+    }
+
     // Verify order ID matches
     const existingOrderId = booking.payment?.razorpayOrderId || booking.razorpayOrderId;
     if (existingOrderId !== razorpayOrderId) {
@@ -694,6 +705,17 @@ export const verifyPayment = functions
 
     // Verify signature
     if (!verifyPaymentSignature(razorpayOrderId, razorpayPaymentId, razorpaySignature)) {
+        // Log signature failure
+        await db.collection('payment_logs').add({
+            bookingId,
+            orderId: razorpayOrderId,
+            paymentId: razorpayPaymentId,
+            status: 'failed',
+            reason: 'invalid_signature',
+            action: 'payment_failed',
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        }).catch(err => console.error('[RAZORPAY] Failed to log signature error:', err));
+        
         throw new functions.https.HttpsError('invalid-argument', 'Invalid payment signature');
     }
 
@@ -706,12 +728,28 @@ export const verifyPayment = functions
 
         const amount = (payment.amount as number) / 100; // Convert paise to rupees
 
-        // Verify amount
+        // STEP 4: STRICT AMOUNT VALIDATION - Prevent tampering
         if (Math.abs(amount - bookingTotal) > 0.01) {
-            throw new functions.https.HttpsError('invalid-argument', 'Amount mismatch');
+            // Log amount mismatch
+            await db.collection('payment_logs').add({
+                bookingId,
+                orderId: razorpayOrderId,
+                paymentId: razorpayPaymentId,
+                expectedAmount: bookingTotal,
+                receivedAmount: amount,
+                status: 'failed',
+                reason: 'amount_mismatch',
+                action: 'payment_failed',
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            }).catch(err => console.error('[RAZORPAY] Failed to log amount mismatch:', err));
+            
+            throw new functions.https.HttpsError('invalid-argument', 'Amount mismatch - payment amount does not match booking total');
         }
 
-        // FIX 4: TRANSACTION SAFETY - Wrap booking update in Firestore transaction
+        // FIX 1: TRANSACTION SAFETY - Wrap booking update in Firestore transaction
+        // FIX 2: IDEMPOTENCY - Check if already paid inside transaction
+        // FIX 3: WALLET INTEGRATION - Credit technician wallet atomically
+        // FIX 4: RAZORPAY ORDER STATUS - Update order status to paid
         await db.runTransaction(async (transaction) => {
             // Re-read booking inside transaction to check current state
             const currentBookingDoc = await transaction.get(bookingRef);
@@ -722,19 +760,49 @@ export const verifyPayment = functions
             
             const currentBooking: any = currentBookingDoc.data();
             
-            // FIX 4: Check if already paid inside transaction (race condition protection)
+            // FIX 2: Check if already paid inside transaction (race condition protection)
             const isPaid = (currentBooking.payment && currentBooking.payment.status === 'paid') || 
                           currentBooking.paymentStatus === 'paid';
             
             if (isPaid) {
                 console.log(`[RAZORPAY] Payment already processed in transaction - Booking: ${bookingId}`);
+                // Log duplicate attempt
+                transaction.set(db.collection('payment_logs').doc(), {
+                    bookingId,
+                    orderId: razorpayOrderId,
+                    paymentId: razorpayPaymentId,
+                    status: 'duplicate_attempt',
+                    action: 'payment_duplicate',
+                    createdAt: admin.firestore.FieldValue.serverTimestamp()
+                });
                 // Don't throw error, just skip update - this is idempotent
                 return;
             }
 
-            // Update booking atomically — only update payment fields
-            // Status transitions happen via lifecycle functions, NOT here
+            // STEP 3: ADD PAYMENT PROCESSING LOCK (ANTI-RACE)
+            // Prevent simultaneous client + webhook processing
+            if (currentBooking.payment?.status === 'processing') {
+                console.log(`[RAZORPAY] Payment already being processed - Booking: ${bookingId}`);
+                // Log concurrent attempt
+                transaction.set(db.collection('payment_logs').doc(), {
+                    bookingId,
+                    orderId: razorpayOrderId,
+                    paymentId: razorpayPaymentId,
+                    status: 'concurrent_attempt',
+                    action: 'payment_race_prevented',
+                    createdAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+                return;
+            }
+
+            // Set processing lock before any updates
+            transaction.update(bookingRef, {
+                'payment.status': 'processing'
+            });
+
+            // Update booking atomically — set status to "paid"
             const updateData: any = {
+                'bookingStatus': 'paid',
                 'payment.status': 'paid',
                 'payment.razorpayPaymentId': razorpayPaymentId,
                 'payment.razorpaySignature': razorpaySignature,
@@ -744,19 +812,94 @@ export const verifyPayment = functions
                 'paymentStatus': 'paid',
                 'paidAt': admin.firestore.FieldValue.serverTimestamp(),
                 'updatedAt': admin.firestore.FieldValue.serverTimestamp(),
-
-                // Initialize payout
-                'payout.status': 'pending',
-                'payout.totalAmount': bookingTotal,
             };
 
-            if (currentBooking.pricing) {
-                updateData['payout.platformFee'] = currentBooking.pricing.platformFee;
-                updateData['payout.gst'] = currentBooking.pricing.gst;
-                updateData['payout.technicianAmount'] = currentBooking.pricing.subtotal - currentBooking.pricing.platformFee;
-            }
-
             transaction.update(bookingRef, updateData);
+
+            // FIX 4: Update Razorpay order status to paid
+            const orderRef = db.collection('razorpayOrders').doc(razorpayOrderId);
+            transaction.update(orderRef, {
+                status: 'paid',
+                paymentId: razorpayPaymentId,
+                paidAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            // FIX 3: Credit technician wallet atomically inside same transaction
+            if (currentBooking.technicianId) {
+                const techWalletRef = db.collection('technician_wallets').doc(currentBooking.technicianId);
+                const techWalletDoc = await transaction.get(techWalletRef);
+                
+                // STEP 1: FIX PLATFORM FEE SOURCE (CRITICAL EDGE CASE)
+                // Safe fallback for platform fee from multiple sources
+                let platformFee = 0;
+                if (currentBooking.pricing && currentBooking.pricing.platformFee != null) {
+                    platformFee = currentBooking.pricing.platformFee;
+                } else if (currentBooking.platformFee != null) {
+                    platformFee = currentBooking.platformFee;
+                }
+                
+                // Calculate technician amount with safety check
+                let technicianAmount = bookingTotal - platformFee;
+                
+                // STEP 1: Ensure technicianAmount NEVER negative
+                if (technicianAmount < 0) {
+                    console.warn(`[RAZORPAY] Negative technician amount detected - Booking: ${bookingId}, Total: ${bookingTotal}, Fee: ${platformFee}`);
+                    technicianAmount = 0;
+                    
+                    // Log edge case
+                    transaction.set(db.collection('payment_logs').doc(), {
+                        bookingId,
+                        orderId: razorpayOrderId,
+                        paymentId: razorpayPaymentId,
+                        status: 'negative_amount_prevented',
+                        action: 'edge_case_handled',
+                        bookingTotal,
+                        platformFee,
+                        createdAt: admin.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+
+                if (techWalletDoc.exists) {
+                    // Update existing wallet
+                    transaction.update(techWalletRef, {
+                        availableBalance: admin.firestore.FieldValue.increment(technicianAmount),
+                        lifetimeEarnings: admin.firestore.FieldValue.increment(technicianAmount),
+                        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                    });
+                } else {
+                    // Create new wallet
+                    transaction.set(techWalletRef, {
+                        technicianId: currentBooking.technicianId,
+                        availableBalance: technicianAmount,
+                        lifetimeEarnings: technicianAmount,
+                        pendingBalance: 0,
+                        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                    });
+                }
+
+                // Log wallet transaction atomically
+                const txnRef = techWalletRef.collection('transactions').doc();
+                transaction.set(txnRef, {
+                    type: 'credit',
+                    source: 'booking_payment',
+                    status: 'completed',
+                    amount: technicianAmount,
+                    fee: platformFee,
+                    referenceId: bookingId,
+                    paymentId: razorpayPaymentId,
+                    description: `Payment for booking ${bookingId}`,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+
+                // Update booking with payout info
+                transaction.update(bookingRef, {
+                    'payout.status': 'pending',
+                    'payout.totalAmount': bookingTotal,
+                    'payout.platformFee': platformFee,
+                    'payout.technicianAmount': technicianAmount
+                });
+            }
         });
 
         // Log verification (outside transaction)
@@ -772,11 +915,40 @@ export const verifyPayment = functions
             verifiedBy: userId
         }).catch(err => console.error('[RAZORPAY] Failed to log verification:', err));
         
+        // STEP 5: LOG ALL EDGE EVENTS - Log successful verification with full context
+        await db.collection('payment_logs').add({
+            bookingId,
+            orderId: razorpayOrderId,
+            paymentId: razorpayPaymentId,
+            amount,
+            action: 'verification_complete',
+            method: payment.method,
+            status: 'success',
+            source: 'client_verify',
+            platformFee: booking.pricing?.platformFee || booking.platformFee || 0,
+            technicianAmount: amount - (booking.pricing?.platformFee || booking.platformFee || 0),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            verifiedBy: userId
+        }).catch(err => console.error('[RAZORPAY] Failed to log edge event:', err));
+        
         console.log(`[RAZORPAY] Payment verified successfully - Booking: ${bookingId}, Amount: ${amount}`);
 
         return { success: true, message: 'Payment verified successfully' };
 
     } catch (error: any) {
+        // STEP 5: LOG ALL EDGE EVENTS - Enhanced error logging
+        await db.collection('payment_logs').add({
+            bookingId,
+            orderId: razorpayOrderId,
+            paymentId: razorpayPaymentId,
+            status: 'failed',
+            reason: error.message,
+            errorCode: error.code,
+            action: 'payment_failed',
+            source: 'client_verify',
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        }).catch(err => console.error('[RAZORPAY] Failed to log verification error:', err));
+        
         logger.error('verifyPayment_failed', { bookingId, userId }, error);
         throw error;
     }
@@ -784,13 +956,126 @@ export const verifyPayment = functions
 );
 
 // ============================================================================
-// REFUND MANAGEMENT (Admin only)
+// PAYMENT FAILURE HANDLING (NEW FIX 6)
 // ============================================================================
 
 /**
- * Initiate refund (Admin only)
- * FIX 2: STRONG IDEMPOTENCY - Prevents duplicate refunds on retry
+ * Handle payment failure or cancellation
+ * 
+ * CRITICAL:
+ * - DO NOT update booking to paid
+ * - Keep booking in awaiting_payment state
+ * - Update payment.status to failed
+ * - Allow customer to retry
  */
+export const handlePaymentFailure = functions
+  .region('asia-south1')
+  .https.onCall(
+    secureCallable(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+    }
+
+    const { bookingId, razorpayOrderId, razorpayPaymentId, errorCode, errorDescription } = data;
+    const userId = context.auth.uid;
+
+    if (!bookingId || !razorpayOrderId) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing required fields');
+    }
+
+    const bookingRef = db.collection('bookings').doc(bookingId);
+    const bookingDoc = await bookingRef.get();
+
+    if (!bookingDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'Booking not found');
+    }
+
+    const booking: any = bookingDoc.data();
+
+    // Verify user is booking owner
+    if (booking.customerId !== userId) {
+        throw new functions.https.HttpsError('permission-denied', 'Unauthorized');
+    }
+
+    // Update payment status to failed
+    await bookingRef.update({
+        'payment.status': 'failed',
+        'payment.razorpayPaymentId': razorpayPaymentId,
+        'payment.failureReason': `${errorCode}: ${errorDescription}`,
+        'payment.failedAt': admin.firestore.FieldValue.serverTimestamp(),
+        'paymentStatus': 'failed',
+        'updatedAt': admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Log failure
+    await db.collection('payment_logs').add({
+        bookingId,
+        orderId: razorpayOrderId,
+        paymentId: razorpayPaymentId,
+        action: 'payment_failed',
+        errorCode,
+        errorDescription,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        failedBy: userId
+    }).catch(err => console.error('[RAZORPAY] Failed to log payment failure:', err));
+
+    console.log(`[RAZORPAY] Payment failure recorded - Booking: ${bookingId}, Error: ${errorCode}`);
+
+    return { success: true, message: 'Payment failure recorded. You can retry payment.' };
+})
+);
+
+// ============================================================================
+// PAYMENT RETRY SUPPORT (NEW FIX 7)
+// ============================================================================
+
+/**
+ * Check if payment can be retried
+ */
+export const canRetryPayment = functions
+  .region('asia-south1')
+  .https.onCall(
+    secureCallable(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+    }
+
+    const { bookingId } = data;
+    const userId = context.auth.uid;
+
+    if (!bookingId) {
+        throw new functions.https.HttpsError('invalid-argument', 'Booking ID required');
+    }
+
+    const bookingDoc = await db.collection('bookings').doc(bookingId).get();
+
+    if (!bookingDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'Booking not found');
+    }
+
+    const booking: any = bookingDoc.data();
+
+    if (booking.customerId !== userId) {
+        throw new functions.https.HttpsError('permission-denied', 'Unauthorized');
+    }
+
+    const currentStatus = booking.bookingStatus || booking.status;
+    const paymentStatus = booking.payment?.status || booking.paymentStatus;
+
+    const canRetry = currentStatus === 'awaiting_payment' && 
+                     (paymentStatus === 'failed' || paymentStatus === 'processing' || !paymentStatus);
+
+    return {
+        success: true,
+        canRetry,
+        currentStatus,
+        paymentStatus,
+        message: canRetry ? 'Payment can be retried' : 'Payment cannot be retried in current state'
+    };
+})
+);
+
+
 export const initiateRefund = functions
   .region('asia-south1')
   .https.onCall(

@@ -1,0 +1,352 @@
+================================================================================
+RAZORPAY PAYMENT + WALLET FIXES - CODE REFERENCE
+================================================================================
+
+CRITICAL CODE CHANGES:
+
+================================================================================
+FIX 1: TRANSACTION SAFETY + IDEMPOTENCY + WALLET INTEGRATION
+================================================================================
+
+Location: functions/src/payments/razorpay.ts
+Function: verifyPayment()
+
+BEFORE (BROKEN):
+  // No transaction - race condition possible
+  // Wallet not credited
+  // Order status not updated
+  await bookingRef.update({
+    'payment.status': 'paid',
+    'payment.razorpayPaymentId': razorpayPaymentId,
+    // ... other fields
+  });
+
+AFTER (FIXED):
+  await db.runTransaction(async (transaction) => {
+    // Re-read booking inside transaction (FIX 1: TRANSACTION SAFETY)
+    const currentBookingDoc = await transaction.get(bookingRef);
+    const currentBooking = currentBookingDoc.data();
+    
+    // Check if already paid INSIDE transaction (FIX 2: IDEMPOTENCY)
+    const isPaid = currentBooking.payment?.status === 'paid';
+    if (isPaid) {
+      console.log('Payment already processed');
+      transaction.set(db.collection('payment_logs').doc(), {
+        bookingId,
+        status: 'duplicate_attempt',
+        action: 'payment_duplicate'
+      });
+      return; // Idempotent - safe to skip
+    }
+
+    // Update booking atomically
+    const updateData = {
+      'bookingStatus': 'paid',
+      'payment.status': 'paid',
+      'payment.razorpayPaymentId': razorpayPaymentId,
+      'payment.razorpaySignature': razorpaySignature,
+      'payment.amountPaid': amount,
+      'payment.paymentMethod': payment.method,
+      'payment.paidAt': admin.firestore.FieldValue.serverTimestamp(),
+      'paymentStatus': 'paid',
+      'paidAt': admin.firestore.FieldValue.serverTimestamp(),
+      'updatedAt': admin.firestore.FieldValue.serverTimestamp(),
+    };
+    transaction.update(bookingRef, updateData);
+
+    // FIX 4: Update Razorpay order status to paid
+    const orderRef = db.collection('razorpayOrders').doc(razorpayOrderId);
+    transaction.update(orderRef, {
+      status: 'paid',
+      paymentId: razorpayPaymentId,
+      paidAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // FIX 3: Credit technician wallet atomically inside same transaction
+    if (currentBooking.technicianId) {
+      const techWalletRef = db.collection('technician_wallets').doc(currentBooking.technicianId);
+      const techWalletDoc = await transaction.get(techWalletRef);
+      
+      // Calculate technician amount (after platform fee)
+      let technicianAmount = bookingTotal;
+      let platformFee = 0;
+      
+      if (currentBooking.pricing && currentBooking.pricing.platformFee) {
+        platformFee = currentBooking.pricing.platformFee;
+        technicianAmount = bookingTotal - platformFee;
+      }
+
+      if (techWalletDoc.exists) {
+        // Update existing wallet
+        transaction.update(techWalletRef, {
+          availableBalance: admin.firestore.FieldValue.increment(technicianAmount),
+          lifetimeEarnings: admin.firestore.FieldValue.increment(technicianAmount),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      } else {
+        // Create new wallet
+        transaction.set(techWalletRef, {
+          technicianId: currentBooking.technicianId,
+          availableBalance: technicianAmount,
+          lifetimeEarnings: technicianAmount,
+          pendingBalance: 0,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
+
+      // Log wallet transaction atomically
+      const txnRef = techWalletRef.collection('transactions').doc();
+      transaction.set(txnRef, {
+        type: 'credit',
+        source: 'booking_payment',
+        status: 'completed',
+        amount: technicianAmount,
+        fee: platformFee,
+        referenceId: bookingId,
+        paymentId: razorpayPaymentId,
+        description: `Payment for booking ${bookingId}`,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // Update booking with payout info
+      transaction.update(bookingRef, {
+        'payout.status': 'pending',
+        'payout.totalAmount': bookingTotal,
+        'payout.platformFee': platformFee,
+        'payout.technicianAmount': technicianAmount
+      });
+    }
+  });
+
+
+================================================================================
+FIX 5: PAYMENT FAILURE HANDLING (NEW FUNCTION)
+================================================================================
+
+Location: functions/src/payments/razorpay.ts
+Function: handlePaymentFailure() [NEW]
+
+CODE:
+  export const handlePaymentFailure = functions
+    .region('asia-south1')
+    .https.onCall(
+      secureCallable(async (data, context) => {
+      if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+      }
+
+      const { bookingId, razorpayOrderId, razorpayPaymentId, errorCode, errorDescription } = data;
+      const userId = context.auth.uid;
+
+      if (!bookingId || !razorpayOrderId) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing required fields');
+      }
+
+      const bookingRef = db.collection('bookings').doc(bookingId);
+      const bookingDoc = await bookingRef.get();
+
+      if (!bookingDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'Booking not found');
+      }
+
+      const booking = bookingDoc.data();
+
+      // Verify user is booking owner
+      if (booking.customerId !== userId) {
+        throw new functions.https.HttpsError('permission-denied', 'Unauthorized');
+      }
+
+      // Update payment status to failed
+      // CRITICAL: DO NOT change bookingStatus - keep in awaiting_payment
+      await bookingRef.update({
+        'payment.status': 'failed',
+        'payment.razorpayPaymentId': razorpayPaymentId,
+        'payment.failureReason': `${errorCode}: ${errorDescription}`,
+        'payment.failedAt': admin.firestore.FieldValue.serverTimestamp(),
+        'paymentStatus': 'failed',
+        'updatedAt': admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // Log failure
+      await db.collection('payment_logs').add({
+        bookingId,
+        orderId: razorpayOrderId,
+        paymentId: razorpayPaymentId,
+        action: 'payment_failed',
+        errorCode,
+        errorDescription,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        failedBy: userId
+      });
+
+      console.log(`[RAZORPAY] Payment failure recorded - Booking: ${bookingId}, Error: ${errorCode}`);
+
+      return { success: true, message: 'Payment failure recorded. You can retry payment.' };
+    })
+  );
+
+
+================================================================================
+FIX 6: PAYMENT RETRY SUPPORT (NEW FUNCTION)
+================================================================================
+
+Location: functions/src/payments/razorpay.ts
+Function: canRetryPayment() [NEW]
+
+CODE:
+  export const canRetryPayment = functions
+    .region('asia-south1')
+    .https.onCall(
+      secureCallable(async (data, context) => {
+      if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+      }
+
+      const { bookingId } = data;
+      const userId = context.auth.uid;
+
+      if (!bookingId) {
+        throw new functions.https.HttpsError('invalid-argument', 'Booking ID required');
+      }
+
+      const bookingDoc = await db.collection('bookings').doc(bookingId).get();
+
+      if (!bookingDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'Booking not found');
+      }
+
+      const booking = bookingDoc.data();
+
+      if (booking.customerId !== userId) {
+        throw new functions.https.HttpsError('permission-denied', 'Unauthorized');
+      }
+
+      const currentStatus = booking.bookingStatus || booking.status;
+      const paymentStatus = booking.payment?.status || booking.paymentStatus;
+
+      // Can retry if:
+      // 1. Booking is in awaiting_payment state
+      // 2. Payment status is failed or processing
+      const canRetry = currentStatus === 'awaiting_payment' && 
+                       (paymentStatus === 'failed' || paymentStatus === 'processing' || !paymentStatus);
+
+      return {
+        success: true,
+        canRetry,
+        currentStatus,
+        paymentStatus,
+        message: canRetry ? 'Payment can be retried' : 'Payment cannot be retried in current state'
+      };
+    })
+  );
+
+
+================================================================================
+EXPORT UPDATES
+================================================================================
+
+Location: functions/src/index.ts
+
+ADD THESE EXPORTS:
+  export const handlePaymentFailure = razorpayPayments.handlePaymentFailure;
+  export const canRetryPayment = razorpayPayments.canRetryPayment;
+
+
+================================================================================
+SUMMARY OF CHANGES
+================================================================================
+
+Files Modified:
+  1. functions/src/payments/razorpay.ts
+     - Enhanced verifyPayment() with transaction safety
+     - Added wallet credit logic
+     - Added razorpayOrders status update
+     - Added handlePaymentFailure() function
+     - Added canRetryPayment() function
+
+  2. functions/src/index.ts
+     - Exported handlePaymentFailure
+     - Exported canRetryPayment
+
+Lines Changed:
+  - verifyPayment(): ~150 lines (transaction wrapper + wallet logic)
+  - handlePaymentFailure(): ~50 lines (new function)
+  - canRetryPayment(): ~40 lines (new function)
+  - index.ts: 2 lines (exports)
+
+Total: ~240 lines of new/modified code
+
+
+================================================================================
+DEPLOYMENT
+================================================================================
+
+1. Deploy functions:
+   firebase deploy --only functions
+
+2. Verify in Firebase Console:
+   - Check functions deployed successfully
+   - Check payment_logs collection for test payments
+   - Check technician_wallets collection for credits
+
+3. Test payment flow:
+   - Book service
+   - Complete service
+   - Pay via Razorpay
+   - Verify booking status: paid
+   - Verify wallet credited
+
+4. Monitor:
+   - Watch payment_logs for errors
+   - Watch technician_wallets for credits
+   - Watch for duplicate attempts
+
+
+================================================================================
+VERIFICATION CHECKLIST
+================================================================================
+
+✅ Transaction Safety
+   - verifyPayment() wrapped in db.runTransaction()
+   - Re-read booking inside transaction
+   - All updates atomic
+
+✅ Idempotency
+   - Check if already paid inside transaction
+   - Log duplicate attempts
+   - No error thrown on duplicate
+
+✅ Wallet Integration
+   - Technician wallet credited inside transaction
+   - Wallet created if doesn't exist
+   - Transaction record created
+   - Payout info updated
+
+✅ Razorpay Order Status
+   - razorpayOrders/{orderId} updated to 'paid'
+   - paymentId and paidAt recorded
+
+✅ Payment Failure
+   - handlePaymentFailure() function exists
+   - payment.status set to 'failed'
+   - bookingStatus NOT changed
+   - Error logged
+
+✅ Payment Retry
+   - canRetryPayment() function exists
+   - Returns canRetry boolean
+   - Returns current state info
+
+✅ Security
+   - User ownership verified
+   - Booking status validated
+   - Order ID validated
+   - Amount validated
+   - Signature verified
+
+✅ Logging
+   - All payments logged to payment_logs
+   - Duplicates logged
+   - Failures logged
+   - Wallet transactions logged

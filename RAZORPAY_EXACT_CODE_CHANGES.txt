@@ -1,0 +1,358 @@
+RAZORPAY PAYMENT SYSTEM - EXACT CODE CHANGES
+
+═══════════════════════════════════════════════════════════════════════════════
+
+FILE 1: functions/src/booking/unified_booking_lifecycle.ts
+──────────────────────────────────────────────────────────
+
+CHANGE 1: completeService() - Set status to awaiting_payment
+───────────────────────────────────────────────────────────
+
+OLD:
+await db.runTransaction(async (t) => {
+    const freshDoc = await t.get(bookingRef);
+    if (!freshDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
+    const freshBooking = freshDoc.data()!;
+    updateBookingStatus(t, bookingRef, 'service_completed', freshBooking, {
+        bookingStatus: 'service_completed',
+        serviceCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
+        paymentStatus: 'pending',
+    });
+});
+
+NEW:
+await db.runTransaction(async (t) => {
+    const freshDoc = await t.get(bookingRef);
+    if (!freshDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
+    const freshBooking = freshDoc.data()!;
+    updateBookingStatus(t, bookingRef, 'awaiting_payment', freshBooking, {
+        bookingStatus: 'awaiting_payment',
+        serviceCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
+        paymentStatus: 'awaiting_payment',
+    });
+});
+
+CHANGE 2: startService() - Require payment before starting
+──────────────────────────────────────────────────────────
+
+OLD:
+// Check payment status only for after-service payment (always required)
+const isPaid = booking.payment?.status === 'paid' || booking.paymentStatus === 'paid';
+if (!isPaid) {
+    throw new functions.https.HttpsError(
+        'failed-precondition',
+        'Payment must be completed before starting service'
+    );
+}
+
+NEW:
+// CRITICAL: Payment is ALWAYS required before service starts (after_service mode)
+// This is the ONLY payment mode - no exceptions
+const isPaid = booking.payment?.status === 'paid' || booking.paymentStatus === 'paid';
+if (!isPaid) {
+    throw new functions.https.HttpsError(
+        'failed-precondition',
+        'Payment must be completed before starting service. Please pay now.'
+    );
+}
+
+CHANGE 3: createBookingRequest() - Enforce after_service payment
+────────────────────────────────────────────────────────────────
+
+OLD:
+// PHASE 5: Protect Booking Integrity - Define outside transaction
+// ENFORCE: Only pay_after_work payment mode
+const finalPaymentMethod = 'after_service';
+// All bookings go through admin review first
+const initialStatus = 'pending_admin_review';
+
+NEW:
+// PHASE 5: Protect Booking Integrity - Define outside transaction
+// ENFORCE: ONLY after_service payment mode - NO EXCEPTIONS
+const finalPaymentMethod = 'after_service';
+// All bookings go through admin review first
+const initialStatus = 'pending_admin_review';
+
+═══════════════════════════════════════════════════════════════════════════════
+
+FILE 2: functions/src/payments/razorpay.ts
+───────────────────────────────────────────
+
+CHANGE 1: createPaymentOrder() - Enforce awaiting_payment status
+────────────────────────────────────────────────────────────────
+
+OLD:
+// Validation 2: Check payment method
+const paymentMethod = booking.payment?.paymentMethod || booking.paymentMethod || 'after_service';
+
+// Validation 3: Booking must be in a payable state based on payment method
+if (paymentMethod === 'online') {
+    // Online payment: must be in awaiting_payment or pending state
+    const validStatuses = ['awaiting_payment', 'pending', 'approved_by_admin', 'pending_admin_approval'];
+    if (!validStatuses.includes(booking.status) && !validStatuses.includes(booking.bookingStatus)) {
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            `Online payment not allowed. Booking status is "${booking.status || booking.bookingStatus}".`
+        );
+    }
+} else {
+    // After-service payment: must be completed
+    const validStatuses = ['awaiting_payment', 'completed', 'service_completed'];
+    if (!validStatuses.includes(booking.status) && !validStatuses.includes(booking.bookingStatus)) {
+        throw new functions.https.HttpsError(
+            'failed-precondition',
+            `Payment not allowed. Booking status is "${booking.status || booking.bookingStatus}".`
+        );
+    }
+}
+
+NEW:
+// Validation 2: ENFORCE SINGLE PAYMENT MODE - after_service ONLY
+const paymentMethod = booking.payment?.paymentMethod || booking.paymentMethod || 'after_service';
+if (paymentMethod !== 'after_service') {
+    throw new functions.https.HttpsError(
+        'failed-precondition',
+        'Invalid payment method. Only after-service payment is supported.'
+    );
+}
+
+// Validation 3: Booking must be in awaiting_payment state
+const currentStatus = booking.bookingStatus || booking.status;
+if (currentStatus !== 'awaiting_payment') {
+    throw new functions.https.HttpsError(
+        'failed-precondition',
+        `Payment not allowed. Booking status is "${currentStatus}". Payment is only allowed after service completion.`
+    );
+}
+
+CHANGE 2: verifyPayment() - Add wallet credit in transaction
+─────────────────────────────────────────────────────────────
+
+OLD:
+transaction.update(bookingRef, updateData);
+
+NEW:
+transaction.update(bookingRef, updateData);
+
+// Credit technician wallet atomically
+if (currentBooking.technicianId) {
+    const techWalletRef = db.collection('technician_wallets').doc(currentBooking.technicianId);
+    const techWalletDoc = await transaction.get(techWalletRef);
+    
+    // Calculate technician amount (after platform fee)
+    let technicianAmount = bookingTotal;
+    if (currentBooking.pricing && currentBooking.pricing.platformFee) {
+        technicianAmount = bookingTotal - currentBooking.pricing.platformFee;
+    }
+
+    if (techWalletDoc.exists) {
+        // Update existing wallet
+        transaction.update(techWalletRef, {
+            availableBalance: admin.firestore.FieldValue.increment(technicianAmount),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+    } else {
+        // Create new wallet
+        transaction.set(techWalletRef, {
+            technicianId: currentBooking.technicianId,
+            availableBalance: technicianAmount,
+            totalEarned: technicianAmount,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+    }
+
+    // Log wallet transaction
+    transaction.set(techWalletRef.collection('transactions').doc(), {
+        type: 'credit',
+        source: 'booking_payment',
+        status: 'completed',
+        amount: technicianAmount,
+        fee: currentBooking.pricing?.platformFee || 0,
+        referenceId: bookingId,
+        paymentId: razorpayPaymentId,
+        description: `Payment for booking ${bookingId}`,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+}
+
+CHANGE 3: verifyPayment() - Add booking status validation
+──────────────────────────────────────────────────────────
+
+OLD:
+// Verify order ID matches
+const existingOrderId = booking.payment?.razorpayOrderId || booking.razorpayOrderId;
+if (existingOrderId !== razorpayOrderId) {
+    throw new functions.https.HttpsError('invalid-argument', 'Order ID mismatch');
+}
+
+NEW:
+// CRITICAL: Verify booking is in awaiting_payment state
+const currentStatus = booking.bookingStatus || booking.status;
+if (currentStatus !== 'awaiting_payment') {
+    throw new functions.https.HttpsError(
+        'failed-precondition',
+        `Cannot verify payment for booking in status: ${currentStatus}`
+    );
+}
+
+// Verify order ID matches
+const existingOrderId = booking.payment?.razorpayOrderId || booking.razorpayOrderId;
+if (existingOrderId !== razorpayOrderId) {
+    throw new functions.https.HttpsError('invalid-argument', 'Order ID mismatch');
+}
+
+═══════════════════════════════════════════════════════════════════════════════
+
+FILE 3: functions/src/index.ts
+──────────────────────────────
+
+CHANGE: Add Razorpay payment exports
+────────────────────────────────────
+
+OLD:
+// Wallet Operations (Atomic & Safe) - CONSOLIDATED
+import * as walletSafety from './shared/wallet_safety';
+
+// Payment Modules (QR-based after-service payment only)
+import * as technicianPayouts from './payments/payouts';
+
+NEW:
+// Wallet Operations (Atomic & Safe) - CONSOLIDATED
+import * as walletSafety from './shared/wallet_safety';
+
+// Payment Modules (Razorpay after-service payment only)
+import * as razorpayPayments from './payments/razorpay';
+export const createPaymentOrder = razorpayPayments.createPaymentOrder;
+export const verifyPayment = razorpayPayments.verifyPayment;
+export const createRazorpayOrder = razorpayPayments.createRazorpayOrder;
+export const initiateRefund = razorpayPayments.initiateRefund;
+
+// Payment Modules (Technician Payouts)
+import * as technicianPayouts from './payments/payouts';
+
+═══════════════════════════════════════════════════════════════════════════════
+
+FILE 4: apps/customer_app/lib/features/payment/presentation/payment_screen.dart
+────────────────────────────────────────────────────────────────────────────────
+
+NEW FILE - Complete implementation
+
+Key Methods:
+- _initiatePayment(): Creates order and opens Razorpay
+- _handlePaymentSuccess(): Verifies payment on backend
+- _handlePaymentError(): Shows error and retry option
+- _handleExternalWallet(): Handles external wallet payments
+
+═══════════════════════════════════════════════════════════════════════════════
+
+FILE 5: apps/customer_app/lib/features/bookings/presentation/booking_detail_screen.dart
+──────────────────────────────────────────────────────────────────────────────────────
+
+CHANGE 1: Remove QR import
+──────────────────────────
+
+OLD:
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+
+NEW:
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+
+CHANGE 2: Remove QR payment section
+───────────────────────────────────
+
+OLD:
+// QR for pay-after-work
+if (currentStatus == 'awaiting_customer_payment') ...[ ... QR code display ... ],
+
+NEW:
+(REMOVED COMPLETELY)
+
+CHANGE 3: Update rating button condition
+─────────────────────────────────────────
+
+OLD:
+// Rate service
+if (currentStatus == 'completed' || currentStatus == 'service_completed') ...[ ... ],
+
+NEW:
+// Rate service - only show if paid
+if ((currentStatus == 'completed' || currentStatus == 'service_completed') && booking.paymentStatus == 'paid') ...[ ... ],
+
+═══════════════════════════════════════════════════════════════════════════════
+
+FILE 6: apps/customer_app/lib/core/services/functions_service.dart
+──────────────────────────────────────────────────────────────────
+
+CHANGE: Add payment methods
+───────────────────────────
+
+NEW METHODS:
+
+/// Create Razorpay payment order (backend only)
+Future<Map<String, dynamic>> createPaymentOrder({required String bookingId}) async {
+  try {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception("User not logged in");
+    await user.getIdToken(true);
+    
+    HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('createPaymentOrder');
+    final result = await callable.call({'bookingId': bookingId});
+    return Map<String, dynamic>.from(result.data);
+  } catch (e) {
+    rethrow;
+  }
+}
+
+/// Verify payment after Razorpay checkout
+Future<Map<String, dynamic>> verifyPayment({
+  required String bookingId,
+  required String razorpayOrderId,
+  required String razorpayPaymentId,
+  required String razorpaySignature,
+}) async {
+  try {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception("User not logged in");
+    await user.getIdToken(true);
+    
+    HttpsCallable callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('verifyPayment');
+    final result = await callable.call({
+      'bookingId': bookingId,
+      'razorpayOrderId': razorpayOrderId,
+      'razorpayPaymentId': razorpayPaymentId,
+      'razorpaySignature': razorpaySignature,
+    });
+    return Map<String, dynamic>.from(result.data);
+  } catch (e) {
+    rethrow;
+  }
+}
+
+═══════════════════════════════════════════════════════════════════════════════
+
+SUMMARY OF CHANGES:
+───────────────────
+
+Backend (Cloud Functions):
+✓ Enforce after_service payment mode only
+✓ Validate booking status = awaiting_payment
+✓ Credit technician wallet atomically
+✓ Prevent duplicate payments
+✓ Verify Razorpay signatures
+
+Frontend (Flutter):
+✓ Create new payment screen with Razorpay integration
+✓ Remove QR payment system
+✓ Update booking detail screen
+✓ Add payment methods to FunctionsService
+✓ Update rating button condition
+
+═══════════════════════════════════════════════════════════════════════════════

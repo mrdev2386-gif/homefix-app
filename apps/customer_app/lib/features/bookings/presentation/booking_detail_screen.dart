@@ -1,7 +1,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../core/models/booking.dart';
@@ -204,37 +203,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
             ),
             const SizedBox(height: 20),
 
-            // QR for pay-after-work
-            if (currentStatus == 'awaiting_customer_payment') ...[
-              _buildSectionTitle('Payment Required'),
-              const SizedBox(height: 12),
-              _buildInfoCard(
-                context,
-                child: Column(
-                  children: [
-                    Text('Job Completed!', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
-                    const SizedBox(height: 8),
-                    Text('Show this QR to the technician to complete payment.',
-                        textAlign: TextAlign.center, style: GoogleFonts.outfit(fontSize: 14, color: Colors.grey[600])),
-                    const SizedBox(height: 24),
-                    QrImageView(
-                      data: 'homefix_pay:${booking.id}:${booking.customerId}:${booking.finalAmount}',
-                      version: QrVersions.auto,
-                      size: 200.0,
-                      foregroundColor: const Color(0xFF6366F1),
-                    ),
-                    const SizedBox(height: 24),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(color: const Color(0xFFF0F9FF), borderRadius: BorderRadius.circular(8)),
-                      child: Text('Amount to Pay: ₹${booking.finalAmount.toStringAsFixed(0)}',
-                          style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: const Color(0xFF0369A1))),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-            ],
+
 
             // Timeline
             _buildSectionTitle('Booking Timeline'),
@@ -305,8 +274,8 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
               ),
             ],
 
-            // Rate service
-            if (currentStatus == 'completed' || currentStatus == 'service_completed') ...[
+            // Rate service - only show if completed AND paid
+            if (currentStatus == 'completed' && booking.paymentStatus == 'paid') ...[
               if (!booking.isRated)
                 SizedBox(
                   width: double.infinity,

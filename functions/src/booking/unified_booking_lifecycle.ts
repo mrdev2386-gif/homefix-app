@@ -38,8 +38,9 @@ const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
   'pending_admin_approval': ['approved_by_admin', 'rejected_by_admin', 'cancelled'],
   'approved_by_admin': ['technician_accepted', 'technician_rejected', 'cancelled'],
   'technician_accepted': ['service_in_progress', 'cancelled'],
-  'service_in_progress': ['service_completed', 'cancelled'],
-  'service_completed': ['completed', 'cancelled'],
+  'service_in_progress': ['awaiting_payment', 'cancelled'],
+  'awaiting_payment': ['paid', 'cancelled'],
+  'paid': ['completed', 'cancelled'],
   'completed': [],
   'cancelled': [],
   'rejected_by_admin': [],
@@ -272,17 +273,9 @@ export const startService = functions
             );
         }
 
-        // Check payment status for online payment method
-        const paymentMethod = booking.payment?.paymentMethod || booking.paymentMethod;
-        if (paymentMethod === 'online') {
-            const isPaid = booking.payment?.status === 'paid' || booking.paymentStatus === 'paid';
-            if (!isPaid) {
-                throw new functions.https.HttpsError(
-                    'failed-precondition',
-                    'Payment must be completed before starting service for online payment bookings'
-                );
-            }
-        }
+        // AFTER-SERVICE PAYMENT MODEL: No payment required before service starts
+        // Payment is collected AFTER service completion
+        // Technician can start service immediately after acceptance
 
         await db.runTransaction(async (t) => {
             const freshDoc = await t.get(bookingRef);
@@ -355,10 +348,10 @@ export const completeService = functions
             const freshDoc = await t.get(bookingRef);
             if (!freshDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
             const freshBooking = freshDoc.data()!;
-            updateBookingStatus(t, bookingRef, 'service_completed', freshBooking, {
-                bookingStatus: 'service_completed',
+            updateBookingStatus(t, bookingRef, 'awaiting_payment', freshBooking, {
+                bookingStatus: 'awaiting_payment',
                 serviceCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
-                paymentStatus: 'pending',
+                paymentStatus: 'awaiting_payment',
             });
         });
 
@@ -803,7 +796,8 @@ export const createBookingRequest = functions
       console.log('🆔 [createBookingRequest] Generated booking ID:', bookingId);
 
       // PHASE 5: Protect Booking Integrity - Define outside transaction
-      const finalPaymentMethod = paymentMethod || (paymentMode === 'before_work' || paymentMode === 'pay_before_work' ? 'online' : 'after_service');
+      // ENFORCE: ONLY after_service payment mode - NO EXCEPTIONS
+      const finalPaymentMethod = 'after_service';
       // All bookings go through admin review first
       const initialStatus = 'pending_admin_review';
 

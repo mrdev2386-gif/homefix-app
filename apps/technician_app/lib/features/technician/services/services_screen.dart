@@ -574,18 +574,16 @@ class _ServiceCardState extends State<_ServiceCard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Expanded(
-          child: Text(
-            FirestoreSafeParser.toSafeString(widget.service['name'], fallback: 'Unnamed Service'),
-            style: GoogleFonts.plusJakartaSans(
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-              color: const Color(0xFF0F172A),
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            softWrap: true,
+        Text(
+          FirestoreSafeParser.toSafeString(widget.service['name'], fallback: 'Unnamed Service'),
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+            color: const Color(0xFF0F172A),
           ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          softWrap: true,
         ),
         const SizedBox(height: 6),
         Text(

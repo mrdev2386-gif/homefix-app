@@ -6,25 +6,42 @@
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
     ],
+    "/(admin)/services/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/commons.js",
+      "static/chunks/app/(admin)/services/page.js"
+    ],
     "/(admin)/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/commons.js",
-      "static/chunks/vendors-_app-pages-browser_node_modules_next_link_js-_app-pages-browser_node_modules_lucide-r-888c23.js",
+      "static/chunks/vendors-_app-pages-browser_node_modules_next_link_js-_app-pages-browser_node_modules_lucide-r-e1ae63.js",
       "static/chunks/app/(admin)/layout.js"
+    ],
+    "/(admin)/bookings/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/commons.js",
+      "static/chunks/app/(admin)/bookings/page.js"
+    ],
+    "/(admin)/bookings/[bookingId]/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/commons.js",
+      "static/chunks/app/(admin)/bookings/[bookingId]/page.js"
+    ],
+    "/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/commons.js",
+      "static/chunks/app/page.js"
     ],
     "/(admin)/loading": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/commons.js",
       "static/chunks/app/(admin)/loading.js"
-    ],
-    "/(admin)/bookings/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/commons.js",
-      "static/chunks/vendors-_app-pages-browser_node_modules_clsx_dist_clsx_mjs-_app-pages-browser_node_modules_lu-36cab3.js",
-      "static/chunks/app/(admin)/bookings/page.js"
     ]
   }
 }

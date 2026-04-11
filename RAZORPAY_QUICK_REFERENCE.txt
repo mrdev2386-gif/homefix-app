@@ -1,0 +1,279 @@
+RAZORPAY PAYMENT FLOW - QUICK REFERENCE
+
+═══════════════════════════════════════════════════════════════════════════════
+
+BOOKING LIFECYCLE STATES:
+─────────────────────────
+pending_admin_review
+    ↓ (admin approves)
+approved_by_admin
+    ↓ (technician accepts)
+technician_accepted
+    ↓ (technician starts service)
+service_in_progress
+    ↓ (technician completes service)
+awaiting_payment ← PAYMENT REQUIRED HERE
+    ↓ (customer pays via Razorpay)
+paid
+    ↓ (customer rates service)
+completed
+
+═══════════════════════════════════════════════════════════════════════════════
+
+BACKEND FLOW:
+─────────────
+
+1. COMPLETE SERVICE (unified_booking_lifecycle.ts)
+   ─────────────────────────────────────────────
+   completeService() {
+     // Validates: booking.technicianId === uid
+     // Validates: booking.bookingStatus === "service_in_progress"
+     
+     // Sets status to "awaiting_payment" (NOT "service_completed")
+     updateBookingStatus(t, bookingRef, 'awaiting_payment', freshBooking, {
+       bookingStatus: 'awaiting_payment',
+       serviceCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
+       paymentStatus: 'awaiting_payment',
+     });
+   }
+
+2. CREATE PAYMENT ORDER (payments/razorpay.ts)
+   ──────────────────────────────────────────
+   createPaymentOrder(bookingId) {
+     // Validates: booking.customerId === userId
+     // Validates: booking.bookingStatus === "awaiting_payment"
+     // Validates: booking.paymentMethod === "after_service"
+     
+     // Get amount from Firestore (NEVER trust client)
+     const amount = booking.pricing?.total || booking.finalAmount;
+     
+     // Create Razorpay order
+     const order = await razorpay.orders.create({
+       amount: Math.round(amount * 100), // paise
+       currency: 'INR',
+       receipt: booking.bookingNumber,
+       notes: {
+         bookingId,
+         customerId: userId,
+         technicianId: booking.technicianId,
+         paymentMethod: 'after_service'
+       }
+     });
+     
+     // Store in razorpayOrders collection
+     await createRazorpayOrderDoc(order.id, amount, { bookingId });
+     
+     // Update booking with order ID
+     await bookingRef.update({
+       'payment.razorpayOrderId': order.id,
+       'payment.status': 'processing',
+       'paymentStatus': 'processing'
+     });
+     
+     return { orderId: order.id, amount, currency: 'INR' };
+   }
+
+3. VERIFY PAYMENT (payments/razorpay.ts)
+   ────────────────────────────────────
+   verifyPayment(bookingId, razorpayOrderId, razorpayPaymentId, razorpaySignature) {
+     // Validates: booking.customerId === userId
+     // Validates: booking.bookingStatus === "awaiting_payment"
+     // Validates: signature is valid
+     
+     // Fetch payment from Razorpay
+     const payment = await razorpay.payments.fetch(razorpayPaymentId);
+     const amount = payment.amount / 100; // rupees
+     
+     // Verify amount matches
+     if (Math.abs(amount - bookingTotal) > 0.01) throw error;
+     
+     // TRANSACTION: Update booking + credit wallet atomically
+     await db.runTransaction(async (transaction) => {
+       // Check if already paid (race condition protection)
+       const currentBooking = await transaction.get(bookingRef);
+       if (currentBooking.payment?.status === 'paid') return; // idempotent
+       
+       // Update booking
+       transaction.update(bookingRef, {
+         'payment.status': 'paid',
+         'payment.razorpayPaymentId': razorpayPaymentId,
+         'payment.amountPaid': amount,
+         'paymentStatus': 'paid',
+         'paidAt': admin.firestore.FieldValue.serverTimestamp()
+       });
+       
+       // Credit technician wallet
+       const techWalletRef = db.collection('technician_wallets')
+         .doc(currentBooking.technicianId);
+       
+       const technicianAmount = amount - (currentBooking.pricing?.platformFee || 0);
+       
+       transaction.update(techWalletRef, {
+         availableBalance: admin.firestore.FieldValue.increment(technicianAmount),
+         updatedAt: admin.firestore.FieldValue.serverTimestamp()
+       });
+       
+       // Log wallet transaction
+       transaction.set(techWalletRef.collection('transactions').doc(), {
+         type: 'credit',
+         source: 'booking_payment',
+         amount: technicianAmount,
+         referenceId: bookingId,
+         paymentId: razorpayPaymentId,
+         createdAt: admin.firestore.FieldValue.serverTimestamp()
+       });
+     });
+     
+     return { success: true };
+   }
+
+═══════════════════════════════════════════════════════════════════════════════
+
+FRONTEND FLOW (Flutter):
+────────────────────────
+
+1. SHOW PAY NOW BUTTON (booking_detail_screen.dart)
+   ────────────────────────────────────────────────
+   if (currentStatus == 'awaiting_payment') {
+     ElevatedButton(
+       onPressed: () => Navigator.push(context, MaterialPageRoute(
+         builder: (_) => PaymentScreen(bookingId: booking.id),
+       )),
+       child: Text('PAY NOW (₹${booking.finalAmount.toStringAsFixed(0)})'),
+     );
+   }
+
+2. PAYMENT SCREEN (payment_screen.dart)
+   ──────────────────────────────────
+   _initiatePayment() async {
+     // Step 1: Create payment order on backend
+     final orderResponse = await FunctionsService().createPaymentOrder(
+       bookingId: widget.bookingId,
+     );
+     
+     final orderId = orderResponse['orderId'];
+     final amount = orderResponse['amount'];
+     
+     // Step 2: Open Razorpay checkout
+     var options = {
+       'key': 'YOUR_RAZORPAY_KEY_ID',
+       'order_id': orderId,
+       'amount': (amount * 100).toInt(), // paise
+       'currency': 'INR',
+       'name': 'HomeFix',
+       'description': 'Payment for booking',
+       'prefill': {
+         'contact': customerPhone,
+         'email': customerEmail,
+       },
+     };
+     
+     _razorpay.open(options);
+   }
+
+3. HANDLE PAYMENT SUCCESS (payment_screen.dart)
+   ────────────────────────────────────────────
+   _handlePaymentSuccess(PaymentSuccessResponse response) async {
+     // Step 3: Verify payment on backend
+     final verifyResponse = await FunctionsService().verifyPayment(
+       bookingId: widget.bookingId,
+       razorpayOrderId: response.orderId!,
+       razorpayPaymentId: response.paymentId!,
+       razorpaySignature: response.signature!,
+     );
+     
+     if (verifyResponse['success']) {
+       // Payment verified, booking status = "paid"
+       // Technician wallet credited
+       // Customer can now rate service
+       Navigator.pop(context, true);
+     }
+   }
+
+═══════════════════════════════════════════════════════════════════════════════
+
+SECURITY CHECKS:
+────────────────
+
+✓ Booking ownership: booking.customerId === userId
+✓ Booking status: MUST be "awaiting_payment"
+✓ Payment method: MUST be "after_service"
+✓ Amount validation: From Firestore, NOT client
+✓ Signature verification: Razorpay HMAC SHA256
+✓ Duplicate prevention: Transaction-safe check
+✓ Technician validation: technicianId exists
+✓ Wallet credit: Atomic transaction
+
+═══════════════════════════════════════════════════════════════════════════════
+
+FIRESTORE COLLECTIONS:
+──────────────────────
+
+bookings/{bookingId}
+├── bookingStatus: "awaiting_payment" | "paid"
+├── paymentStatus: "awaiting_payment" | "paid"
+├── payment:
+│   ├── status: "paid"
+│   ├── razorpayOrderId: "order_xxx"
+│   ├── razorpayPaymentId: "pay_xxx"
+│   ├── razorpaySignature: "sig_xxx"
+│   ├── amountPaid: 500
+│   ├── paymentMethod: "after_service"
+│   └── paidAt: timestamp
+└── payout:
+    ├── status: "pending"
+    ├── totalAmount: 500
+    ├── platformFee: 50
+    └── technicianAmount: 450
+
+technician_wallets/{technicianId}
+├── availableBalance: 450
+├── totalEarned: 450
+└── transactions/{txnId}
+    ├── type: "credit"
+    ├── source: "booking_payment"
+    ├── amount: 450
+    ├── referenceId: "bookingId"
+    ├── paymentId: "pay_xxx"
+    └── createdAt: timestamp
+
+razorpayOrders/{orderId}
+├── orderId: "order_xxx"
+├── amount: 500
+├── currency: "INR"
+├── status: "paid"
+├── bookingId: "bookingId"
+├── technicianId: "techId"
+└── createdAt: timestamp
+
+payment_logs/{logId}
+├── bookingId: "bookingId"
+├── orderId: "order_xxx"
+├── paymentId: "pay_xxx"
+├── amount: 500
+├── action: "payment_verified_client"
+├── method: "card"
+├── status: "success"
+└── createdAt: timestamp
+
+═══════════════════════════════════════════════════════════════════════════════
+
+TESTING COMMANDS:
+─────────────────
+
+# Deploy functions
+firebase deploy --only functions
+
+# Test payment order creation
+curl -X POST https://asia-south1-xxx.cloudfunctions.net/createPaymentOrder \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"bookingId": "booking123"}'
+
+# Monitor payment logs
+firebase firestore:query payment_logs --limit 10
+
+# Check technician wallet
+firebase firestore:query technician_wallets/{technicianId}
+
+═══════════════════════════════════════════════════════════════════════════════

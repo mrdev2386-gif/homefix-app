@@ -1,28 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:razorpay_flutter/razorpay_flutter.dart';
-import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:customer_app/core/services/functions_service.dart';
-import 'package:customer_app/core/theme/app_theme.dart';
+import 'package:razorpay_flutter/razorpay_flutter.dart';
+import '../../../core/services/functions_service.dart';
+import '../../../core/models/booking.dart';
+import '../../../core/services/booking_service.dart';
 
-/// Unified payment screen.
-///
-/// Two modes:
-/// 1. Pre-payment (Pay Before Work): pass [bookingParams], no bookingId yet.
-///    Flow: createPrePaymentOrder → Razorpay → verifyAndCreateBooking → pop(bookingId)
-///
-/// 2. Post-booking payment (existing): pass [bookingId].
-///    Flow: initiateRazorpayPayment → Razorpay → verifyRazorpayPayment → pop(true)
 class PaymentScreen extends StatefulWidget {
-  /// For Pay Before Work: booking details to create order without a booking doc.
-  final Map<String, dynamic>? bookingParams;
+  final String bookingId;
 
-  /// For existing post-booking payment.
-  final String? bookingId;
-
-  const PaymentScreen({super.key, this.bookingParams, this.bookingId})
-      : assert(bookingParams != null || bookingId != null,
-            'Either bookingParams or bookingId must be provided');
+  const PaymentScreen({super.key, required this.bookingId});
 
   @override
   State<PaymentScreen> createState() => _PaymentScreenState();
@@ -31,11 +17,12 @@ class PaymentScreen extends StatefulWidget {
 class _PaymentScreenState extends State<PaymentScreen> {
   late Razorpay _razorpay;
   bool _isLoading = false;
-  double? _displayAmount;
-  String? _razorpayOrderId; // stored after createPrePaymentOrder
-  String? _error;
-
-  bool get _isPrePayment => widget.bookingParams != null;
+  bool _isPaymentInProgress = false; // STEP 5: Prevent multiple clicks
+  String? _errorMessage;
+  Booking? _booking;
+  String? _pendingOrderId; // STEP 7: Track pending payment
+  String? _pendingPaymentId;
+  String? _pendingSignature;
 
   @override
   void initState() {
@@ -44,6 +31,280 @@ class _PaymentScreenState extends State<PaymentScreen> {
     _razorpay.on(Razorpay.EVENT_PAYMENT_SUCCESS, _handlePaymentSuccess);
     _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _handlePaymentError);
     _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
+    _loadBooking();
+    _checkPendingPayment(); // STEP 7: Check for pending payment on init
+  }
+
+  Future<void> _loadBooking() async {
+    try {
+      final booking = await BookingService().getBooking(widget.bookingId);
+      setState(() => _booking = booking);
+    } catch (e) {
+      setState(() => _errorMessage = 'Failed to load booking: $e');
+    }
+  }
+
+  // STEP 7: Check for pending payment (fallback recovery)
+  Future<void> _checkPendingPayment() async {
+    try {
+      final booking = await BookingService().getBooking(widget.bookingId);
+      
+      // If payment is processing or failed, show verify button
+      if (booking?.paymentStatus == 'processing' || booking?.paymentStatus == 'failed') {
+        setState(() {
+          _errorMessage = 'Payment verification pending. Tap "Verify Payment" to check status.';
+        });
+      }
+    } catch (e) {
+      // Ignore errors in background check
+    }
+  }
+
+  Future<void> _initiatePayment() async {
+    if (_booking == null || _isPaymentInProgress) return; // STEP 5: Check lock
+
+    setState(() {
+      _isLoading = true;
+      _isPaymentInProgress = true; // STEP 5: Set lock
+      _errorMessage = null;
+    });
+
+    try {
+      // STEP 1: Create payment order on backend (NEVER hardcode amount/orderId)
+      final orderResponse = await FunctionsService().createPaymentOrder(
+        bookingId: widget.bookingId,
+      );
+
+      if (!orderResponse['success']) {
+        throw Exception(orderResponse['error'] ?? 'Failed to create order');
+      }
+
+      // STEP 1: Get all values from backend
+      final orderId = orderResponse['orderId'];
+      final amount = orderResponse['amount']; // Backend-controlled amount
+      final keyId = orderResponse['keyId']; // Backend-controlled key
+      final customerEmail = orderResponse['customerEmail'] ?? '';
+      final customerPhone = orderResponse['customerPhone'] ?? '';
+
+      // STEP 8: Validate backend response
+      if (orderId == null || amount == null || keyId == null) {
+        throw Exception('Invalid order response from backend');
+      }
+
+      // STEP 2: Open Razorpay with backend-provided values
+      var options = {
+        'key': keyId, // NEVER hardcode - use backend value
+        'order_id': orderId, // Backend-generated order ID
+        'amount': (amount * 100).toInt(), // STEP 2: Amount in paise, matches backend
+        'currency': 'INR',
+        'name': 'HomeFix',
+        'description': 'Payment for booking #${_booking!.id}',
+        'prefill': {
+          'contact': customerPhone,
+          'email': customerEmail,
+        },
+        'theme': {
+          'color': '#6366F1',
+        },
+      };
+
+      _razorpay.open(options);
+      
+      setState(() => _isLoading = false); // Remove loading, keep lock until payment completes
+    } catch (e) {
+      // STEP 8: Error handling
+      setState(() {
+        _errorMessage = 'Payment initialization failed: $e';
+        _isLoading = false;
+        _isPaymentInProgress = false; // Release lock on error
+      });
+    }
+  }
+
+  // STEP 3: Handle payment success - ONLY backend verifies
+  void _handlePaymentSuccess(PaymentSuccessResponse response) async {
+    try {
+      setState(() => _isLoading = true);
+
+      // STEP 8: Validate response
+      if (response.orderId == null || response.paymentId == null || response.signature == null) {
+        throw Exception('Invalid payment response from Razorpay');
+      }
+
+      // STEP 3: Verify payment on backend (NEVER trust client)
+      final verifyResponse = await FunctionsService().verifyPayment(
+        bookingId: widget.bookingId,
+        razorpayOrderId: response.orderId!,
+        razorpayPaymentId: response.paymentId!,
+        razorpaySignature: response.signature!,
+      );
+
+      if (verifyResponse['success']) {
+        // STEP 6: Refresh booking state from Firestore
+        await _refreshBookingState();
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Payment successful! Your booking is confirmed.'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+          Navigator.pop(context, true); // Return success
+        }
+      } else {
+        throw Exception(verifyResponse['error'] ?? 'Payment verification failed');
+      }
+    } catch (e) {
+      // STEP 8: Error handling
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Verification failed: $e. Please contact support if amount was deducted.';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Verification failed: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } finally {
+      setState(() {
+        _isLoading = false;
+        _isPaymentInProgress = false; // STEP 5: Release lock
+      });
+    }
+  }
+
+  // STEP 4: Handle payment failure
+  void _handlePaymentError(PaymentFailureResponse response) async {
+    try {
+      // STEP 4: Call handlePaymentFailure on backend
+      // Note: PaymentFailureResponse doesn't have orderId/paymentId, use empty strings
+      await FunctionsService().handlePaymentFailure(
+        bookingId: widget.bookingId,
+        razorpayOrderId: '',
+        razorpayPaymentId: '',
+        errorCode: response.code.toString(),
+        errorDescription: response.message ?? 'Payment failed',
+      );
+    } catch (e) {
+      // Log error but don't block UI
+      print('Failed to log payment failure: $e');
+    }
+
+    // STEP 8: Show error to user
+    if (mounted) {
+      setState(() {
+        _errorMessage = 'Payment failed: ${response.message}. You can try again.';
+        _isPaymentInProgress = false; // STEP 5: Release lock
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Payment failed: ${response.message}'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'Retry',
+            textColor: Colors.white,
+            onPressed: _initiatePayment,
+          ),
+        ),
+      );
+    }
+  }
+
+  void _handleExternalWallet(ExternalWalletResponse response) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('External wallet: ${response.walletName}')),
+    );
+    setState(() => _isPaymentInProgress = false); // Release lock
+  }
+
+  // STEP 6: Refresh booking state from Firestore after payment
+  Future<void> _refreshBookingState() async {
+    try {
+      final updatedBooking = await BookingService().getBooking(widget.bookingId);
+      setState(() => _booking = updatedBooking);
+      
+      // Verify booking status is actually paid
+      if (updatedBooking?.bookingStatus != 'paid') {
+        throw Exception('Booking status not updated to paid');
+      }
+    } catch (e) {
+      print('Failed to refresh booking state: $e');
+      // Don't throw - payment might still be processing
+    }
+  }
+
+  // STEP 7: Manual verification for pending payments
+  Future<void> _verifyPendingPayment() async {
+    if (_booking == null) return;
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      // Try to verify with existing order details
+      final booking = await BookingService().getBooking(widget.bookingId);
+      final orderId = booking?.razorpayOrderId;
+      
+      if (orderId == null) {
+        throw Exception('No order ID found for this booking');
+      }
+
+      // Show dialog to user
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Verify Payment'),
+            content: const Text('Checking payment status with backend...'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+        );
+      }
+
+      // Refresh booking to check if payment was processed
+      await _refreshBookingState();
+      
+      if (mounted) {
+        Navigator.pop(context); // Close dialog
+        
+        if (_booking!.bookingStatus == 'paid') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Payment verified successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context, true);
+        } else {
+          setState(() {
+            _errorMessage = 'Payment not yet confirmed. Please try again or contact support.';
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Close dialog
+        setState(() {
+          _errorMessage = 'Verification failed: $e';
+        });
+      }
+    } finally {
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -52,151 +313,223 @@ class _PaymentScreenState extends State<PaymentScreen> {
     super.dispose();
   }
 
-  Future<void> _startPayment() async {
-    if (_isLoading) return;
-    setState(() { _isLoading = true; _error = null; });
-
-    try {
-      final functions = Provider.of<FunctionsService>(context, listen: false);
-      Map<String, dynamic> orderData;
-
-      if (_isPrePayment) {
-        // Step 1: create order without booking
-        orderData = await functions.createPrePaymentOrder(widget.bookingParams!);
-        _razorpayOrderId = orderData['orderId'] as String;
-      } else {
-        // Existing flow: order tied to existing booking
-        orderData = await functions.initiateRazorpayPayment(widget.bookingId!);
-        _razorpayOrderId = orderData['orderId'] as String?;
-      }
-
-      final amountPaise = (orderData['amount'] as num).toInt();
-      setState(() => _displayAmount = amountPaise / 100);
-
-      _razorpay.open({
-        'key': orderData['key'],
-        'amount': amountPaise,
-        'order_id': orderData['orderId'],
-        'name': 'HomeFix',
-        'description': 'Service Payment',
-        'timeout': 300,
-        'prefill': {'contact': '', 'email': ''},
-      });
-    } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _isLoading = false; });
-    }
-  }
-
-  void _handlePaymentSuccess(PaymentSuccessResponse response) async {
-    if (!mounted) return;
-    setState(() { _isLoading = true; _error = null; });
-
-    try {
-      final functions = Provider.of<FunctionsService>(context, listen: false);
-
-      if (_isPrePayment) {
-        // Step 2: verify + create booking atomically
-        final result = await functions.verifyAndCreateBooking({
-          'razorpayOrderId': response.orderId ?? _razorpayOrderId,
-          'razorpayPaymentId': response.paymentId,
-          'razorpaySignature': response.signature,
-        });
-        final bookingId = result['bookingId'] as String;
-        if (mounted) Navigator.of(context).pop(bookingId); // return bookingId to checkout
-      } else {
-        // Existing flow: verify only
-        await functions.verifyRazorpayPayment({
-          'bookingId': widget.bookingId,
-          'razorpayOrderId': response.orderId,
-          'razorpayPaymentId': response.paymentId,
-          'razorpaySignature': response.signature,
-        });
-        if (mounted) Navigator.of(context).pop(true);
-      }
-    } catch (e) {
-      if (mounted) setState(() { _error = 'Verification failed: $e'; _isLoading = false; });
-    }
-  }
-
-  void _handlePaymentError(PaymentFailureResponse response) {
-    if (mounted) setState(() { _error = response.message ?? 'Payment failed. Please try again.'; _isLoading = false; });
-  }
-
-  void _handleExternalWallet(ExternalWalletResponse response) {}
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF8F9FE),
       appBar: AppBar(
-        title: Text('Pay Before Work', style: GoogleFonts.outfit(fontWeight: FontWeight.w800)),
+        title: Text('Payment', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
         elevation: 0,
-        foregroundColor: AppTheme.textColor,
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: _isLoading ? null : () => Navigator.of(context).pop(null),
-        ),
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.payment_rounded, size: 80, color: AppTheme.primaryColor),
-              ),
-              const SizedBox(height: 32),
-              Text(
-                'Secure Online Payment',
-                style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.textColor),
-              ),
-              const SizedBox(height: 8),
-              if (_displayAmount != null)
-                Text(
-                  '₹${_displayAmount!.toStringAsFixed(0)}',
-                  style: GoogleFonts.outfit(fontSize: 48, fontWeight: FontWeight.w900, color: AppTheme.primaryColor),
-                )
-              else
-                Text(
-                  'Amount confirmed by server',
-                  style: GoogleFonts.outfit(fontSize: 14, color: AppTheme.subtitleColor),
-                ),
-              if (_error != null) ...[
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
-                  child: Text(_error!, style: GoogleFonts.outfit(color: Colors.red, fontSize: 13)),
-                ),
-              ],
-              const SizedBox(height: 48),
-              SizedBox(
-                width: double.infinity,
-                height: 60,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _startPayment,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      body: _booking == null
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Payment Summary
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.04),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Payment Summary',
+                          style: GoogleFonts.outfit(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        _buildSummaryRow('Service', _booking!.serviceTitle),
+                        const SizedBox(height: 12),
+                        _buildSummaryRow('Amount', '₹${_booking!.finalAmount.toStringAsFixed(0)}'),
+                        const Divider(height: 24),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Total to Pay',
+                              style: GoogleFonts.outfit(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              '₹${_booking!.finalAmount.toStringAsFixed(0)}',
+                              style: GoogleFonts.outfit(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFF6366F1),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                  child: _isLoading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : Text('PAY SECURELY', style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
-                ),
+                  const SizedBox(height: 24),
+
+                  // Error Message
+                  if (_errorMessage != null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.red.shade200),
+                      ),
+                      child: Text(
+                        _errorMessage!,
+                        style: GoogleFonts.outfit(color: Colors.red.shade700),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // Payment Method Info
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F9FF),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFF0369A1).withOpacity(0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info, color: Color(0xFF0369A1), size: 20),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Payment after service completion. Secure Razorpay checkout.',
+                            style: GoogleFonts.outfit(
+                              fontSize: 13,
+                              color: const Color(0xFF0369A1),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+
+                  // Pay Button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: (_isLoading || _isPaymentInProgress) ? null : _initiatePayment, // STEP 5: Disable when locked
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF6366F1),
+                        disabledBackgroundColor: Colors.grey[300],
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 4,
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              height: 24,
+                              width: 24,
+                              child: CircularProgressIndicator(
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : Text(
+                              _isPaymentInProgress ? 'PROCESSING...' : 'PAY ₹${_booking!.finalAmount.toStringAsFixed(0)}',
+                              style: GoogleFonts.outfit(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // STEP 7: Verify Payment Button (for pending payments)
+                  if (_booking!.paymentStatus == 'processing' || _booking!.paymentStatus == 'failed') ...[
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: OutlinedButton.icon(
+                        onPressed: _isLoading ? null : _verifyPendingPayment,
+                        icon: const Icon(Icons.refresh),
+                        label: Text(
+                          'Verify Payment Status',
+                          style: GoogleFonts.outfit(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Color(0xFF6366F1)),
+                          foregroundColor: const Color(0xFF6366F1),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // Cancel Button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: OutlinedButton(
+                      onPressed: _isLoading ? null : () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.grey),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        'Cancel',
+                        style: GoogleFonts.outfit(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey[700],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              Text('Secured by Razorpay', style: GoogleFonts.outfit(color: Colors.grey, fontSize: 13)),
-            ],
-          ),
+            ),
+    );
+  }
+
+  Widget _buildSummaryRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.outfit(fontSize: 14, color: Colors.grey[600]),
         ),
-      ),
+        Text(
+          value,
+          style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+      ],
     );
   }
 }

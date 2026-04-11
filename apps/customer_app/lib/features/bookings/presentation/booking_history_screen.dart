@@ -14,8 +14,13 @@ import 'booking_detail_screen.dart';
 
 class BookingHistoryScreen extends StatefulWidget {
   final VoidCallback? onNavigateToHome;
+  final String? focusBookingId;
   
-  const BookingHistoryScreen({super.key, this.onNavigateToHome});
+  const BookingHistoryScreen({
+    super.key,
+    this.onNavigateToHome,
+    this.focusBookingId,
+  });
 
   @override
   State<BookingHistoryScreen> createState() => _BookingHistoryScreenState();
@@ -24,12 +29,20 @@ class BookingHistoryScreen extends StatefulWidget {
 class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
   String _selectedStatus = 'all';
   bool _isInitialLoad = true;
+  String? _activeHighlightBookingId;
+  bool _highlightInitialized = false;
+  final Map<String, GlobalKey> _bookingKeys = {};
 
   @override
   void initState() {
     super.initState();
-    // FIX: Add timeout to prevent infinite loading
     _startLoadingTimeout();
+  }
+
+  @override
+  void dispose() {
+    _bookingKeys.clear();
+    super.dispose();
   }
   
   /// Timeout mechanism - if no data after 10 seconds, stop showing loading
@@ -39,6 +52,32 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
       debugPrint('[BOOKING_STREAM] ⏱️ Loading timeout reached, stopping shimmer');
       setState(() => _isInitialLoad = false);
     }
+  }
+
+  /// Scroll to highlighted booking using ensureVisible
+  void _scrollToBooking() {
+    if (!mounted || _activeHighlightBookingId == null) return;
+    
+    final key = _bookingKeys[_activeHighlightBookingId];
+    if (key == null || key.currentContext == null) return;
+    
+    Scrollable.ensureVisible(
+      key.currentContext!,
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeInOut,
+      alignment: 0.2,
+    );
+  }
+
+  /// Remove highlight after 5 seconds
+  void _scheduleHighlightRemoval() {
+    Future.delayed(const Duration(seconds: 5), () {
+      if (mounted) {
+        setState(() {
+          _activeHighlightBookingId = null;
+        });
+      }
+    });
   }
 
   @override
@@ -136,9 +175,21 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
               return _buildEmptyState();
             }
 
+            // Initialize highlight and scroll on first data load
+            if (!_highlightInitialized && widget.focusBookingId != null) {
+              _highlightInitialized = true;
+              _activeHighlightBookingId = widget.focusBookingId;
+              
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  _scrollToBooking();
+                  _scheduleHighlightRemoval();
+                }
+              });
+            }
+
             return RefreshIndicator(
               onRefresh: () async {
-                // Stream will auto-refresh - just add small delay for UX
                 await Future.delayed(const Duration(milliseconds: 500));
               },
               color: const Color(0xFF4A6CF7),
@@ -150,8 +201,16 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
                 itemCount: filteredBookings.length,
                 itemBuilder: (context, index) {
                   final booking = filteredBookings[index];
+                  final isHighlighted = booking.id == _activeHighlightBookingId;
+                  
+                  if (isHighlighted && !_bookingKeys.containsKey(booking.id)) {
+                    _bookingKeys[booking.id] = GlobalKey();
+                  }
+                  
                   return BookingCard(
+                    key: isHighlighted ? _bookingKeys[booking.id] : null,
                     booking: booking,
+                    isHighlighted: isHighlighted,
                     onTap: () {
                       Navigator.push(
                         context,

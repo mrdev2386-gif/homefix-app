@@ -11,25 +11,37 @@ import '../auth/screens/complete_location_screen.dart';
 import 'package:customer_app/core/services/auth_service.dart';
 import 'package:customer_app/core/services/firestore_service.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
+import 'package:customer_app/core/constants/navigation_constants.dart';
 
 class MainWrapperScreen extends StatefulWidget {
-  const MainWrapperScreen({super.key});
+  final int initialIndex;
+  final String? focusBookingId;
+  
+  const MainWrapperScreen({
+    super.key,
+    this.initialIndex = NavigationConstants.homeTabIndex,
+    this.focusBookingId,
+  });
 
   @override
   State<MainWrapperScreen> createState() => _MainWrapperScreenState();
 }
 
 class _MainWrapperScreenState extends State<MainWrapperScreen> with WidgetsBindingObserver {
-  int _currentIndex = 0;
+  late int _currentIndex;
   bool _isCheckingProfile = true;
   late final List<Widget> _screens;
 
   @override
   void initState() {
     super.initState();
+    _currentIndex = widget.initialIndex;
     _screens = [
       const HomeScreen(),
-      BookingHistoryScreen(onNavigateToHome: _navigateToHomeTab),
+      BookingHistoryScreen(
+        onNavigateToHome: _navigateToHomeTab,
+        focusBookingId: widget.focusBookingId,
+      ),
       const RequestScreen(),
       const ProfileScreen(),
     ];
@@ -62,7 +74,7 @@ class _MainWrapperScreenState extends State<MainWrapperScreen> with WidgetsBindi
 
   void _navigateToHomeTab() {
     if (!mounted) return;
-    setState(() => _currentIndex = 0);
+    setState(() => _currentIndex = NavigationConstants.homeTabIndex);
   }
 
   Future<void> _checkProfileCompletion() async {
@@ -141,10 +153,10 @@ class _MainWrapperScreenState extends State<MainWrapperScreen> with WidgetsBindi
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _navItem(0, Icons.home_rounded, Icons.home_outlined, 'Home'),
-              _navItem(1, Icons.calendar_month_rounded, Icons.calendar_month_outlined, 'Bookings'),
-              _navItem(2, Icons.add_circle_rounded, Icons.add_circle_outline_rounded, 'Request'),
-              _navItem(3, Icons.person_rounded, Icons.person_outline_rounded, 'Profile'),
+              _navItem(NavigationConstants.homeTabIndex, Icons.home_rounded, Icons.home_outlined, 'Home'),
+              _navItem(NavigationConstants.bookingsTabIndex, Icons.calendar_month_rounded, Icons.calendar_month_outlined, 'Bookings'),
+              _navItem(NavigationConstants.requestTabIndex, Icons.add_circle_rounded, Icons.add_circle_outline_rounded, 'Request'),
+              _navItem(NavigationConstants.profileTabIndex, Icons.person_rounded, Icons.person_outline_rounded, 'Profile'),
             ],
           ),
         ),

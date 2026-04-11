@@ -4,28 +4,43 @@ import 'package:intl/intl.dart';
 import '../../../core/models/booking.dart';
 import 'booking_tracking_sheet.dart';
 
-class BookingCard extends StatelessWidget {
+class BookingCard extends StatefulWidget {
   final Booking booking;
   final VoidCallback onTap;
+  final bool isHighlighted;
 
   const BookingCard({
     super.key,
     required this.booking,
     required this.onTap,
+    this.isHighlighted = false,
   });
 
   @override
+  State<BookingCard> createState() => _BookingCardState();
+}
+
+class _BookingCardState extends State<BookingCard> {
+  @override
   Widget build(BuildContext context) {
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 400),
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+        border: Border.all(
+          color: widget.isHighlighted 
+              ? const Color(0xFF6366F1) 
+              : const Color(0xFFE5E7EB),
+          width: widget.isHighlighted ? 2.5 : 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 20,
+            color: widget.isHighlighted 
+                ? const Color(0xFF6366F1).withOpacity(0.2)
+                : Colors.black.withOpacity(0.06),
+            blurRadius: widget.isHighlighted ? 24 : 20,
             offset: const Offset(0, 4),
           ),
         ],
@@ -33,11 +48,55 @@ class BookingCard extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: widget.onTap,
           borderRadius: BorderRadius.circular(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // ═══════════════════════════════════════════════════════════
+              // HIGHLIGHT LABEL (if highlighted)
+              // ═══════════════════════════════════════════════════════════
+              if (widget.isHighlighted)
+                AnimatedOpacity(
+                  opacity: widget.isHighlighted ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 400),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(18),
+                        topRight: Radius.circular(18),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.new_releases_rounded,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Your Recent Booking',
+                          style: GoogleFonts.outfit(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              
               // ═══════════════════════════════════════════════════════════
               // TOP SECTION: Gradient Header with Service Name + Status
               // ═══════════════════════════════════════════════════════════
@@ -45,14 +104,16 @@ class BookingCard extends StatelessWidget {
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [_getStatusColor(booking.status).withOpacity(0.08), Colors.white],
+                    colors: [_getStatusColor(widget.booking.status).withOpacity(0.08), Colors.white],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    topRight: Radius.circular(20),
-                  ),
+                  borderRadius: widget.isHighlighted 
+                      ? null 
+                      : const BorderRadius.only(
+                          topLeft: Radius.circular(20),
+                          topRight: Radius.circular(20),
+                        ),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -62,14 +123,14 @@ class BookingCard extends StatelessWidget {
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          colors: [_getStatusColor(booking.status), _getStatusColor(booking.status).withOpacity(0.7)],
+                          colors: [_getStatusColor(widget.booking.status), _getStatusColor(widget.booking.status).withOpacity(0.7)],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
                         borderRadius: BorderRadius.circular(14),
                         boxShadow: [
                           BoxShadow(
-                            color: _getStatusColor(booking.status).withOpacity(0.3),
+                            color: _getStatusColor(widget.booking.status).withOpacity(0.3),
                             blurRadius: 8,
                             offset: const Offset(0, 4),
                           ),
@@ -87,7 +148,7 @@ class BookingCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            booking.serviceTitle,
+                            widget.booking.serviceTitle,
                             style: GoogleFonts.outfit(
                               fontSize: 17,
                               fontWeight: FontWeight.w900,
@@ -98,7 +159,7 @@ class BookingCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 6),
-                          _buildStatusBadge(booking.status),
+                          _buildStatusBadge(widget.booking.status),
                         ],
                       ),
                     ),
@@ -116,12 +177,12 @@ class BookingCard extends StatelessWidget {
                   children: [
 
                     // Technician (if assigned)
-                    if (booking.technicianName != null && booking.technicianName!.isNotEmpty) ...[
+                    if (widget.booking.technicianName != null && widget.booking.technicianName!.isNotEmpty) ...[
                       _buildEnhancedInfoRow(
                         icon: Icons.person_rounded,
                         iconColor: const Color(0xFF6366F1),
                         label: 'Technician',
-                        value: booking.technicianName!,
+                        value: widget.booking.technicianName!,
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -140,7 +201,7 @@ class BookingCard extends StatelessWidget {
                       icon: Icons.location_on_rounded,
                       iconColor: const Color(0xFFEF4444),
                       label: 'Location',
-                      value: _getAddressString(booking.addressSnapshot),
+                      value: _getAddressString(widget.booking.addressSnapshot),
                       maxLines: 2,
                     ),
 
@@ -197,7 +258,7 @@ class BookingCard extends StatelessWidget {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '₹${booking.finalAmount.toStringAsFixed(0)}',
+                                '₹${widget.booking.finalAmount.toStringAsFixed(0)}',
                                 style: GoogleFonts.outfit(
                                   fontSize: 20,
                                   fontWeight: FontWeight.w900,
@@ -220,23 +281,23 @@ class BookingCard extends StatelessWidget {
                                     context: context,
                                     isScrollControlled: true,
                                     backgroundColor: Colors.transparent,
-                                    builder: (context) => BookingTrackingSheet(booking: booking),
+                                    builder: (context) => BookingTrackingSheet(booking: widget.booking),
                                   );
                                 },
                                 borderRadius: BorderRadius.circular(14),
                                 child: Container(
                                   padding: const EdgeInsets.all(14),
                                   decoration: BoxDecoration(
-                                    color: _getStatusColor(booking.status).withOpacity(0.1),
+                                    color: _getStatusColor(widget.booking.status).withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(14),
                                     border: Border.all(
-                                      color: _getStatusColor(booking.status).withOpacity(0.3),
+                                      color: _getStatusColor(widget.booking.status).withOpacity(0.3),
                                       width: 1.5,
                                     ),
                                   ),
                                   child: Icon(
                                     Icons.timeline_rounded,
-                                    color: _getStatusColor(booking.status),
+                                    color: _getStatusColor(widget.booking.status),
                                     size: 20,
                                   ),
                                 ),
@@ -247,7 +308,7 @@ class BookingCard extends StatelessWidget {
                             Material(
                               color: Colors.transparent,
                               child: InkWell(
-                                onTap: onTap,
+                                onTap: widget.onTap,
                                 borderRadius: BorderRadius.circular(14),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
@@ -393,9 +454,9 @@ class BookingCard extends StatelessWidget {
 
   String _formatScheduledDateTime() {
     try {
-      return DateFormat('MMM dd, yyyy • hh:mm a').format(booking.scheduledAt);
+      return DateFormat('MMM dd, yyyy • hh:mm a').format(widget.booking.scheduledAt);
     } catch (e) {
-      return 'Scheduled: ${booking.scheduledTime ?? "Not set"}';
+      return 'Scheduled: ${widget.booking.scheduledTime ?? "Not set"}';
     }
   }
 

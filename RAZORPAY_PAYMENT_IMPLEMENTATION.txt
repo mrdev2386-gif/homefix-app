@@ -1,0 +1,176 @@
+STRICT RAZORPAY PAYMENT FLOW - IMPLEMENTATION COMPLETE
+
+═══════════════════════════════════════════════════════════════════════════════
+
+STEP 1-3: ENFORCE SINGLE PAYMENT MODE ✅
+─────────────────────────────────────────
+✓ Removed all payment mode variants (before_work, pay_before_work, online)
+✓ ENFORCED: paymentMethod = "after_service" ONLY
+✓ Booking creation does NOT depend on payment
+✓ Updated unified_booking_lifecycle.ts to enforce single mode
+
+STEP 2: FIXED BOOKING FLOW ✅
+─────────────────────────────
+Strict lifecycle:
+1. pending_admin_review
+2. approved_by_admin
+3. technician_accepted
+4. service_in_progress
+5. awaiting_payment ← SET WHEN WORK COMPLETED
+6. paid
+
+✓ completeService() now sets status to "awaiting_payment" (not "service_completed")
+✓ Payment is ALWAYS required before service starts
+✓ Removed service_completed usage in payment logic
+
+STEP 3: REMOVED OLD BROKEN LOGIC ✅
+──────────────────────────────────
+✓ verifyAndCreateBooking() - NOT USED
+✓ verified_payments collection - NOT USED
+✓ pre_payment.ts logic - NOT USED
+✓ Booking is created BEFORE payment
+✓ Payment only updates booking status
+
+STEP 4: RAZORPAY ORDER CREATION (BACKEND ONLY) ✅
+──────────────────────────────────────────────────
+Function: createPaymentOrder(bookingId)
+
+Security:
+✓ Validates user is booking owner
+✓ Validates booking status = "awaiting_payment" ONLY
+✓ Validates paymentMethod = "after_service" ONLY
+✓ Amount comes ONLY from Firestore (NEVER trust client)
+✓ Stores order in razorpayOrders collection as SOURCE OF TRUTH
+
+Returns:
+- orderId
+- amount (from locked pricing)
+- keyId (public)
+
+STEP 5: PAYMENT VERIFICATION + WALLET CREDIT ✅
+────────────────────────────────────────────────
+Function: verifyPayment(bookingId, razorpayOrderId, razorpayPaymentId, razorpaySignature)
+
+Security:
+✓ Verifies Razorpay signature (MANDATORY)
+✓ Validates booking status = "awaiting_payment"
+✓ Prevents duplicate payment (transaction-safe)
+✓ Credits technician wallet atomically
+
+Firestore TRANSACTION:
+1. Update booking:
+   - payment.status = "paid"
+   - paymentStatus = "paid"
+   - paidAt = timestamp
+
+2. Credit technician wallet:
+   - wallets/{technicianId}
+   - increment balance by (amount - platformFee)
+
+3. Save transaction:
+   - wallet_transactions
+   - type: "credit"
+   - source: "booking_payment"
+
+STEP 6: FLUTTER CUSTOMER APP ✅
+────────────────────────────────
+File: payment_screen.dart (NEW)
+
+Flow:
+1. Show payment summary
+2. Customer taps "PAY NOW"
+3. Call createPaymentOrder(bookingId)
+4. Open Razorpay checkout
+5. On success: call verifyPayment()
+6. On failure: show retry option
+
+Updated booking_detail_screen.dart:
+✓ Show "Pay Now" button ONLY when status = "awaiting_payment"
+✓ Show rating button ONLY when status = "completed" AND paymentStatus = "paid"
+✓ Removed QR payment system completely
+
+Updated functions_service.dart:
+✓ Added createPaymentOrder() method
+✓ Added verifyPayment() method
+
+STEP 7: REMOVED QR + DUMMY FLOW ✅
+──────────────────────────────────
+✓ Removed QR payment system from booking_detail_screen
+✓ Removed confirmAfterServicePayment() stub
+✓ Removed fake success UI
+✓ Removed manual confirmation
+
+STEP 8: TECHNICIAN WALLET UI
+─────────────────────────────
+Technician app has:
+✓ Wallet balance screen
+✓ Transaction history
+✓ Real-time updates from Firestore
+
+STEP 9: SECURITY HARDENING ✅
+──────────────────────────────
+✓ NEVER trust frontend amount
+✓ ALWAYS verify signature
+✓ Use Firestore transactions
+✓ Prevent duplicate payment (transaction-safe)
+✓ Validate:
+  - booking ownership
+  - booking status = "awaiting_payment"
+  - paymentMethod = "after_service"
+  - technicianId exists
+
+STEP 10: TESTING CHECKLIST
+──────────────────────────
+Test cases:
+□ Booking create → pending_admin_review
+□ Admin approve → approved_by_admin
+□ Technician accept → technician_accepted
+□ Technician marks complete → awaiting_payment
+□ Customer pays via Razorpay → paid
+□ Technician wallet credited
+□ Rating available after payment
+
+Test failure scenarios:
+□ Payment failure → retry option
+□ Duplicate payment attempt → idempotent
+□ Invalid signature → rejected
+□ Amount mismatch → rejected
+□ Wrong booking status → rejected
+
+═══════════════════════════════════════════════════════════════════════════════
+
+NEW BOOKING LIFECYCLE:
+1. pending_admin_review → approved_by_admin → technician_accepted → 
+   service_in_progress → awaiting_payment → paid
+
+PAYMENT FLOW:
+1. Service completes → status = "awaiting_payment"
+2. Customer taps "Pay Now"
+3. Backend creates Razorpay order (amount from Firestore)
+4. Customer pays via Razorpay checkout
+5. Backend verifies signature
+6. Booking status = "paid"
+7. Technician wallet credited
+8. Customer can rate service
+
+═══════════════════════════════════════════════════════════════════════════════
+
+FILES MODIFIED:
+✓ functions/src/booking/unified_booking_lifecycle.ts
+✓ functions/src/payments/razorpay.ts
+✓ functions/src/index.ts
+✓ apps/customer_app/lib/features/payment/presentation/payment_screen.dart (NEW)
+✓ apps/customer_app/lib/features/bookings/presentation/booking_detail_screen.dart
+✓ apps/customer_app/lib/core/services/functions_service.dart
+
+═══════════════════════════════════════════════════════════════════════════════
+
+DEPLOYMENT STEPS:
+1. Deploy Cloud Functions: firebase deploy --only functions
+2. Update customer app with new payment_screen.dart
+3. Update booking_detail_screen.dart
+4. Update functions_service.dart
+5. Test end-to-end payment flow
+6. Monitor payment_logs collection for issues
+
+═══════════════════════════════════════════════════════════════════════════════

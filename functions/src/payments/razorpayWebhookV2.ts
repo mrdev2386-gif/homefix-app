@@ -529,6 +529,41 @@ async function handleQRWalletPayment(
 }
 
 /**
+ * STEP 2: SHARED HELPER - Extract platform fee safely from multiple sources
+ * This ensures consistent platform fee calculation across client verify and webhook
+ */
+function extractPlatformFeeSafely(booking: any): number {
+    let platformFee = 0;
+    
+    // Try pricing.platformFee first (preferred)
+    if (booking.pricing && booking.pricing.platformFee != null) {
+        platformFee = booking.pricing.platformFee;
+    } 
+    // Fallback to flat platformFee field
+    else if (booking.platformFee != null) {
+        platformFee = booking.platformFee;
+    }
+    
+    return platformFee;
+}
+
+/**
+ * STEP 2: SHARED HELPER - Calculate technician amount safely
+ * Ensures technician amount is never negative
+ */
+function calculateTechnicianAmountSafely(bookingTotal: number, platformFee: number, bookingId: string): number {
+    let technicianAmount = bookingTotal - platformFee;
+    
+    // Ensure never negative
+    if (technicianAmount < 0) {
+        console.warn(`[RAZORPAY] Negative technician amount prevented - Booking: ${bookingId}, Total: ${bookingTotal}, Fee: ${platformFee}`);
+        technicianAmount = 0;
+    }
+    
+    return technicianAmount;
+}
+
+/**
  * Handle legacy booking payments (backward compatibility)
  */
 async function handleLegacyBookingPayment(orderId: string, paymentId: string, amount: number, payload: any) {
@@ -600,6 +635,44 @@ async function processBookingPayment(
 
     // Use transaction for atomic update with idempotency inside
     await db.runTransaction(async (transaction) => {
+        // Re-read booking inside transaction to check current state
+        const currentBookingDoc = await transaction.get(bookingRef);
+        
+        if (!currentBookingDoc.exists) {
+            console.error(`${LOG_PREFIX} booking_missing_in_transaction - Booking: ${orderData.bookingId}`);
+            throw new Error("BOOKING_NOT_FOUND");
+        }
+        
+        const currentBooking = currentBookingDoc.data();
+        
+        // Check if already paid inside transaction
+        if (currentBooking?.payment?.status === "paid") {
+            console.log(`${LOG_PREFIX} duplicate_ignored - Booking already paid in transaction: ${orderData.bookingId}`);
+            throw new Error("IDEMPOTENCY_CHECK_FAILED");
+        }
+        
+        // STEP 3: ADD PAYMENT PROCESSING LOCK (ANTI-RACE)
+        // Prevent simultaneous client + webhook processing
+        if (currentBooking?.payment?.status === 'processing') {
+            console.log(`${LOG_PREFIX} webhook_concurrent_attempt - Payment already being processed: ${orderData.bookingId}`);
+            // Log concurrent attempt
+            transaction.set(db.collection('payment_logs').doc(), {
+                bookingId: orderData.bookingId,
+                orderId: razorpayOrderId,
+                paymentId,
+                status: 'webhook_concurrent_attempt',
+                action: 'webhook_race_prevented',
+                source: 'webhook',
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            throw new Error("CONCURRENT_PROCESSING");
+        }
+        
+        // Set processing lock before any updates
+        transaction.update(bookingRef, {
+            'payment.status': 'processing'
+        });
+        
         // Re-read order to check status inside transaction
         const orderRef = db.collection("razorpayOrders").doc(razorpayOrderId);
         const orderDoc = await transaction.get(orderRef);
@@ -648,6 +721,18 @@ async function processBookingPayment(
         }
 
         transaction.update(bookingRef, updateData);
+        
+        // STEP 5: LOG ALL EDGE EVENTS - Log webhook processing
+        transaction.set(db.collection('payment_logs').doc(), {
+            bookingId: orderData.bookingId,
+            orderId: razorpayOrderId,
+            paymentId,
+            amount,
+            action: 'webhook_processed',
+            method: payment?.method,
+            source: 'webhook',
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
     });
 
     if (orderData.technicianId) {
@@ -789,6 +874,7 @@ async function sendPaymentNotifications(booking: any, bookingId: string, amount:
 
 /**
  * Credit technician wallet after booking payment
+ * STEP 1: Uses safe platform fee extraction and prevents negative amounts
  */
 async function creditTechnicianWalletV2(
     techId: string,
@@ -797,8 +883,32 @@ async function creditTechnicianWalletV2(
     pricing: any
 ) {
     try {
-        const commissionRate = 0.15;
-        const technicianAmount = totalAmount * (1 - commissionRate);
+        // STEP 1: FIX PLATFORM FEE SOURCE - Safe extraction from multiple sources
+        let platformFee = 0;
+        if (pricing && pricing.platformFee != null) {
+            platformFee = pricing.platformFee;
+        }
+        
+        // Calculate technician amount
+        let technicianAmount = totalAmount - platformFee;
+        
+        // STEP 1: Ensure technicianAmount NEVER negative
+        if (technicianAmount < 0) {
+            console.warn(`${LOG_PREFIX} Negative technician amount prevented in wallet credit - Booking: ${bookingId}, Total: ${totalAmount}, Fee: ${platformFee}`);
+            technicianAmount = 0;
+            
+            // Log edge case
+            await db.collection('payment_logs').add({
+                bookingId,
+                technicianId: techId,
+                status: 'negative_amount_prevented',
+                action: 'wallet_credit_edge_case',
+                totalAmount,
+                platformFee,
+                source: 'webhook',
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            }).catch(err => console.error(`${LOG_PREFIX} Failed to log edge case:`, err));
+        }
 
         const walletRef = db.collection('technician_wallets').doc(techId);
         const txnRef = walletRef.collection('transactions').doc();
@@ -830,14 +940,14 @@ async function creditTechnicianWalletV2(
                 source: 'booking',
                 status: 'completed',
                 amount: technicianAmount,
-                fee: 0,
+                fee: platformFee,
                 referenceId: bookingId,
                 description: `Payment for booking`,
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
         });
 
-        console.log(`${LOG_PREFIX} credit_success - Technician: ${techId}, Booking: ${bookingId}, Amount: ${technicianAmount}`);
+        console.log(`${LOG_PREFIX} credit_success - Technician: ${techId}, Booking: ${bookingId}, Amount: ${technicianAmount}, Platform Fee: ${platformFee}`);
     } catch (error) {
         console.error(`${LOG_PREFIX} credit_error - Technician: ${techId}, Error:`, error);
     }

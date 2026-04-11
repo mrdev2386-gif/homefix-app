@@ -13,6 +13,7 @@ import 'package:customer_app/core/services/functions_service.dart';
 import 'package:customer_app/core/models/address.dart';
 import '../../profile/presentation/saved_addresses_screen.dart';
 import '../../home/main_wrapper_screen.dart';
+import '../../../core/constants/navigation_constants.dart';
 import 'booking_status_screen.dart';
 import '../../payment/presentation/payment_screen.dart';
 
@@ -131,40 +132,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
         // PAY BEFORE WORK: payment first, booking created only after verified payment
         if (_paymentMode == 'before_work') {
-          setState(() { _isProcessing = false; _submitLock = false; }); // release lock before navigation
-
-          final bookingParams = {
-            'serviceId': firstItem.serviceId,
-            'technicianId': checkout.selectedTechnicianId!,
-            'categoryId': firstItem.categoryId,
-            'categoryName': firstItem.categoryName,
-            'scheduledDate': scheduledDate.toIso8601String(),
-            'scheduledTime': timeSlot,
-            'address': checkout.selectedAddress!.toMap(),
-            if (firstItem.subServiceId != null) 'subcategoryId': firstItem.subServiceId,
-            'paymentMode': 'before_work',
-          };
-
-          final bookingId = await Navigator.push<String?>(
-            context,
-            MaterialPageRoute(
-              builder: (context) => PaymentScreen(bookingParams: bookingParams),
-            ),
-          );
-
-          if (!mounted) return;
-
-          if (bookingId != null && bookingId.isNotEmpty) {
-            // Payment verified + booking created on backend
-            try {
-              await Provider.of<CartProvider>(context, listen: false).clearCart();
-              Provider.of<CheckoutProvider>(context, listen: false).clear();
-            } catch (_) {}
-            _showBookingPendingSheet(bookingId);
-          } else {
-            // Payment cancelled or failed — no booking was created
-            _showError('Payment was not completed. No booking was created.');
-          }
+          _showError('Pay Before Work is not yet available. Please select Pay After Work.');
           return;
         }
 
@@ -244,6 +212,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   void _showSearchingSheet(String bookingId) {
+    // Navigation lock to prevent double navigation
+    bool hasNavigated = false;
+    
     showModalBottomSheet(
       context: context,
       isDismissible: false,
@@ -286,9 +257,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               height: 56,
               child: ElevatedButton(
                 onPressed: () {
+                  // Prevent duplicate navigation
+                  if (hasNavigated) return;
+                  hasNavigated = true;
+                  
+                  // Safety check: ensure widget is still mounted
+                  if (!mounted) return;
+                  
+                  // Navigate to MainWrapperScreen with Bookings tab selected and focus on this booking
                   Navigator.of(context).pushAndRemoveUntil(
                     MaterialPageRoute(
-                      builder: (context) => BookingStatusScreen(bookingId: bookingId),
+                      builder: (context) => MainWrapperScreen(
+                        initialIndex: NavigationConstants.bookingsTabIndex,
+                        focusBookingId: bookingId,
+                      ),
                     ),
                     (route) => false,
                   );
@@ -304,6 +286,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   /// NEW FLOW: Show when booking is pending admin approval
   void _showBookingPendingSheet(String bookingId) {
+    // Navigation lock to prevent double navigation
+    bool hasNavigated = false;
+    
     showModalBottomSheet(
       context: context,
       isDismissible: false,
@@ -346,9 +331,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               height: 56,
               child: ElevatedButton(
                 onPressed: () {
+                  // Prevent duplicate navigation
+                  if (hasNavigated) return;
+                  hasNavigated = true;
+                  
+                  // Safety check: ensure widget is still mounted
+                  if (!mounted) return;
+                  
+                  // Navigate to MainWrapperScreen with Bookings tab selected and focus on this booking
                   Navigator.of(context).pushAndRemoveUntil(
                     MaterialPageRoute(
-                      builder: (context) => BookingStatusScreen(bookingId: bookingId),
+                      builder: (context) => MainWrapperScreen(
+                        initialIndex: NavigationConstants.bookingsTabIndex,
+                        focusBookingId: bookingId,
+                      ),
                     ),
                     (route) => false,
                   );
@@ -363,6 +359,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   void _showSuccessSheet(String bookingId) {
+    // Navigation lock to prevent double navigation
+    bool hasNavigated = false;
+    
     showModalBottomSheet(
       context: context,
       isDismissible: false,
@@ -396,8 +395,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               height: 56,
               child: ElevatedButton(
                 onPressed: () {
+                  // Prevent duplicate navigation
+                  if (hasNavigated) return;
+                  hasNavigated = true;
+                  
+                  // Safety check: ensure widget is still mounted
+                  if (!mounted) return;
+                  
+                  // Navigate to MainWrapperScreen with Bookings tab selected and focus on this booking
                   Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (context) => BookingStatusScreen(bookingId: bookingId)),
+                    MaterialPageRoute(
+                      builder: (context) => MainWrapperScreen(
+                        initialIndex: NavigationConstants.bookingsTabIndex,
+                        focusBookingId: bookingId,
+                      ),
+                    ),
                     (route) => false,
                   );
                 },

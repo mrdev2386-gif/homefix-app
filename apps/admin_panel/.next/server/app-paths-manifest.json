@@ -1,3 +1,5 @@
 {
-  "/(admin)/bookings/page": "app/(admin)/bookings/page.js"
+  "/(admin)/bookings/page": "app/(admin)/bookings/page.js",
+  "/(admin)/services/page": "app/(admin)/services/page.js",
+  "/(admin)/bookings/[bookingId]/page": "app/(admin)/bookings/[bookingId]/page.js"
 }

@@ -12,9 +12,7 @@ import { testAuth } from './testing/testAuth';
 import { getAppConfig } from './shared/config';
 import * as crypto from 'crypto';
 
-// Environment variables for Razorpay configuration
-const razorpayKeyId = process.env.RAZORPAY_KEY_ID || '';
-const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET || '';
+
 
 import * as adminDashboard from './admin/dashboard';
 import * as adminUsers from './admin/users';
@@ -29,11 +27,17 @@ import * as adminDynamic from './admin/dynamic_content';
 // Wallet Operations (Atomic & Safe) - CONSOLIDATED
 import * as walletSafety from './shared/wallet_safety';
 
-// Payment Modules (Razorpay Integration)
+// Payment Modules (Razorpay after-service payment only)
 import * as razorpayPayments from './payments/razorpay';
+export const createPaymentOrder = razorpayPayments.createPaymentOrder;
+export const verifyPayment = razorpayPayments.verifyPayment;
+export const createRazorpayOrder = razorpayPayments.createRazorpayOrder;
+export const initiateRefund = razorpayPayments.initiateRefund;
+export const handlePaymentFailure = razorpayPayments.handlePaymentFailure;
+export const canRetryPayment = razorpayPayments.canRetryPayment;
+
+// Payment Modules (Technician Payouts)
 import * as technicianPayouts from './payments/payouts';
-import { razorpayWebhookV2 } from './payments/razorpayWebhookV2';
-import * as afterServicePayment from './payments/after_service_payment';
 
 // Partner Applications
 import * as partnerApplications from './partner/applications';
@@ -96,8 +100,7 @@ const db = admin.firestore();
 
 const getDb = () => admin.firestore();
 
-// Import direct Razorpay instance
-const { razorpay } = require('./config/razorpay');
+
 
 // Helpers
 import { sendPushNotification, NotificationPayload } from './shared/notifications';
@@ -277,8 +280,6 @@ export async function isAdmin(uid: string) {
 
 // 1. CUSTOMER CALLABLES
 
-export const initiateRazorpayPayment = razorpayPayments.createPaymentOrder;
-export const verifyRazorpayPayment = razorpayPayments.verifyPayment;
 export const processWalletTransaction = walletSafety.creditWalletAtomic;
 
 export const updateUserProfile = customerFeatures.updateUserProfile;
@@ -620,20 +621,7 @@ export const onCustomRequestCreatedAlertTechnicians = techAlerts.onCustomRequest
 
 export const onBookingCompletedAwardReferral = customerFeatures.onBookingCompletedAwardReferral;
 
-// ==========================================
-// RAZORPAY PAYMENT INTEGRATION
-// ==========================================
 
-// Razorpay Payment Functions (Single Source of Truth)
-export { razorpayWebhookV2 };
-export const createRazorpayOrder = razorpayPayments.createRazorpayOrder;
-export const initiateRefund = razorpayPayments.initiateRefund;
-export const confirmAfterServicePayment = afterServicePayment.confirmAfterServicePayment;
-
-// Pre-Payment Flow (Pay Before Work)
-import * as prePayment from './payments/pre_payment';
-export const createPrePaymentOrder = prePayment.createPrePaymentOrder;
-export const verifyAndCreateBooking = prePayment.verifyAndCreateBooking;
 
 // Payout Functions (Admin)
 export const getPendingPayouts = technicianPayouts.getPendingPayouts;
