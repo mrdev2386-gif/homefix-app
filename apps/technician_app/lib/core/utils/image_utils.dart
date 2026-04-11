@@ -2,14 +2,10 @@
 /// Provides safe sanitization of image URLs read from Firestore.
 library;
 
-const String _kPlaceholderUrl =
-    'https://via.placeholder.com/400x300.png?text=HomeFix';
-
 /// Sanitizes an image URL from Firestore.
 ///
-/// Returns a reliable placeholder if the URL is null, empty, or does not
-/// start with "http". Use this wherever imageUrl is read from a Firestore
-/// document before passing it to [SafeNetworkImage].
+/// Returns null if the URL is invalid, which signals SafeNetworkImage
+/// to show an icon-based fallback instead of attempting to load an image.
 ///
 /// Example:
 /// ```dart
@@ -17,12 +13,12 @@ const String _kPlaceholderUrl =
 ///   imageUrl: sanitizeImageUrl(technician.profileImageUrl),
 /// )
 /// ```
-String sanitizeImageUrl(String? url) {
+String? sanitizeImageUrl(String? url) {
   if (url == null || url.isEmpty) {
-    return _kPlaceholderUrl;
+    return null;
   }
   if (!url.startsWith('http')) {
-    return _kPlaceholderUrl;
+    return null;
   }
   return url;
 }

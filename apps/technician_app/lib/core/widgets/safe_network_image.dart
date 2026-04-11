@@ -7,7 +7,6 @@ class SafeNetworkImage extends StatelessWidget {
   final double? height;
   final BoxFit fit;
   final double borderRadius;
-  final String placeholderAsset;
 
   const SafeNetworkImage({
     super.key,
@@ -16,7 +15,6 @@ class SafeNetworkImage extends StatelessWidget {
     this.height,
     this.fit = BoxFit.cover,
     this.borderRadius = 0,
-    this.placeholderAsset = 'assets/images/placeholder.png',
   });
 
   /// Sanitizes a dimension — never returns Infinity/NaN/zero
@@ -54,14 +52,7 @@ class SafeNetworkImage extends StatelessWidget {
 
         Widget imageWidget;
         if (!hasUrl) {
-          imageWidget = Image.asset(
-            placeholderAsset,
-            width: safeWidth,
-            height: safeHeight,
-            fit: fit,
-            errorBuilder: (context, error, stackTrace) =>
-                _buildErrorWidget(safeWidth, safeHeight),
-          );
+          imageWidget = _buildErrorWidget(safeWidth, safeHeight);
         } else {
           imageWidget = Image.network(
             imageUrl!,
@@ -102,23 +93,15 @@ class SafeNetworkImage extends StatelessWidget {
   }
 
   Widget _buildErrorWidget(double safeWidth, double safeHeight) {
-    // Use reliable placeholder image
-    const fallbackImage = 'https://via.placeholder.com/400x300.png?text=HomeFix';
-
     return Container(
       width: safeWidth,
       height: safeHeight,
       color: Colors.grey[200],
-      child: Center(
-        child: Image.network(
-          fallbackImage,
-          fit: fit,
-          width: safeWidth,
-          height: safeHeight,
-          errorBuilder: (context, error, stackTrace) {
-            // Ultimate fallback - show icon if even placeholder fails
-            return const Icon(Icons.image_not_supported_outlined, color: Colors.grey);
-          },
+      child: const Center(
+        child: Icon(
+          Icons.image_not_supported_outlined,
+          color: Colors.grey,
+          size: 48,
         ),
       ),
     );

@@ -42,11 +42,11 @@ export const getDashboardStats = functions.region('asia-south1').https.onCall(
             safeCount(db.collection('customers')),
             safeCount(db.collection('technicians')),
             safeCount(db.collection('bookings').where('createdAt', '>=', today)),
-            safeCount(db.collection('bookings').where('status', '==', 'pending_payment')),
-            safeCount(db.collection('bookings').where('status', '==', 'confirmed')),
-            safeCount(db.collection('bookings').where('status', 'in', ['assigned', 'on_the_way', 'started'])),
-            safeCount(db.collection('bookings').where('status', '==', 'completed')),
-            safeCount(db.collection('bookings').where('status', '==', 'cancelled')),
+            safeCount(db.collection('bookings').where('bookingStatus', '==', 'pending_payment')),
+            safeCount(db.collection('bookings').where('bookingStatus', '==', 'confirmed')),
+            safeCount(db.collection('bookings').where('bookingStatus', 'in', ['assigned', 'on_the_way', 'started'])),
+            safeCount(db.collection('bookings').where('bookingStatus', '==', 'completed')),
+            safeCount(db.collection('bookings').where('bookingStatus', '==', 'cancelled')),
             safeCount(db.collection('technicians').where('status', '==', 'pending')),
             safeCount(db.collection('technicians').where('isAvailable', '==', true))
         ]);
@@ -100,7 +100,7 @@ export const getDashboardStats = functions.region('asia-south1').https.onCall(
                     customerName: data.customerName || 'Unknown',
                     serviceTitle: data.serviceName || data.serviceTitle || 'Service',
                     amount: data.finalAmount || data.price || 0,
-                    status: data.status || 'unknown',
+                    status: data.bookingStatus || 'unknown',
                     createdAt: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString()
                 };
             });

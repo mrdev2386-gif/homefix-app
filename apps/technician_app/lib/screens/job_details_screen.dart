@@ -18,11 +18,18 @@ class JobDetailsScreen extends StatefulWidget {
 class _JobDetailsScreenState extends State<JobDetailsScreen> {
   // STEP 3: Action spam hard guard
   bool _isActionRunning = false;
+  late Booking _booking;
+
+  @override
+  void initState() {
+    super.initState();
+    _booking = widget.booking;
+  }
 
   // STEP 1: Helper to safely get technician earnings (technicianAmount > finalAmount > 0)
   double _getTechnicianEarnings() {
     // Try to get technicianAmount from quoteData first
-    final quoteData = widget.booking.quoteData;
+    final quoteData = _booking.quoteData;
     if (quoteData != null) {
       final techAmount = quoteData['technicianAmount'];
       if (techAmount != null) {
@@ -31,15 +38,15 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
       }
     }
     // Fallback to finalAmount, then price, then 0
-    if (widget.booking.finalAmount > 0) return widget.booking.finalAmount;
-    if (widget.booking.price > 0) return widget.booking.price;
+    if (_booking.finalAmount > 0) return _booking.finalAmount;
+    if (_booking.price > 0) return _booking.price;
     return 0.0;
   }
 
   // STEP 2: Timezone-safe time display
   String _formatScheduledAt() {
     try {
-      final scheduledAt = widget.booking.scheduledAt;
+      final scheduledAt = _booking.scheduledAt;
       // Display in local device timezone with 12-hour format
       return DateFormat('EEEE, dd MMM yyyy').format(scheduledAt.toLocal());
     } catch (e) {
@@ -51,8 +58,10 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
   bool _isKnownStatus(String status) {
     const knownStatuses = [
       'admin_approved',
+      'approved_by_admin',
       'technician_accepted',
       'awaiting_payment',
+      'awaiting_customer_payment',
       'pending',
       'confirmed',
       'accepted',
@@ -61,13 +70,31 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
       'completed',
       'cancelled',
       'rejected',
-      'awaiting_customer_payment',
     ];
     return knownStatuses.contains(status);
   }
 
   @override
   Widget build(BuildContext context) {
+    // STEP 2: REAL-TIME STREAM - Use Firestore stream for live updates
+    return StreamBuilder<Booking?>(
+      stream: BookingService().getBookingStream(_booking.bookingId),
+      builder: (context, snapshot) {
+        // Update booking if new data arrives
+        if (snapshot.hasData && snapshot.data != null) {
+          _booking = snapshot.data!;
+        }
+        
+        // DEBUG: Log booking data
+        debugPrint('[BOOKING UPDATE] ${_booking.toJson()}');
+        debugPrint('[JOB STATUS] ${_booking.status}');
+        
+        return _buildJobDetailsScaffold(context);
+      },
+    );
+  }
+
+  Widget _buildJobDetailsScaffold(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
@@ -87,14 +114,14 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
               Stack(
                 children: [
                   SafeNetworkImage(
-                    imageUrl: widget.booking.serviceImage,
+                    imageUrl: _booking.serviceImage,
                     height: 240,
                     width: double.infinity,
                   ),
                   Positioned(
                     top: 16,
                     right: 16,
-                    child: _buildStatusPill(widget.booking.status),
+                    child: _buildStatusPill(_booking.status),
                   ),
                 ],
               ),
@@ -116,7 +143,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
                         children: [
                           Expanded(
                             child: Text(
-                              widget.booking.serviceTitle,
+                              _booking.serviceTitle,
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 26,
                                 fontWeight: FontWeight.bold,
@@ -137,7 +164,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        "Booking ID: #${widget.booking.bookingId.substring(0, 8).toUpperCase()}",
+                        "Booking ID: #${_booking.bookingId.substring(0, 8).toUpperCase()}",
                         style: GoogleFonts.plusJakartaSans(
                           color: const Color(0xFF94A3B8),
                           fontSize: 13,
@@ -150,7 +177,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
                       const SizedBox(height: 16),
                       _buildCustomerCard(),
                       
-                      if (widget.booking.addressSnapshot['latitude'] != null && widget.booking.addressSnapshot['longitude'] != null) ...[
+                      if (_booking.addressSnapshot['latitude'] != null && _booking.addressSnapshot['longitude'] != null) ...[
                         const SizedBox(height: 16),
                         _buildLocationPreview(),
                       ],
@@ -161,10 +188,10 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
                       _buildDetailCard([
                         _buildInfoRow(Icons.calendar_today_rounded, "Appointment Date", _formatScheduledAt()),
                         const Divider(height: 32, color: Color(0xFFF1F5F9)),
-                        _buildInfoRow(Icons.access_time_rounded, "Preferred Slot", widget.booking.scheduledTime),
+                        _buildInfoRow(Icons.access_time_rounded, "Preferred Slot", _booking.scheduledTime),
                       ]),
 
-                      if (widget.booking.problemDescription != null && widget.booking.problemDescription!.trim().isNotEmpty) ...[
+                      if (_booking.problemDescription != null && _booking.problemDescription!.trim().isNotEmpty) ...[
                         const SizedBox(height: 32),
                         _buildSectionTitle("Special Instructions"),
                         const SizedBox(height: 12),
@@ -183,7 +210,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  widget.booking.problemDescription!,
+                                  _booking.problemDescription!,
                                   style: GoogleFonts.plusJakartaSans(
                                     color: const Color(0xFF0C4A6E),
                                     height: 1.6,
@@ -210,7 +237,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
                         ),
                         child: Column(
                           children: [
-                            _buildPriceRow("Service Price", "₹${(widget.booking.price as num?)?.toDouble() ?? 0}"),
+                            _buildPriceRow("Service Price", "₹${(_booking.price as num?)?.toDouble() ?? 0}"),
                             const Padding(
                               padding: EdgeInsets.symmetric(vertical: 16),
                               child: Divider(color: Colors.white10),
@@ -234,40 +261,117 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
 }
 
   Widget? _buildBottomSheet(BuildContext context) {
-    final status = widget.booking.status;
+    final status = _booking.status;
     
     // STEP 6: Status fallback - hide action bar for unknown status
     if (!_isKnownStatus(status)) {
       return null;
     }
     
-    if (status == 'admin_approved' || status == 'pending') {
+    // STEP 4: NEW JOB ASSIGNED - Show when admin approves
+    if (status == 'admin_approved' || status == 'approved_by_admin' || status == 'pending') {
       return _ActionBar(
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: () => _handleAction(context, 'reject'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 56),
-                  side: const BorderSide(color: Color(0xFFEF4444), width: 2),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                child: Text("Reject", style: GoogleFonts.plusJakartaSans(color: const Color(0xFFEF4444), fontWeight: FontWeight.bold, fontSize: 16)),
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF3C7),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFFDE68A)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.assignment_ind, color: Color(0xFFCA8A04), size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'New Job Assigned',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF854D0E),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              flex: 2,
-              child: ElevatedButton(
-                onPressed: () => _handleAction(context, 'accept'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF6366F1),
-                  minimumSize: const Size(double.infinity, 56),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  elevation: 2,
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => _handleAction(context, 'reject'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 56),
+                      side: const BorderSide(color: Color(0xFFEF4444), width: 2),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    child: Text("Reject", style: GoogleFonts.plusJakartaSans(color: const Color(0xFFEF4444), fontWeight: FontWeight.bold, fontSize: 16)),
+                  ),
                 ),
-                child: Text("Accept Job", style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(width: 16),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton(
+                    onPressed: () => _handleAction(context, 'accept'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF6366F1),
+                      minimumSize: const Size(double.infinity, 56),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      elevation: 2,
+                    ),
+                    child: Text("Accept Job", style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    // STEP 5: IN PROGRESS - Show when technician accepts
+    if (status == 'confirmed' || status == 'accepted' || status == 'technician_accepted') {
+      return _ActionBar(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFDCFCE7),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Color(0xFF16A34A), size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'In Progress - Ready to start work',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF166534),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: () => _handleAction(context, 'start'),
+              icon: const Icon(Icons.play_arrow_rounded, color: Colors.white),
+              label: Text("START JOB", style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1),
+                minimumSize: const Size(double.infinity, 56),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
             ),
           ],
@@ -275,47 +379,94 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
       );
     }
 
-    if (status == 'confirmed' || status == 'accepted') {
-      return _ActionBar(
-        child: ElevatedButton.icon(
-          onPressed: () => _handleAction(context, 'start'),
-          icon: const Icon(Icons.play_arrow_rounded, color: Colors.white),
-          label: Text("START JOB", style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF6366F1),
-            minimumSize: const Size(double.infinity, 56),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          ),
-        ),
-      );
-    }
-
+    // STEP 5: COMPLETE SERVICE BUTTON - Show when work is in progress
     if (status == 'in_progress' || status == 'started') {
       return _ActionBar(
-        child: ElevatedButton.icon(
-          onPressed: () => _handleAction(context, 'complete'),
-          icon: const Icon(Icons.check_circle_outline_rounded, color: Colors.white),
-          label: Text("COMPLETE JOB", style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF10B981),
-            minimumSize: const Size(double.infinity, 56),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF3C7),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFFDE68A)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.build, color: Color(0xFFCA8A04), size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Service In Progress',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF854D0E),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: () => _handleAction(context, 'complete'),
+              icon: const Icon(Icons.check_circle_outline_rounded, color: Colors.white),
+              label: Text("COMPLETE SERVICE", style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF10B981),
+                minimumSize: const Size(double.infinity, 56),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+            ),
+          ],
         ),
       );
     }
 
-    if (status == 'awaiting_customer_payment') {
+    // STEP 4: WAITING FOR PAYMENT
+    if (status == 'awaiting_customer_payment' || status == 'awaiting_payment') {
       return _ActionBar(
-        child: ElevatedButton.icon(
-          onPressed: () => _showQRScanner(context),
-          icon: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white),
-          label: Text("SCAN FOR PAYMENT", style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF6366F1),
-            minimumSize: const Size(double.infinity, 56),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFDBEAFE)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.payment, color: Color(0xFF2563EB), size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Waiting for Payment',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF1E40AF),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: () => _showQRScanner(context),
+              icon: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white),
+              label: Text("SCAN FOR PAYMENT", style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1),
+                minimumSize: const Size(double.infinity, 56),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -347,13 +498,13 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     final service = BookingService();
     try {
       if (action == 'accept') {
-        await service.acceptBooking(widget.booking.id, idempotencyKey: idempotencyKey);
+        await service.acceptBooking(_booking.id, idempotencyKey: idempotencyKey);
       } else if (action == 'reject') {
-        await service.rejectBooking(widget.booking.id, idempotencyKey: idempotencyKey);
+        await service.rejectBooking(_booking.id, idempotencyKey: idempotencyKey);
       } else if (action == 'start') {
-        await service.updateBookingStatus(widget.booking.id, 'in_progress');
+        await service.updateBookingStatus(_booking.id, 'in_progress');
       } else if (action == 'complete') {
-        await service.markWorkCompleted(widget.booking.id);
+        await service.markWorkCompleted(_booking.id);
       }
       
       if (!mounted) return;
@@ -483,17 +634,38 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
   Widget _buildStatusPill(String status) {
     // STEP 6: Status fallback - neutral color for unknown status
     Color color = const Color(0xFF6366F1);
-    if (status == 'completed') color = const Color(0xFF10B981);
-    if (status == 'started' || status == 'in_progress') color = const Color(0xFFF59E0B);
-    if (status == 'cancelled' || status == 'rejected') color = const Color(0xFFEF4444);
-    if (status == 'admin_approved' || status == 'pending') color = const Color(0xFF8B5CF6);
-    if (status == 'technician_accepted' || status == 'awaiting_payment') color = const Color(0xFFF59E0B);
-    if (status == 'confirmed' || status == 'accepted') color = const Color(0xFF3B82F6);
-    if (status == 'awaiting_customer_payment') color = const Color(0xFF6366F1);
+    String displayText = status.toUpperCase().replaceAll('_', ' ');
+    
+    if (status == 'completed') {
+      color = const Color(0xFF10B981);
+      displayText = 'COMPLETED';
+    } else if (status == 'started' || status == 'in_progress') {
+      color = const Color(0xFFF59E0B);
+      displayText = 'IN PROGRESS';
+    } else if (status == 'cancelled' || status == 'rejected') {
+      color = const Color(0xFFEF4444);
+      displayText = status == 'cancelled' ? 'CANCELLED' : 'REJECTED';
+    } else if (status == 'admin_approved' || status == 'approved_by_admin') {
+      color = const Color(0xFF8B5CF6);
+      displayText = 'NEW JOB ASSIGNED';
+    } else if (status == 'technician_accepted') {
+      color = const Color(0xFF10B981);
+      displayText = 'ACCEPTED';
+    } else if (status == 'awaiting_payment' || status == 'awaiting_customer_payment') {
+      color = const Color(0xFFF59E0B);
+      displayText = 'WAITING FOR PAYMENT';
+    } else if (status == 'confirmed' || status == 'accepted') {
+      color = const Color(0xFF3B82F6);
+      displayText = 'CONFIRMED';
+    } else if (status == 'pending') {
+      color = const Color(0xFF8B5CF6);
+      displayText = 'PENDING';
+    }
     
     // Unknown status gets neutral gray color
     if (!_isKnownStatus(status)) {
       color = const Color(0xFF6B7280);
+      displayText = 'UNKNOWN';
     }
 
     return Container(
@@ -519,7 +691,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
           ),
           const SizedBox(width: 8),
           Text(
-            _isKnownStatus(status) ? status.toUpperCase().replaceAll('_', ' ') : 'UNKNOWN',
+            displayText,
             style: GoogleFonts.plusJakartaSans(
               fontSize: 11,
               color: const Color(0xFF0F172A),
@@ -532,8 +704,8 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
   }
 
   Widget _buildCustomerCard() {
-    final phone = widget.booking.addressSnapshot['phone'] as String? ?? '';
-    final address = widget.booking.addressSnapshot['fullAddress'] as String? ?? 'Address not available';
+    final phone = _booking.addressSnapshot['phone'] as String? ?? '';
+    final address = _booking.addressSnapshot['fullAddress'] as String? ?? 'Address not available';
     
     return Container(
       padding: const EdgeInsets.all(20),
@@ -550,7 +722,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
                 radius: 28,
                 backgroundColor: const Color(0xFFEEF2FF),
                 child: Text(
-                  widget.booking.customerName.isNotEmpty ? widget.booking.customerName[0].toUpperCase() : 'C',
+                  _booking.customerName.isNotEmpty ? _booking.customerName[0].toUpperCase() : 'C',
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -564,7 +736,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      widget.booking.customerName,
+                      _booking.customerName,
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -651,8 +823,8 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
   }
 
   Widget _buildLocationPreview() {
-    final lat = (widget.booking.addressSnapshot['latitude'] as num?)?.toDouble();
-    final lng = (widget.booking.addressSnapshot['longitude'] as num?)?.toDouble();
+    final lat = (_booking.addressSnapshot['latitude'] as num?)?.toDouble();
+    final lng = (_booking.addressSnapshot['longitude'] as num?)?.toDouble();
     
     if (lat == null || lng == null) return const SizedBox.shrink();
     
@@ -837,9 +1009,9 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     try {
       final service = BookingService();
       await service.confirmQRPayment(
-        bookingId: widget.booking.id,
-        customerId: widget.booking.customerId,
-        amount: widget.booking.finalAmount > 0 ? widget.booking.finalAmount : widget.booking.price,
+        bookingId: _booking.id,
+        customerId: _booking.customerId,
+        amount: _booking.finalAmount > 0 ? _booking.finalAmount : _booking.price,
       );
 
       if (!mounted) return;

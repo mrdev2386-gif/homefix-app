@@ -1186,6 +1186,31 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Service Image (if available)
+          if (booking.serviceImage != null && booking.serviceImage!.isNotEmpty) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(
+                booking.serviceImage!,
+                height: 120,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    height: 120,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.image_not_supported, size: 40, color: Color(0xFF94A3B8)),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -1221,12 +1246,15 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
                 child: const Icon(Icons.person_outline_rounded, size: 16, color: Color(0xFF64748B)),
               ),
               const SizedBox(width: 12),
-              Text(
-                booking.customerName,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF475569),
+              Expanded(
+                child: Text(
+                  booking.customerName,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF475569),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -1243,12 +1271,43 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
                 child: const Icon(Icons.calendar_today_rounded, size: 16, color: Color(0xFF64748B)),
               ),
               const SizedBox(width: 12),
-              Text(
-                '${booking.scheduledTime} | ${booking.scheduledAt.toString().split(' ')[0]}',
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF475569),
+              Expanded(
+                child: Text(
+                  '${booking.scheduledTime} | ${booking.scheduledAt.toString().split(' ')[0]}',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF475569),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Address
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.location_on_outlined, size: 16, color: Color(0xFF64748B)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  booking.address,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF475569),
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],

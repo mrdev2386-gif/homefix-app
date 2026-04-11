@@ -99,9 +99,15 @@ class BookingService {
         .where('bookingStatus', whereIn: BookingStatus.activeStatuses)
         .snapshots()
         .map((snapshot) {
-          return snapshot.docs
-              .map((doc) => Booking.fromFirestore(doc))
+          final bookings = snapshot.docs
+              .map((doc) {
+                final booking = Booking.fromFirestore(doc);
+                // Debug log booking data
+                debugPrint('[JOB CARD] ${booking.toJson()}');
+                return booking;
+              })
               .toList();
+          return bookings;
         }).handleError((e) {
           // PART 1: Robust error handling
           debugPrint('❌ [BookingService] Error fetching active bookings: $e');
@@ -217,5 +223,19 @@ class BookingService {
     final doc = await _db.collection('bookings').doc(bookingId).get();
     if (!doc.exists) return null;
     return Booking.fromFirestore(doc);
+  }
+
+  /// STEP 2: REAL-TIME STREAM - Get single booking stream for live updates
+  Stream<Booking?> getBookingStream(String bookingId) {
+    return _db.collection('bookings')
+        .doc(bookingId)
+        .snapshots()
+        .map((snapshot) {
+          if (!snapshot.exists) return null;
+          return Booking.fromFirestore(snapshot);
+        }).handleError((e) {
+          debugPrint('❌ [BookingService] Error fetching booking stream: $e');
+        })
+        .onErrorReturn(null);
   }
 }

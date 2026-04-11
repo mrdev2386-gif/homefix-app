@@ -83,7 +83,7 @@ class Booking {
           : null,
       scheduledTime: data['scheduledTime']?.toString(),
       addressSnapshot: Map<String, dynamic>.from(data['addressSnapshot'] ?? data['address'] ?? {}),
-      bookingStatus: (data['bookingStatus'] ?? data['status'] ?? 'pending').toString(),
+      bookingStatus: (data['bookingStatus'] ?? 'pending').toString(),
       statusHistory: data['statusHistory'] != null 
           ? List<Map<String, dynamic>>.from(data['statusHistory'])
           : null,
@@ -121,7 +121,6 @@ class Booking {
       'scheduledTime': scheduledTime,
       'addressSnapshot': addressSnapshot,
       'bookingStatus': bookingStatus,
-      'status': bookingStatus, // Backward compatibility
       'statusHistory': statusHistory,
       'paymentStatus': paymentStatus,
       'paymentMode': paymentMode,

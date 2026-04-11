@@ -45,6 +45,27 @@ class Booking {
   final Map<String, dynamic>? quoteData;
 
   String get id => bookingId;
+  
+  /// Get formatted address string from addressSnapshot
+  String get address {
+    if (addressSnapshot.isEmpty) return 'Address not available';
+    
+    // Try different field names for address
+    final addressStr = addressSnapshot['address'] ?? 
+                      addressSnapshot['fullAddress'] ?? 
+                      addressSnapshot['formattedAddress'] ?? '';
+    
+    if (addressStr.isNotEmpty) return addressStr.toString();
+    
+    // Build address from components
+    final parts = <String>[];
+    if (addressSnapshot['street'] != null) parts.add(addressSnapshot['street'].toString());
+    if (addressSnapshot['city'] != null) parts.add(addressSnapshot['city'].toString());
+    if (addressSnapshot['state'] != null) parts.add(addressSnapshot['state'].toString());
+    if (addressSnapshot['pincode'] != null) parts.add(addressSnapshot['pincode'].toString());
+    
+    return parts.isNotEmpty ? parts.join(', ') : 'Address not available';
+  }
 
   Booking({
     required this.bookingId,
@@ -96,25 +117,37 @@ class Booking {
       createdAt = DateTime.now();
     }
     
+    // Handle multiple field names for service image
+    final serviceImage = data['serviceImage'] ?? 
+                        data['imageUrl'] ?? 
+                        data['image'] ?? 
+                        data['serviceImageUrl'];
+    
+    // Handle multiple field names for address
+    final addressData = data['addressSnapshot'] ?? 
+                       data['address'] ?? 
+                       data['location'] ?? 
+                       <String, dynamic>{};
+    
     return Booking(
       bookingId: data['bookingId'] ?? doc.id,
       customerId: data['customerId'] ?? '',
-      customerName: data['customerName'] ?? 'Customer',
+      customerName: data['customerName'] ?? data['customer']?['name'] ?? 'Customer',
       serviceId: data['serviceId'] ?? '',
-      serviceTitle: data['serviceTitle'] ?? data['serviceName'] ?? '',
-      serviceImage: data['serviceImage'],
-      problemDescription: data['problemDescription'] ?? data['description'],
+      serviceTitle: data['serviceTitle'] ?? data['serviceName'] ?? data['service']?['name'] ?? 'Service',
+      serviceImage: serviceImage?.toString(),
+      problemDescription: data['problemDescription'] ?? data['description'] ?? data['problem'],
       assignedTechnicianId: data['technicianId'] ?? data['assignedTechnicianId'],
       assignedTechnicianName: data['technicianName'] ?? data['assignedTechnicianName'],
       slotId: data['slotId'] ?? '',
       scheduledAt: scheduledAt,
       scheduledTime: data['scheduledTime'] ?? '',
-      status: FirestoreSafeParser.toSafeString(data['status'] ?? data['bookingStatus'], fallback: 'pending'),
+      status: FirestoreSafeParser.toSafeString(data['bookingStatus'], fallback: 'pending'),
       paymentStatus: FirestoreSafeParser.toSafeString(data['paymentStatus'], fallback: 'unpaid'),
       paymentMode: data['paymentMode']?.toString(),
-      price: FirestoreSafeParser.toSafeDouble(data['price']),
-      finalAmount: FirestoreSafeParser.toSafeDouble(data['finalAmount'] ?? data['price']),
-      addressSnapshot: FirestoreSafeParser.toSafeMap(data['addressSnapshot'] ?? data['address']),
+      price: FirestoreSafeParser.toSafeDouble(data['price'] ?? data['amount']),
+      finalAmount: FirestoreSafeParser.toSafeDouble(data['finalAmount'] ?? data['price'] ?? data['amount']),
+      addressSnapshot: addressData is Map<String, dynamic> ? addressData : <String, dynamic>{},
       category: data['category']?.toString(),
       description: data['description']?.toString(),
       createdAt: createdAt,
@@ -136,7 +169,7 @@ class Booking {
       'slotId': slotId,
       'scheduledAt': Timestamp.fromDate(scheduledAt),
       'scheduledTime': scheduledTime,
-      'status': status,
+      'bookingStatus': status,
       'paymentStatus': paymentStatus,
       'paymentMode': paymentMode,
       'price': price,
@@ -146,6 +179,24 @@ class Booking {
       'description': description,
       'createdAt': Timestamp.fromDate(createdAt),
       'quoteData': quoteData,
+    };
+  }
+  
+  /// Debug helper to log booking data
+  Map<String, dynamic> toJson() {
+    return {
+      'bookingId': bookingId,
+      'customerId': customerId,
+      'customerName': customerName,
+      'serviceId': serviceId,
+      'serviceTitle': serviceTitle,
+      'serviceImage': serviceImage ?? 'NO_IMAGE',
+      'address': address,
+      'price': price,
+      'finalAmount': finalAmount,
+      'status': status,
+      'scheduledAt': scheduledAt.toIso8601String(),
+      'scheduledTime': scheduledTime,
     };
   }
 }

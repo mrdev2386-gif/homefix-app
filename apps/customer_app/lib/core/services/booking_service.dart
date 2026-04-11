@@ -169,9 +169,18 @@ class BookingService {
   }
 
   Stream<Booking?> getBookingStream(String bookingId) {
+    debugPrint('[BOOKING SERVICE] Creating stream for booking: $bookingId');
     return _db.collection('bookings').doc(bookingId).snapshots().map((doc) {
-      if (!doc.exists) return null;
-      return Booking.fromFirestore(doc);
+      debugPrint('[FIRESTORE SNAPSHOT] Received for booking: $bookingId, exists: ${doc.exists}');
+      if (!doc.exists) {
+        debugPrint('[FIRESTORE SNAPSHOT] Document does not exist');
+        return null;
+      }
+      final data = doc.data();
+      debugPrint('[FIRESTORE SNAPSHOT] Data: $data');
+      final booking = Booking.fromFirestore(doc);
+      debugPrint('[FIRESTORE SNAPSHOT] Parsed booking status: ${booking.bookingStatus}');
+      return booking;
     }).handleError((e) {
       // FIX 3 & 4: Network resilience
       final errorStr = e.toString().toLowerCase();

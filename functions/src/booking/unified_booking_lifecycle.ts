@@ -144,7 +144,6 @@ export const approveBookingByAdmin = functions
             
             updateBookingStatus(t, bookingRef, 'approved_by_admin', freshBooking, {
                 bookingStatus: 'approved_by_admin',
-                status: 'approved_by_admin',
                 technicianId: assignedTechnicianId,
                 technicianName: techData.name || freshBooking.technicianName || 'Technician',
                 technicianPhone: techData.phone || freshBooking.technicianPhone || '',
@@ -210,22 +209,36 @@ export const technicianAcceptBooking = functions
             const freshDoc = await t.get(bookingRef);
             if (!freshDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
             const freshBooking = freshDoc.data()!;
+            
+            // STEP 1: Update booking status with timestamp
             updateBookingStatus(t, bookingRef, 'technician_accepted', freshBooking, {
                 bookingStatus: 'technician_accepted',
                 acceptedAt: admin.firestore.FieldValue.serverTimestamp(),
+                technicianAcceptedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
+            
+            console.log(`✅ [technicianAcceptBooking] Booking ${bookingId} accepted by technician ${uid}`);
         });
 
+        // STEP 2: Send notification to customer
         const customerDoc = await db.collection('customers').doc(booking.customerId).get();
         const customerData = customerDoc.data();
 
         if (customerData?.fcmToken) {
+            console.log(`📲 [technicianAcceptBooking] Sending notification to customer ${booking.customerId}`);
             await sendNotificationToToken({
                 token: customerData.fcmToken,
-                title: 'Booking Accepted',
-                body: 'Your booking has been accepted by the technician',
-                data: { bookingId, type: 'booking_accepted' },
+                title: 'Technician Assigned',
+                body: 'Your technician has accepted the booking and will arrive soon',
+                data: { 
+                    bookingId, 
+                    type: 'booking_accepted',
+                    technicianId: uid,
+                    technicianName: booking.technicianName || 'Technician',
+                },
             });
+        } else {
+            console.warn(`⚠️ [technicianAcceptBooking] No FCM token for customer ${booking.customerId}`);
         }
 
         return { success: true, bookingStatus: 'technician_accepted' };
@@ -348,23 +361,35 @@ export const completeService = functions
             const freshDoc = await t.get(bookingRef);
             if (!freshDoc.exists) throw new functions.https.HttpsError('not-found', 'Booking not found');
             const freshBooking = freshDoc.data()!;
+            
+            // STEP 8: Update status to awaiting_payment
             updateBookingStatus(t, bookingRef, 'awaiting_payment', freshBooking, {
                 bookingStatus: 'awaiting_payment',
                 serviceCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
                 paymentStatus: 'awaiting_payment',
             });
+            
+            console.log(`✅ [completeService] Service completed for booking ${bookingId}, status set to awaiting_payment`);
         });
 
+        // STEP 9: Notify customer to make payment
         const customerDoc = await db.collection('customers').doc(booking.customerId).get();
         const customerData = customerDoc.data();
 
         if (customerData?.fcmToken) {
+            console.log(`📲 [completeService] Sending payment notification to customer ${booking.customerId}`);
             await sendNotificationToToken({
                 token: customerData.fcmToken,
                 title: 'Service Completed',
                 body: 'Your service has been completed. Please make payment and leave a review.',
-                data: { bookingId, type: 'service_completed' },
+                data: { 
+                    bookingId, 
+                    type: 'service_completed',
+                    action: 'make_payment',
+                },
             });
+        } else {
+            console.warn(`⚠️ [completeService] No FCM token for customer ${booking.customerId}`);
         }
 
         return { success: true, bookingStatus: 'service_completed' };
@@ -576,7 +601,6 @@ export const rejectBookingByAdmin = functions
         
         updateBookingStatus(t, bookingRef, 'rejected_by_admin', freshBooking, {
           bookingStatus: 'rejected_by_admin',
-          status: 'rejected_by_admin', // Backward compatibility
           rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
           rejectedBy: uid,
           rejectionReason: sanitize(reason) || 'Rejected by admin',
@@ -836,7 +860,6 @@ export const createBookingRequest = functions
           address: sanitizeAddress(address),
           paymentMethod: finalPaymentMethod,
           bookingStatus: 'pending_admin_review',
-          status: 'pending_admin_review',
           // INITIALIZE STATUS HISTORY
           statusHistory: [
             {
@@ -878,7 +901,6 @@ export const createBookingRequest = functions
           originalPrice: bookingData.originalPrice,
           offerPrice: bookingData.offerPrice,
           bookingStatus: bookingData.bookingStatus,
-          status: bookingData.status,
         });
 
         transaction.set(db.collection('bookings').doc(bookingId), bookingData);

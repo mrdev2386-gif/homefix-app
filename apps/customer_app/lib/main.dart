@@ -98,6 +98,20 @@ void main() async {
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   print('✅ Background message handler registered');
 
+  // STEP 7: Setup foreground message handler (CRITICAL for real-time notifications)
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    print('[FCM RECEIVED] Foreground message');
+    print('[FCM] Title: ${message.notification?.title}');
+    print('[FCM] Body: ${message.notification?.body}');
+    print('[FCM] Data: ${message.data}');
+    
+    // Show notification even when app is in foreground
+    if (message.notification != null) {
+      print('[FCM] ✅ Notification received in foreground: ${message.notification!.title}');
+    }
+  });
+  print('✅ Foreground message handler registered');
+
   print('🚀 Starting HomeFix App...');
   runApp(const HomeFixApp());
 }

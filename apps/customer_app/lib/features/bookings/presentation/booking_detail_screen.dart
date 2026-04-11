@@ -34,11 +34,22 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // DIAGNOSTIC: Log every build call
+    debugPrint('[BUILD CALLED] BookingDetailScreen rebuild triggered');
+    
     return StreamBuilder<Booking?>(
       stream: BookingService().getBookingStream(_booking.id),
       builder: (context, snapshot) {
+        // STEP 3: CHECK STREAM TRIGGER
+        debugPrint('[STREAM TRIGGERED] ConnectionState: ${snapshot.connectionState}, HasData: ${snapshot.hasData}');
+        
         if (snapshot.hasData && snapshot.data != null) {
+          // STEP 4: CHECK DATA FLOW
+          debugPrint('[BOOKING STATUS] Stream data received: ${snapshot.data!.bookingStatus}');
+          debugPrint('[BOOKING DATA] Full booking: ${snapshot.data!.toMap()}');
           _booking = snapshot.data!;
+        } else {
+          debugPrint('[STREAM WARNING] No data in snapshot or data is null');
         }
         return _buildScaffold(context, _booking);
       },
@@ -48,6 +59,20 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
   Widget _buildScaffold(BuildContext context, Booking booking) {
     // Use bookingStatus as source of truth, fall back to status
     final currentStatus = booking.bookingStatus.isNotEmpty ? booking.bookingStatus : booking.status;
+    
+    // STEP 10: DEBUG LOGS - Track booking status updates
+    debugPrint('[BOOKING STATUS UPDATE] Current: $currentStatus');
+    debugPrint('[BOOKING UPDATE] ${booking.toMap()}');
+    debugPrint('[BOOKING STATUS] Current: $currentStatus, Technician: ${booking.technicianName ?? "Not Assigned"}, Payment: ${booking.paymentStatus}');
+    
+    // STEP 5: CHECK UI CONDITION
+    final shouldShowTechnician = (currentStatus == 'approved_by_admin' || 
+                                   currentStatus == 'technician_accepted' || 
+                                   currentStatus == 'in_progress' || 
+                                   currentStatus == 'started' || 
+                                   currentStatus == 'awaiting_payment') && 
+                                  booking.technicianName != null;
+    debugPrint('[UI CONDITION] Should show technician: $shouldShowTechnician (status: $currentStatus, hasName: ${booking.technicianName != null})');
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FE),
@@ -140,35 +165,79 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
             ),
             const SizedBox(height: 20),
 
-            // Technician
-            if (booking.technicianName != null) ...[
+            // Technician - Show when approved_by_admin or technician_accepted
+            if ((currentStatus == 'approved_by_admin' || currentStatus == 'technician_accepted' || currentStatus == 'in_progress' || currentStatus == 'started' || currentStatus == 'awaiting_payment') && booking.technicianName != null) ...[
               _buildSectionTitle('Technician Details'),
               const SizedBox(height: 12),
               _buildInfoCard(
                 context,
-                child: Row(
+                child: Column(
                   children: [
-                    CircleAvatar(
-                      radius: 30,
-                      backgroundColor: const Color(0xFF6366F1).withOpacity(0.1),
-                      child: const Icon(Icons.person, color: Color(0xFF6366F1), size: 30),
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 30,
+                          backgroundColor: const Color(0xFF6366F1).withOpacity(0.1),
+                          child: const Icon(Icons.person, color: Color(0xFF6366F1), size: 30),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(booking.technicianName!, style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 4),
+                              Text(
+                                currentStatus == 'approved_by_admin' ? 'Technician Assigned' : 
+                                currentStatus == 'technician_accepted' ? 'Technician On The Way' :
+                                currentStatus == 'in_progress' || currentStatus == 'started' ? 'Service In Progress' :
+                                'Assigned Technician',
+                                style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey[600]),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (currentStatus != 'completed' && currentStatus != 'cancelled' && currentStatus != 'cancelled_by_customer')
+                          IconButton(
+                            icon: const Icon(Icons.phone, color: Color(0xFF6366F1)),
+                            onPressed: _callTechnician,
+                          ),
+                      ],
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFDBEAFE)),
+                      ),
+                      child: Row(
                         children: [
-                          Text(booking.technicianName!, style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 4),
-                          Text('Assigned Technician', style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey[600])),
+                          Icon(
+                            currentStatus == 'approved_by_admin' ? Icons.assignment_ind : 
+                            currentStatus == 'technician_accepted' ? Icons.directions_car :
+                            Icons.build,
+                            color: const Color(0xFF2563EB),
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              currentStatus == 'approved_by_admin' ? 'Technician has been assigned to your booking' : 
+                              currentStatus == 'technician_accepted' ? 'Technician is on the way to your location' :
+                              currentStatus == 'in_progress' || currentStatus == 'started' ? 'Technician is working on your service' :
+                              'Technician assigned',
+                              style: GoogleFonts.outfit(
+                                fontSize: 13,
+                                color: const Color(0xFF1E40AF),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                    if (currentStatus != 'completed' && currentStatus != 'cancelled' && currentStatus != 'cancelled_by_customer')
-                      IconButton(
-                        icon: const Icon(Icons.phone, color: Color(0xFF6366F1)),
-                        onPressed: _callTechnician,
-                      ),
                   ],
                 ),
               ),
