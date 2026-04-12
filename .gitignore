@@ -22,7 +22,6 @@ node_modules/
 # Build outputs
 dist/
 build/
-lib/
 
 # IDE files
 .vscode/
