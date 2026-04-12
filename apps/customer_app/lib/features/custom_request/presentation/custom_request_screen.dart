@@ -239,7 +239,7 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
           ? _customSubCategoryController.text.trim()
           : _selectedSubCategory;
 
-      final firestoreService = FirestoreService();
+      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
       await firestoreService.createCustomRequest({
         'customerId': userId,
         'title': _titleController.text.trim(),
@@ -611,7 +611,7 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
         ),
         const SizedBox(height: 16),
         StreamBuilder<List<Map<String, dynamic>>>(
-          stream: FirestoreService().streamCustomRequests(userId),
+          stream: Provider.of<FirestoreService>(context, listen: false).streamCustomRequests(userId),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(

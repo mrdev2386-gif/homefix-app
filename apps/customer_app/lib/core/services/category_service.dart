@@ -6,15 +6,14 @@ import '../models/banner_model.dart';
 import 'firestore_service.dart';
 
 /// CategoryService - Thin wrapper around FirestoreService
-/// Consolidates duplicate logic and delegates to single source of truth
+/// OPTIMIZED: Uses single base stream, derives all views from it
 class CategoryService extends ChangeNotifier {
   final FirestoreService _firestoreService;
   late final Stream<List<Category>> _categoriesStream;
-  late final Stream<List<HomeService>> _servicesStream;
-  late final Stream<List<HomeService>> _recentServicesStream;
-  late final Stream<List<HomeService>> _topRatedServicesStream;
-  late final Stream<List<HomeService>> _allServicesStream;
   late final Stream<List<BannerModel>> _bannersStream;
+  
+  // SINGLE BASE STREAM - All service queries derive from this
+  late final Stream<List<HomeService>> _baseServicesStream;
 
   CategoryService({FirestoreService? firestoreService})
       : _firestoreService = firestoreService ?? FirestoreService() {
@@ -22,6 +21,7 @@ class CategoryService extends ChangeNotifier {
   }
 
   void _initializeStreams() {
+    // Categories stream (separate collection)
     _categoriesStream = _firestoreService.streamTechnicianCategories()
         .map((techCategories) => techCategories.map<Category>((tc) => Category(
           id: tc.id,
@@ -31,16 +31,14 @@ class CategoryService extends ChangeNotifier {
         )).toList())
         .asBroadcastStream();
 
-    _servicesStream = _firestoreService.streamTechnicianServices(
-      sortBy: 'recent',
-      limit: 50,
-      filterByLocation: true,
-    ).asBroadcastStream();
-
-    _recentServicesStream = _firestoreService.streamRecentTechnicianServices(limit: 10).asBroadcastStream();
-    _topRatedServicesStream = _firestoreService.streamTopRatedTechnicianServices(limit: 10).asBroadcastStream();
-    _allServicesStream = _firestoreService.streamAllTechnicianServices(limit: 50).asBroadcastStream();
+    // SINGLE BASE STREAM - Uses cached stream from FirestoreService
+    // This is the ONLY Firestore query for services
+    _baseServicesStream = _firestoreService.getCachedServicesStream();
+    
+    // Banners stream (separate collection)
     _bannersStream = _firestoreService.streamBanners().asBroadcastStream();
+    
+    if (kDebugMode) debugPrint('[CATEGORY_SERVICE] Initialized with single base stream');
   }
 
   /// Clear location cache (call when user updates address)
@@ -79,13 +77,26 @@ class CategoryService extends ChangeNotifier {
     }
   }
 
+  // ========== DERIVED STREAMS - All from single base stream ==========
+  
+  /// Recently Added Services - derived from base stream
   Stream<List<HomeService>> getRecentlyAddedServices({int limit = 10}) {
-    return _recentServicesStream;
+    return _baseServicesStream.map((services) {
+      final sorted = services.toList()
+        ..sort((a, b) {
+          final aTime = a.createdAt;
+          final bTime = b.createdAt;
+          if (aTime == null || bTime == null) return 0;
+          return bTime.compareTo(aTime);
+        });
+      return sorted.take(limit).toList();
+    });
   }
 
+  /// Services by Category - derived from base stream
   Stream<List<HomeService>> getServicesByCategory(String categoryId) {
     if (categoryId.isEmpty) return Stream.value([]);
-    return _servicesStream.map((services) =>
+    return _baseServicesStream.map((services) =>
         services.where((s) => s.category == categoryId || s.categoryId == categoryId).toList());
   }
 
@@ -113,28 +124,40 @@ class CategoryService extends ChangeNotifier {
     return await _firestoreService.getServiceById(serviceId);
   }
 
+  /// All Services - derived from base stream
   Stream<List<HomeService>> getAllServices() {
-    return _allServicesStream;
+    return _baseServicesStream;
   }
 
+  /// Top Services - derived from base stream
   Stream<List<HomeService>> getTopServices({int limit = 10}) {
-    return _topRatedServicesStream;
+    return _baseServicesStream.map((services) {
+      final topRated = services
+          .where((s) => (s.rating ?? 0) >= 4.0)
+          .toList()
+        ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+      return topRated.take(limit).toList();
+    });
   }
 
+  /// Top Rated Services - derived from base stream
   Stream<List<HomeService>> getTopRatedServices({int limit = 10, String? district}) {
-    return _topRatedServicesStream;
+    return getTopServices(limit: limit);
   }
 
+  /// Popular Services - derived from base stream
   Stream<List<HomeService>> getPopularServices({int limit = 10, String? district}) {
-    return _topRatedServicesStream;
+    return getTopServices(limit: limit);
   }
 
+  /// Trending Services - derived from base stream
   Stream<List<HomeService>> getTrendingServices({int limit = 10, String? district}) {
-    return _recentServicesStream;
+    return getRecentlyAddedServices(limit: limit);
   }
 
+  /// Recommended Services - derived from base stream
   Stream<List<HomeService>> getRecommendedServices({int limit = 10, String? district}) {
-    return _firestoreService.streamRecommendedServices('', limit: limit).asBroadcastStream();
+    return getTopServices(limit: limit);
   }
 
   Stream<List<BannerModel>> getBanners() {
@@ -176,7 +199,7 @@ class CategoryService extends ChangeNotifier {
 
   Future<List<HomeService>> getAllServicesOnce() async {
     try {
-      return await _firestoreService.streamAllTechnicianServices(limit: 100).first;
+      return await _baseServicesStream.first;
     } catch (e) {
       if (kDebugMode) debugPrint('❌ [CategoryService] Error in getAllServicesOnce: $e');
       return [];

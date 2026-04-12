@@ -79,15 +79,16 @@ class HomeService {
   });
 
   static HomeService? fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>? ?? {};
-    final String id = doc.id;
+    try {
+      final data = doc.data() as Map<String, dynamic>? ?? {};
+      final String id = doc.id;
 
-    // ============================================================================
-    // VALIDATION: Critical Fields Extraction with Safe Defaults
-    // ============================================================================
-    
-    // Extract categoryId with fallback logic
-    String categoryId = _extractCategoryId(doc, data);
+      // ============================================================================
+      // VALIDATION: Critical Fields Extraction with Safe Defaults
+      // ============================================================================
+      
+      // Extract categoryId with fallback logic
+      String categoryId = _extractCategoryId(doc, data);
     
     // Extract title/name (required for display)
     final String key = (data['id'] ?? data['serviceId'] ?? data['key'] ?? id).toString();
@@ -173,6 +174,14 @@ class HomeService {
       technicianDistrict: data['technicianDistrict']?.toString() ?? data['district']?.toString(),
       subServices: subServices,
     );
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('❌ [MODEL_ERROR] Failed to parse service ${doc.id}: $e');
+        debugPrint('Stack trace: $stackTrace');
+        debugPrint('Data: ${doc.data()}');
+      }
+      return null;
+    }
   }
 
   /// ============================================================================

@@ -32,11 +32,9 @@ class LocationProvider extends ChangeNotifier {
   bool get hasLocation => _selectedAddress != null || _selectedDistrict != null;
 
   /// Initialize with user ID and load saved district
-  /// FIX 2: Ensure location cache is cleared BEFORE loading new district
   Future<void> initialize(String userId) async {
     _userId = userId;
-    // CRITICAL: Clear location cache first to prevent race conditions
-    clearLocationCache();
+    // REMOVED: Do not clear cache on initialize - causes services to disappear
     await loadSelectedDistrict();
   }
   

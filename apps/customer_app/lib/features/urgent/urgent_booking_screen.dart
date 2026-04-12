@@ -38,8 +38,8 @@ class _UrgentBookingScreenState extends State<UrgentBookingScreen> {
         return;
       }
 
-      // REFACTORED: Use FirestoreService instead of direct Firestore access
-      final firestoreService = FirestoreService();
+      // REFACTORED: Use Provider instance instead of creating new FirestoreService
+      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
       final userData = await firestoreService.getUserProfile(user.uid);
 
       final district = userData?['district'];
@@ -112,8 +112,8 @@ class _UrgentBookingScreenState extends State<UrgentBookingScreen> {
   }
 
   Widget _buildTechnicianList() {
-    // REFACTORED: Use FirestoreService instead of direct Firestore stream
-    final firestoreService = FirestoreService();
+    // REFACTORED: Use Provider instance instead of creating new FirestoreService
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
     
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: firestoreService.streamOnlineTechnicians(

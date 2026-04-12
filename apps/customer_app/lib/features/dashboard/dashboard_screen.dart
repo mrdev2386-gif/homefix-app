@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -37,7 +38,11 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   Stream<List<Booking>>? _bookingsStream;
   late final CategoryService _categoryService;
   
-
+  // CRITICAL FIX: Stable stream instance - created once, never recreated
+  late final Stream<List<HomeService>> _servicesStream;
+  
+  // Track location changes to refresh stream
+  String? _lastLocationId;
   
   bool _isNavigatingToCustomRequest = false;
   DateTime? _lastCustomRequestNavigationTime;
@@ -51,9 +56,14 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
     super.initState();
     _categoryService = context.read<CategoryService>();
     final auth = Provider.of<AuthService>(context, listen: false);
+    
+    // CRITICAL FIX: Initialize stable stream ONCE
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    _servicesStream = firestoreService.getCachedServicesStream();
+    if (kDebugMode) debugPrint('[STREAM] Dashboard stream created only once');
+    
     if (auth.currentUser != null) {
-      final firestore = Provider.of<FirestoreService>(context, listen: false);
-      _bookingsStream = firestore.streamBookings(auth.currentUser!.uid, limit: 1);
+      _bookingsStream = firestoreService.streamBookings(auth.currentUser!.uid, limit: 1);
        
       // Initialize location provider with user ID to load district
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -66,6 +76,26 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    
+    // CRITICAL: Refresh stream ONLY when location actually changes
+    // Use listen: false to prevent rebuild loop
+    try {
+      final locationProvider = Provider.of<LocationProvider>(context, listen: false);
+      final currentLocationId = '${locationProvider.selectedDistrict ?? ''}_${locationProvider.selectedAddress?.id ?? ''}';
+      
+      if (_lastLocationId != null && _lastLocationId != currentLocationId) {
+        if (kDebugMode) debugPrint('[DASHBOARD] Location changed: $_lastLocationId → $currentLocationId, refreshing stream');
+        final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+        setState(() {
+          _servicesStream = firestoreService.getCachedServicesStream();
+        });
+      }
+      
+      _lastLocationId = currentLocationId;
+    } catch (e) {
+      // LocationProvider might not be available in all contexts
+      if (kDebugMode) debugPrint('[DASHBOARD] Could not track location change: $e');
+    }
     
     // Preload top banner image to remove first-frame lag
     try {
@@ -128,8 +158,9 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                   
                   // SECTION: All Services with Single StreamBuilder
                   StreamBuilder<List<HomeService>>(
-                    stream: context.read<FirestoreService>().getCachedServicesStream(),
+                    stream: _servicesStream, // CRITICAL FIX: Use stable stream instance
                     builder: (context, snapshot) {
+                      // CRITICAL FIX: Check connection state, not hasData
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Center(
                           child: Padding(
@@ -140,6 +171,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                       }
                       
                       if (snapshot.hasError) {
+                        if (kDebugMode) debugPrint('[UI] Stream error: ${snapshot.error}');
                         return Center(
                           child: Padding(
                             padding: const EdgeInsets.all(32.0),
@@ -147,7 +179,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  'Something went wrong',
+                                  'Error: ${snapshot.error}',
                                   style: GoogleFonts.outfit(
                                     fontSize: 14,
                                     color: Colors.grey[600],
@@ -164,12 +196,18 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                         );
                       }
                       
-                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                      // CRITICAL FIX: Always get data with fallback to empty list
+                      final allServices = snapshot.data ?? [];
+                      
+                      if (kDebugMode) debugPrint('[UI] Services count: ${allServices.length}');
+                      
+                      // Handle empty state
+                      if (allServices.isEmpty) {
                         return Center(
                           child: Padding(
                             padding: const EdgeInsets.all(32.0),
                             child: Text(
-                              'Services loading...',
+                              'No services available',
                               style: GoogleFonts.outfit(
                                 fontSize: 14,
                                 color: Colors.grey[600],
@@ -179,8 +217,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                         );
                       }
                       
-                      final allServices = snapshot.data!;
-                      
+                      // Build UI with services
                       return Column(
                         children: [
                           // SECTION 1: All Services (Primary discovery)

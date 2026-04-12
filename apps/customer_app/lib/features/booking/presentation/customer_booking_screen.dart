@@ -523,7 +523,7 @@ class _CustomerBookingScreenState extends State<CustomerBookingScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('Not authenticated');
 
-      final firestoreService = FirestoreService();
+      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
       final userData = await firestoreService.getUserProfile(user.uid);
       
       final address = userData?['primaryAddress'] ?? {

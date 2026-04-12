@@ -201,6 +201,8 @@ class FunctionsService {
     required String imageUrl,
     required String category,
     String? description,
+    Map<String, dynamic>? urgentBooking,
+    Map<String, dynamic>? nightService,
   }) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -222,6 +224,13 @@ class FunctionsService {
         'imageUrl': imageUrl,
         'description': description ?? 'Professional service provided by experienced technician',
       };
+      
+      if (urgentBooking != null) {
+        data['urgentBooking'] = urgentBooking;
+      }
+      if (nightService != null) {
+        data['nightService'] = nightService;
+      }
       
       debugPrint('[FunctionsService] addService REQUEST PAYLOAD: $data');
       debugPrint('[FunctionsService] addService - Sending ONLY price + offerPrice (NO basePrice)');
@@ -248,6 +257,8 @@ class FunctionsService {
     String? category,
     String? description,
     bool? isActive,
+    Map<String, dynamic>? urgentBooking,
+    Map<String, dynamic>? nightService,
   }) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -268,6 +279,8 @@ class FunctionsService {
       if (category != null) data['category'] = category;
       if (description != null) data['description'] = description;
       if (isActive != null) data['isActive'] = isActive;
+      if (urgentBooking != null) data['urgentBooking'] = urgentBooking;
+      if (nightService != null) data['nightService'] = nightService;
 
       debugPrint('[FunctionsService] updateService REQUEST PAYLOAD: $data');
       debugPrint('[FunctionsService] updateService - Sending ONLY price + offerPrice (NO basePrice)');

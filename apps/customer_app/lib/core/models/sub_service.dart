@@ -20,58 +20,80 @@ class SubService {
   });
 
   factory SubService.fromMap(Map<String, dynamic> map) {
-    return SubService(
-      id: (map['id'] ?? '').toString(),
-      name: (map['name'] ?? map['title'] ?? 'Sub Service').toString(),
-      price: (map['price'] ?? 0.0).toDouble(),
-      imageUrl: (map['imageUrl'] ?? map['image'] ?? AppConstants.fallbackServiceImage).toString(),
-      order: (map['order'] ?? 0) is int ? map['order'] : 0,
-      isActive: map['isActive'] ?? true,
-    );
+    try {
+      return SubService(
+        id: (map['id'] ?? '').toString(),
+        name: (map['name'] ?? map['title'] ?? 'Sub Service').toString(),
+        price: (map['price'] ?? 0.0).toDouble(),
+        imageUrl: (map['imageUrl'] ?? map['image'] ?? AppConstants.fallbackServiceImage).toString(),
+        order: (map['order'] ?? 0) is int ? map['order'] : 0,
+        isActive: map['isActive'] ?? true,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ [SUB_SERVICE_ERROR] Failed to parse sub-service: $e');
+      }
+      // Return default sub-service on error
+      return SubService(
+        id: (map['id'] ?? 'unknown').toString(),
+        name: (map['name'] ?? 'Sub Service').toString(),
+      );
+    }
   }
 
   factory SubService.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>? ?? {};
-    
-    final String id = doc.id;
-    final String name = (data['name'] ?? data['title'] ?? 'Sub Service').toString();
-    
-    // AUDIT: Strict mapping - never allow null
-    String? imageUrl = (data['imageUrl'] ?? data['image'] ?? data['thumbnail'])?.toString().trim();
-    
-    if (imageUrl == null || imageUrl.isEmpty) {
-      if (kDebugMode) {
-        debugPrint('⚠️ [SubService Model] No image found for $id (name: $name). Using global fallback.');
+    try {
+      final data = doc.data() as Map<String, dynamic>? ?? {};
+      
+      final String id = doc.id;
+      final String name = (data['name'] ?? data['title'] ?? 'Sub Service').toString();
+      
+      // AUDIT: Strict mapping - never allow null
+      String? imageUrl = (data['imageUrl'] ?? data['image'] ?? data['thumbnail'])?.toString().trim();
+      
+      if (imageUrl == null || imageUrl.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('⚠️ [SubService Model] No image found for $id (name: $name). Using global fallback.');
+        }
+        imageUrl = AppConstants.fallbackServiceImage;
       }
-      imageUrl = AppConstants.fallbackServiceImage;
-    }
-    
-    double price = 0.0;
-    final dynamic priceData = data['price'] ?? data['basePrice'] ?? 0;
-    if (priceData is num) {
-      price = priceData.toDouble();
-    } else if (priceData is String) {
-      price = double.tryParse(priceData) ?? 0.0;
-    }
+      
+      double price = 0.0;
+      final dynamic priceData = data['price'] ?? data['basePrice'] ?? 0;
+      if (priceData is num) {
+        price = priceData.toDouble();
+      } else if (priceData is String) {
+        price = double.tryParse(priceData) ?? 0.0;
+      }
 
-    int order = 0;
-    final dynamic orderData = data['order'] ?? 0;
-    if (orderData is num) {
-      order = orderData.toInt();
-    } else if (orderData is String) {
-      order = int.tryParse(orderData) ?? 0;
+      int order = 0;
+      final dynamic orderData = data['order'] ?? 0;
+      if (orderData is num) {
+        order = orderData.toInt();
+      } else if (orderData is String) {
+        order = int.tryParse(orderData) ?? 0;
+      }
+
+      final bool isActive = data['isActive'] ?? true;
+
+      return SubService(
+        id: id,
+        name: name,
+        imageUrl: imageUrl,
+        price: price,
+        order: order,
+        isActive: isActive,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ [SUB_SERVICE_ERROR] Failed to parse sub-service ${doc.id}: $e');
+      }
+      // Return default sub-service on error
+      return SubService(
+        id: doc.id,
+        name: 'Sub Service',
+      );
     }
-
-    final bool isActive = data['isActive'] ?? true;
-
-    return SubService(
-      id: id,
-      name: name,
-      imageUrl: imageUrl,
-      price: price,
-      order: order,
-      isActive: isActive,
-    );
   }
 
   Map<String, dynamic> toMap() {

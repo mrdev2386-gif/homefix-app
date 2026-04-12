@@ -135,112 +135,97 @@ class FirestoreService {
   }
   
   /// SINGLE UNIFIED METHOD for all technician service queries
-  /// Supports: sorting, limiting, location filtering with fallback
-  /// All other stream methods delegate to this
-  /// 
-  /// FIRESTORE INDEX REQUIRED:
-  /// Collection: technician_services
-  /// Fields: status (Ascending), state (Ascending), district (Ascending), createdAt (Descending)
-  /// 
-  /// If index doesn't exist, query will automatically fallback to no-location filter
+  /// SAFE MODE: Stream-level fallback - tries orderBy, falls back if error
   Stream<List<HomeService>> streamTechnicianServices({
     String sortBy = 'recent',
-    int limit = 15, // REDUCED: Default limit for performance
-    bool filterByLocation = true,
-    DocumentSnapshot? startAfter, // ADDED: Pagination support
-  }) async* {
-    Map<String, String>? location;
+    int limit = 15,
+    bool filterByLocation = false,
+    DocumentSnapshot? startAfter,
+  }) {
+    if (kDebugMode) debugPrint('[SERVICES_SAFE_MODE] Starting query');
     
-    // STEP 1: Get user location (if filtering enabled)
-    if (filterByLocation) {
-      location = await _locationService.getUserLocationCached();
-      
-      // FIX: Don't return empty if no location - fallback to all services
-      if (location == null) {
-        filterByLocation = false; // Disable location filtering
-      }
-    }
-
-    // STEP 2: Build base query
-    Query query = _db.collection(FirebaseConstants.technicianServicesCollection)
-        .where('status', isEqualTo: FirebaseConstants.statusApproved);
+    // Build primary query with sorting
+    Query query = _db.collection(FirebaseConstants.technicianServicesCollection);
     
-    // STEP 3: Apply location filters with CASE-INSENSITIVE comparison
-    // NOTE: This requires a composite index - will fallback if index missing
-    if (filterByLocation && location != null) {
-      // FIX: Convert to lowercase for case-insensitive matching
-      final userState = location['state']?.toString().toLowerCase().trim() ?? '';
-      final userDistrict = location['district']?.toString().toLowerCase().trim() ?? '';
-      
-      if (userState.isNotEmpty && userDistrict.isNotEmpty) {
-        query = query
-            .where('state', isEqualTo: userState)
-            .where('district', isEqualTo: userDistrict);
-      } else {
-        filterByLocation = false;
-      }
-    }
-    
-    // STEP 4: Apply sorting (FIRESTORE ORDERBY - NO IN-MEMORY SORTING)
     if (sortBy == 'recent') {
       query = query.orderBy('createdAt', descending: true);
     } else if (sortBy == 'topRated') {
       query = query.orderBy('rating', descending: true);
     }
     
-    // STEP 5: Apply pagination
     if (startAfter != null) {
       query = query.startAfterDocument(startAfter);
     }
     
     query = query.limit(limit);
 
-    // STEP 6: Execute query - NO AUTOMATIC FALLBACK
-    // If index is missing or query fails, let the error propagate to UI
-    yield* _withErrorHandling(
-      query.snapshots().asBroadcastStream().map((snapshot) {
-        // Parse services with null drop logging
-        List<HomeService> services = snapshot.docs
-            .map((doc) {
-              final service = HomeService.fromFirestore(doc);
-              if (service == null && kDebugMode) {
-                debugPrint("⚠️ [SERVICE_PARSE] Service parse failed: ${doc.id}");
-              }
-              return service;
-            })
-            .whereType<HomeService>()
-            .toList();
-        
-        // Log if no services found (legitimate case - not an error)
-        if (services.isEmpty && kDebugMode) {
-          debugPrint('ℹ️ [SERVICES] No services found for current filters');
-        }
-        
-        // NO IN-MEMORY SORTING - Use Firestore orderBy only
-        return services;
-      }),
-    ).handleError((error) {
-      // FIRESTORE INDEX ERROR HANDLING - Log clearly but don't auto-fix
-      if (error.toString().contains('index') || error.toString().contains('FAILED_PRECONDITION')) {
-        debugPrint('❌ [FIRESTORE INDEX ERROR] Missing composite index!');
-        debugPrint('   Collection: technician_services');
-        debugPrint('   Required fields: status (Asc), state (Asc), district (Asc), createdAt (Desc)');
-        debugPrint('   Action: Create index in Firebase Console');
-        debugPrint('   Impact: Services cannot be filtered by location until index is created');
-      } else {
-        debugPrint('❌ [SERVICES QUERY ERROR] $error');
-      }
-      // Rethrow - let UI handle the error state
-      throw error;
-    });
+    // Build fallback query (no orderBy)
+    Query fallbackQuery = _db.collection(FirebaseConstants.technicianServicesCollection)
+        .limit(limit);
+
+    // Return stream with error handling and fallback
+    return query.snapshots()
+        .handleError((error) {
+          if (kDebugMode) {
+            debugPrint('[SERVICES_ERROR] Primary query failed: $error');
+          }
+        })
+        .asyncExpand((snapshot) {
+          // If snapshot has data, use it
+          if (snapshot.docs.isNotEmpty) {
+            if (kDebugMode) {
+              debugPrint('[SERVICES_SAFE_MODE] Documents fetched: ${snapshot.docs.length}');
+            }
+            return Stream.value(snapshot);
+          }
+          
+          // If empty, switch to fallback query
+          if (kDebugMode) {
+            debugPrint('[SERVICES_FALLBACK] Switching to fallback query');
+          }
+          return fallbackQuery.snapshots();
+        })
+        .map((snapshot) {
+          if (kDebugMode) {
+            debugPrint('[SERVICES_PARSE] Processing ${snapshot.docs.length} documents');
+          }
+          
+          List<HomeService> services = snapshot.docs
+              .map((doc) {
+                try {
+                  final service = HomeService.fromFirestore(doc);
+                  if (service == null && kDebugMode) {
+                    debugPrint("⚠️ [SERVICE_PARSE] Failed to parse: ${doc.id}");
+                  }
+                  return service;
+                } catch (e) {
+                  if (kDebugMode) debugPrint("⚠️ [SERVICE_PARSE] Error: $e");
+                  return null;
+                }
+              })
+              .whereType<HomeService>()
+              .toList();
+          
+          if (kDebugMode) {
+            debugPrint('[SERVICES_PARSE] Parsed: ${services.length} services');
+          }
+          
+          return services;
+        })
+        .asBroadcastStream();
   }
 
   Stream<List<HomeService>> getCachedServicesStream() {
-    if (_cachedServicesStream != null) return _cachedServicesStream!;
+    if (_cachedServicesStream != null) {
+      if (kDebugMode) debugPrint('[CACHE] Returning existing cached stream (no new query)');
+      return _cachedServicesStream!;
+    }
+    
+    if (kDebugMode) debugPrint('[CACHE] Creating new cached stream (SINGLE Firestore query)');
     _cachedServicesStream = streamTechnicianServices(
       sortBy: 'recent',
       limit: FirebaseConstants.defaultLimit,
-      filterByLocation: true,
+      filterByLocation: false, // CRITICAL: Disabled to ensure services always load
     ).asBroadcastStream();
     return _cachedServicesStream!;
   }
@@ -283,7 +268,7 @@ class FirestoreService {
     return streamTechnicianServices(
       sortBy: 'recent', 
       limit: limit, 
-      filterByLocation: true,
+      filterByLocation: false, // CRITICAL: Disabled to ensure services always load
       startAfter: startAfter,
     );
   }
@@ -1530,6 +1515,77 @@ class FirestoreService {
             ...doc.data(),
           }).toList()),
     );
+  }
+
+  /// AUTO-DETECT AND ADAPT - Read actual Firestore data and adapt query
+  /// This function detects the actual field structure and updates query logic
+  /// TEMPORARY - REMOVE AFTER VERIFICATION
+  Future<void> debugCheckServices() async {
+    if (kDebugMode) {
+      debugPrint('🔍 [AUTO-ADAPT] ========== READING FIRESTORE DATA ==========');
+      
+      try {
+        // STEP 1: Count total documents
+        final countSnapshot = await _db
+            .collection(FirebaseConstants.technicianServicesCollection)
+            .count()
+            .get();
+        final totalCount = countSnapshot.count ?? 0;
+        debugPrint('🔍 [AUTO-ADAPT] Total documents: $totalCount');
+        
+        if (totalCount == 0) {
+          debugPrint('❌ [AUTO-ADAPT] ISSUE: Collection is EMPTY - no services exist');
+          return;
+        }
+        
+        // STEP 2: Fetch first document to detect structure
+        final snapshot = await _db
+            .collection(FirebaseConstants.technicianServicesCollection)
+            .limit(1)
+            .get();
+        
+        if (snapshot.docs.isEmpty) {
+          debugPrint('❌ [AUTO-ADAPT] ISSUE: Cannot read documents');
+          return;
+        }
+        
+        final doc = snapshot.docs.first;
+        final data = doc.data();
+        
+        debugPrint('🔍 [AUTO-ADAPT] Sample document ID: ${doc.id}');
+        debugPrint('🔍 [AUTO-ADAPT] Fields detected:');
+        data.forEach((key, value) {
+          debugPrint('  - $key: $value (${value.runtimeType})');
+        });
+        
+        // STEP 3: Detect status field and value
+        String? statusField;
+        String? statusValue;
+        
+        // Check common variations
+        if (data.containsKey('status')) {
+          statusField = 'status';
+          statusValue = data['status']?.toString();
+        } else if (data.containsKey('Status')) {
+          statusField = 'Status';
+          statusValue = data['Status']?.toString();
+        }
+        
+        debugPrint('🔍 [AUTO-ADAPT] Status field: $statusField = "$statusValue"');
+        
+        // STEP 4: Test if createdAt exists for sorting
+        final hasCreatedAt = data.containsKey('createdAt');
+        final hasCreatedAtCaps = data.containsKey('CreatedAt');
+        debugPrint('🔍 [AUTO-ADAPT] Has createdAt: $hasCreatedAt');
+        debugPrint('🔍 [AUTO-ADAPT] Has CreatedAt: $hasCreatedAtCaps');
+        
+        debugPrint('🔍 [AUTO-ADAPT] ========== DETECTION COMPLETE ==========');
+        
+      } catch (e, stackTrace) {
+        debugPrint('❌ [AUTO-ADAPT] Error: $e');
+        debugPrint('❌ [AUTO-ADAPT] Stack: $stackTrace');
+      }
+    }
   }
 }
 

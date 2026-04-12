@@ -33,6 +33,12 @@ class _HomeScreenState extends State<HomeScreen>
     with AutomaticKeepAliveClientMixin {
   Stream<List<Booking>>? _bookingsStream;
   final Set<String> _displayedServiceIds = {}; // Global duplicate tracking
+  
+  // CRITICAL FIX: Stable stream instance - created once, never recreated
+  late Stream<List<HomeService>> _servicesStream;
+  
+  // Track location changes to refresh stream
+  String? _lastLocationId;
 
   bool _isNavigatingToCustomRequest = false;
   DateTime? _lastCustomRequestNavigationTime;
@@ -51,37 +57,48 @@ class _HomeScreenState extends State<HomeScreen>
     super.initState();
     _categoryService = context.read<CategoryService>();
     final auth = Provider.of<AuthService>(context, listen: false);
+    
+    // CRITICAL FIX: Initialize stable stream ONCE
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    _servicesStream = firestoreService.getCachedServicesStream();
+    if (kDebugMode) debugPrint('[STREAM] Home stream created only once');
+    
+    // TEMPORARY DEBUG: Verify Firestore data structure
+    // REMOVE AFTER DEBUGGING
+    firestoreService.debugCheckServices();
+    
     if (auth.currentUser != null) {
-      final firestore = Provider.of<FirestoreService>(context, listen: false);
       _bookingsStream =
-          firestore.streamBookings(auth.currentUser!.uid, limit: 1);
+          firestoreService.streamBookings(auth.currentUser!.uid, limit: 1);
 
-          // FIX 2: LOCATION RACE FIX - Initialize location FIRST, then clear cache
-          WidgetsBinding.instance.addPostFrameCallback((_) async {
-            try {
-              final locationProvider =
-                  Provider.of<LocationProvider>(context, listen: false);
-              // CRITICAL: Await initialization to complete before clearing cache
-              await locationProvider.initialize(auth.currentUser!.uid);
-              // ONLY AFTER location is loaded, clear services cache to refetch with new location
-              _categoryService.clearLocationCache();
-              if (kDebugMode) debugPrint('✅ [HOME] Location initialized and cache cleared');
-            } catch (e) {
-              if (kDebugMode) debugPrint('❌ [HOME] Location initialization error: $e');
-            }
-          });
+          // REMOVED: Do not clear cache on init - causes services to disappear
+          // Location is already initialized, stream will use cached location
     }
   }
-
-  @override
-  void dispose() {
-    _bannerPageController.dispose();
-    super.dispose();
-  }
-
+  
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    
+    // CRITICAL: Refresh stream ONLY when location actually changes
+    // Use listen: false to prevent rebuild loop
+    try {
+      final locationProvider = Provider.of<LocationProvider>(context, listen: false);
+      final currentLocationId = '${locationProvider.selectedDistrict ?? ''}_${locationProvider.selectedAddress?.id ?? ''}';
+      
+      if (_lastLocationId != null && _lastLocationId != currentLocationId) {
+        if (kDebugMode) debugPrint('[HOME] Location changed: $_lastLocationId → $currentLocationId, refreshing stream');
+        final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+        setState(() {
+          _servicesStream = firestoreService.getCachedServicesStream();
+        });
+      }
+      
+      _lastLocationId = currentLocationId;
+    } catch (e) {
+      // LocationProvider might not be available in all contexts
+      if (kDebugMode) debugPrint('[HOME] Could not track location change: $e');
+    }
 
     // Precache local banner asset
     try {
@@ -90,6 +107,12 @@ class _HomeScreenState extends State<HomeScreen>
         context,
       );
     } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _bannerPageController.dispose();
+    super.dispose();
   }
 
   String _getGreeting() {
@@ -127,8 +150,9 @@ class _HomeScreenState extends State<HomeScreen>
             // All Service Sections with Single StreamBuilder
             SliverToBoxAdapter(
               child: StreamBuilder<List<HomeService>>(
-                stream: context.read<FirestoreService>().getCachedServicesStream(),
+                stream: _servicesStream, // CRITICAL FIX: Use stable stream instance
                 builder: (context, snapshot) {
+                  // CRITICAL FIX: Check connection state, not hasData
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(
                       child: Padding(
@@ -139,6 +163,7 @@ class _HomeScreenState extends State<HomeScreen>
                   }
                   
                   if (snapshot.hasError) {
+                    if (kDebugMode) debugPrint('[UI] Stream error: ${snapshot.error}');
                     return Center(
                       child: Padding(
                         padding: const EdgeInsets.all(32.0),
@@ -146,7 +171,7 @@ class _HomeScreenState extends State<HomeScreen>
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              'Something went wrong',
+                              'Error: ${snapshot.error}',
                               style: GoogleFonts.outfit(
                                 fontSize: 14,
                                 color: Colors.grey[600],
@@ -163,12 +188,18 @@ class _HomeScreenState extends State<HomeScreen>
                     );
                   }
                   
-                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  // CRITICAL FIX: Always get data with fallback to empty list
+                  final allServices = snapshot.data ?? [];
+                  
+                  if (kDebugMode) debugPrint('[UI] Services count: ${allServices.length}');
+                  
+                  // Handle empty state
+                  if (allServices.isEmpty) {
                     return Center(
                       child: Padding(
                         padding: const EdgeInsets.all(32.0),
                         child: Text(
-                          'Services loading...',
+                          'No services available',
                           style: GoogleFonts.outfit(
                             fontSize: 14,
                             color: Colors.grey[600],
@@ -178,8 +209,7 @@ class _HomeScreenState extends State<HomeScreen>
                     );
                   }
                   
-                  final allServices = snapshot.data!;
-                  
+                  // Build UI with services
                   return Column(
                     children: [
                       // Recently Added Services (TOP)
@@ -611,10 +641,14 @@ class _HomeScreenState extends State<HomeScreen>
             children: [
               Expanded(
                 child: GestureDetector(
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const UrgentBookingScreen()),
-                  ),
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Coming Soon'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  },
                   child: Container(
                     height: 60,
                     decoration: BoxDecoration(

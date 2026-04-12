@@ -62,12 +62,8 @@ class _MainWrapperScreenState extends State<MainWrapperScreen> with WidgetsBindi
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     
-    // STEP 1: Handle app resume - clear cache for fresh data
-    if (state == AppLifecycleState.resumed) {
-      if (kDebugMode) debugPrint('[LIFECYCLE] App resumed - clearing services cache for fresh data');
-      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-      firestoreService.clearCachedServicesStream();
-    }
+    // REMOVED: Do not clear cache on app resume - causes services to disappear
+    // Cache should only be cleared on explicit location change
   }
 
   void _navigateToHomeTab() {

@@ -25,10 +25,10 @@ class AuthProvider extends ChangeNotifier {
   AuthProvider() {
     _authService.authStateChanges.listen((user) {
       if (user != null) {
-        _categoryService?.clearLocationCache();
+        // REMOVED: Do not clear cache on auth state change - causes services to disappear
         _listenToCustomerData(user.uid);
       } else {
-        _categoryService?.clearLocationCache();
+        // REMOVED: Do not clear cache on sign out - not needed
         _customerSubscription?.cancel();
         _customer = null;
         notifyListeners();
@@ -65,7 +65,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
-    _categoryService?.clearLocationCache();
+    // REMOVED: Do not clear cache on sign out - not needed
     await _authService.signOut();
   }
 

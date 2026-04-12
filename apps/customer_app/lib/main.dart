@@ -185,10 +185,8 @@ class HomeFixApp extends StatelessWidget {
         // Wire up cache invalidation callback
         ProxyProvider2<AuthService, FirestoreService, AuthService>(
           update: (_, authService, firestoreService, __) {
-            authService.onAuthStateChanged = () {
-              if (kDebugMode) debugPrint('[CACHE] Auth state changed - clearing services cache');
-              firestoreService.clearCachedServicesStream();
-            };
+            // REMOVED: Do not clear cache on auth state change - causes services to disappear
+            // Cache should only be cleared on explicit location change
             return authService;
           },
         ),
