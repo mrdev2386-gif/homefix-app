@@ -30,8 +30,6 @@ class ServicesScreen extends StatefulWidget {
 }
 
 class _ServicesScreenState extends State<ServicesScreen> {
-  final _functionsService = FunctionsService();
-
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -465,7 +463,6 @@ class _ServiceCard extends StatefulWidget {
 }
 
 class _ServiceCardState extends State<_ServiceCard> {
-  final _functionsService = FunctionsService();
   bool _isLoading = false;
 
   @override
@@ -753,7 +750,9 @@ class _ServiceCardState extends State<_ServiceCard> {
     if (_isLoading) return;
     setState(() => _isLoading = true);
     try {
-      await _functionsService.toggleServiceStatus(widget.serviceId);
+      // Get singleton FunctionsService from Provider
+      final functionsService = context.read<FunctionsService>();
+      await functionsService.toggleServiceStatus(widget.serviceId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -817,7 +816,9 @@ class _ServiceCardState extends State<_ServiceCard> {
 
     setState(() => _isLoading = true);
     try {
-      await _functionsService.deleteService(widget.serviceId);
+      // Get singleton FunctionsService from Provider
+      final functionsService = context.read<FunctionsService>();
+      await functionsService.deleteService(widget.serviceId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

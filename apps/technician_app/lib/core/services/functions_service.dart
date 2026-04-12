@@ -499,6 +499,40 @@ class FunctionsService {
     }
   }
 
+  /// Update technician bank details via Cloud Function
+  /// Submits bank details for admin verification
+  Future<Map<String, dynamic>> updateTechnicianBankDetails({
+    required String accountHolderName,
+    required String bankName,
+    required String accountNumber,
+    required String ifscCode,
+  }) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+      debugPrint('[FunctionsService] updateTechnicianBankDetails: Current user UID: ${user.uid}');
+      await user.getIdToken(true);
+      debugPrint('[FunctionsService] updateTechnicianBankDetails: Token refreshed successfully');
+      
+      final callable = _functions.httpsCallable('updateTechnicianBankDetails');
+      final result = await callable.call({
+        'accountHolderName': accountHolderName,
+        'bankName': bankName,
+        'accountNumber': accountNumber,
+        'ifscCode': ifscCode.toUpperCase(),
+      });
+      return Map<String, dynamic>.from(result.data);
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[FunctionsService] updateTechnicianBankDetails: FirebaseFunctionsException - Code: ${e.code}, Message: ${e.message}');
+      rethrow;
+    } catch (e) {
+      debugPrint('[FunctionsService] updateTechnicianBankDetails: Unexpected error: $e');
+      rethrow;
+    }
+  }
+
   /// Re-upload verification document via Cloud Function
   /// Allows re-upload if status is "missing" or "rejected"
   Future<Map<String, dynamic>> reuploadVerificationDocument({

@@ -46,8 +46,8 @@ class DashboardHomeEnhanced extends StatefulWidget {
 }
 
 class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with WidgetsBindingObserver, TickerProviderStateMixin {
-  final BookingService _bookingService = BookingService();
-  final FunctionsService _functionsService = FunctionsService();
+  late final BookingService _bookingService;
+  late final FunctionsService _functionsService;
   Timer? _offlineTimer;
   bool _isSettingOnline = false;
   DateTime? _lastOnlineCall;
@@ -124,6 +124,10 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    
+    // Get singleton services from Provider
+    _bookingService = context.read<BookingService>();
+    _functionsService = context.read<FunctionsService>();
     
     // Initialize animations
     _fadeController = AnimationController(

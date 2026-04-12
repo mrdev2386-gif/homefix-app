@@ -9,6 +9,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/providers/technician_provider.dart';
 import 'core/app_theme.dart';
 import 'core/services/notifications_service.dart';
+import 'core/services/functions_service.dart';
+import 'core/services/wallet_service.dart';
+import 'core/services/booking_service.dart';
 import 'screens/app_onboarding_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/technician_onboarding_flow_screen.dart';
@@ -63,6 +66,11 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
+        // Singleton services - ONE instance for entire app
+        Provider<FunctionsService>(create: (_) => FunctionsService()),
+        Provider<WalletService>(create: (_) => WalletService()),
+        Provider<BookingService>(create: (_) => BookingService()),
+        // Providers
         ChangeNotifierProvider(create: (_) => TechnicianProvider()),
         ChangeNotifierProvider(create: (_) => NotificationsService()),
       ],

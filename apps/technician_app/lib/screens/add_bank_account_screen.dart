@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
 import '../core/app_theme.dart';
+import '../core/services/functions_service.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 class AddBankAccountScreen extends StatefulWidget {
   const AddBankAccountScreen({super.key});
@@ -39,28 +41,34 @@ class _AddBankAccountScreenState extends State<AddBankAccountScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final technicianId = FirebaseAuth.instance.currentUser?.uid;
-      if (technicianId == null) throw Exception('Not authenticated');
-
-      await FirebaseFirestore.instance.collection('technician_bank_accounts').add({
-        'technicianId': technicianId,
-        'accountHolderName': _accountHolderController.text.trim(),
-        'accountNumber': _accountNumberController.text.trim(),
-        'ifscCode': _ifscController.text.trim().toUpperCase(),
-        'bankName': _bankNameController.text.trim(),
-        'branchName': _branchController.text.trim(),
-        'status': 'pending',
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      // Get singleton FunctionsService from Provider
+      final functionsService = context.read<FunctionsService>();
+      
+      // Submit bank details via Cloud Function (secure)
+      final result = await functionsService.updateTechnicianBankDetails(
+        accountHolderName: _accountHolderController.text.trim(),
+        bankName: _bankNameController.text.trim(),
+        accountNumber: _accountNumberController.text.trim(),
+        ifscCode: _ifscController.text.trim().toUpperCase(),
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Bank account added successfully'),
+          SnackBar(
+            content: Text(result['message'] ?? 'Bank account added successfully'),
             backgroundColor: AppTheme.successColor,
           ),
         );
         Navigator.pop(context, true);
+      }
+    } on FirebaseFunctionsException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.message}'),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {

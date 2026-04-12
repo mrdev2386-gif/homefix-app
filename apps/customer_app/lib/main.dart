@@ -177,9 +177,8 @@ class HomeFixApp extends StatelessWidget {
         
         // CategoryService depends on FirestoreService
         ChangeNotifierProxyProvider<FirestoreService, CategoryService>(
-          create: (_) => CategoryService(),
-          update: (_, firestoreService, categoryService) => 
-              categoryService ?? CategoryService(firestoreService: firestoreService),
+          create: (_) => CategoryService(firestoreService: _.read<FirestoreService>()),
+          update: (_, firestoreService, previous) => previous ?? CategoryService(firestoreService: firestoreService),
         ),
         
         // Wire up cache invalidation callback
@@ -205,13 +204,17 @@ class HomeFixApp extends StatelessWidget {
           create: (ctx) => CategoryProvider(categoryService: ctx.read<CategoryService>()),
           update: (_, categoryService, previous) => previous ?? CategoryProvider(categoryService: categoryService),
         ),
-        ChangeNotifierProxyProvider<AuthProvider, FavoritesProvider>(
-          create: (_) => FavoritesProvider(),
-          update: (_, auth, favorites) => favorites!..updateUserId(auth.user?.uid),
+        ChangeNotifierProxyProvider2<AuthProvider, FirestoreService, FavoritesProvider>(
+          create: (ctx) => FavoritesProvider(firestoreService: ctx.read<FirestoreService>()),
+          update: (_, auth, firestoreService, favorites) => 
+              favorites ?? FavoritesProvider(firestoreService: firestoreService)
+                ..updateUserId(auth.user?.uid),
         ),
-        ChangeNotifierProxyProvider<AuthProvider, CartProvider>(
-          create: (_) => CartProvider(),
-          update: (_, auth, cart) => cart!..updateUserId(auth.user?.uid),
+        ChangeNotifierProxyProvider2<AuthProvider, FirestoreService, CartProvider>(
+          create: (ctx) => CartProvider(firestoreService: ctx.read<FirestoreService>()),
+          update: (_, auth, firestoreService, cart) => 
+              cart ?? CartProvider(firestoreService: firestoreService)
+                ..updateUserId(auth.user?.uid),
         ),
         ChangeNotifierProvider(create: (_) => BookingProvider()),
         ChangeNotifierProxyProvider<CategoryService, LocationProvider>(

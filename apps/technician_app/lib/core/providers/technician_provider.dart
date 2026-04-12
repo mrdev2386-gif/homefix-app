@@ -60,7 +60,7 @@ class TechnicianProvider extends ChangeNotifier {
         _isLoading = false;
         _currentOnboardingStep = OnboardingStep.phone;
         _isOnboardingComplete = false;
-        notifyListeners();
+        if (!_isDisposed) notifyListeners();
       }
     });
   }
@@ -69,7 +69,7 @@ class TechnicianProvider extends ChangeNotifier {
     if (_isDisposed) return;
     
     _isLoading = true;
-    notifyListeners();
+    if (!_isDisposed) notifyListeners();
     
     _techSubscription = _techService.getTechnicianStream(uid).listen((tech) async {
       if (_isDisposed) return;
@@ -125,7 +125,7 @@ class TechnicianProvider extends ChangeNotifier {
       }
       
       _isLoading = false;
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
     }, onError: (e) {
       // PART 6 & 7: Handle different error types with specific FirebaseException codes
       AppLogger.error('FIRESTORE', 'Listener error', data: e);
@@ -208,7 +208,7 @@ class TechnicianProvider extends ChangeNotifier {
     }
 
     _isLoading = true;
-    notifyListeners();
+    if (!_isDisposed) notifyListeners();
     
     try {
       final result = await _onboardingService.createTechnicianDraft(phone: phone);
@@ -243,7 +243,7 @@ class TechnicianProvider extends ChangeNotifier {
       rethrow;
     } finally {
       _isLoading = false;
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
     }
   }
 
@@ -255,7 +255,7 @@ class TechnicianProvider extends ChangeNotifier {
     int? experienceYears,
   }) async {
     _isLoading = true;
-    notifyListeners();
+    if (!_isDisposed) notifyListeners();
     
     try {
       await _onboardingService.saveBasicDetails(
@@ -270,7 +270,7 @@ class TechnicianProvider extends ChangeNotifier {
       rethrow;
     } finally {
       _isLoading = false;
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
     }
   }
 
@@ -284,7 +284,7 @@ class TechnicianProvider extends ChangeNotifier {
     String documentType = 'Aadhaar Card',
   }) async {
     _isLoading = true;
-    notifyListeners();
+    if (!_isDisposed) notifyListeners();
     
     try {
       // CRITICAL: Validate aadhaar before passing to service
@@ -306,7 +306,7 @@ class TechnicianProvider extends ChangeNotifier {
       rethrow;
     } finally {
       _isLoading = false;
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
     }
   }
 
@@ -317,7 +317,7 @@ class TechnicianProvider extends ChangeNotifier {
     required List<String> skills,
   }) async {
     _isLoading = true;
-    notifyListeners();
+    if (!_isDisposed) notifyListeners();
     
     try {
       await _onboardingService.saveServices(
@@ -331,7 +331,7 @@ class TechnicianProvider extends ChangeNotifier {
       rethrow;
     } finally {
       _isLoading = false;
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
     }
   }
 
@@ -369,7 +369,7 @@ class TechnicianProvider extends ChangeNotifier {
 
     _isSubmittingApplication = true;
     _isLoading = true;
-    notifyListeners();
+    if (!_isDisposed) notifyListeners();
     
     try {
       await _onboardingService.submitApplication();
@@ -392,7 +392,7 @@ class TechnicianProvider extends ChangeNotifier {
     } finally {
       _isSubmittingApplication = false;
       _isLoading = false;
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
     }
   }
 
@@ -612,7 +612,7 @@ class TechnicianProvider extends ChangeNotifier {
         _technician = tech;
         _currentOnboardingStep = tech.currentOnboardingStep;
         _isOnboardingComplete = tech.isKycComplete;
-        notifyListeners();
+        if (!_isDisposed) notifyListeners();
       }
     } catch (e) {
       debugPrint("Error refreshing technician data: $e");
@@ -640,7 +640,7 @@ class TechnicianProvider extends ChangeNotifier {
         _isOnboardingComplete = tech.isKycComplete;
         
         debugPrint('[TechnicianProvider] Provider updated, notifying listeners');
-        notifyListeners();
+        if (!_isDisposed) notifyListeners();
       }
     } catch (e) {
       debugPrint("[TechnicianProvider] Error force refreshing technician: $e");
@@ -659,7 +659,7 @@ class TechnicianProvider extends ChangeNotifier {
     if (uid == null) return;
     
     _isLoading = true;
-    notifyListeners();
+    if (!_isDisposed) notifyListeners();
     
     try {
       await _techService.updateSkills(uid, skills);
@@ -669,7 +669,7 @@ class TechnicianProvider extends ChangeNotifier {
       rethrow;
     } finally {
       _isLoading = false;
-      notifyListeners();
+      if (!_isDisposed) notifyListeners();
     }
   }
 

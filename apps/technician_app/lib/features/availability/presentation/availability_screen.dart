@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import '../../../core/services/functions_service.dart';
 
 class AvailabilityScreen extends StatefulWidget {
   const AvailabilityScreen({super.key});
@@ -15,45 +16,17 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
 
   Future<void> _generateSlots() async {
     setState(() => _isLoading = true);
-    try {
-      final uid = FirebaseAuth.instance.currentUser!.uid;
-      final batch = FirebaseFirestore.instance.batch();
-      
-      final now = DateTime.now();
-      // Generate for today and next 6 days
-      for (int i = 0; i < 7; i++) {
-        final date = now.add(Duration(days: i));
-        // Slots: 9 AM to 6 PM (9 to 18)
-        for (int hour = 9; hour < 18; hour++) {
-          final slotId = "${date.year}-${date.month}-${date.day}-$hour";
-          final docRef = FirebaseFirestore.instance
-              .collection('availability')
-              .doc(uid)
-              .collection('slots')
-              .doc(slotId);
-          
-          batch.set(docRef, {
-            'date': Timestamp.fromDate(DateTime(date.year, date.month, date.day)),
-            'startTime': "${hour.toString().padLeft(2, '0')}:00",
-            'endTime': "${(hour+1).toString().padLeft(2, '0')}:00",
-            'isAvailable': true,
-            'technicianId': uid,
-          });
-        }
-      }
-      
-      await batch.commit();
-      if(mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Slots generated for next 7 days!")));
-      }
-    } catch (e) {
-      if(mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
-      }
-    } finally {
-      if(mounted) {
-          setState(() => _isLoading = false);
-      }
+    
+    // Show "Coming Soon" message - backend function not yet implemented
+    if (mounted) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Slot generation is coming soon. Contact support for assistance.'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
     }
   }
 

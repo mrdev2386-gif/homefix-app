@@ -25,7 +25,9 @@ const List<String> validBookingStatuses = [
 /// Returns 'processing' for null or unknown statuses (safe fallback)
 String sanitizeBookingStatus(String? status) {
   if (status == null || status.isEmpty) {
-    debugPrint('[BOOKING_STATUS_SANITIZED] Null/empty status → defaulting to processing');
+    if (kDebugMode) {
+      debugPrint('[BOOKING_STATUS_SANITIZED] Null/empty status → defaulting to processing');
+    }
     return 'processing';
   }
   
@@ -36,7 +38,9 @@ String sanitizeBookingStatus(String? status) {
   }
   
   // Invalid status - log warning and return safe fallback
-  debugPrint('[BOOKING_STATUS_SANITIZED] Unknown status "$status" → defaulting to processing');
+  if (kDebugMode) {
+    debugPrint('[BOOKING_STATUS_SANITIZED] Unknown status "$status" → defaulting to processing');
+  }
   return 'processing';
 }
 

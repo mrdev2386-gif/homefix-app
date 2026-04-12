@@ -18,7 +18,9 @@ class SafeParsing {
       if (parsed != null) return parsed;
     }
     
-    debugPrint('[SAFE_PARSE] Invalid int value: $value (type: ${value.runtimeType})');
+    if (kDebugMode) {
+      debugPrint('[SAFE_PARSE] Invalid int value: $value (type: ${value.runtimeType})');
+    }
     return defaultValue;
   }
   
@@ -37,7 +39,9 @@ class SafeParsing {
       if (parsed != null && parsed.isFinite) return parsed;
     }
     
-    debugPrint('[SAFE_PARSE] Invalid double value: $value (type: ${value.runtimeType})');
+    if (kDebugMode) {
+      debugPrint('[SAFE_PARSE] Invalid double value: $value (type: ${value.runtimeType})');
+    }
     return defaultValue;
   }
   
@@ -66,7 +70,9 @@ class SafeParsing {
       return value != 0;
     }
     
-    debugPrint('[SAFE_PARSE] Invalid bool value: $value (type: ${value.runtimeType})');
+    if (kDebugMode) {
+      debugPrint('[SAFE_PARSE] Invalid bool value: $value (type: ${value.runtimeType})');
+    }
     return defaultValue;
   }
   
@@ -78,12 +84,16 @@ class SafeParsing {
       try {
         return value.cast<T>();
       } catch (e) {
-        debugPrint('[SAFE_PARSE] Failed to cast list: $e');
+        if (kDebugMode) {
+          debugPrint('[SAFE_PARSE] Failed to cast list: $e');
+        }
         return defaultValue;
       }
     }
     
-    debugPrint('[SAFE_PARSE] Invalid list value: $value (type: ${value.runtimeType})');
+    if (kDebugMode) {
+      debugPrint('[SAFE_PARSE] Invalid list value: $value (type: ${value.runtimeType})');
+    }
     return defaultValue;
   }
   
@@ -97,12 +107,16 @@ class SafeParsing {
       try {
         return Map<String, dynamic>.from(value);
       } catch (e) {
-        debugPrint('[SAFE_PARSE] Failed to convert map: $e');
+        if (kDebugMode) {
+          debugPrint('[SAFE_PARSE] Failed to convert map: $e');
+        }
         return defaultValue;
       }
     }
     
-    debugPrint('[SAFE_PARSE] Invalid map value: $value (type: ${value.runtimeType})');
+    if (kDebugMode) {
+      debugPrint('[SAFE_PARSE] Invalid map value: $value (type: ${value.runtimeType})');
+    }
     return defaultValue;
   }
   
@@ -116,7 +130,9 @@ class SafeParsing {
       try {
         return DateTime.parse(value);
       } catch (e) {
-        debugPrint('[SAFE_PARSE] Failed to parse DateTime: $value');
+        if (kDebugMode) {
+          debugPrint('[SAFE_PARSE] Failed to parse DateTime: $value');
+        }
         return null;
       }
     }
@@ -125,12 +141,16 @@ class SafeParsing {
       try {
         return DateTime.fromMillisecondsSinceEpoch(value);
       } catch (e) {
-        debugPrint('[SAFE_PARSE] Failed to parse DateTime from timestamp: $value');
+        if (kDebugMode) {
+          debugPrint('[SAFE_PARSE] Failed to parse DateTime from timestamp: $value');
+        }
         return null;
       }
     }
     
-    debugPrint('[SAFE_PARSE] Invalid DateTime value: $value (type: ${value.runtimeType})');
+    if (kDebugMode) {
+      debugPrint('[SAFE_PARSE] Invalid DateTime value: $value (type: ${value.runtimeType})');
+    }
     return null;
   }
   

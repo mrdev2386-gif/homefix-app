@@ -9,7 +9,10 @@ import '../services/firestore_service.dart';
 /// Uses Set<String> for O(1) lookups and Firestore for persistence.
 /// Data model: customers/{customerId}/favorites/{serviceId}
 class FavoritesProvider with ChangeNotifier {
-  final FirestoreService _firestoreService = FirestoreService();
+  final FirestoreService _firestoreService;
+  
+  FavoritesProvider({required FirestoreService firestoreService})
+      : _firestoreService = firestoreService;
   
   Map<String, String> _favoriteServices = {}; // serviceId -> categoryId
   String? _userId;

@@ -4,6 +4,7 @@ import '../models/address.dart';
 import '../services/address_service.dart';
 import '../services/category_service.dart';
 import '../services/functions_service.dart';
+import '../services/firestore_service.dart';
 
 /// District-based LocationProvider (GPS-less for production simplicity)
 class LocationProvider extends ChangeNotifier {
@@ -19,8 +20,8 @@ class LocationProvider extends ChangeNotifier {
   String? _userId;
   String? _errorMessage;
 
-  LocationProvider({CategoryService? categoryService}) {
-    _categoryService = categoryService ?? CategoryService();
+  LocationProvider({required CategoryService categoryService}) {
+    _categoryService = categoryService;
     _addressService = AddressService(_categoryService);
   }
 

@@ -1,3 +1,41 @@
 {
-  "pages": {}
+  "pages": {
+    "/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/commons.js",
+      "static/chunks/app/page.js"
+    ],
+    "/layout": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/css/app/layout.css",
+      "static/chunks/app/layout.js"
+    ],
+    "/(admin)/layout": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/commons.js",
+      "static/chunks/vendors-_app-pages-browser_node_modules_next_link_js-_app-pages-browser_node_modules_lucide-r-1ce05f.js",
+      "static/chunks/app/(admin)/layout.js"
+    ],
+    "/(admin)/technicians/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/commons.js",
+      "static/chunks/app/(admin)/technicians/page.js"
+    ],
+    "/(admin)/bookings/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/commons.js",
+      "static/chunks/app/(admin)/bookings/page.js"
+    ],
+    "/(admin)/loading": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/commons.js",
+      "static/chunks/app/(admin)/loading.js"
+    ]
+  }
 }

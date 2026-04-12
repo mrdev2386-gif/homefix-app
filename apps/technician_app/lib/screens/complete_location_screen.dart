@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 import 'package:technician_app/core/widgets/location_selector.dart';
+import 'package:technician_app/core/services/functions_service.dart';
 
 /// Mandatory full-screen location completion for technicians
 /// Cannot be bypassed, closed, or skipped
@@ -37,18 +38,14 @@ class _CompleteTechnicianLocationScreenState
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not authenticated');
 
-      // Update technician document with location
-      await FirebaseFirestore.instance
-          .collection('technicians')
-          .doc(user.uid)
-          .update({
-        'state': selectedState,
-        'district': selectedDistrict,
-        'stateNormalized': selectedState!.toLowerCase(),
-        'districtNormalized': selectedDistrict!.toLowerCase(),
-        'locationCompleted': true,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      // Get singleton FunctionsService from Provider
+      final functionsService = context.read<FunctionsService>();
+
+      // Update technician location via Cloud Function (secure)
+      await functionsService.updateTechnicianPersonalDetails(
+        state: selectedState,
+        district: selectedDistrict,
+      );
 
       if (mounted) {
         // Navigate to dashboard using pushAndRemoveUntil to prevent back navigation

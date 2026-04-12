@@ -36,7 +36,7 @@ class WalletScreen extends StatefulWidget {
 }
 
 class _WalletScreenState extends State<WalletScreen> {
-  final WalletService _walletService = WalletService();
+  late final WalletService _walletService;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   
   // Bank accounts loaded once
@@ -47,6 +47,7 @@ class _WalletScreenState extends State<WalletScreen> {
   @override
   void initState() {
     super.initState();
+    _walletService = context.read<WalletService>();
     _loadBankAccounts();
   }
 

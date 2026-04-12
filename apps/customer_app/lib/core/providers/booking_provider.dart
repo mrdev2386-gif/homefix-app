@@ -17,6 +17,7 @@ class BookingProvider extends ChangeNotifier {
   String? _currentBookingIdempotencyKey;
   DateTime? _idempotencyKeyCreatedAt;
   SharedPreferences? _prefs;
+  bool _isInitializing = false;
   
   static const String _idempotencyKeyPrefKey = 'booking_idempotency_key';
   static const String _idempotencyKeyTimePrefKey = 'booking_idempotency_key_time';
@@ -27,6 +28,9 @@ class BookingProvider extends ChangeNotifier {
 
   /// Initialize SharedPreferences and restore idempotency key if available
   Future<void> _initializePreferences() async {
+    if (_isInitializing || _prefs != null) return;
+    _isInitializing = true;
+    
     try {
       _prefs = await SharedPreferences.getInstance();
       
@@ -49,21 +53,23 @@ class BookingProvider extends ChangeNotifier {
       }
     } catch (e) {
       if (kDebugMode) debugPrint('[BookingProvider] Error initializing preferences: $e');
+    } finally {
+      _isInitializing = false;
     }
+  }
+
+  /// Ensure SharedPreferences is initialized before use
+  Future<void> _ensureInitialized() async {
+    if (_prefs != null) return;
+    await _initializePreferences();
   }
 
   /// Generate or reuse idempotency key for booking session
   /// Persists key to SharedPreferences for recovery on app restart
   /// HARDENING: Ensures same key is used for retries (prevents duplicates)
-  String _getOrCreateIdempotencyKey() {
-    // CRITICAL FIX: Ensure _prefs is initialized before use
-    // If not initialized, generate key without persistence (fallback)
-    if (_prefs == null) {
-      if (kDebugMode) debugPrint('[BookingProvider] WARNING: _prefs not initialized, generating key without persistence');
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final random = Random().nextInt(9999);
-      return 'BK_${timestamp}_$random';
-    }
+  Future<String> _getOrCreateIdempotencyKey() async {
+    // Ensure SharedPreferences is initialized
+    await _ensureInitialized();
     
     // If key exists and was created less than 5 minutes ago, reuse it
     // HARDENING: This ensures retry uses SAME key (idempotency)
@@ -86,8 +92,8 @@ class BookingProvider extends ChangeNotifier {
     _idempotencyKeyCreatedAt = DateTime.now();
     
     // Persist to SharedPreferences for recovery on app restart
-    _prefs?.setString(_idempotencyKeyPrefKey, _currentBookingIdempotencyKey!);
-    _prefs?.setInt(_idempotencyKeyTimePrefKey, _idempotencyKeyCreatedAt!.millisecondsSinceEpoch);
+    await _prefs?.setString(_idempotencyKeyPrefKey, _currentBookingIdempotencyKey!);
+    await _prefs?.setInt(_idempotencyKeyTimePrefKey, _idempotencyKeyCreatedAt!.millisecondsSinceEpoch);
     
     if (kDebugMode) debugPrint('[BookingProvider] Generated new idempotency key: $_currentBookingIdempotencyKey');
     return _currentBookingIdempotencyKey!;
@@ -147,14 +153,8 @@ class BookingProvider extends ChangeNotifier {
     String? paymentMode,
     bool isUrgent = false,
   }) async {
-    // CRITICAL FIX: Ensure SharedPreferences is initialized before proceeding
-    if (_prefs == null) {
-      if (kDebugMode) debugPrint('[BookingProvider] _prefs not initialized, waiting...');
-      await _initializePreferences();
-      if (_prefs == null) {
-        throw Exception('Failed to initialize preferences. Please try again.');
-      }
-    }
+    // Ensure SharedPreferences is initialized
+    await _ensureInitialized();
     
     // Prevent duplicate booking requests
     if (_isBooking) {
@@ -250,7 +250,7 @@ class BookingProvider extends ChangeNotifier {
       // 5. CREATE BOOKING REQUEST WITH PERSISTENT IDEMPOTENCY KEY
       // ─────────────────────────────────────────────────────────────────────
       if (kDebugMode) debugPrint('[BOOKING_FLOW] Creating booking with idempotency key');
-      final idempotencyKey = _getOrCreateIdempotencyKey();
+      final idempotencyKey = await _getOrCreateIdempotencyKey();
       
       // HARDENING: Verify key is valid before sending
       if (!_isIdempotencyKeyValid()) {

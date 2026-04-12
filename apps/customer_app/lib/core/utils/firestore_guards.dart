@@ -7,17 +7,23 @@ class FirestoreGuards {
   /// Validates if a document ID is safe to use
   static bool isValidDocumentId(String? id) {
     if (id == null || id.isEmpty) {
-      debugPrint('[PATH_GUARD] Blocked empty/null document ID');
+      if (kDebugMode) {
+        debugPrint('[PATH_GUARD] Blocked empty/null document ID');
+      }
       return false;
     }
     
     if (id.contains('/')) {
-      debugPrint('[PATH_GUARD] Blocked invalid character "/" in ID: $id');
+      if (kDebugMode) {
+        debugPrint('[PATH_GUARD] Blocked invalid character "/" in ID: $id');
+      }
       return false;
     }
     
     if (id.contains('__')) {
-      debugPrint('[PATH_GUARD] Blocked invalid pattern "__" in ID: $id');
+      if (kDebugMode) {
+        debugPrint('[PATH_GUARD] Blocked invalid pattern "__" in ID: $id');
+      }
       return false;
     }
     

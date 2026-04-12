@@ -212,11 +212,20 @@ class HomeService {
       // Ignore path parsing errors
     }
     
-    // Strategy 3: Default to empty (will be handled upstream, but warn in debug)
-    if (kDebugMode) {
-      debugPrint('⚠️ [Service] categoryId missing for service: ${data['name'] ?? data['title'] ?? doc.id}');
+    // Strategy 3: Use categoryName as fallback if available
+    final categoryName = data['categoryName']?.toString();
+    if (categoryName != null && categoryName.isNotEmpty) {
+      if (kDebugMode) {
+        debugPrint('🔧 [Service] Using categoryName as categoryId: $categoryName for service: ${data['name'] ?? data['title'] ?? doc.id}');
+      }
+      return categoryName;
     }
-    return '';
+    
+    // Strategy 4: Default to "general" (ensure every service has a categoryId)
+    if (kDebugMode) {
+      debugPrint('⚠️ [Service] categoryId missing, using "general" for service: ${data['name'] ?? data['title'] ?? doc.id}');
+    }
+    return 'general';
   }
 
   /// Extract and validate image URL with fallback

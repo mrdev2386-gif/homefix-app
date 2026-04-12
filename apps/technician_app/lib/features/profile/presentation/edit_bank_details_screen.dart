@@ -18,7 +18,7 @@ class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
   final _accountNumberController = TextEditingController();
   final _ifscCodeController = TextEditingController();
   final _bankNameController = TextEditingController();
-  final _functionsService = FunctionsService();
+  late final FunctionsService _functionsService;
   
   bool _isSaving = false;
   bool _showAccountNumber = false;
@@ -31,6 +31,7 @@ class _EditBankDetailsScreenState extends State<EditBankDetailsScreen> {
   @override
   void initState() {
     super.initState();
+    _functionsService = context.read<FunctionsService>();
     _loadCurrentData();
   }
 

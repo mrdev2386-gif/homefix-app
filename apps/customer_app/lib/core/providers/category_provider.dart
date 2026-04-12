@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:customer_app/core/services/category_service.dart';
+import 'package:customer_app/core/services/firestore_service.dart';
 import '../models/category.dart';
 
 class CategoryProvider extends ChangeNotifier {
@@ -16,8 +17,8 @@ class CategoryProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String get searchQuery => _searchQuery;
 
-  CategoryProvider({CategoryService? categoryService}) {
-    _categoryService = categoryService ?? CategoryService();
+  CategoryProvider({required CategoryService categoryService}) {
+    _categoryService = categoryService;
     _loadCategories();
   }
 

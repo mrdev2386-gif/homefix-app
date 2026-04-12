@@ -4,7 +4,6 @@ import 'package:async/async.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/services/functions_service.dart';
@@ -53,7 +52,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
   final TextEditingController _originalPriceController = TextEditingController();
   final TextEditingController _offerPriceController = TextEditingController();
   final _imageUploadService = ImageUploadService();
-  final _functionsService = FunctionsService();
+  late final FunctionsService _functionsService;
   final _categoryDataService = CategoryDataService();
   
   // Form state
@@ -101,6 +100,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
   @override
   void initState() {
     super.initState();
+    _functionsService = context.read<FunctionsService>();
     _loadCategories();
     
     // Prefill data in edit mode
@@ -286,67 +286,10 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
   }
 
   /// PART 2: Add custom service to technician profile
-  /// Ultra-safe version with:
-  /// - trim input
-  /// - collapse multiple spaces
-  /// - case-insensitive duplicate check
-  /// - length >= 3, max length = 60
-  /// - disable add button while saving
-  /// - prevent rapid taps
-  /// - re-fetch latest technician doc
-  /// - merge safely (arrayUnion preferred if available)
+  /// COMING SOON: Backend function not yet implemented
   Future<void> _addCustomService(String customServiceName) async {
-    // PART 2: Trim input and collapse multiple spaces
-    final trimmedName = customServiceName.trim().replaceAll(RegExp(r'\s+'), ' ');
-    
-    // PART 2: Length validation
-    if (trimmedName.length < 3) {
-      throw Exception('Custom service name must be at least 3 characters');
-    }
-    if (trimmedName.length > 60) {
-      throw Exception('Custom service name must be 60 characters or less');
-    }
-    
-    try {
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null) throw Exception('User not authenticated');
-
-      // PART 2: Re-fetch latest technician doc before saving
-      final techDoc = await FirebaseFirestore.instance
-          .collection('technicians')
-          .doc(uid)
-          .get();
-      
-      if (!techDoc.exists) {
-        throw Exception('Technician profile not found');
-      }
-      
-      final existingCustomServices = (techDoc.data()?['customServices'] as List?)
-          ?.map((e) => e.toString())
-          .toList() ?? [];
-      
-      // PART 2: Case-insensitive duplicate check
-      if (existingCustomServices.any((s) => s.toLowerCase() == trimmedName.toLowerCase())) {
-        throw Exception('This custom service already exists');
-      }
-
-      // PART 2: Merge safely using arrayUnion
-      final updatedCustomServices = [...existingCustomServices, trimmedName];
-      
-      await FirebaseFirestore.instance
-          .collection('technicians')
-          .doc(uid)
-          .update({
-            'customServices': updatedCustomServices,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-
-      if (mounted) {
-        await context.read<TechnicianProvider>().refreshTechnicianData();
-      }
-    } catch (e) {
-      rethrow;
-    }
+    // Show "Coming Soon" message
+    throw Exception('Custom service feature is coming soon. Please select from existing categories.');
   }
 
   /// Pick image from gallery or camera
@@ -590,28 +533,16 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
       
       setState(() => _isSaving = true);
       
-      try {
-        await _addCustomService(customName);
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Custom service added successfully'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          Navigator.pop(context, true);
-        }
-      } catch (e) {
-        if (mounted) {
-          setState(() => _isSaving = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to add custom service: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+      // Show "Coming Soon" message for custom services
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Custom service feature is coming soon. Please select from existing categories.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          ),
+        );
       }
       return;
     }

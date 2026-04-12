@@ -15,8 +15,8 @@ class CategoryService extends ChangeNotifier {
   // SINGLE BASE STREAM - All service queries derive from this
   late final Stream<List<HomeService>> _baseServicesStream;
 
-  CategoryService({FirestoreService? firestoreService})
-      : _firestoreService = firestoreService ?? FirestoreService() {
+  CategoryService({required FirestoreService firestoreService})
+      : _firestoreService = firestoreService {
     _initializeStreams();
   }
 

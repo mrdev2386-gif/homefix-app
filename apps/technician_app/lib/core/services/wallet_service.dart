@@ -15,7 +15,6 @@ import '../firebase/firebase_functions.dart';
 class WalletService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FunctionsService _functionsService = FunctionsService();
   
   /// Get current technician ID
   String? get _technicianId => _auth.currentUser?.uid;
@@ -194,11 +193,13 @@ class WalletService {
   /// Create Razorpay order for wallet credit
   Future<RazorpayOrderResult> createRazorpayOrder(double amount) async {
     try {
-      final result = await _functionsService.createRazorpayOrder(
-        amount: amount,
-        notes: 'Wallet credit',
-      );
-      return RazorpayOrderResult.fromMap(result);
+      // Call Cloud Function directly
+      final callable = FirebaseFunctionsService.instance.httpsCallable('createRazorpayOrder');
+      final result = await callable.call({
+        'amount': amount,
+        'notes': 'Wallet credit',
+      });
+      return RazorpayOrderResult.fromMap(result.data);
     } catch (e) {
       throw WalletException('Failed to create order: $e');
     }

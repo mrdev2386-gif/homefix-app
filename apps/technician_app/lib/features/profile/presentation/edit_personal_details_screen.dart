@@ -24,7 +24,7 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
   final _experienceController = TextEditingController();
   final _bioController = TextEditingController();
   final _alternatePhoneController = TextEditingController();
-  final _functionsService = FunctionsService();
+  late final FunctionsService _functionsService;
   
   bool _isSaving = false;
   bool _isVerifyingEmail = false;
@@ -43,6 +43,7 @@ class _EditPersonalDetailsScreenState extends State<EditPersonalDetailsScreen> {
   @override
   void initState() {
     super.initState();
+    _functionsService = context.read<FunctionsService>();
     _loadCurrentData();
   }
 

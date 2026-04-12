@@ -4,8 +4,11 @@ import '../models/cart_item.dart';
 import '../services/firestore_service.dart';
 
 class CartProvider with ChangeNotifier {
-  final FirestoreService _firestoreService = FirestoreService();
+  final FirestoreService _firestoreService;
   List<CartItem> _items = [];
+  
+  CartProvider({required FirestoreService firestoreService})
+      : _firestoreService = firestoreService;
   String? _userId;
   StreamSubscription? _cartSubscription;
   bool _isLoading = false;

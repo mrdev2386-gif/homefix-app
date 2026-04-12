@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:image_picker/image_picker.dart';
@@ -31,7 +32,7 @@ class TechnicianProfileScreen extends StatefulWidget {
 }
 
 class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with TickerProviderStateMixin {
-  final FunctionsService _functionsService = FunctionsService();
+  late final FunctionsService _functionsService;
   bool _notificationsEnabled = true;
   bool _isLoggingOut = false;
   
@@ -43,6 +44,7 @@ class _TechnicianProfileScreenState extends State<TechnicianProfileScreen> with 
   @override
   void initState() {
     super.initState();
+    _functionsService = context.read<FunctionsService>();
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 600),
       vsync: this,
@@ -2608,53 +2610,17 @@ class _EditAvailabilityScreenState extends State<EditAvailabilityScreen> {
 
     setState(() => _isSaving = true);
 
-    try {
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null) throw Exception('User not authenticated');
-
-      // Format times as HH:mm strings
-      final startTimeStr = '${_startTime.hour.toString().padLeft(2, '0')}:${_startTime.minute.toString().padLeft(2, '0')}';
-      final endTimeStr = '${_endTime.hour.toString().padLeft(2, '0')}:${_endTime.minute.toString().padLeft(2, '0')}';
-
-      await FirebaseFirestore.instance
-          .collection('technicians')
-          .doc(uid)
-          .update({
-            'availability': {
-              'startTime': startTimeStr,
-              'endTime': endTimeStr,
-              'isEmergencyOn': _emergencyAvailable,
-              'timezone': 'Asia/Kolkata',
-            },
-            'workStartTime': {'hour': _startTime.hour, 'minute': _startTime.minute},
-            'workEndTime': {'hour': _endTime.hour, 'minute': _endTime.minute},
-            'emergencyServiceAvailable': _emergencyAvailable,
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-
-      if (mounted) {
-        await context.read<TechnicianProvider>().refreshTechnicianData();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Availability updated successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to update: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSaving = false);
-      }
+    // Show "Coming Soon" message - backend function not yet implemented
+    if (mounted) {
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Availability editing is coming soon. Contact support for assistance.'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      Navigator.pop(context);
     }
   }
 
@@ -3119,65 +3085,17 @@ class _RaiseDisputeScreenState extends State<RaiseDisputeScreen> {
 
     setState(() => _isSubmitting = true);
 
-    try {
-      final trimmedDescription = _descriptionController.text.trim();
-      final jobIdText = _jobIdController.text.trim();
-      final jobId = jobIdText.isEmpty ? null : jobIdText;
-
-      // Write to Firestore
-      final docRef = await FirebaseFirestore.instance
-          .collection('disputes')
-          .add({
-            'uid': user.uid,
-            'jobId': jobId,
-            'reason': _selectedReason,
-            'description': trimmedDescription,
-            'status': 'open',
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-
-      // Verify write
-      final docSnapshot = await docRef.get();
-      
-      if (docSnapshot.exists) {
-        debugPrint('[WRITE VERIFY] dispute created: ${docRef.id}');
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Dispute submitted successfully!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          Navigator.pop(context);
-        }
-      } else {
-        throw Exception('Failed to verify dispute creation');
-      }
-    } on FirebaseException catch (e) {
-      debugPrint('[RaiseDispute] Firebase error: ${e.code} - ${e.message}');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.message}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('[RaiseDispute] Error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-      }
+    // Show "Coming Soon" message - backend function not yet implemented
+    if (mounted) {
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Dispute submission is coming soon. Please contact support directly.'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      Navigator.pop(context);
     }
   }
 
@@ -3442,64 +3360,17 @@ class _ContactSupportScreenState extends State<ContactSupportScreen> {
 
     setState(() => _isSubmitting = true);
 
-    try {
-      final trimmedMessage = _messageController.text.trim();
-
-      // Write to Firestore
-      final docRef = await FirebaseFirestore.instance
-          .collection('support_tickets')
-          .add({
-            'uid': user.uid,
-            'message': trimmedMessage,
-            'category': _selectedCategory,
-            'type': 'support',
-            'status': 'open',
-            'createdAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-
-      // Verify write
-      final docSnapshot = await docRef.get();
-      
-      if (docSnapshot.exists) {
-        debugPrint('[WRITE VERIFY] support ticket created: ${docRef.id}');
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Support ticket submitted successfully!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          Navigator.pop(context);
-        }
-      } else {
-        throw Exception('Failed to verify ticket creation');
-      }
-    } on FirebaseException catch (e) {
-      debugPrint('[ContactSupport] Firebase error: ${e.code} - ${e.message}');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.message}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('[ContactSupport] Error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-      }
+    // Show "Coming Soon" message - backend function not yet implemented
+    if (mounted) {
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Support ticket submission is coming soon. Please contact support directly.'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      Navigator.pop(context);
     }
   }
 
