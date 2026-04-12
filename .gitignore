@@ -40,4 +40,6 @@ logs/
 
 # Temporary files
 tmp/
-temp/
+temp/apps/customer_app/android/.gradle-user-home/ 
+apps/customer_app/android/.gradle-project-cache/ 
+apps/customer_app/android/.kotlin/ 
