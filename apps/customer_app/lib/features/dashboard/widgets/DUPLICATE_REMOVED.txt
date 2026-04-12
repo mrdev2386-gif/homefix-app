@@ -1,0 +1,14 @@
+# DUPLICATE WIDGET REMOVED
+
+This file was a duplicate of the "Recommended For You" section.
+
+The dashboard_screen.dart uses:
+- RecommendedServicesSection (from real_services_sections.dart)
+
+This file is no longer needed and has been removed.
+
+The active implementation includes:
+- Personalization check (only shows if user has favorites or cart items)
+- 4-column grid layout
+- 8-item limit
+- Proper loading states

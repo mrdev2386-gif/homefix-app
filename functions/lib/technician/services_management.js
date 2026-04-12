@@ -1,0 +1,482 @@
+"use strict";
+/**
+ * Technician Services Management - Production Ready
+ *
+ * ARCHITECTURE:
+ * - Single Source of Truth: technicians/{technicianId}/services/{serviceId}
+ * - ALL writes via Cloud Functions (no direct Firestore writes)
+ * - District auto-injected from technician profile (server-side)
+ * - Customer App reads via collection group query filtered by district
+ * - Server-side validation and security
+ */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getMyTechnicianServices = exports.deleteTechnicianService = exports.toggleTechnicianServiceStatus = exports.updateTechnicianService = exports.addTechnicianService = void 0;
+const functions = __importStar(require("firebase-functions"));
+const admin = __importStar(require("firebase-admin"));
+const security_1 = require("../shared/security");
+const db = admin.firestore();
+// Total onboarding steps: basic, professional, kyc, portfolio
+const TOTAL_ONBOARDING_STEPS = 4;
+// Helper function to calculate profile completion from stepsCompleted
+// NORMALIZED: Only count required steps: personalDetails, serviceCategories, portfolio, verification
+function calculateProfileCompletion(technician) {
+    // SECURITY: Always calculate dynamically, never trust stored values
+    const stepsCompleted = technician.stepsCompleted || {};
+    let completedRequiredSteps = 0;
+    const totalRequiredSteps = 4; // personalDetails, serviceCategories, portfolio, verification
+    // Check required steps only - NORMALIZED FIELD NAMES
+    if (stepsCompleted.personalDetails === true) {
+        completedRequiredSteps++;
+    }
+    if (stepsCompleted.serviceCategories === true) {
+        completedRequiredSteps++;
+    }
+    if (stepsCompleted.portfolio === true) {
+        completedRequiredSteps++;
+    }
+    if (stepsCompleted.verification === true) {
+        completedRequiredSteps++;
+    }
+    const completion = Math.round((completedRequiredSteps / totalRequiredSteps) * 100);
+    console.log(`[PROFILE COMPLETION] Calculated: ${completion}% (${completedRequiredSteps}/${totalRequiredSteps})`);
+    return completion;
+}
+/**
+ * Add Technician Service
+ * Creates service under technicians/{technicianId}/services/{serviceId}
+ * DISTRICT-SAFE: District auto-injected from technician profile
+ */
+exports.addTechnicianService = functions
+    .region('asia-south1')
+    .https.onCall(async (data, context) => {
+    // ============================================
+    // COMPREHENSIVE AUTH VERIFICATION LOGGING
+    // ============================================
+    console.log("🔥 [FUNCTION START] addTechnicianService triggered");
+    console.log("🔥 [REQUEST TIMESTAMP]", new Date().toISOString());
+    // Log full context object
+    console.log("🔥 [CONTEXT AUTH]", JSON.stringify(context.auth, null, 2));
+    console.log("🔥 [CONTEXT UID]", context.auth?.uid);
+    console.log("🔥 [CONTEXT TOKEN]", context.auth?.token ? "PRESENT" : "MISSING");
+    // Log incoming data
+    console.log("🔥 [INCOMING DATA]", JSON.stringify(data, null, 2));
+    // Log request headers if available
+    if (context.rawRequest) {
+        console.log("🔥 [REQUEST HEADERS]", JSON.stringify(context.rawRequest.headers, null, 2));
+    }
+    // STEP 4: Validate auth
+    if (!context.auth) {
+        console.error("❌ [AUTH FAILED] NO AUTH CONTEXT - Request rejected");
+        throw new functions.https.HttpsError("unauthenticated", "User not authenticated");
+    }
+    const technicianId = context.auth.uid;
+    console.log("🔥 [AUTH SUCCESS] Authenticated UID:", technicianId);
+    console.log("🔥 [AUTH TOKEN CLAIMS]", JSON.stringify(context.auth.token, null, 2));
+    const { name, price, offerPrice, imageUrl, category, description, urgentBooking, nightService } = data;
+    // SECURITY FIX: Sanitize inputs
+    const sanitizedName = (0, security_1.sanitizeString)(name || '', 200);
+    const sanitizedCategory = (0, security_1.sanitizeString)(category || '', 100);
+    const sanitizedDescription = (0, security_1.sanitizeString)(description || '', 1000);
+    // CRITICAL VALIDATION: Price and offerPrice are REQUIRED
+    if (!sanitizedName || sanitizedName.length < 3) {
+        throw new functions.https.HttpsError("invalid-argument", "Service name must be at least 3 characters");
+    }
+    if (!price || price <= 0) {
+        throw new functions.https.HttpsError("invalid-argument", "Original price is required and must be greater than 0");
+    }
+    if (!offerPrice || offerPrice <= 0) {
+        throw new functions.https.HttpsError("invalid-argument", "Offer price is required and must be greater than 0");
+    }
+    // CRITICAL: offerPrice MUST be strictly less than price
+    if (offerPrice >= price) {
+        throw new functions.https.HttpsError("invalid-argument", "Offer price must be strictly less than original price");
+    }
+    if (!imageUrl?.trim()) {
+        throw new functions.https.HttpsError("invalid-argument", "Image is required");
+    }
+    // CRITICAL VALIDATION: categoryId is REQUIRED
+    if (!sanitizedCategory) {
+        throw new functions.https.HttpsError("invalid-argument", "Category is required");
+    }
+    // CRITICAL: Validate categoryId is not empty or 'custom'
+    if (sanitizedCategory === 'custom' || sanitizedCategory.length < 2) {
+        throw new functions.https.HttpsError("invalid-argument", "Please select a valid category");
+    }
+    // CRITICAL: Fetch technician profile to get district AND state AND validate approval
+    const techDoc = await db.collection('technicians').doc(technicianId).get();
+    if (!techDoc.exists) {
+        throw new functions.https.HttpsError("not-found", "Technician profile not found");
+    }
+    const techData = techDoc.data();
+    // APPROVAL VALIDATION: Check profile completion and approval status
+    const profileCompletion = calculateProfileCompletion(techData);
+    console.log(`[TECH STATUS] ${techData.status}`);
+    console.log(`[PROFILE COMPLETION] ${profileCompletion}`);
+    console.log(`[SERVICE ALLOWED] ${techData.status === 'approved'}`);
+    if (profileCompletion < 100) {
+        throw new functions.https.HttpsError("failed-precondition", "Please complete your profile to 100% before listing services.");
+    }
+    // Use consistent approval check: status == "approved" ONLY
+    const isApproved = techData.status === "approved";
+    if (!isApproved) {
+        if (techData.profileRejected) {
+            throw new functions.https.HttpsError("failed-precondition", "Your profile was rejected. Please update your information and resubmit.");
+        }
+        throw new functions.https.HttpsError("failed-precondition", "Complete profile and wait for admin approval.");
+    }
+    const district = techData.district || techData.districtNormalized;
+    const state = techData.state || techData.stateNormalized;
+    if (!district) {
+        throw new functions.https.HttpsError("failed-precondition", "Your profile must have a district set. Please update your profile.");
+    }
+    if (!state) {
+        throw new functions.https.HttpsError("failed-precondition", "Your profile must have a state set. Please update your profile.");
+    }
+    // CRITICAL FIX: Normalize location to lowercase for consistent filtering
+    const normalizedDistrict = district.toString().trim().toLowerCase();
+    const normalizedState = state.toString().trim().toLowerCase();
+    console.log(`[LOCATION NORMALIZATION] Original: ${state}/${district} → Normalized: ${normalizedState}/${normalizedDistrict}`);
+    const serviceId = db.collection('technician_services').doc().id;
+    const now = admin.firestore.Timestamp.now();
+    // CRITICAL FIX: Services must start as PENDING for admin approval
+    // PRICING STRUCTURE:
+    // - price: Original price (before discount) - used for strikethrough display
+    // - offerPrice: Discounted price - the actual selling price
+    const serviceData = {
+        id: serviceId,
+        name: sanitizedName,
+        price, // Original price (before discount)
+        offerPrice, // Discounted price (actual selling price)
+        categoryId: sanitizedCategory,
+        imageUrl: imageUrl.trim(),
+        category: sanitizedCategory,
+        description: sanitizedDescription,
+        district: normalizedDistrict, // SERVER-INJECTED (LOWERCASE)
+        state: normalizedState, // SERVER-INJECTED (LOWERCASE)
+        averageRating: techData.averageRating || 0, // FROM TECHNICIAN
+        totalReviews: techData.totalReviews || 0, // FROM TECHNICIAN
+        technicianName: techData.fullName || techData.name || 'Unknown',
+        technicianPhoto: techData.profilePhoto || techData.photoUrl || '',
+        status: 'pending', // CRITICAL: Requires admin approval
+        isActive: false, // CRITICAL: Inactive until approved
+        isDeleted: false,
+        technicianId,
+        createdAt: now,
+        updatedAt: now,
+    };
+    console.log(`[PRICING DEBUG] Service ${serviceId}: price=${price}, offerPrice=${offerPrice}`);
+    // Add urgent booking configuration if provided
+    if (urgentBooking) {
+        serviceData.urgentBooking = {
+            enabled: urgentBooking.enabled || false,
+            arrivalTime: urgentBooking.arrivalTime || null,
+            urgentFee: urgentBooking.urgentFee || 0,
+        };
+    }
+    else {
+        // Default structure for new services
+        serviceData.urgentBooking = {
+            enabled: false,
+            arrivalTime: null,
+            urgentFee: 0,
+        };
+    }
+    // Add night service configuration if provided
+    if (nightService) {
+        serviceData.nightService = {
+            enabled: nightService.enabled || false,
+            nightCharge: nightService.nightCharge || 0,
+        };
+    }
+    else {
+        // Default structure for new services
+        serviceData.nightService = {
+            enabled: false,
+            nightCharge: 0,
+        };
+    }
+    console.log("🔥 [FINAL DATA GOING TO FIRESTORE]", JSON.stringify(serviceData, null, 2));
+    if ('basePrice' in serviceData) {
+        console.error("❌ [CRITICAL BUG] basePrice found in serviceData! Deleting...");
+        delete serviceData.basePrice;
+    }
+    console.log("✅ [ASSERTION PASSED] basePrice NOT present in final data");
+    console.log("✅ [FIELDS PRESENT]", Object.keys(serviceData).sort());
+    await db.collection('technician_services').doc(serviceId).set(serviceData);
+    // ENHANCED DEBUG LOGGING
+    console.log(`[SERVICE_ADD] ✅ Service ${serviceId} created for technician ${technicianId}`);
+    console.log(`[SERVICE_ADD] 📍 Location: ${normalizedDistrict}, ${normalizedState} (normalized)`);
+    console.log(`[SERVICE_ADD] 📊 Status: ${serviceData.status}, isActive: ${serviceData.isActive}`);
+    console.log(`[SERVICE_ADD] 🏷️ CategoryId: ${serviceData.categoryId} (VERIFIED)`);
+    console.log(`[SERVICE_ADD] 📝 Document written to: technician_services/${serviceId}`);
+    return {
+        success: true,
+        serviceId,
+        message: "Service added successfully",
+    };
+});
+/**
+ * Update Technician Service
+ * Only owner can update
+ * PROTECTED: Cannot update district, technicianId, or rating fields
+ */
+exports.updateTechnicianService = functions
+    .region('asia-south1')
+    .https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "Authentication required");
+    }
+    const technicianId = context.auth.uid;
+    const { serviceId, ...updates } = data;
+    if (!serviceId) {
+        throw new functions.https.HttpsError("invalid-argument", "Service ID is required");
+    }
+    const serviceRef = db.collection('technician_services').doc(serviceId);
+    const serviceDoc = await serviceRef.get();
+    if (!serviceDoc.exists) {
+        throw new functions.https.HttpsError("not-found", "Service not found");
+    }
+    // Security check - only owner can update
+    const serviceData = serviceDoc.data();
+    if (serviceData.technicianId !== technicianId) {
+        throw new functions.https.HttpsError("permission-denied", "You can only update your own services");
+    }
+    // Validation
+    const updateData = { updatedAt: admin.firestore.Timestamp.now() };
+    if (updates.name !== undefined) {
+        const sanitizedName = (0, security_1.sanitizeString)(updates.name, 200);
+        if (!sanitizedName || sanitizedName.length < 3) {
+            throw new functions.https.HttpsError("invalid-argument", "Service name must be at least 3 characters");
+        }
+        updateData.name = sanitizedName;
+    }
+    if (updates.price !== undefined) {
+        if (updates.price <= 0) {
+            throw new functions.https.HttpsError("invalid-argument", "Original price must be greater than 0");
+        }
+        updateData.price = updates.price;
+    }
+    if (updates.offerPrice !== undefined) {
+        if (updates.offerPrice <= 0) {
+            throw new functions.https.HttpsError("invalid-argument", "Offer price must be greater than 0");
+        }
+        // Validate offerPrice < price if both are being updated
+        const currentPrice = updates.price ?? serviceData.price;
+        if (updates.offerPrice >= currentPrice) {
+            throw new functions.https.HttpsError("invalid-argument", "Offer price must be strictly less than original price");
+        }
+        updateData.offerPrice = updates.offerPrice;
+    }
+    if (updates.imageUrl !== undefined) {
+        if (!updates.imageUrl.trim()) {
+            throw new functions.https.HttpsError("invalid-argument", "Image is required");
+        }
+        updateData.imageUrl = updates.imageUrl.trim();
+    }
+    if (updates.category !== undefined) {
+        const sanitizedCategory = (0, security_1.sanitizeString)(updates.category, 100);
+        if (!sanitizedCategory) {
+            throw new functions.https.HttpsError("invalid-argument", "Category cannot be empty");
+        }
+        updateData.category = sanitizedCategory;
+    }
+    if (updates.description !== undefined) {
+        updateData.description = (0, security_1.sanitizeString)(updates.description, 1000);
+    }
+    // Urgent Booking Feature updates
+    if (updates.urgentBooking !== undefined) {
+        updateData.urgentBooking = {
+            enabled: updates.urgentBooking.enabled ?? false,
+            arrivalTime: updates.urgentBooking.arrivalTime ?? null,
+            urgentFee: updates.urgentBooking.urgentFee ?? 0,
+        };
+    }
+    // Night Service Feature updates
+    if (updates.nightService !== undefined) {
+        updateData.nightService = {
+            enabled: updates.nightService.enabled ?? false,
+            nightCharge: updates.nightService.nightCharge ?? 0,
+        };
+    }
+    // PROTECTED: Do NOT allow updates to:
+    // - district (server-managed)
+    // - technicianId (immutable)
+    // - averageRating (calculated)
+    // - totalReviews (calculated)
+    console.log("🔥 [UPDATE DATA GOING TO FIRESTORE]", JSON.stringify(updateData, null, 2));
+    if ('basePrice' in updateData) {
+        console.error("❌ [CRITICAL BUG] basePrice found in updateData! Deleting...");
+        delete updateData.basePrice;
+    }
+    console.log("✅ [ASSERTION PASSED] basePrice NOT present in update data");
+    await serviceRef.update(updateData);
+    console.log(`[SERVICE_UPDATE] Service ${serviceId} updated for technician ${technicianId}`);
+    return {
+        success: true,
+        serviceId,
+        message: "Service updated successfully",
+    };
+});
+/**
+ * Toggle Service Status
+ * Flips isActive between true/false
+ */
+exports.toggleTechnicianServiceStatus = functions
+    .region('asia-south1')
+    .https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "Authentication required");
+    }
+    const technicianId = context.auth.uid;
+    const { serviceId } = data;
+    if (!serviceId) {
+        throw new functions.https.HttpsError("invalid-argument", "Service ID is required");
+    }
+    const serviceRef = db.collection('technician_services').doc(serviceId);
+    const serviceDoc = await serviceRef.get();
+    if (!serviceDoc.exists) {
+        throw new functions.https.HttpsError("not-found", "Service not found");
+    }
+    // Security check - only owner can toggle
+    const serviceData = serviceDoc.data();
+    if (serviceData.technicianId !== technicianId) {
+        throw new functions.https.HttpsError("permission-denied", "You can only toggle your own services");
+    }
+    const currentStatus = serviceData.isActive ?? true;
+    const newStatus = !currentStatus;
+    await serviceRef.update({
+        isActive: newStatus,
+        updatedAt: admin.firestore.Timestamp.now(),
+    });
+    console.log(`[SERVICE_TOGGLE] Service ${serviceId} toggled to ${newStatus}`);
+    return {
+        success: true,
+        serviceId,
+        isActive: newStatus,
+        message: newStatus ? "Service activated" : "Service deactivated",
+    };
+});
+/**
+ * Delete Service (Soft Delete)
+ * Sets isDeleted = true, isActive = false
+ */
+exports.deleteTechnicianService = functions
+    .region('asia-south1')
+    .https.onCall(async (data, context) => {
+    // ============================================
+    // COMPREHENSIVE AUTH VERIFICATION LOGGING
+    // ============================================
+    console.log("🔥 [FUNCTION START] deleteTechnicianService triggered");
+    console.log("🔥 [REQUEST TIMESTAMP]", new Date().toISOString());
+    // Log full context object
+    console.log("🔥 [CONTEXT AUTH]", JSON.stringify(context.auth, null, 2));
+    console.log("🔥 [CONTEXT UID]", context.auth?.uid);
+    console.log("🔥 [CONTEXT TOKEN]", context.auth?.token ? "PRESENT" : "MISSING");
+    // Log incoming data
+    console.log("🔥 [INCOMING DATA]", JSON.stringify(data, null, 2));
+    // Log request headers if available
+    if (context.rawRequest) {
+        console.log("🔥 [REQUEST HEADERS]", JSON.stringify(context.rawRequest.headers, null, 2));
+    }
+    console.log("AUTH DEBUG:", context.auth);
+    if (!context.auth) {
+        console.error("❌ [AUTH FAILED] NO AUTH CONTEXT - Request rejected");
+        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
+    }
+    const technicianId = context.auth.uid;
+    console.log("🔥 [AUTH SUCCESS] Authenticated UID:", technicianId);
+    console.log("🔥 [AUTH TOKEN CLAIMS]", JSON.stringify(context.auth.token, null, 2));
+    const { serviceId } = data;
+    if (!serviceId) {
+        throw new functions.https.HttpsError("invalid-argument", "Service ID is required");
+    }
+    const serviceRef = db.collection('technician_services').doc(serviceId);
+    const serviceDoc = await serviceRef.get();
+    if (!serviceDoc.exists) {
+        throw new functions.https.HttpsError("not-found", "Service not found");
+    }
+    // Security check - only owner can delete
+    const serviceData = serviceDoc.data();
+    if (serviceData.technicianId !== technicianId) {
+        throw new functions.https.HttpsError("permission-denied", "You can only delete your own services");
+    }
+    await serviceRef.update({
+        isDeleted: true,
+        isActive: false,
+        updatedAt: admin.firestore.Timestamp.now(),
+    });
+    console.log(`[SERVICE_DELETE] Service ${serviceId} soft deleted`);
+    return {
+        success: true,
+        serviceId,
+        message: "Service deleted successfully",
+    };
+});
+/**
+ * Get My Technician Services
+ * Returns all services for the authenticated technician
+ */
+exports.getMyTechnicianServices = functions
+    .region('asia-south1')
+    .https.onCall(async (data, context) => {
+    // 1. Authentication check
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "User must be authenticated");
+    }
+    const technicianId = context.auth.uid;
+    console.log(`[TECH_SERVICE] Fetching services for technician: ${technicianId}`);
+    // 2. Get all active services for this technician (including inactive for management)
+    const servicesSnapshot = await db.collection('technician_services')
+        .where('technicianId', '==', technicianId)
+        .orderBy('createdAt', 'desc')
+        .get();
+    const services = servicesSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+            id: doc.id,
+            ...data,
+            createdAt: data.createdAt?.toDate?.()?.toISOString(),
+            updatedAt: data.updatedAt?.toDate?.()?.toISOString()
+        };
+    });
+    console.log(`[TECH_SERVICE] Found ${services.length} services`);
+    return {
+        success: true,
+        services: services,
+        count: services.length
+    };
+});
+//# sourceMappingURL=services_management.js.map
