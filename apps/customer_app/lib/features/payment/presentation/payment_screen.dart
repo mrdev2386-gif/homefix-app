@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import '../../../core/services/functions_service.dart';
@@ -39,6 +40,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
     try {
       final booking = await BookingService().getBooking(widget.bookingId);
       setState(() => _booking = booking);
+      if (booking != null && 
+          (booking.paymentStatus == 'processing' || booking.paymentStatus == 'failed')) {
+        _checkPendingPayment();
+      }
     } catch (e) {
       setState(() => _errorMessage = 'Failed to load booking: $e');
     }
@@ -140,8 +145,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
       );
 
       if (verifyResponse['success']) {
-        // STEP 6: Refresh booking state from Firestore
-        await _refreshBookingState();
+        // STEP 6: Retry loop with fresh data fetch to wait for Firestore sync
+        bool bookingConfirmed = false;
+        for (int i = 0; i < 5; i++) {
+          await Future.delayed(const Duration(seconds: 1));
+          final updatedBooking = await BookingService().getBooking(widget.bookingId);
+          setState(() => _booking = updatedBooking);
+          if (updatedBooking?.bookingStatus == 'paid') {
+            bookingConfirmed = true;
+            break;
+          }
+        }
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -192,7 +206,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       );
     } catch (e) {
       // Log error but don't block UI
-      print('Failed to log payment failure: $e');
+      if (kDebugMode) debugPrint('Failed to log payment failure: $e');
     }
 
     // STEP 8: Show error to user
@@ -235,7 +249,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         throw Exception('Booking status not updated to paid');
       }
     } catch (e) {
-      print('Failed to refresh booking state: $e');
+      if (kDebugMode) debugPrint('Failed to refresh booking state: $e');
       // Don't throw - payment might still be processing
     }
   }

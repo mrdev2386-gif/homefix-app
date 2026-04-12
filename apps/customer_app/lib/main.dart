@@ -16,7 +16,6 @@ import 'core/services/firestore_service.dart';
 import 'package:customer_app/core/services/functions_service.dart';
 import 'core/services/storage_service.dart';
 import 'core/services/notifications_service.dart';
-import 'core/services/push_notification_service.dart';
 import 'core/services/fcm_service.dart';
 import 'core/services/category_service.dart';
 import 'core/providers/cart_provider.dart';
@@ -35,75 +34,131 @@ import 'features/auth/screens/onboarding_screen.dart';
 import 'features/home/main_wrapper_screen.dart';
 import 'features/custom_request/presentation/custom_request_screen.dart';
 import 'features/profile/presentation/saved_addresses_screen.dart';
+import 'features/cart/presentation/checkout_screen.dart';
 import 'firebase_options.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+/// FIX 4: CONFIG VALIDATION - Validate required environment variables on app startup
+/// Logs warnings for missing optional config (Gemini API key)
+/// Throws error for missing critical config (none currently, but extensible)
+void _validateConfiguration() {
+  if (kDebugMode) {
+    debugPrint('🔍 [CONFIG] Validating app configuration...');
+    
+    // Check optional Gemini API key
+    const geminiApiKey = String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
+    if (geminiApiKey.isEmpty) {
+      debugPrint('⚠️ [CONFIG] GEMINI_API_KEY not set - AI chat features will be disabled');
+      debugPrint('   To enable: Set GEMINI_API_KEY environment variable or use Firebase Remote Config');
+    } else {
+      debugPrint('✅ [CONFIG] GEMINI_API_KEY configured');
+    }
+    
+    // Add more config checks here as needed
+    // Example for critical config:
+    // const criticalKey = String.fromEnvironment('CRITICAL_KEY', defaultValue: '');
+    // if (criticalKey.isEmpty) {
+    //   throw Exception('CRITICAL_KEY environment variable is required but not set');
+    // }
+    
+    debugPrint('✅ [CONFIG] Configuration validation complete');
+  }
+}
 
 /// Background message handler - must be top-level function
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  print('[FCM BACKGROUND] ${message.notification?.title}');
-  print('[FCM BACKGROUND] Data: ${message.data}');
+  if (kDebugMode) {
+    debugPrint('[FCM BACKGROUND] ${message.notification?.title}');
+    debugPrint('[FCM BACKGROUND] Data: ${message.data}');
+  }
 }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // FIX 4: CONFIG VALIDATION - Check required environment variables on startup
+  _validateConfiguration();
+
   // STEP 1: Initialize Firebase FIRST
-  print('🔥 Initializing Firebase...');
+  if (kDebugMode) debugPrint('🔥 Initializing Firebase...');
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  print('✅ Firebase initialized successfully');
+  if (kDebugMode) debugPrint('✅ Firebase initialized successfully');
+  
+  // MICRO FIX 3: Remove sensitive data from logs
+  if (kDebugMode) debugPrint('🔑 Firebase Auth initialized');
   
   // CRITICAL: Enable Firestore cache for production performance
-  print('✅ [PRODUCTION] Enabling Firestore persistence cache...');
+  if (kDebugMode) debugPrint('✅ [PRODUCTION] Enabling Firestore persistence cache...');
   FirebaseFirestore.instance.settings = const Settings(
     persistenceEnabled: true,
     cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
   );
-  print('✅ Firestore cache enabled - data will be cached locally');
+  if (kDebugMode) debugPrint('✅ Firestore cache enabled - data will be cached locally');
 
   // Enable Firebase App Check for production security
-  print('🔒 [SECURITY] Enabling Firebase App Check...');
+  if (kDebugMode) debugPrint('🔒 [SECURITY] Enabling Firebase App Check...');
   await FirebaseAppCheck.instance.activate(
     androidProvider: kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
   );
-  print('✅ Firebase App Check enabled');
+  if (kDebugMode) debugPrint('✅ Firebase App Check enabled');
 
   // STEP 3: Wait for Firebase Auth to be ready
-  print('🔑 Waiting for Firebase Auth to initialize...');
+  if (kDebugMode) debugPrint('🔑 Waiting for Firebase Auth to initialize...');
   final currentUser = FirebaseAuth.instance.currentUser;
-  print('🔑 Current User: ${currentUser?.uid ?? "null (not logged in)"}');
-  print('🔑 Current User Email: ${currentUser?.email ?? "N/A"}');
-  print('🔑 Current User Phone: ${currentUser?.phoneNumber ?? "N/A"}');
+  if (kDebugMode) {
+    debugPrint('🔑 Current User: ${currentUser != null ? "logged in" : "not logged in"}');
+  }
   
+  // MICRO FIX 4: Add timeout for auth initialization
   await FirebaseAuth.instance.authStateChanges().first.timeout(
-    const Duration(seconds: 5),
+    const Duration(seconds: 10),
     onTimeout: () {
-      print('⚠️ Auth initialization timeout (no user logged in)');
+      if (kDebugMode) debugPrint('⚠️ Auth initialization timeout');
       return null;
     },
   );
-  print('✅ Firebase Auth ready');
-  print('✅ FirebaseAuth.instance is accessible: ${FirebaseAuth.instance != null}');
+  if (kDebugMode) debugPrint('✅ Firebase Auth ready');
 
-  // CRITICAL FIX 1: Initialize FCM Service AFTER Firebase init
-  print('📱 Initializing FCM Service...');
+  // CRITICAL FIX 1: Initialize FCM Service AFTER Firebase init (with timeout)
+  if (kDebugMode) debugPrint('📱 Initializing FCM Service...');
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-  await FCMService().initialize();
-  print('✅ FCM Service initialized');
+  try {
+    await FCMService().initialize().timeout(
+      const Duration(seconds: 15),
+      onTimeout: () {
+        if (kDebugMode) debugPrint('⚠️ FCM initialization timeout');
+      },
+    );
+    if (kDebugMode) debugPrint('✅ FCM Service initialized');
+  } catch (e) {
+    if (kDebugMode) debugPrint('⚠️ FCM initialization error: $e');
+  }
   
-  // STEP 7: Setup foreground message handler (CRITICAL for real-time notifications)
-  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-    print('[FCM FOREGROUND] ${message.notification?.title}');
-    print('[FCM FOREGROUND] Body: ${message.notification?.body}');
-    print('[FCM FOREGROUND] Data: ${message.data}');
-  });
-  print('✅ Foreground message handler registered');
+  // CRITICAL FIX 2: Initialize NotificationsService ONCE (singleton with timeout)
+  if (kDebugMode) debugPrint('📱 Initializing NotificationsService (singleton)...');
+  try {
+    // HARDENING: Verify singleton is used (factory constructor)
+    final notificationsService1 = NotificationsService();
+    final notificationsService2 = NotificationsService();
+    assert(identical(notificationsService1, notificationsService2), 'NotificationsService must be singleton');
+    
+    await notificationsService1.initialize().timeout(
+      const Duration(seconds: 15),
+      onTimeout: () {
+        if (kDebugMode) debugPrint('⚠️ NotificationsService initialization timeout');
+      },
+    );
+    if (kDebugMode) debugPrint('✅ NotificationsService initialized (singleton verified)');
+  } catch (e) {
+    if (kDebugMode) debugPrint('⚠️ NotificationsService initialization error: $e');
+  }
 
-  print('🚀 Starting HomeFix App...');
+  if (kDebugMode) debugPrint('🚀 Starting HomeFix App...');
   runApp(const HomeFixApp());
 }
 
@@ -114,8 +169,19 @@ class HomeFixApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        Provider<AuthService>(create: (_) => AuthService()),
+        // Core Services (Single Instances)
         Provider<FirestoreService>(create: (_) => FirestoreService()),
+        Provider<AuthService>(create: (_) => AuthService()),
+        Provider<FunctionsService>(create: (_) => FunctionsService()),
+        Provider<StorageService>(create: (_) => StorageService()),
+        
+        // CategoryService depends on FirestoreService
+        ChangeNotifierProxyProvider<FirestoreService, CategoryService>(
+          create: (_) => CategoryService(),
+          update: (_, firestoreService, categoryService) => 
+              categoryService ?? CategoryService(firestoreService: firestoreService),
+        ),
+        
         // Wire up cache invalidation callback
         ProxyProvider2<AuthService, FirestoreService, AuthService>(
           update: (_, authService, firestoreService, __) {
@@ -126,9 +192,8 @@ class HomeFixApp extends StatelessWidget {
             return authService;
           },
         ),
-        Provider<FunctionsService>(create: (_) => FunctionsService()),
-        Provider<StorageService>(create: (_) => StorageService()),
-        ChangeNotifierProvider<CategoryService>(create: (_) => CategoryService()),
+        
+        // AuthProvider depends on CategoryService
         ChangeNotifierProxyProvider<CategoryService, AuthProvider>(
           create: (_) => AuthProvider(),
           update: (_, categoryService, authProvider) {
@@ -136,7 +201,12 @@ class HomeFixApp extends StatelessWidget {
             return authProvider;
           },
         ),
-        ChangeNotifierProvider(create: (_) => CategoryProvider()),
+        
+        // Other providers
+        ChangeNotifierProxyProvider<CategoryService, CategoryProvider>(
+          create: (ctx) => CategoryProvider(categoryService: ctx.read<CategoryService>()),
+          update: (_, categoryService, previous) => previous ?? CategoryProvider(categoryService: categoryService),
+        ),
         ChangeNotifierProxyProvider<AuthProvider, FavoritesProvider>(
           create: (_) => FavoritesProvider(),
           update: (_, auth, favorites) => favorites!..updateUserId(auth.user?.uid),
@@ -146,9 +216,16 @@ class HomeFixApp extends StatelessWidget {
           update: (_, auth, cart) => cart!..updateUserId(auth.user?.uid),
         ),
         ChangeNotifierProvider(create: (_) => BookingProvider()),
-        ChangeNotifierProvider(create: (_) => LocationProvider()),
+        ChangeNotifierProxyProvider<CategoryService, LocationProvider>(
+          create: (ctx) => LocationProvider(categoryService: ctx.read<CategoryService>()),
+          update: (_, categoryService, previous) => previous ?? LocationProvider(categoryService: categoryService),
+        ),
         ChangeNotifierProvider(create: (_) => CheckoutProvider()),
-        ChangeNotifierProvider(create: (_) => NotificationsService()),
+        // CRITICAL: NotificationsService is a singleton - use factory constructor
+        ChangeNotifierProvider<NotificationsService>(
+          create: (_) => NotificationsService(),
+          lazy: false, // Ensure it's created immediately
+        ),
       ],
       child: ChangeNotifierProvider(
         create: (_) => LocaleProvider(),
@@ -177,6 +254,7 @@ class HomeFixApp extends StatelessWidget {
                 '/home': (context) => const MainWrapperScreen(),
                 '/customRequest': (context) => const CustomRequestScreen(),
                 '/addresses': (context) => const SavedAddressesScreen(),
+                '/checkout': (context) => const CheckoutScreen(),
               },
               home: const AuthWrapper(),
             );

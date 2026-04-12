@@ -64,9 +64,7 @@ class _MainWrapperScreenState extends State<MainWrapperScreen> with WidgetsBindi
     
     // STEP 1: Handle app resume - clear cache for fresh data
     if (state == AppLifecycleState.resumed) {
-      if (kDebugMode) {
-        print('[LIFECYCLE] App resumed - clearing services cache for fresh data');
-      }
+      if (kDebugMode) debugPrint('[LIFECYCLE] App resumed - clearing services cache for fresh data');
       final firestoreService = Provider.of<FirestoreService>(context, listen: false);
       firestoreService.clearCachedServicesStream();
     }

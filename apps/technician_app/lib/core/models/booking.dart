@@ -4,20 +4,44 @@ import '../utils/firestore_safe_parser.dart';
 /// Centralized booking status constants.
 /// Use ONLY these values when querying or comparing booking statuses to
 /// prevent case-sensitivity bugs and silent Firestore query mismatches.
+/// 
+/// CRITICAL FIX: Status values must match Cloud Function outputs exactly:
+/// - Cloud Function sets: 'technician_accepted', 'service_in_progress', 'awaiting_payment', 'paid'
+/// - Flutter must query for these exact values
 class BookingStatus {
   BookingStatus._();
 
+  // Legacy/Intermediate statuses
   static const String pending    = 'pending';
   static const String assigned   = 'assigned';
   static const String accepted   = 'accepted';
   static const String enRoute    = 'en_route';
   static const String inProgress = 'in_progress';
+  
+  // Cloud Function statuses (AUTHORITATIVE)
+  static const String pendingAdminReview = 'pending_admin_review';
+  static const String approvedByAdmin = 'approved_by_admin';
+  static const String technicianAccepted = 'technician_accepted';
+  static const String serviceInProgress = 'service_in_progress';
+  static const String awaitingPayment = 'awaiting_payment';
+  static const String paid = 'paid';
   static const String completed  = 'completed';
   static const String cancelled  = 'cancelled';
   static const String rejected   = 'rejected';
+  static const String technicianRejected = 'technician_rejected';
 
-  static const List<String> activeStatuses = [assigned, accepted, enRoute, inProgress];
-  static const List<String> terminalStatuses = [completed, cancelled, rejected];
+  // Active statuses: bookings technician is currently working on
+  // CRITICAL FIX: Include 'technician_accepted' so accepted bookings are visible
+  static const List<String> activeStatuses = [
+    assigned,
+    accepted,
+    technicianAccepted,  // ✅ ADDED: Cloud Function sets this status
+    enRoute,
+    inProgress,
+    serviceInProgress,   // ✅ ADDED: Cloud Function sets this status
+  ];
+  
+  static const List<String> terminalStatuses = [completed, cancelled, rejected, technicianRejected];
 }
 
 class Booking {
@@ -42,6 +66,7 @@ class Booking {
   final String? category;
   final String? description;
   final DateTime createdAt;
+  final DateTime? updatedAt;
   final Map<String, dynamic>? quoteData;
 
   String get id => bookingId;
@@ -89,6 +114,7 @@ class Booking {
     this.category,
     this.description,
     required this.createdAt,
+    this.updatedAt,
     this.quoteData,
   });
 
@@ -116,6 +142,16 @@ class Booking {
     } else {
       createdAt = DateTime.now();
     }
+    
+    // Safe Timestamp parsing for updatedAt (fallback to createdAt)
+    DateTime? updatedAt;
+    final updatedAtRaw = data['updatedAt'];
+    if (updatedAtRaw is Timestamp) {
+      updatedAt = updatedAtRaw.toDate();
+    } else if (updatedAtRaw is String) {
+      updatedAt = DateTime.tryParse(updatedAtRaw);
+    }
+    // If updatedAt is missing, it will be null (queries will use createdAt as fallback)
     
     // Handle multiple field names for service image
     final serviceImage = data['serviceImage'] ?? 
@@ -151,6 +187,7 @@ class Booking {
       category: data['category']?.toString(),
       description: data['description']?.toString(),
       createdAt: createdAt,
+      updatedAt: updatedAt,
       quoteData: data['quoteData'] != null ? Map<String, dynamic>.from(data['quoteData']) : null,
     );
   }
@@ -178,6 +215,7 @@ class Booking {
       'category': category,
       'description': description,
       'createdAt': Timestamp.fromDate(createdAt),
+      'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : Timestamp.fromDate(createdAt),
       'quoteData': quoteData,
     };
   }
@@ -197,6 +235,8 @@ class Booking {
       'status': status,
       'scheduledAt': scheduledAt.toIso8601String(),
       'scheduledTime': scheduledTime,
+      'updatedAt': updatedAt?.toIso8601String() ?? 'NULL',
+      'createdAt': createdAt.toIso8601String(),
     };
   }
 }

@@ -9,6 +9,19 @@ import '../../../core/utils/firestore_safe_parser.dart';
 import '../../../core/providers/technician_provider.dart';
 import 'add_service_screen.dart';
 
+// ============================================================================
+// ✅ ACTIVE SERVICES SCREEN - USED IN PRODUCTION
+// ============================================================================
+// This is the ACTIVE services screen used in DashboardScreen.
+// See: lib/screens/dashboard_screen.dart (imports ServicesScreen)
+// 
+// VERIFIED: This is the ONLY services screen in use.
+// Legacy file: services_screen_optimized.dart (unused - kept for reference)
+// 
+// STATUS: PRODUCTION READY
+// LAST VERIFIED: Production audit - actively used in dashboard navigation
+// ============================================================================
+
 class ServicesScreen extends StatefulWidget {
   const ServicesScreen({super.key});
 

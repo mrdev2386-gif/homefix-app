@@ -24,8 +24,18 @@ class ChatService {
   // Debounce tracker for markMessagesRead
   final Map<String, DateTime> _readDebounceMap = {};
   static const _READ_DEBOUNCE_MS = 500; // 500ms debounce
+  static const _MAX_DEBOUNCE_ENTRIES = 100; // Limit map size
 
   String? get _userId => _auth.currentUser?.uid;
+
+  void _cleanupDebounceMap() {
+    if (_readDebounceMap.length > _MAX_DEBOUNCE_ENTRIES) {
+      final now = DateTime.now();
+      _readDebounceMap.removeWhere((key, value) => 
+        now.difference(value).inMinutes > 5
+      );
+    }
+  }
 
   // ==========================================
   // GET OR CREATE CHAT
@@ -95,6 +105,7 @@ class ChatService {
     }
     
     _readDebounceMap[chatId] = now;
+    _cleanupDebounceMap();
     
     try {
       final callable = await FunctionsHelper.getCallable('markMessagesRead');

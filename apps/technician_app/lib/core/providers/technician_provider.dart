@@ -40,20 +40,10 @@ class TechnicianProvider extends ChangeNotifier {
   bool _isOnboardingComplete = false;
   bool get isOnboardingComplete => _isOnboardingComplete;
 
-  bool _isApproved = false;
-  bool get isApproved => _isApproved;
-  bool get profileApproved => _isApproved;
-
-  bool _profileApprovalRequested = false;
-  bool get profileApprovalRequested => _profileApprovalRequested;
-
-  bool _profileRejected = false;
-  bool get profileRejected => _profileRejected;
-
-  set isApproved(bool value) {
-    _isApproved = value;
-    notifyListeners();
-  }
+  bool get isApproved => _technician?.status == "approved" || _technician?.status == "active" || _technician?.profileApproved == true;
+  bool get profileApproved => isApproved;
+  bool get profileApprovalRequested => _technician?.profileApprovalRequested ?? false;
+  bool get profileRejected => _technician?.profileRejected ?? false;
 
   StreamSubscription<Technician?>? _techSubscription;
 
@@ -70,9 +60,6 @@ class TechnicianProvider extends ChangeNotifier {
         _isLoading = false;
         _currentOnboardingStep = OnboardingStep.phone;
         _isOnboardingComplete = false;
-        _isApproved = false;
-        _profileApprovalRequested = false;
-        _profileRejected = false;
         notifyListeners();
       }
     });
@@ -105,12 +92,11 @@ class TechnicianProvider extends ChangeNotifier {
           if (authEmail != null && authEmail.isNotEmpty) {
             AppLogger.firestore('Syncing email from Auth', data: authEmail);
             try {
-              await FirebaseFirestore.instance
-                  .collection('technicians')
-                  .doc(uid)
-                  .update({'email': authEmail, 'updatedAt': FieldValue.serverTimestamp()});
+              final functions = FirebaseFunctionsService.instance;
+              final callable = functions.httpsCallable('syncTechnicianEmail');
+              await callable.call({'email': authEmail});
             } catch (e) {
-              AppLogger.error('FIRESTORE', 'Email sync failed', data: e);
+              AppLogger.error('FUNCTIONS', 'Email sync failed', data: e);
             }
           }
         }
@@ -135,12 +121,6 @@ class TechnicianProvider extends ChangeNotifier {
         
         _currentOnboardingStep = step;
         _isOnboardingComplete = tech.isKycComplete;
-        // BACKWARD COMPATIBLE: Check all approval indicators (handles both 'approved' and 'active' status)
-        _isApproved = tech.status == "approved" || 
-                      tech.status == "active" || 
-                      tech.profileApproved == true;
-        _profileApprovalRequested = tech.profileApprovalRequested;
-        _profileRejected = tech.profileRejected;
         
       }
       
@@ -632,9 +612,6 @@ class TechnicianProvider extends ChangeNotifier {
         _technician = tech;
         _currentOnboardingStep = tech.currentOnboardingStep;
         _isOnboardingComplete = tech.isKycComplete;
-        _isApproved = tech.profileApproved;
-        _profileApprovalRequested = tech.profileApprovalRequested;
-        _profileRejected = tech.profileRejected;
         notifyListeners();
       }
     } catch (e) {

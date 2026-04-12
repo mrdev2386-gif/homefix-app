@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -95,12 +96,12 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
       });
     } catch (e) {
       setState(() => _isLoadingCategories = false);
-      print('Error loading categories: $e');
+      if (kDebugMode) debugPrint('Error loading categories: $e');
     }
   }
 
   Future<void> _loadSubCategories(String categoryId) async {
-    print('[SUBCATEGORY_FETCH] Selected categoryId: $categoryId');
+    if (kDebugMode) debugPrint('[SUBCATEGORY_FETCH] Selected categoryId: $categoryId');
     
     if (categoryId == 'custom') {
       setState(() {
@@ -122,11 +123,11 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
       
       // Try nested subcategories first: categories/{categoryId}/subcategories
       List<Map<String, dynamic>> subCategories = await firestoreService.fetchSubCategories(categoryId);
-      print('[SUBCATEGORY_FETCH] Nested query returned: ${subCategories.length} items');
+      if (kDebugMode) debugPrint('[SUBCATEGORY_FETCH] Nested query returned: ${subCategories.length} items');
       
       // If empty, try top-level services collection filtered by categoryId
       if (subCategories.isEmpty) {
-        print('[SUBCATEGORY_FETCH] Trying top-level services collection...');
+        if (kDebugMode) debugPrint('[SUBCATEGORY_FETCH] Trying top-level services collection...');
         final db = FirebaseFirestore.instance;
         final snapshot = await db.collection('services')
             .where('categoryId', isEqualTo: categoryId)
@@ -136,10 +137,10 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
         subCategories = snapshot.docs
             .map((doc) => {'id': doc.id, 'name': doc.data()['name'] ?? 'Unnamed', ...doc.data()})
             .toList();
-        print('[SUBCATEGORY_FETCH] Top-level query returned: ${subCategories.length} items');
+        if (kDebugMode) debugPrint('[SUBCATEGORY_FETCH] Top-level query returned: ${subCategories.length} items');
       }
       
-      print('[SUBCATEGORY_FETCH] Final count: ${subCategories.length}');
+      if (kDebugMode) debugPrint('[SUBCATEGORY_FETCH] Final count: ${subCategories.length}');
       
       setState(() {
         _subCategories = subCategories;
@@ -148,7 +149,7 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
         _isLoadingSubCategories = false;
       });
     } catch (e) {
-      print('[SUBCATEGORY_FETCH] Error: $e');
+      if (kDebugMode) debugPrint('[SUBCATEGORY_FETCH] Error: $e');
       setState(() {
         _subCategories = [];
         _filteredSubCategories = [];
@@ -258,12 +259,12 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      print('[CUSTOM_REQUEST] Request submitted successfully');
+      if (kDebugMode) debugPrint('[CUSTOM_REQUEST] Request submitted successfully');
 
       if (!mounted) return;
       _showSuccess();
     } catch (e) {
-      print('[CUSTOM_REQUEST] Error: $e');
+      if (kDebugMode) debugPrint('[CUSTOM_REQUEST] Error: $e');
       if (mounted) _showError('Failed to submit: ${e.toString()}');
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
@@ -425,7 +426,7 @@ class _CustomRequestScreenState extends State<CustomRequestScreen> {
                     child: Text(cat['name'] as String, style: GoogleFonts.outfit()),
                   )).toList(),
                   onChanged: (val) {
-                    print('[CATEGORY_CHANGE] New category: $val');
+                    if (kDebugMode) debugPrint('[CATEGORY_CHANGE] New category: $val');
                     setState(() {
                       _selectedCategory = val;
                       _selectedSubCategory = null;

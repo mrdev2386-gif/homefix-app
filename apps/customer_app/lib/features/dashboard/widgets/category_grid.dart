@@ -82,7 +82,6 @@ class CategoryGrid extends StatelessWidget {
               gradient: cat['gradient'] as List<Color>,
               color: cat['color'],
               onTap: () {
-                print('CATEGORY CLICKED: ${cat['id']}');
                 final category = Category(
                   id: cat['id'],
                   name: cat['name'],

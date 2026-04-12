@@ -149,9 +149,9 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
               });
             }
             
-            debugPrint('[BOOKING_STREAM] Connection: ${snapshot.connectionState}, hasError: ${snapshot.hasError}');
+            debugPrint('[BOOKING_STREAM] Connection: ${snapshot.connectionState}, hasError: ${snapshot.hasError}, hasData: ${snapshot.hasData}');
             
-            // Initial loading state with shimmer
+            // CRITICAL FIX: Check connection state first
             if (snapshot.connectionState == ConnectionState.waiting && _isInitialLoad) {
               return const BookingListShimmer(itemCount: 5);
             }
@@ -162,7 +162,13 @@ class _BookingHistoryScreenState extends State<BookingHistoryScreen> {
               return _buildErrorState(snapshot.error.toString());
             }
 
-            final allBookings = snapshot.data ?? [];
+            // CRITICAL FIX: Check for empty data
+            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+              debugPrint('[BOOKING_STREAM] No bookings found');
+              return _buildEmptyState();
+            }
+
+            final allBookings = snapshot.data!;
             debugPrint('[BOOKING_STREAM] Loaded: ${allBookings.length} bookings');
             
             // Filter bookings by status

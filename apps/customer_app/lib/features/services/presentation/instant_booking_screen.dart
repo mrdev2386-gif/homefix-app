@@ -86,7 +86,7 @@ class InstantBookingScreen extends StatefulWidget {
 }
 
 class _InstantBookingScreenState extends State<InstantBookingScreen> {
-  final CategoryService _categoryService = CategoryService();
+  late final CategoryService _categoryService;
 
   List<Category> _categories = [];
   Category? _selectedCategory;
@@ -98,16 +98,25 @@ class _InstantBookingScreenState extends State<InstantBookingScreen> {
   final int _pageSize = 20;
   bool _isLoadingMore = false;
   String? _nextPageToken;
+  StreamSubscription<List<Category>>? _categoriesSubscription;
 
   @override
   void initState() {
     super.initState();
+    _categoryService = context.read<CategoryService>();
     _loadCategories();
     _fetchInstantServices();
   }
 
+  @override
+  void dispose() {
+    _categoriesSubscription?.cancel();
+    super.dispose();
+  }
+
   void _loadCategories() {
-    _categoryService.getCategories().listen((categories) {
+    _categoriesSubscription?.cancel();
+    _categoriesSubscription = _categoryService.getCategories().listen((categories) {
       if (mounted) {
         setState(() {
           _categories = categories;

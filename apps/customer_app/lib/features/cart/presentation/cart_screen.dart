@@ -49,6 +49,38 @@ class _CartScreenState extends State<CartScreen> {
             return const Center(child: CircularProgressIndicator());
           }
 
+          // FIX 3: Show error state with retry button
+          if (cart.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 64, color: Colors.red[400]),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Unable to load cart',
+                    style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    cart.errorMessage ?? 'Please check your connection',
+                    style: GoogleFonts.outfit(fontSize: 14, color: Colors.grey[600]),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: () => cart.retry(),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+
           if (cart.items.isEmpty) {
             return _buildEmptyState();
           }
@@ -192,6 +224,29 @@ class _CartScreenState extends State<CartScreen> {
       child: Padding(
         padding: const EdgeInsets.all(8.0),
         child: Icon(icon, size: 18, color: AppTheme.primaryColor),
+      ),
+    );
+  }
+
+  void _showCartError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: GoogleFonts.outfit(fontSize: 14),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.red[600],
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
       ),
     );
   }

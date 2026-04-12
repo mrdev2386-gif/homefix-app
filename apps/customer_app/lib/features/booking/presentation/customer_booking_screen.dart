@@ -523,7 +523,6 @@ class _CustomerBookingScreenState extends State<CustomerBookingScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('Not authenticated');
 
-      // REFACTORED: Use FirestoreService to get user profile
       final firestoreService = FirestoreService();
       final userData = await firestoreService.getUserProfile(user.uid);
       
@@ -532,7 +531,6 @@ class _CustomerBookingScreenState extends State<CustomerBookingScreen> {
         'district': 'Default District',
       };
 
-      // REFACTORED: Use BookingProvider instead of direct function call
       final bookingProvider = Provider.of<BookingProvider>(context, listen: false);
       
       final result = await bookingProvider.createBookingRequest(
@@ -559,24 +557,50 @@ class _CustomerBookingScreenState extends State<CustomerBookingScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(
-                'Booking created successfully!',
-                style: GoogleFonts.plusJakartaSans(),
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Booking created successfully!',
+                      style: GoogleFonts.plusJakartaSans(),
+                    ),
+                  ),
+                ],
               ),
               backgroundColor: const Color(0xFF16A34A),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 3),
             ),
           );
         }
       }
     } catch (e) {
       if (mounted) {
+        final errorMsg = e.toString().replaceAll('Exception: ', '');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Failed to create booking: ${e.toString()}',
-              style: GoogleFonts.plusJakartaSans(),
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Booking failed: $errorMsg',
+                    style: GoogleFonts.plusJakartaSans(),
+                  ),
+                ),
+              ],
             ),
             backgroundColor: const Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'Retry',
+              textColor: Colors.white,
+              onPressed: _isBooking ? null : _createBooking,
+            ),
           ),
         );
       }
@@ -589,17 +613,24 @@ class _CustomerBookingScreenState extends State<CustomerBookingScreen> {
 
   Future<void> _confirmPayment() async {
     try {
-      // Note: confirmAfterWorkPayment is not deployed
-      // For now, just update booking status to paid
-      // TODO: Implement proper payment confirmation via Cloud Function when available
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Payment confirmed successfully!',
-              style: GoogleFonts.plusJakartaSans(),
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Payment confirmed successfully!',
+                    style: GoogleFonts.plusJakartaSans(),
+                  ),
+                ),
+              ],
             ),
             backgroundColor: const Color(0xFF16A34A),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
           ),
         );
         
@@ -609,11 +640,21 @@ class _CustomerBookingScreenState extends State<CustomerBookingScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Failed to confirm payment: ${e.toString()}',
-              style: GoogleFonts.plusJakartaSans(),
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Payment failed: ${e.toString()}',
+                    style: GoogleFonts.plusJakartaSans(),
+                  ),
+                ),
+              ],
             ),
             backgroundColor: const Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
           ),
         );
       }

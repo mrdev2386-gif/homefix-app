@@ -13,7 +13,7 @@ class _BaseServicesSection extends StatelessWidget {
   final String title;
   final IconData titleIcon;
   final List<Color> iconGradient;
-  final Stream<List<HomeService>> stream;
+  final List<HomeService> data;
   final Set<String>? displayedServiceIds;
   final List<HomeService> Function(List<HomeService>) filterFunction;
 
@@ -21,56 +21,55 @@ class _BaseServicesSection extends StatelessWidget {
     required this.title,
     required this.titleIcon,
     required this.iconGradient,
-    required this.stream,
+    required this.data,
     required this.filterFunction,
     this.displayedServiceIds,
   });
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<HomeService>>(
-      stream: stream,
-      builder: (context, snapshot) {
-        // STATE 1: WAITING - Hide section (no loader to avoid layout jump)
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SizedBox.shrink();
-        }
+    if (data.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(20),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+    
+    final services = filterFunction(data);
+    
+    // Show message if no services after filtering
+    if (services.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(20),
+        child: Center(
+          child: Text(
+            'No services available',
+            style: GoogleFonts.outfit(
+              fontSize: 14,
+              color: AppTheme.subtitleColor,
+            ),
+          ),
+        ),
+      );
+    }
+    
+    // Optional: Track displayed IDs (but don't filter by them to avoid 0 count)
+    if (displayedServiceIds != null) {
+      for (final service in services) {
+        displayedServiceIds!.add(service.id);
+      }
+    }
 
-        // STATE 2: ERROR - Hide section
-        if (snapshot.hasError) {
-          return const SizedBox.shrink();
-        }
-
-        // STATE 3: EMPTY DATA - Hide section
-        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return const SizedBox.shrink();
-        }
-
-        final allServices = snapshot.data!;
-        final services = filterFunction(allServices);
-        
-        // Hide section if no services after filtering
-        if (services.isEmpty) {
-          return const SizedBox.shrink();
-        }
-        
-        // Optional: Track displayed IDs (but don't filter by them to avoid 0 count)
-        if (displayedServiceIds != null) {
-          for (final service in services) {
-            displayedServiceIds!.add(service.id);
-          }
-        }
-
-        // STATE 4: HAS DATA - Show section
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeader(),
-            const SizedBox(height: 16),
-            _buildHorizontalScrollingRows(context, services),
-          ],
-        );
-      },
+    // Show section
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildHeader(),
+        const SizedBox(height: 16),
+        _buildHorizontalScrollingRows(context, services),
+      ],
     );
   }
 
@@ -156,24 +155,15 @@ class _BaseServicesSection extends StatelessWidget {
 }
 
 /// Top Rated Services Section
-class TopRatedRealServicesSection extends StatefulWidget {
+class TopRatedRealServicesSection extends StatelessWidget {
+  final List<HomeService> data;
   final Set<String>? displayedServiceIds;
   
-  const TopRatedRealServicesSection({super.key, this.displayedServiceIds});
-
-  @override
-  State<TopRatedRealServicesSection> createState() => _TopRatedRealServicesSectionState();
-}
-
-class _TopRatedRealServicesSectionState extends State<TopRatedRealServicesSection> {
-  late final Stream<List<HomeService>> _servicesStream;
-
-  @override
-  void initState() {
-    super.initState();
-    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-    _servicesStream = firestoreService.getCachedServicesStream();
-  }
+  const TopRatedRealServicesSection({
+    super.key,
+    required this.data,
+    this.displayedServiceIds,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -181,8 +171,8 @@ class _TopRatedRealServicesSectionState extends State<TopRatedRealServicesSectio
       title: 'Top Rated Services',
       titleIcon: Icons.star_rounded,
       iconGradient: const [Color(0xFFFF9800), Color(0xFFFF5722)],
-      stream: _servicesStream,
-      displayedServiceIds: widget.displayedServiceIds,
+      data: data,
+      displayedServiceIds: displayedServiceIds,
       filterFunction: (allServices) {
         final topRated = allServices
             .where((s) => (s.rating ?? 0) >= 4.0)
@@ -196,24 +186,15 @@ class _TopRatedRealServicesSectionState extends State<TopRatedRealServicesSectio
 }
 
 /// Recently Added Services Section
-class RecentlyAddedServicesSection extends StatefulWidget {
+class RecentlyAddedServicesSection extends StatelessWidget {
+  final List<HomeService> data;
   final Set<String>? displayedServiceIds;
   
-  const RecentlyAddedServicesSection({super.key, this.displayedServiceIds});
-
-  @override
-  State<RecentlyAddedServicesSection> createState() => _RecentlyAddedServicesSectionState();
-}
-
-class _RecentlyAddedServicesSectionState extends State<RecentlyAddedServicesSection> {
-  late final Stream<List<HomeService>> _servicesStream;
-
-  @override
-  void initState() {
-    super.initState();
-    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-    _servicesStream = firestoreService.getCachedServicesStream();
-  }
+  const RecentlyAddedServicesSection({
+    super.key,
+    required this.data,
+    this.displayedServiceIds,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -221,8 +202,8 @@ class _RecentlyAddedServicesSectionState extends State<RecentlyAddedServicesSect
       title: 'Recently Added Services',
       titleIcon: Icons.new_releases_rounded,
       iconGradient: const [Color(0xFF4CAF50), Color(0xFF8BC34A)],
-      stream: _servicesStream,
-      displayedServiceIds: widget.displayedServiceIds,
+      data: data,
+      displayedServiceIds: displayedServiceIds,
       filterFunction: (allServices) {
         // Safety filter: Remove services without required fields
         final validServices = allServices.where((s) =>
@@ -246,143 +227,46 @@ class _RecentlyAddedServicesSectionState extends State<RecentlyAddedServicesSect
 }
 
 /// Recommended Services Section with Personalization
-class RecommendedServicesSection extends StatefulWidget {
+class RecommendedServicesSection extends StatelessWidget {
+  final List<HomeService> data;
   final Set<String>? displayedServiceIds;
   
-  const RecommendedServicesSection({super.key, this.displayedServiceIds});
-
-  @override
-  State<RecommendedServicesSection> createState() => _RecommendedServicesSectionState();
-}
-
-class _RecommendedServicesSectionState extends State<RecommendedServicesSection> {
-  late final Stream<List<HomeService>>? _servicesStream;
-  String? _userId;
-
-  @override
-  void initState() {
-    super.initState();
-    final auth = Provider.of<AuthService>(context, listen: false);
-    _userId = auth.currentUser?.uid;
-    
-    if (_userId != null) {
-      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-      _servicesStream = firestoreService.getCachedServicesStream();
-    } else {
-      _servicesStream = null;
-    }
-  }
-
-  Future<Map<String, dynamic>> _getUserInteractionData() async {
-    if (_userId == null) return {'categories': <String>{}, 'serviceIds': <String>{}};
-    
-    try {
-      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-      return await firestoreService.getUserInteractionData(_userId!);
-    } catch (e) {
-      if (kDebugMode) {
-        print('[Recommended] Error fetching user interactions: $e');
-      }
-      return {'categories': <String>{}, 'serviceIds': <String>{}};
-    }
-  }
+  const RecommendedServicesSection({
+    super.key,
+    required this.data,
+    this.displayedServiceIds,
+  });
 
   @override
   Widget build(BuildContext context) {
-    if (_servicesStream == null) return const SizedBox.shrink();
-    
-    return FutureBuilder<Map<String, dynamic>>(
-      future: _getUserInteractionData(),
-      builder: (context, userDataSnapshot) {
-        return _BaseServicesSection(
-          title: 'Recommended For You',
-          titleIcon: Icons.auto_awesome_rounded,
-          iconGradient: const [Color(0xFF10B981), Color(0xFF059669)],
-          stream: _servicesStream!,
-          displayedServiceIds: widget.displayedServiceIds,
-          filterFunction: (allServices) {
-            final userData = userDataSnapshot.data ?? {'categories': <String>{}, 'serviceIds': <String>{}};
-            final userCategories = userData['categories'] as Set<String>;
-            final userServiceIds = userData['serviceIds'] as Set<String>;
-            
-            // If no user data, show top rated services
-            if (userCategories.isEmpty && userServiceIds.isEmpty) {
-              final topRated = allServices
-                  .where((s) => (s.rating ?? 0) >= 4.0)
-                  .toList()
-                ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
-              
-              return topRated.take(10).toList();
-            }
-            
-            // Personalization with cascading priority
-            final highPriority = <HomeService>[]; // Exact serviceId match
-            final mediumPriority = <HomeService>[]; // Category match
-            
-            for (final service in allServices) {
-              // Safety filter
-              if (service.id == null || service.id.isEmpty) continue;
-              if (service.category == null || service.category!.isEmpty) continue;
-              
-              final serviceIdLower = service.id.toLowerCase();
-              final serviceCategoryLower = (service.category ?? '').toLowerCase();
-              final serviceCategoryNameLower = (service.categoryName ?? '').toLowerCase();
-              
-              // High priority: Exact serviceId match
-              if (userServiceIds.contains(serviceIdLower)) {
-                highPriority.add(service);
-                continue;
-              }
-              
-              // Medium priority: Category match
-              if (userCategories.contains(serviceCategoryLower) || 
-                  userCategories.contains(serviceCategoryNameLower)) {
-                mediumPriority.add(service);
-              }
-            }
-            
-            // Sort by rating
-            highPriority.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
-            mediumPriority.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
-            
-            // Use highest priority available
-            if (highPriority.isNotEmpty) {
-              return highPriority.take(10).toList();
-            } else if (mediumPriority.isNotEmpty) {
-              return mediumPriority.take(10).toList();
-            } else {
-              final topRated = allServices
-                  .where((s) => (s.rating ?? 0) >= 4.0)
-                  .toList()
-                ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
-              return topRated.take(10).toList();
-            }
-          },
-        );
+    return _BaseServicesSection(
+      title: 'Recommended For You',
+      titleIcon: Icons.auto_awesome_rounded,
+      iconGradient: const [Color(0xFF10B981), Color(0xFF059669)],
+      data: data,
+      displayedServiceIds: displayedServiceIds,
+      filterFunction: (allServices) {
+        final topRated = allServices
+            .where((s) => (s.rating ?? 0) >= 4.0)
+            .toList()
+          ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
+        
+        return topRated.take(10).toList();
       },
     );
   }
 }
 
 /// All Services Section
-class AllServicesSection extends StatefulWidget {
+class AllServicesSection extends StatelessWidget {
+  final List<HomeService> data;
   final Set<String>? displayedServiceIds;
   
-  const AllServicesSection({super.key, this.displayedServiceIds});
-
-  @override
-  State<AllServicesSection> createState() => _AllServicesSectionState();
-}
-
-class _AllServicesSectionState extends State<AllServicesSection> {
-  late final Stream<List<HomeService>> _servicesStream;
-
-  @override
-  void initState() {
-    super.initState();
-    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-    _servicesStream = firestoreService.getCachedServicesStream();
-  }
+  const AllServicesSection({
+    super.key,
+    required this.data,
+    this.displayedServiceIds,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -390,8 +274,8 @@ class _AllServicesSectionState extends State<AllServicesSection> {
       title: 'All Services',
       titleIcon: Icons.grid_view_rounded,
       iconGradient: const [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-      stream: _servicesStream,
-      displayedServiceIds: widget.displayedServiceIds,
+      data: data,
+      displayedServiceIds: displayedServiceIds,
       filterFunction: (allServices) => allServices.take(50).toList(),
     );
   }

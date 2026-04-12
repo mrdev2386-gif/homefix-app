@@ -1,42 +1,20 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../models/address.dart';
-import '../firebase/functions_instance.dart';
-import 'address_cache_service.dart';
 import 'category_service.dart';
+import 'firestore_service.dart';
 
 /// Production-grade Address Service
-/// Handles all address-related Firestore operations securely
+/// Delegates to FirestoreService for consistency
 class AddressService {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirestoreService _firestoreService;
   final CategoryService categoryService;
 
-  AddressService(this.categoryService);
+  AddressService(this.categoryService, {FirestoreService? firestoreService})
+      : _firestoreService = firestoreService ?? FirestoreService();
 
   /// Stream user's saved addresses
   Stream<List<Address>> streamAddresses(String userId) {
-    if (userId.isEmpty) {
-      debugPrint('[PATH GUARD] blocked empty id in streamAddresses');
-      return Stream.value([]);
-    }
-    return _db
-        .collection('users')
-        .doc(userId)
-        .collection('addresses')
-        .snapshots()
-        .map((snapshot) {
-      final addresses =
-          snapshot.docs.map((doc) => Address.fromFirestore(doc)).toList();
-      // Sort by default first, then by creation date
-      addresses.sort((a, b) {
-        if (a.isDefault && !b.isDefault) return -1;
-        if (!a.isDefault && b.isDefault) return 1;
-        return b.createdAt.compareTo(a.createdAt);
-      });
-      return addresses;
-    });
+    return _firestoreService.streamAddresses(userId);
   }
 
   /// Get a single address by ID
@@ -45,15 +23,9 @@ class AddressService {
       debugPrint('[PATH GUARD] blocked empty id in getAddress');
       return null;
     }
-    final doc = await _db
-        .collection('users')
-        .doc(userId)
-        .collection('addresses')
-        .doc(addressId)
-        .get();
-
-    if (!doc.exists) return null;
-    return Address.fromFirestore(doc);
+    // Delegate to FirestoreService
+    final addresses = await _firestoreService.streamAddresses(userId).first;
+    return addresses.where((a) => a.id == addressId).firstOrNull;
   }
 
   /// Save address (add or update) via Cloud Function
@@ -63,38 +35,19 @@ class AddressService {
       return '';
     }
     
-    final existingAddresses = await _db
-        .collection('users')
-        .doc(userId)
-        .collection('addresses')
-        .get();
+    final existingAddresses = await _firestoreService.streamAddresses(userId).first;
+    final isFirstAddress = existingAddresses.isEmpty;
     
-    final isFirstAddress = existingAddresses.docs.isEmpty;
+    // Delegate to FirestoreService
+    await _firestoreService.saveAddress(userId, address);
     
-    debugPrint('[WRITE GUARD] Direct write blocked in saveAddress');
-    
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('User not logged in');
-    await user.getIdToken(true);
-    
-    
-    final callable = FunctionsService.instance.httpsCallable('manageAddress');
-    final result = await callable.call({
-      'action': address.id.isEmpty ? 'add' : 'edit',
-      'addressId': address.id.isEmpty ? null : address.id,
-      'addressData': address.toMap(),
-      'setAsPrimary': isFirstAddress,
-    });
-
-    final addressId = result.data['addressId'] as String? ?? '';
-    
-    if (isFirstAddress && addressId.isNotEmpty) {
-      await setPrimaryAddress(userId, addressId);
+    if (isFirstAddress && address.id.isNotEmpty) {
+      await setPrimaryAddress(userId, address.id);
     }
 
     categoryService.clearLocationCache();
 
-    return addressId;
+    return address.id;
   }
 
   /// Delete address via Cloud Function
@@ -104,38 +57,17 @@ class AddressService {
       return;
     }
     
-    final addressDoc = await _db
-        .collection('users')
-        .doc(userId)
-        .collection('addresses')
-        .doc(addressId)
-        .get();
+    final addresses = await _firestoreService.streamAddresses(userId).first;
+    final addressToDelete = addresses.where((a) => a.id == addressId).firstOrNull;
+    final wasPrimary = addressToDelete?.isDefault ?? false;
     
-    final wasPrimary = addressDoc.data()?['isPrimary'] == true;
-    
-    debugPrint('[WRITE GUARD] Direct write blocked in deleteAddress');
-    
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('User not logged in');
-    await user.getIdToken(true);
-    
-    
-    final callable = FunctionsService.instance.httpsCallable('manageAddress');
-    await callable.call({
-      'action': 'delete',
-      'addressId': addressId,
-    });
+    // Delegate to FirestoreService
+    await _firestoreService.deleteAddress(userId, addressId);
     
     if (wasPrimary) {
-      final remainingAddresses = await _db
-          .collection('users')
-          .doc(userId)
-          .collection('addresses')
-          .limit(1)
-          .get();
-      
-      if (remainingAddresses.docs.isNotEmpty) {
-        await setPrimaryAddress(userId, remainingAddresses.docs.first.id);
+      final remainingAddresses = await _firestoreService.streamAddresses(userId).first;
+      if (remainingAddresses.isNotEmpty) {
+        await setPrimaryAddress(userId, remainingAddresses.first.id);
       }
     }
     
@@ -149,79 +81,15 @@ class AddressService {
       return;
     }
 
-    try {
-      final batch = _db.batch();
-      
-      // Get all addresses
-      final addressesSnapshot = await _db
-          .collection('users')
-          .doc(userId)
-          .collection('addresses')
-          .get();
-
-      // Set all addresses to non-primary
-      for (final doc in addressesSnapshot.docs) {
-        batch.update(doc.reference, {'isDefault': false, 'isPrimary': false});
-      }
-
-      // Set selected address as primary
-      final selectedAddressRef = _db
-          .collection('users')
-          .doc(userId)
-          .collection('addresses')
-          .doc(addressId);
-      batch.update(selectedAddressRef, {'isDefault': true, 'isPrimary': true});
-
-      // Get selected address data to update user document
-      final selectedAddressDoc = await selectedAddressRef.get();
-      if (selectedAddressDoc.exists) {
-        final addressData = selectedAddressDoc.data() as Map<String, dynamic>;
-        final userRef = _db.collection('users').doc(userId);
-        batch.update(userRef, {
-          'primaryAddressId': addressId,
-          'serviceDistrict': addressData['district'] ?? '',
-          'serviceState': addressData['state'] ?? '',
-        });
-        
-        // Cache primary address locally
-        final area = addressData['landmark']?.toString().isNotEmpty == true 
-            ? addressData['landmark'] 
-            : addressData['city'] ?? '';
-        await AddressCacheService.cachePrimaryAddress(
-          addressId: addressId,
-          district: addressData['district'] ?? '',
-          area: area,
-        );
-      }
-
-      await batch.commit();
-      debugPrint('✅ [Address] Primary address updated successfully');
-      
-      // Clear location cache after setting primary address
-      categoryService.clearLocationCache();
-    } catch (e) {
-      debugPrint('❌ [Address] setPrimaryAddress failed: $e');
-      rethrow;
-    }
+    // Delegate to FirestoreService
+    await _firestoreService.setDefaultAddress(userId, addressId);
+    
+    categoryService.clearLocationCache();
   }
 
   /// Stream primary address
   Stream<Address?> streamPrimaryAddress(String userId) {
-    if (userId.isEmpty) {
-      debugPrint('[PATH GUARD] blocked empty id in streamPrimaryAddress');
-      return Stream.value(null);
-    }
-    return _db
-        .collection('users')
-        .doc(userId)
-        .collection('addresses')
-        .where('isPrimary', isEqualTo: true)
-        .limit(1)
-        .snapshots()
-        .map((snapshot) {
-      if (snapshot.docs.isEmpty) return null;
-      return Address.fromFirestore(snapshot.docs.first);
-    });
+    return _firestoreService.streamPrimaryAddress(userId);
   }
 
   /// Save current location as an address
@@ -262,22 +130,11 @@ class AddressService {
       debugPrint('[PATH GUARD] blocked empty id in updateSelectedAddress');
       return;
     }
-    debugPrint('[WRITE GUARD] Direct write blocked in updateSelectedAddress');
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('User not logged in');
-      await user.getIdToken(true);
-      
-      
-      final callable = FunctionsService.instance.httpsCallable('updateUserProfile');
-      await callable.call({'selectedAddressId': addressId});
-      debugPrint('✅ [Address] Selected address updated via callable');
-      
-      categoryService.clearLocationCache();
-    } catch (e) {
-      debugPrint('❌ [Address] Update failed: $e');
-      rethrow;
-    }
+    
+    // Delegate to FirestoreService
+    await _firestoreService.updateUserProfile(userId, {'selectedAddressId': addressId});
+    
+    categoryService.clearLocationCache();
   }
 
   /// Get selected address ID from user profile
@@ -287,8 +144,8 @@ class AddressService {
       return null;
     }
     try {
-      final doc = await _db.collection('users').doc(userId).get();
-      return doc.data()?['selectedAddressId'] as String?;
+      final userData = await _firestoreService.getUserProfile(userId);
+      return userData?['selectedAddressId'] as String?;
     } catch (e) {
       debugPrint('❌ [Address] getSelectedAddressId failed: $e');
       return null;

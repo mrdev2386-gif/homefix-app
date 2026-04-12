@@ -5,9 +5,36 @@ import 'package:flutter/foundation.dart';
 import '../models/technician_service.dart';
 import '../firebase/firebase_functions.dart';
 
+/// ❌ UNUSED SERVICE - DO NOT USE
+/// 
+/// This service is NOT imported or used anywhere in the codebase.
+/// All service management operations use FunctionsService directly.
+/// 
+/// REASON FOR KEEPING:
+/// - Kept for potential future use or as reference implementation
+/// - Contains useful helper methods (canManageServices, hasActiveServices, etc.)
+/// 
+/// MIGRATION: If you need to use this, migrate to FunctionsService instead.
+/// 
+/// DEPRECATED: Use FunctionsService for all service operations:
+/// - addService() → FunctionsService.addService()
+/// - updateService() → FunctionsService.updateService()
+/// - deleteService() → FunctionsService.deleteService()
+/// - getMyServices() → Use Firestore stream directly or FunctionsService
+/// 
+/// STATUS: DISABLED - All methods throw exceptions to prevent accidental usage
+/// LAST VERIFIED: Production audit - no usages found in codebase
 class TechnicianCatalogService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseFunctions _functions = FirebaseFunctionsService.instance;
+
+  /// SAFETY CHECK: Throw on instantiation to prevent accidental usage
+  TechnicianCatalogService() {
+    throw UnsupportedError(
+      'TechnicianCatalogService is UNUSED and DISABLED. '
+      'Use FunctionsService for all service operations instead.'
+    );
+  }
 
   /// Check if technician is approved to manage services
   Future<bool> canManageServices() async {

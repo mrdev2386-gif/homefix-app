@@ -15,19 +15,36 @@ class BookingService {
   }
 
   /// NEW FLOW: Get pending bookings that need technician response
-  /// Status: ASSIGNED - admin approved, waiting for technician
+  /// Status: ASSIGNED or APPROVED_BY_ADMIN - admin approved, waiting for technician
+  /// CRITICAL FIX: Use exact Cloud Function status values
+  /// CRITICAL FIX: includeMetadataChanges: true forces real-time updates
   Stream<List<Booking>> getPendingBookings(String techId) {
+    debugPrint('[PENDING_BOOKINGS] Starting stream for techId: $techId');
     return _db.collection('bookings')
         .where('technicianId', isEqualTo: techId)
-        .where('bookingStatus', whereIn: [BookingStatus.assigned, 'approved_by_admin'])
+        .where('bookingStatus', whereIn: [
+          BookingStatus.assigned,
+          BookingStatus.approvedByAdmin,  // ✅ Cloud Function sets this
+        ])
+        .orderBy('updatedAt', descending: true)
         .limit(20)
-        .snapshots()
+        .snapshots(includeMetadataChanges: true)
         .map((snapshot) {
+          debugPrint('[PENDING_BOOKINGS] Snapshot received: ${snapshot.docs.length} bookings, metadata: ${snapshot.metadata}');
+          // STEP 3: Verify bookingStatus values
+          for (var doc in snapshot.docs) {
+            debugPrint('[PENDING_BOOKINGS] STATUS: ${doc["bookingStatus"]}');
+          }
           final bookings = snapshot.docs
               .map((doc) => Booking.fromFirestore(doc))
               .toList();
-          // Sort in memory to avoid composite index requirement
-          bookings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          // Sort by updatedAt for UI refresh
+          bookings.sort((a, b) {
+            final aTime = a.updatedAt?.millisecondsSinceEpoch ?? a.createdAt.millisecondsSinceEpoch;
+            final bTime = b.updatedAt?.millisecondsSinceEpoch ?? b.createdAt.millisecondsSinceEpoch;
+            return bTime.compareTo(aTime);
+          });
+          debugPrint('[PENDING_BOOKINGS] Returning ${bookings.length} bookings after sort');
           return bookings;
         }).handleError((e) {
           debugPrint('❌ [BookingService] Error fetching pending bookings: $e');
@@ -37,18 +54,32 @@ class BookingService {
 
   /// NEW FLOW: Get bookings that are awaiting payment
   /// Status: awaiting_payment - technician accepted, waiting for customer payment
+  /// CRITICAL FIX: Use exact Cloud Function status value
+  /// CRITICAL FIX: includeMetadataChanges: true forces real-time updates
   Stream<List<Booking>> getAwaitingPaymentBookings(String techId) {
+    debugPrint('[AWAITING_PAYMENT] Starting stream for techId: $techId');
     return _db.collection('bookings')
         .where('technicianId', isEqualTo: techId)
-        .where('bookingStatus', isEqualTo: 'awaiting_payment')
+        .where('bookingStatus', isEqualTo: BookingStatus.awaitingPayment)
+        .orderBy('updatedAt', descending: true)
         .limit(20)
-        .snapshots()
+        .snapshots(includeMetadataChanges: true)
         .map((snapshot) {
+          debugPrint('[AWAITING_PAYMENT] Snapshot received: ${snapshot.docs.length} bookings, metadata: ${snapshot.metadata}');
+          // STEP 3: Verify bookingStatus values
+          for (var doc in snapshot.docs) {
+            debugPrint('[AWAITING_PAYMENT] STATUS: ${doc["bookingStatus"]}');
+          }
           final bookings = snapshot.docs
               .map((doc) => Booking.fromFirestore(doc))
               .toList();
-          // Sort in memory to avoid composite index requirement
-          bookings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          // Sort by updatedAt for UI refresh
+          bookings.sort((a, b) {
+            final aTime = a.updatedAt?.millisecondsSinceEpoch ?? a.createdAt.millisecondsSinceEpoch;
+            final bTime = b.updatedAt?.millisecondsSinceEpoch ?? b.createdAt.millisecondsSinceEpoch;
+            return bTime.compareTo(aTime);
+          });
+          debugPrint('[AWAITING_PAYMENT] Returning ${bookings.length} bookings after sort');
           return bookings;
         }).handleError((e) {
           debugPrint('❌ [BookingService] Error fetching awaiting payment bookings: $e');
@@ -92,13 +123,22 @@ class BookingService {
         .onErrorReturn(<Booking>[]);
   }
 
-  /// Get active bookings for dashboard (assigned, accepted, in_progress)
+  /// Get active bookings for dashboard (assigned, accepted, technician_accepted, in_progress, service_in_progress)
+  /// CRITICAL FIX: Include 'technician_accepted' so accepted bookings are visible in dashboard
+  /// CRITICAL FIX: includeMetadataChanges: true forces real-time updates
   Stream<List<Booking>> getActiveBookings(String techId) {
+    debugPrint('[ACTIVE_BOOKINGS] Starting stream for techId: $techId with statuses: ${BookingStatus.activeStatuses}');
     return _db.collection('bookings')
         .where('technicianId', isEqualTo: techId)
         .where('bookingStatus', whereIn: BookingStatus.activeStatuses)
-        .snapshots()
+        .orderBy('updatedAt', descending: true)
+        .snapshots(includeMetadataChanges: true)
         .map((snapshot) {
+          debugPrint('[ACTIVE_BOOKINGS] Snapshot received: ${snapshot.docs.length} bookings, metadata: ${snapshot.metadata}');
+          // STEP 3: Verify bookingStatus values
+          for (var doc in snapshot.docs) {
+            debugPrint('[ACTIVE_BOOKINGS] STATUS: ${doc["bookingStatus"]}');
+          }
           final bookings = snapshot.docs
               .map((doc) {
                 final booking = Booking.fromFirestore(doc);
@@ -107,6 +147,13 @@ class BookingService {
                 return booking;
               })
               .toList();
+          // Sort by updatedAt for UI refresh
+          bookings.sort((a, b) {
+            final aTime = a.updatedAt?.millisecondsSinceEpoch ?? a.createdAt.millisecondsSinceEpoch;
+            final bTime = b.updatedAt?.millisecondsSinceEpoch ?? b.createdAt.millisecondsSinceEpoch;
+            return bTime.compareTo(aTime);
+          });
+          debugPrint('[ACTIVE_BOOKINGS] Returning ${bookings.length} bookings after sort');
           return bookings;
         }).handleError((e) {
           // PART 1: Robust error handling
@@ -226,13 +273,21 @@ class BookingService {
   }
 
   /// STEP 2: REAL-TIME STREAM - Get single booking stream for live updates
+  /// CRITICAL FIX: includeMetadataChanges: true forces real-time updates
   Stream<Booking?> getBookingStream(String bookingId) {
+    debugPrint('[BOOKING_DETAIL] Starting stream for bookingId: $bookingId');
     return _db.collection('bookings')
         .doc(bookingId)
-        .snapshots()
+        .snapshots(includeMetadataChanges: true)
         .map((snapshot) {
-          if (!snapshot.exists) return null;
-          return Booking.fromFirestore(snapshot);
+          debugPrint('[BOOKING_DETAIL] Snapshot received for $bookingId, metadata: ${snapshot.metadata}');
+          if (!snapshot.exists) {
+            debugPrint('[BOOKING_DETAIL] Document does not exist: $bookingId');
+            return null;
+          }
+          final booking = Booking.fromFirestore(snapshot);
+          debugPrint('[BOOKING_DETAIL] Parsed booking: ${booking.toJson()}');
+          return booking;
         }).handleError((e) {
           debugPrint('❌ [BookingService] Error fetching booking stream: $e');
         })

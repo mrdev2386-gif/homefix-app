@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../../../core/widgets/safe_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -27,7 +28,7 @@ class ServicesBanner extends StatefulWidget {
 
 class _ServicesBannerState extends State<ServicesBanner> {
   final PageController _pageController = PageController();
-  final CategoryService _categoryService = CategoryService();
+  late final CategoryService _categoryService;
   int _currentPage = 0;
   Timer? _timer;
   List<BannerModel> _banners = [];
@@ -38,6 +39,7 @@ class _ServicesBannerState extends State<ServicesBanner> {
   @override
   void initState() {
     super.initState();
+    _categoryService = context.read<CategoryService>();
     _bannerStream = _categoryService.getBanners();
     _startAutoSlide();
   }

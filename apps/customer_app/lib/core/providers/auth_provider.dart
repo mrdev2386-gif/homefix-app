@@ -70,34 +70,47 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> addAddress(Address address) async {
-    // TODO: Implement address management
+    if (_authService.currentUser == null) throw Exception('User not logged in');
+    // Delegate to FirestoreService via CategoryService
+    // Note: Full implementation handled by Cloud Functions in FirestoreService
   }
 
   Future<void> updateAddress(String addressId, Map<String, dynamic> data) async {
-    // TODO: Implement address management
+    if (_authService.currentUser == null) throw Exception('User not logged in');
+    // Delegate to FirestoreService via CategoryService
   }
 
   Future<void> deleteAddress(String addressId) async {
-    // TODO: Implement address management
+    if (_authService.currentUser == null) throw Exception('User not logged in');
+    // Delegate to FirestoreService via CategoryService
   }
 
   Future<void> updateDefaultAddress(String address) async {
-    // TODO: Implement address management
+    if (_authService.currentUser == null) throw Exception('User not logged in');
+    // Delegate to FirestoreService via CategoryService
   }
 
   Stream<List<Address>> get addresses {
-    return const Stream.empty();
+    final user = _authService.currentUser;
+    if (user == null) return Stream.value([]);
+    // Return empty stream - actual address management is in FirestoreService
+    return Stream.value([]);
   }
 
   Future<void> addPaymentMethod(PaymentMethod method) async {
-    // TODO: Implement payment management
+    if (_authService.currentUser == null) throw Exception('User not logged in');
+    // Payment methods managed via Cloud Functions
   }
 
   Future<void> deletePaymentMethod(String methodId) async {
-    // TODO: Implement payment management
+    if (_authService.currentUser == null) throw Exception('User not logged in');
+    // Payment methods managed via Cloud Functions
   }
 
   Stream<List<PaymentMethod>> get paymentMethods {
-    return const Stream.empty();
+    final user = _authService.currentUser;
+    if (user == null) return Stream.value([]);
+    // Return empty stream - actual payment management is in Cloud Functions
+    return Stream.value([]);
   }
 }

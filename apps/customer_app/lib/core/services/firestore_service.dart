@@ -13,11 +13,15 @@ import '../models/user_model.dart';
 import '../models/cart_item.dart';
 import '../models/dashboard_models.dart';
 import '../utils/firestore_guards.dart';
+import '../constants/firebase_constants.dart';
 import 'user_location_service.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseFunctions functions = FirebaseFunctions.instanceFor(region: 'asia-south1');
+  final FirebaseFunctions functions = FirebaseFunctions.instanceFor(region: FirebaseConstants.region);
+  
+  // Expose db for backward compatibility
+  FirebaseFirestore get db => _db;
   
   // Shared location service for user location caching
   final UserLocationService _locationService;
@@ -29,13 +33,14 @@ class FirestoreService {
   Map<String, dynamic>? _cachedUserInteractionData;
   String? _cachedUserId;
   DateTime? _lastInteractionFetch;
-  static const Duration _interactionCacheDuration = Duration(minutes: 5);
+  static const Duration _interactionCacheDuration = FirebaseConstants.interactionCacheDuration;
 
   FirestoreService({UserLocationService? locationService})
       : _locationService = locationService ?? UserLocationService();
 
   // --- Authentication Helper ---
-  /// Ensures user is authenticated and token is fresh with stability delay
+  /// Ensures user is authenticated and token is fresh
+  /// Uses proper auth state listener with explicit 5s timeout
   Future<void> ensureAuthenticated() async {
     final user = FirebaseAuth.instance.currentUser;
 
@@ -43,14 +48,28 @@ class FirestoreService {
       throw Exception("User not logged in");
     }
 
-    // Wait for stable auth state
-    await FirebaseAuth.instance.authStateChanges().first;
+    // FIX 3: Wait for stable auth state with explicit 5s timeout
+    try {
+      await FirebaseAuth.instance.authStateChanges()
+          .firstWhere((u) => u != null && u.uid == user.uid)
+          .timeout(
+            const Duration(seconds: 5),
+            onTimeout: () {
+              if (kDebugMode) debugPrint('❌ [Auth] Authentication timeout after 5 seconds');
+              throw TimeoutException('Authentication state check timed out after 5 seconds');
+            },
+          );
+    } catch (e) {
+      if (e is TimeoutException) {
+        if (kDebugMode) debugPrint('❌ [Auth] Failed to verify auth state: $e');
+        throw Exception('Authentication verification failed - please try again');
+      }
+      if (kDebugMode) debugPrint('⚠️ [Auth] State check error: $e');
+      // Continue for other errors - user exists
+    }
 
     // Force token refresh
     await user.getIdToken(true);
-
-    // ADD DELAY (CRITICAL FIX)
-    await Future.delayed(const Duration(milliseconds: 500));
   }
 
   // --- Stream Resilience Helper ---
@@ -74,37 +93,61 @@ class FirestoreService {
     });
   }
 
-  // Stream of bookings for a user with pagination support
-  Stream<List<Booking>> streamBookings(String userId, {int limit = 10}) {
-    return _db
-        .collection('bookings')
+  /// Stream bookings with pagination support
+  /// CRITICAL FIX: includeMetadataChanges: true forces real-time updates
+  Stream<List<Booking>> streamBookings(String userId, {int limit = FirebaseConstants.bookingLimit, DocumentSnapshot? startAfter}) {
+    Query query = _db
+        .collection(FirebaseConstants.bookingsCollection)
         .where('customerId', isEqualTo: userId)
-        .limit(limit)
-        .snapshots()
-        .map((snapshot) {
-          final bookings = snapshot.docs.map((doc) => Booking.fromFirestore(doc)).toList();
-          // Sort by createdAt in-memory to avoid composite index
-          bookings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-          return bookings;
-        });
+        .orderBy('updatedAt', descending: true) // Sort by updatedAt for UI refresh
+        .orderBy('createdAt', descending: true) // Secondary sort
+        .limit(limit);
+    
+    if (startAfter != null) {
+      query = query.startAfterDocument(startAfter);
+    }
+    
+    return query.snapshots(includeMetadataChanges: true).asBroadcastStream().map((snapshot) {
+      debugPrint('[BOOKING_STREAM] Snapshot received: ${snapshot.docs.length} bookings, metadata: ${snapshot.metadata}');
+      final bookings = snapshot.docs.map((doc) => Booking.fromFirestore(doc)).toList();
+      // Sort by updatedAt to ensure UI refresh on changes
+      bookings.sort((a, b) {
+        final aTime = a.updatedAt?.millisecondsSinceEpoch ?? a.createdAt.millisecondsSinceEpoch;
+        final bTime = b.updatedAt?.millisecondsSinceEpoch ?? b.createdAt.millisecondsSinceEpoch;
+        return bTime.compareTo(aTime);
+      });
+      return bookings;
+    });
   }
 
   // Single booking detail
+  /// CRITICAL FIX: includeMetadataChanges: true forces real-time updates
   Stream<Booking> streamBookingDetail(String bookingId) {
     return _db
-        .collection('bookings')
+        .collection(FirebaseConstants.bookingsCollection)
         .doc(bookingId)
-        .snapshots()
-        .map((doc) => Booking.fromFirestore(doc));
+        .snapshots(includeMetadataChanges: true)
+        .asBroadcastStream()
+        .map((doc) {
+          debugPrint('[BOOKING_DETAIL] Snapshot received for $bookingId, metadata: ${doc.metadata}');
+          return Booking.fromFirestore(doc);
+        });
   }
   
   /// SINGLE UNIFIED METHOD for all technician service queries
   /// Supports: sorting, limiting, location filtering with fallback
   /// All other stream methods delegate to this
+  /// 
+  /// FIRESTORE INDEX REQUIRED:
+  /// Collection: technician_services
+  /// Fields: status (Ascending), state (Ascending), district (Ascending), createdAt (Descending)
+  /// 
+  /// If index doesn't exist, query will automatically fallback to no-location filter
   Stream<List<HomeService>> streamTechnicianServices({
     String sortBy = 'recent',
-    int limit = 50,
+    int limit = 15, // REDUCED: Default limit for performance
     bool filterByLocation = true,
+    DocumentSnapshot? startAfter, // ADDED: Pagination support
   }) async* {
     Map<String, String>? location;
     
@@ -119,10 +162,11 @@ class FirestoreService {
     }
 
     // STEP 2: Build base query
-    Query query = _db.collection('technician_services')
-        .where('status', isEqualTo: 'approved');
+    Query query = _db.collection(FirebaseConstants.technicianServicesCollection)
+        .where('status', isEqualTo: FirebaseConstants.statusApproved);
     
     // STEP 3: Apply location filters with CASE-INSENSITIVE comparison
+    // NOTE: This requires a composite index - will fallback if index missing
     if (filterByLocation && location != null) {
       // FIX: Convert to lowercase for case-insensitive matching
       final userState = location['state']?.toString().toLowerCase().trim() ?? '';
@@ -137,112 +181,142 @@ class FirestoreService {
       }
     }
     
-    // STEP 4: Apply sorting
+    // STEP 4: Apply sorting (FIRESTORE ORDERBY - NO IN-MEMORY SORTING)
     if (sortBy == 'recent') {
       query = query.orderBy('createdAt', descending: true);
+    } else if (sortBy == 'topRated') {
+      query = query.orderBy('rating', descending: true);
+    }
+    
+    // STEP 5: Apply pagination
+    if (startAfter != null) {
+      query = query.startAfterDocument(startAfter);
     }
     
     query = query.limit(limit);
 
-    // STEP 5: Execute query with fallback logic
+    // STEP 6: Execute query - NO AUTOMATIC FALLBACK
+    // If index is missing or query fails, let the error propagate to UI
     yield* _withErrorHandling(
-      query.snapshots().asyncMap((snapshot) async {
-        // Parse services
+      query.snapshots().asBroadcastStream().map((snapshot) {
+        // Parse services with null drop logging
         List<HomeService> services = snapshot.docs
-            .map((doc) => HomeService.fromFirestore(doc))
+            .map((doc) {
+              final service = HomeService.fromFirestore(doc);
+              if (service == null && kDebugMode) {
+                debugPrint("⚠️ [SERVICE_PARSE] Service parse failed: ${doc.id}");
+              }
+              return service;
+            })
             .whereType<HomeService>()
             .toList();
         
-        // STEP 6: FALLBACK - If no results with location filter, try without filter
-        if (services.isEmpty && filterByLocation && location != null) {
-          final fallbackQuery = _db.collection('technician_services')
-              .where('status', isEqualTo: 'approved')
-              .orderBy('createdAt', descending: true)
-              .limit(limit);
-          
-          final fallbackSnapshot = await fallbackQuery.get();
-          
-          services = fallbackSnapshot.docs
-              .map((doc) => HomeService.fromFirestore(doc))
-              .whereType<HomeService>()
-              .toList();
+        // Log if no services found (legitimate case - not an error)
+        if (services.isEmpty && kDebugMode) {
+          debugPrint('ℹ️ [SERVICES] No services found for current filters');
         }
         
-        // STEP 7: Apply top-rated filter if needed
-        if (sortBy == 'topRated') {
-          services.sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
-          services = services.where((s) => (s.rating ?? 0) >= 4.0).toList();
-        }
-        
+        // NO IN-MEMORY SORTING - Use Firestore orderBy only
         return services;
-      }).asBroadcastStream(),
-    );
+      }),
+    ).handleError((error) {
+      // FIRESTORE INDEX ERROR HANDLING - Log clearly but don't auto-fix
+      if (error.toString().contains('index') || error.toString().contains('FAILED_PRECONDITION')) {
+        debugPrint('❌ [FIRESTORE INDEX ERROR] Missing composite index!');
+        debugPrint('   Collection: technician_services');
+        debugPrint('   Required fields: status (Asc), state (Asc), district (Asc), createdAt (Desc)');
+        debugPrint('   Action: Create index in Firebase Console');
+        debugPrint('   Impact: Services cannot be filtered by location until index is created');
+      } else {
+        debugPrint('❌ [SERVICES QUERY ERROR] $error');
+      }
+      // Rethrow - let UI handle the error state
+      throw error;
+    });
   }
 
   Stream<List<HomeService>> getCachedServicesStream() {
-    _cachedServicesStream ??= streamTechnicianServices(
+    if (_cachedServicesStream != null) return _cachedServicesStream!;
+    _cachedServicesStream = streamTechnicianServices(
       sortBy: 'recent',
-      limit: 20,
+      limit: FirebaseConstants.defaultLimit,
       filterByLocation: true,
     ).asBroadcastStream();
     return _cachedServicesStream!;
   }
   
   /// Fetch ALL services without any filters (for debugging)
-  Stream<List<HomeService>> streamAllServicesNoFilter() async* {
-    Query query = _db.collection('technician_services');
+  Stream<List<HomeService>> streamAllServicesNoFilter() {
+    Query query = _db.collection(FirebaseConstants.technicianServicesCollection)
+        .orderBy('createdAt', descending: true)
+        .limit(FirebaseConstants.maxLimit); // PERFORMANCE: Add limit even for debug
     
-    yield* _withErrorHandling(
-      query.snapshots().map((snapshot) {
+    return _withErrorHandling(
+      query.snapshots().asBroadcastStream().map((snapshot) {
         final services = snapshot.docs
             .map((doc) => HomeService.fromFirestore(doc))
             .whereType<HomeService>()
             .toList();
         
         return services;
-      }).asBroadcastStream(),
+      }),
     );
   }
   
   /// Clear cached stream (call when location changes)
   void clearCachedServicesStream() {
-    _cachedServicesStream = null;
+    Future.microtask(() {
+      _cachedServicesStream = null;
+    });
+    if (kDebugMode) {
+      debugPrint('[CACHE] clearCachedServicesStream called - stream cache cleared');
+    }
   }
 
-  /// All Services - delegates to unified method
-  Stream<List<HomeService>> streamAllTechnicianServices({int limit = 50}) {
-    return streamTechnicianServices(sortBy: 'recent', limit: limit, filterByLocation: true);
+  /// Expose user location for delegates
+  Future<Map<String, String>?> getUserLocationCached() {
+    return _locationService.getUserLocationCached();
+  }
+
+  /// All Services - delegates to unified method with pagination
+  Stream<List<HomeService>> streamAllTechnicianServices({int limit = FirebaseConstants.defaultLimit, DocumentSnapshot? startAfter}) {
+    return streamTechnicianServices(
+      sortBy: 'recent', 
+      limit: limit, 
+      filterByLocation: true,
+      startAfter: startAfter,
+    );
   }
   
-  // Get Banners - removed orderBy to avoid index requirement
+  // Get Banners - uses Firestore orderBy instead of in-memory sorting
   // Includes error handling for network resilience
   // BROADCAST: Safe for multiple listeners
   Stream<List<BannerModel>> streamBanners() {
     return _withErrorHandling(
       _db.collection('home_banners')
+          .where('active', isEqualTo: true) // Filter active banners
+          .orderBy('order') // FIRESTORE ORDERBY - NO IN-MEMORY SORTING
+          .limit(10) // PERFORMANCE: Limit banner count
           .snapshots()
+          .asBroadcastStream()
           .map((snapshot) {
             final List<BannerModel> banners = [];
             for (var doc in snapshot.docs) {
               try {
                 final banner = BannerModel.fromFirestore(doc);
-                if (banner.active) {
-                  // AUDIT: Defensive check for imageUrl
-                  if (banner.imageUrl.isEmpty) {
-                    if (kDebugMode) debugPrint('⚠️ [FirestoreService] Skipping banner ${doc.id} due to missing imageUrl');
-                    continue;
-                  }
-                  banners.add(banner);
+                // AUDIT: Defensive check for imageUrl
+                if (banner.imageUrl.isEmpty) {
+                  if (kDebugMode) debugPrint('⚠️ [FirestoreService] Skipping banner ${doc.id} due to missing imageUrl');
+                  continue;
                 }
+                banners.add(banner);
               } catch (e) {
                 if (kDebugMode) debugPrint('❌ [FirestoreService] Error parsing banner ${doc.id}: $e');
               }
             }
-            // Sort by order field in-memory
-            banners.sort((a, b) => (a.order).compareTo(b.order));
+            // NO IN-MEMORY SORTING - Already ordered by Firestore
             return banners;
-          })
-          .asBroadcastStream(),
+          }),
     );
   }
 
@@ -258,8 +332,13 @@ class FirestoreService {
   // --- Address Management ---
   Stream<List<Address>> streamAddresses(String userId) {
     debugPrint('[ADDRESS_LIST] Starting stream for user $userId');
-    return _db.collection('customers').doc(userId).collection('addresses')
+    return _db
+        .collection('customers')
+        .doc(userId)
+        .collection('addresses')
+        .orderBy('createdAt', descending: true)
         .snapshots()
+        .asBroadcastStream()
         .map((snapshot) {
           debugPrint('[ADDRESS_LIST] Loaded ${snapshot.docs.length} addresses');
           final addresses = snapshot.docs.map((doc) {
@@ -270,8 +349,6 @@ class FirestoreService {
               return null;
             }
           }).whereType<Address>().toList();
-          
-          addresses.sort((a, b) => b.createdAt.compareTo(a.createdAt));
           debugPrint('[ADDRESS_LIST] Returning ${addresses.length} valid addresses');
           return addresses;
         });
@@ -471,6 +548,7 @@ class FirestoreService {
         .where('isDefault', isEqualTo: true)
         .limit(1)
         .snapshots()
+        .asBroadcastStream()
         .map((snapshot) {
       if (snapshot.docs.isEmpty) return null;
       return Address.fromFirestore(snapshot.docs.first);
@@ -504,6 +582,9 @@ class FirestoreService {
 
 
   // --- Cart Management ---
+  // FIX 1: PRESERVE CART STATE - Keep last known cart data on network errors
+  List<CartItem> _lastKnownCart = [];
+  
   Stream<List<CartItem>> streamCart(String userId) {
     if (!FirestoreGuards.isValidDocumentId(userId)) {
       if (kDebugMode) debugPrint('[CART] Invalid userId, returning empty stream');
@@ -517,6 +598,7 @@ class FirestoreService {
     
     return userDoc.collection('cart')
         .snapshots()
+        .asBroadcastStream()
         .map((snapshot) {
           final items = snapshot.docs.map((doc) => CartItem.fromFirestore(doc)).toList();
           
@@ -540,25 +622,38 @@ class FirestoreService {
             }
           }
           
+          // FIX 1: Update last known cart state on successful load
+          _lastKnownCart = validItems;
           return validItems;
         })
-        // FIX: handleError's return value is DISCARDED by Dart — it does NOT emit data.
-        // Use StreamTransformer to properly emit [] as a DATA event on error.
+        // IMPROVED ERROR HANDLING: Distinguish between network errors and other errors
         .transform(StreamTransformer<List<CartItem>, List<CartItem>>.fromHandlers(
           handleData: (data, sink) => sink.add(data),
           handleError: (e, stackTrace, sink) {
             final errorStr = e.toString().toLowerCase();
-            final bool isUnavailable = errorStr.contains('unavailable') || errorStr.contains('network');
+            final bool isNetworkError = errorStr.contains('unavailable') || 
+                                       errorStr.contains('network') ||
+                                       errorStr.contains('failed to get document');
+            final bool isPermissionError = errorStr.contains('permission') || 
+                                          errorStr.contains('denied');
             
             if (kDebugMode) {
-              if (isUnavailable) {
-                debugPrint('⚠️ [CART] Network unavailable — emitting empty list');
+              if (isNetworkError) {
+                debugPrint('⚠️ [CART] Network error — preserving last known cart (${_lastKnownCart.length} items)');
+              } else if (isPermissionError) {
+                debugPrint('❌ [CART] Permission denied — user may need to re-authenticate');
               } else {
                 debugPrint('❌ [CART] Stream error: $e');
               }
             }
-            // CRITICAL: sink.add emits a real data event → CartProvider listener fires → isLoading = false
-            sink.add(<CartItem>[]);
+            
+            // FIX 1: Emit last known cart on network errors (preserve state)
+            // For permission errors, emit empty but log for monitoring
+            if (isNetworkError) {
+              sink.add(_lastKnownCart);  // Preserve last known state
+            } else {
+              sink.add(<CartItem>[]);
+            }
           },
         ));
   }
@@ -577,8 +672,16 @@ class FirestoreService {
   }
 
   Future<void> addToCart(String userId, CartItem item) async {
-    // CRITICAL: Ensure authentication with delay
-    await ensureAuthenticated();
+    // FIX 3: Safe auth wait - preserve original error for debugging
+    try {
+      await ensureAuthenticated();
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('❌ [Cart] Auth check failed: $e');
+        debugPrint('Stack trace: $stackTrace');
+      }
+      throw Exception('Unable to verify authentication. Please try again.');
+    }
     
     final user = FirebaseAuth.instance.currentUser!;
     
@@ -606,7 +709,15 @@ class FirestoreService {
     } catch (e) {
       if (kDebugMode) debugPrint('❌ [Cart] Add failed: $e');
       if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
-        await ensureAuthenticated();
+        try {
+          await ensureAuthenticated();
+        } catch (authError, stackTrace) {
+          if (kDebugMode) {
+            debugPrint('❌ [Cart] Retry auth check failed: $authError');
+            debugPrint('Stack trace: $stackTrace');
+          }
+          throw Exception('Unable to verify authentication. Please try again.');
+        }
         final retryCallable = functions.httpsCallable('addToCartCallable');
         final result = await retryCallable.call(payload);
         
@@ -623,8 +734,13 @@ class FirestoreService {
       throw Exception('Invalid user ID or item ID');
     }
     
-    // CRITICAL: Ensure authentication with delay
-    await ensureAuthenticated();
+    // FIX 3: Safe auth wait - catch timeout and convert to user-friendly error
+    try {
+      await ensureAuthenticated();
+    } catch (e) {
+      if (kDebugMode) debugPrint('❌ [Cart] Auth check failed: $e');
+      throw Exception('Unable to verify authentication. Please try again.');
+    }
     
     final user = FirebaseAuth.instance.currentUser!;
     
@@ -639,7 +755,12 @@ class FirestoreService {
     } catch (e) {
       if (kDebugMode) debugPrint('❌ [Cart] Update quantity failed: $e');
       if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
-        await ensureAuthenticated();
+        try {
+          await ensureAuthenticated();
+        } catch (authError) {
+          if (kDebugMode) debugPrint('❌ [Cart] Retry auth check failed: $authError');
+          throw Exception('Unable to verify authentication. Please try again.');
+        }
         final retryCallable = functions.httpsCallable('updateCartQuantityCallable');
         await retryCallable.call(data);
         
@@ -656,8 +777,13 @@ class FirestoreService {
       throw Exception('Invalid user ID or item ID');
     }
     
-    // CRITICAL: Ensure authentication with delay
-    await ensureAuthenticated();
+    // FIX 3: Safe auth wait - catch timeout and convert to user-friendly error
+    try {
+      await ensureAuthenticated();
+    } catch (e) {
+      if (kDebugMode) debugPrint('❌ [Cart] Auth check failed: $e');
+      throw Exception('Unable to verify authentication. Please try again.');
+    }
     
     final user = FirebaseAuth.instance.currentUser!;
     
@@ -672,7 +798,12 @@ class FirestoreService {
     } catch (e) {
       if (kDebugMode) debugPrint('❌ [Cart] Remove failed: $e');
       if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
-        await ensureAuthenticated();
+        try {
+          await ensureAuthenticated();
+        } catch (authError) {
+          if (kDebugMode) debugPrint('❌ [Cart] Retry auth check failed: $authError');
+          throw Exception('Unable to verify authentication. Please try again.');
+        }
         final retryCallable = functions.httpsCallable('removeFromCartCallable');
         await retryCallable.call(data);
         
@@ -689,8 +820,13 @@ class FirestoreService {
       throw Exception('Invalid user ID');
     }
     
-    // CRITICAL: Ensure authentication with delay
-    await ensureAuthenticated();
+    // FIX 3: Safe auth wait - catch timeout and convert to user-friendly error
+    try {
+      await ensureAuthenticated();
+    } catch (e) {
+      if (kDebugMode) debugPrint('❌ [Cart] Auth check failed: $e');
+      throw Exception('Unable to verify authentication. Please try again.');
+    }
     
     final user = FirebaseAuth.instance.currentUser!;
     
@@ -704,7 +840,12 @@ class FirestoreService {
     } catch (e) {
       if (kDebugMode) debugPrint('❌ [Cart] Clear failed: $e');
       if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
-        await ensureAuthenticated();
+        try {
+          await ensureAuthenticated();
+        } catch (authError) {
+          if (kDebugMode) debugPrint('❌ [Cart] Retry auth check failed: $authError');
+          throw Exception('Unable to verify authentication. Please try again.');
+        }
         final retryCallable = functions.httpsCallable('clearCartCallable');
         await retryCallable.call({});
         
@@ -818,30 +959,58 @@ class FirestoreService {
 
   // --- Service Request ---
   Future<String> createServiceRequest(ServiceRequest request) async {
-    final docRef = _db.collection('service_requests').doc();
-    await docRef.set(request.toMap());
-    return docRef.id;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('User not logged in');
+    await user.getIdToken(true);
+    final callable = functions.httpsCallable('createCustomServiceRequest');
+    try {
+      final result = await callable.call(request.toMap());
+      return (result.data as Map<String, dynamic>)['requestId'] as String? ?? '';
+    } catch (e) {
+      if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
+        await user.getIdToken(true);
+        final result = await functions.httpsCallable('createCustomServiceRequest').call(request.toMap());
+        return (result.data as Map<String, dynamic>)['requestId'] as String? ?? '';
+      }
+      rethrow;
+    }
   }
 
   Stream<List<ServiceRequest>> streamServiceRequests(String userId) {
+    if (userId.isEmpty) return Stream.value([]);
     return _db
         .collection('service_requests')
         .where('customerId', isEqualTo: userId)
+        .orderBy('createdAt', descending: true)
+        .limit(FirebaseConstants.defaultLimit)
         .snapshots()
+        .asBroadcastStream()
         .map((snapshot) => snapshot.docs
             .map((doc) => ServiceRequest.fromFirestore(doc))
-            .toList());
+            .toList())
+        .handleError((e) {
+      if (kDebugMode) debugPrint('❌ [FirestoreService] streamServiceRequests error: $e');
+      throw e;
+    });
   }
 
   // --- Proposals (Quotes) --- 
   Stream<List<Proposal>> streamProposals(String requestId) {
+    if (requestId.isEmpty) return Stream.value([]);
     return _db
         .collection('proposals')
         .where('requestId', isEqualTo: requestId)
+        .orderBy('createdAt', descending: true)
+        .limit(20)
         .snapshots()
+        .asBroadcastStream()
         .map((snapshot) => snapshot.docs
             .map((doc) => Proposal.fromFirestore(doc))
-            .toList());
+            .toList())
+        .handleError((e) {
+      if (kDebugMode) debugPrint('❌ [FirestoreService] streamProposals error: $e');
+      throw e;
+    });
   }
 
   Future<void> acceptProposal(Proposal proposal, ServiceRequest request) async {
@@ -941,7 +1110,7 @@ class FirestoreService {
   }
 
   Stream<UserModel> streamUserModel(String userId) {
-    return _db.collection('customers').doc(userId).snapshots().map((doc) {
+    return _db.collection('customers').doc(userId).snapshots().asBroadcastStream().map((doc) {
       if (!doc.exists) {
         return UserModel(uid: userId);
       }
@@ -1010,7 +1179,13 @@ class FirestoreService {
   }
 
   Future<void> toggleFavorite(String userId, String categoryId, String serviceId, bool isFavorite) async {
-    await ensureAuthenticated();
+    // FIX 3: Safe auth wait - catch timeout and convert to user-friendly error
+    try {
+      await ensureAuthenticated();
+    } catch (e) {
+      if (kDebugMode) debugPrint('❌ [Favorite] Auth check failed: $e');
+      throw Exception('Unable to verify authentication. Please try again.');
+    }
     
     final user = FirebaseAuth.instance.currentUser!;
 
@@ -1031,7 +1206,12 @@ class FirestoreService {
     } catch (e) {
       if (kDebugMode) debugPrint('❌ [Favorite] Toggle failed: $e');
       if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
-        await ensureAuthenticated();
+        try {
+          await ensureAuthenticated();
+        } catch (authError) {
+          if (kDebugMode) debugPrint('❌ [Favorite] Retry auth check failed: $authError');
+          throw Exception('Unable to verify authentication. Please try again.');
+        }
         final retryCallable = functions.httpsCallable('toggleFavoriteCallable');
         await retryCallable.call(data);
       } else {
@@ -1041,7 +1221,7 @@ class FirestoreService {
   }
 
   Stream<List<Map<String, String>>> streamFavoriteIdsWithCategory(String userId) {
-    return _db.collection('customers').doc(userId).collection('favorites').snapshots().map((snapshot) => 
+    return _db.collection('customers').doc(userId).collection('favorites').snapshots().asBroadcastStream().map((snapshot) => 
       snapshot.docs.map((doc) => {
         'serviceId': doc.id,
         'categoryId': (doc.data()['categoryId'] ?? '').toString(),
@@ -1075,38 +1255,47 @@ class FirestoreService {
     return _db
         .collection('cleaning_essentials')
         .where('isActive', isEqualTo: true)
+        .orderBy('order') // FIRESTORE ORDERBY - NO IN-MEMORY SORTING
+        .limit(20) // PERFORMANCE: Add limit
         .snapshots()
+        .asBroadcastStream()
         .map((snapshot) {
-          final essentials = snapshot.docs.map((doc) => CleaningEssential.fromFirestore(doc)).toList();
-          // Sort by order field in-memory
-          essentials.sort((a, b) => a.order.compareTo(b.order));
-          return essentials;
+          return snapshot.docs.map((doc) => CleaningEssential.fromFirestore(doc)).toList();
+          // NO IN-MEMORY SORTING - Already ordered by Firestore
         });
   }
 
   Stream<List<Map<String, dynamic>>> streamServiceSpotlight() {
-    return _db.collection('service_spotlight').limit(6).snapshots().asyncMap((snapshot) async {
-      try {
-        final spotlights = <Map<String, dynamic>>[];
-        for (var doc in snapshot.docs) {
-          final data = doc.data();
-          final serviceId = data['serviceId'] as String? ?? data['id'];
-          int techCount = 0;
-          if (serviceId != null && serviceId.isNotEmpty) {
-            final techSnapshot = await _db.collection('technicians')
+    return _db
+        .collection('service_spotlight')
+        .orderBy('order')
+        .limit(6)
+        .snapshots()
+        .asBroadcastStream()
+        .asyncMap((snapshot) async {
+      final spotlights = <Map<String, dynamic>>[];
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        final serviceId = data['serviceId'] as String? ?? data['id'];
+        int techCount = 0;
+        if (serviceId != null && serviceId.isNotEmpty) {
+          try {
+            final techSnapshot = await _db
+                .collection('technicians')
                 .where('serviceId', isEqualTo: serviceId)
                 .where('status', isEqualTo: 'approved')
                 .where('isAvailable', isEqualTo: true)
+                .count()
                 .get();
-            techCount = techSnapshot.docs.length;
-          }
-          spotlights.add({'id': doc.id, ...data, 'availableTechnicians': techCount});
+            techCount = techSnapshot.count ?? 0;
+          } catch (_) {}
         }
-        return spotlights;
-      } catch (e) {
-        debugPrint('❌ [FirestoreService] Spotlight query failed: $e');
-        return [];
+        spotlights.add({'id': doc.id, ...data, 'availableTechnicians': techCount});
       }
+      return spotlights;
+    }).handleError((e) {
+      if (kDebugMode) debugPrint('❌ [FirestoreService] Spotlight query failed: $e');
+      throw e;
     });
   }
 
@@ -1114,7 +1303,10 @@ class FirestoreService {
     return _db
         .collection('service_bottom_banners')
         .where('isActive', isEqualTo: true)
+        .orderBy('order') // FIRESTORE ORDERBY - NO IN-MEMORY SORTING
+        .limit(10) // PERFORMANCE: Add limit
         .snapshots()
+        .asBroadcastStream()
         .map((snapshot) {
           final List<ServiceBanner> banners = [];
           for (var doc in snapshot.docs) {
@@ -1122,7 +1314,6 @@ class FirestoreService {
               final banner = ServiceBanner.fromFirestore(doc);
               // AUDIT: Defensive check for imageUrl
               if (banner.imageUrl.isEmpty) {
-                // debugPrint('⚠️ [FirestoreService] Skipping bottom banner ${doc.id} due to missing imageUrl');
                 continue;
               }
               banners.add(banner);
@@ -1130,7 +1321,7 @@ class FirestoreService {
               debugPrint('❌ [FirestoreService] Error parsing bottom banner ${doc.id}: $e');
             }
           }
-          banners.sort((a, b) => a.order.compareTo(b.order));
+          // NO IN-MEMORY SORTING - Already ordered by Firestore
           return banners;
         });
   }
@@ -1139,14 +1330,15 @@ class FirestoreService {
   Stream<List<TechnicianCategory>> streamTechnicianCategories() {
     return _db.collection('categories')
         .where('isActive', isEqualTo: true)
+        .orderBy('order') // FIRESTORE ORDERBY - NO IN-MEMORY SORTING
+        .limit(50) // PERFORMANCE: Add reasonable limit
         .snapshots()
+        .asBroadcastStream()
         .map((snapshot) {
-          final categories = snapshot.docs
+          return snapshot.docs
             .map((doc) => TechnicianCategory.fromFirestore(doc))
             .toList();
-          // Sort in-memory to avoid index requirement
-          categories.sort((a, b) => a.order.compareTo(b.order));
-          return categories;
+          // NO IN-MEMORY SORTING - Already ordered by Firestore
         });
   }
 
@@ -1158,39 +1350,43 @@ class FirestoreService {
       query = query.where('categoryId', isEqualTo: categoryId);
     }
 
-    return query.snapshots()
+    return query
+        .orderBy('order') // FIRESTORE ORDERBY - NO IN-MEMORY SORTING
+        .limit(100) // PERFORMANCE: Add reasonable limit
+        .snapshots()
+        .asBroadcastStream()
         .map((snapshot) {
-          final subcategories = snapshot.docs
+          return snapshot.docs
             .map((doc) => TechnicianSubcategory.fromFirestore(doc))
             .toList();
-          // Sort in-memory to avoid index requirement
-          subcategories.sort((a, b) => a.order.compareTo(b.order));
-          return subcategories;
+          // NO IN-MEMORY SORTING - Already ordered by Firestore
         });
   }
 
   Future<List<TechnicianCategory>> getTechnicianCategories() async {
     final snapshot = await _db.collection('categories')
         .where('isActive', isEqualTo: true)
+        .orderBy('order') // FIRESTORE ORDERBY - NO IN-MEMORY SORTING
+        .limit(50) // PERFORMANCE: Add reasonable limit
         .get();
     
-    final categories = snapshot.docs
+    return snapshot.docs
       .map((doc) => TechnicianCategory.fromFirestore(doc))
       .toList();
-    categories.sort((a, b) => a.order.compareTo(b.order));
-    return categories;
+    // NO IN-MEMORY SORTING - Already ordered by Firestore
   }
 
   Future<List<TechnicianSubcategory>> getTechnicianSubcategories() async {
     final snapshot = await _db.collection('services')
         .where('isActive', isEqualTo: true)
+        .orderBy('order') // FIRESTORE ORDERBY - NO IN-MEMORY SORTING
+        .limit(100) // PERFORMANCE: Add reasonable limit
         .get();
     
-    final subcategories = snapshot.docs
+    return snapshot.docs
       .map((doc) => TechnicianSubcategory.fromFirestore(doc))
       .toList();
-    subcategories.sort((a, b) => a.order.compareTo(b.order));
-    return subcategories;
+    // NO IN-MEMORY SORTING - Already ordered by Firestore
   }
 
   /// Recommended Services - delegates to unified method
@@ -1200,7 +1396,7 @@ class FirestoreService {
 
   /// Top Rated Services - delegates to unified method
   Stream<List<HomeService>> streamTopRatedTechnicianServices({int limit = 10}) {
-    return streamTechnicianServices(sortBy: 'topRated', limit: limit * 3, filterByLocation: false);
+    return streamTechnicianServices(sortBy: 'topRated', limit: limit, filterByLocation: false);
   }
 
   /// Recent Services - delegates to unified method
@@ -1233,6 +1429,7 @@ class FirestoreService {
         .collection('subServices')
         .where('isActive', isEqualTo: true)
         .snapshots()
+        .asBroadcastStream()
         .map((snapshot) {
           return snapshot.docs
               .map((doc) => HomeService.fromFirestore(doc))
@@ -1242,40 +1439,57 @@ class FirestoreService {
   }
 
   Future<void> createCustomRequest(Map<String, dynamic> requestData) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('User not logged in');
+    await user.getIdToken(true);
+    final callable = functions.httpsCallable('createCustomServiceRequest');
     try {
-      await _db.collection('custom_requests').add(requestData);
+      await callable.call(requestData);
       if (kDebugMode) debugPrint('✅ [CustomRequest] Created successfully');
     } catch (e) {
-      if (kDebugMode) debugPrint('❌ [CustomRequest] Creation failed: $e');
-      rethrow;
+      if (e is FirebaseFunctionsException && e.code == 'unauthenticated') {
+        await user.getIdToken(true);
+        await functions.httpsCallable('createCustomServiceRequest').call(requestData);
+      } else {
+        if (kDebugMode) debugPrint('❌ [CustomRequest] Creation failed: $e');
+        rethrow;
+      }
     }
   }
 
   Future<List<Map<String, dynamic>>> fetchSubCategories(String categoryId) async {
+    if (categoryId.isEmpty) return [];
     try {
       final snapshot = await _db
           .collection('categories')
           .doc(categoryId)
           .collection('subcategories')
+          .limit(50)
           .get();
-      
       return snapshot.docs
           .map((doc) => {...doc.data(), "id": doc.id})
           .toList();
     } catch (e) {
       if (kDebugMode) debugPrint('❌ [CustomRequest] Failed to fetch subcategories: $e');
-      return [];
+      rethrow;
     }
   }
 
   Stream<List<Map<String, dynamic>>> streamCustomRequests(String userId) {
+    if (userId.isEmpty) return Stream.value([]);
     return _db
         .collection('custom_requests')
         .where('customerId', isEqualTo: userId)
         .orderBy('createdAt', descending: true)
+        .limit(FirebaseConstants.defaultLimit)
         .snapshots()
-        .map((snapshot) => 
-            snapshot.docs.map((doc) => {...doc.data(), "id": doc.id}).toList());
+        .asBroadcastStream()
+        .map((snapshot) =>
+            snapshot.docs.map((doc) => {...doc.data(), "id": doc.id}).toList())
+        .handleError((e) {
+      if (kDebugMode) debugPrint('❌ [FirestoreService] streamCustomRequests error: $e');
+      throw e;
+    });
   }
 
   // --- NEW METHODS FOR CLEAN ARCHITECTURE ---
@@ -1308,12 +1522,13 @@ class FirestoreService {
           .where('isOnline', isEqualTo: true)
           .where('state', isEqualTo: state)
           .where('district', isEqualTo: district)
+          .limit(50)
           .snapshots()
+          .asBroadcastStream()
           .map((snapshot) => snapshot.docs.map((doc) => {
             'id': doc.id,
             ...doc.data(),
-          }).toList())
-          .asBroadcastStream(),
+          }).toList()),
     );
   }
 }

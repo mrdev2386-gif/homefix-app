@@ -292,9 +292,11 @@ class Technician {
     final calculatedCompletion = (completedSteps * 100) ~/ 4;
     debugPrint('[PROFILE COMPLETION] Calculated from normalized: $calculatedCompletion% ($completedSteps/4)');
     
-    // Update Firestore with normalized structure if needed
+    // NOTE: Legacy data normalization is now handled by Cloud Functions only
+    // Direct Firestore writes from model layer are blocked for security
     if (legacyFields.isNotEmpty || status != data['status'] || calculatedCompletion != (data['profileCompletion'] ?? 0)) {
-      _updateFirestoreWithNormalizedSteps(doc.id, normalizedStepsMap, calculatedCompletion, status);
+      debugPrint('[LEGACY DATA] Document ${doc.id} has legacy fields or mismatched data. '
+          'Normalization should be handled by Cloud Functions.');
     }
     
     // SELF-HEALING KYC RESOLUTION - SINGLE SOURCE OF TRUTH
@@ -457,28 +459,22 @@ class Technician {
     );
   }
 
-  /// Update Firestore with normalized step structure
+  /// ❌ DISABLED: Direct Firestore write not allowed (security risk)
+  /// This function previously performed direct Firestore writes from the model layer,
+  /// bypassing Cloud Functions security layer and Firestore rules.
+  /// 
+  /// SECURITY FIX: All Firestore writes must go through Cloud Functions or service layer.
+  /// Use TechnicianService or OnboardingService for any data updates.
   static void _updateFirestoreWithNormalizedSteps(
     String docId, 
     Map<String, dynamic> normalizedSteps, 
     int calculatedCompletion,
     String normalizedStatus
   ) {
-    // Update Firestore asynchronously to normalize legacy data
-    FirebaseFirestore.instance
-        .collection('technicians')
-        .doc(docId)
-        .update({
-      'stepsCompleted': normalizedSteps,
-      'profileCompletion': calculatedCompletion,
-      'status': normalizedStatus,
-      'updatedAt': FieldValue.serverTimestamp(),
-      'normalizedAt': FieldValue.serverTimestamp(),
-    }).catchError((error) {
-      debugPrint('[STEP NORMALIZATION] Failed to update Firestore: $error');
-    });
-    
-    debugPrint('[STEP NORMALIZATION] Updated Firestore: completion=$calculatedCompletion%, status=$normalizedStatus');
+    throw Exception(
+      'Direct Firestore write blocked. Use Cloud Functions via service layer. '
+      'Contact: TechnicianService or OnboardingService'
+    );
   }
 
   Map<String, dynamic> toMap() {

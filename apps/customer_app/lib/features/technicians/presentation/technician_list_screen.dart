@@ -3,8 +3,7 @@ import '../../../core/models/technician.dart';
 import 'package:customer_app/core/models/service.dart';
 import '../../../core/widgets/safe_network_image.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
-import '../../../core/services/technician_discovery_service.dart';
-
+import '../../../core/technicians/technician_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class TechnicianListScreen extends StatefulWidget {
@@ -24,7 +23,7 @@ class TechnicianListScreen extends StatefulWidget {
 }
 
 class _TechnicianListScreenState extends State<TechnicianListScreen> {
-  final TechnicianDiscoveryService _technicianService = TechnicianDiscoveryService();
+  final TechnicianService _technicianService = TechnicianService();
 
   @override
   Widget build(BuildContext context) {
@@ -82,9 +81,8 @@ class _TechnicianListScreenState extends State<TechnicianListScreen> {
   }
 
   Future<List<Technician>> _fetchTechnicians() async {
-    // Use existing TechnicianDiscoveryService
-    return await _technicianService.discoverTechnicians(
-      categoryId: widget.categoryId,
+    return await _technicianService.getTechniciansForCategory(
+      categoryId: widget.categoryId ?? '',
       limit: 20,
     );
   }

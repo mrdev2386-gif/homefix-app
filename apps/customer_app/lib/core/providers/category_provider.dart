@@ -1,25 +1,29 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:customer_app/core/services/category_service.dart';
 import '../models/category.dart';
 
 class CategoryProvider extends ChangeNotifier {
-  final CategoryService _categoryService = CategoryService();
+  late final CategoryService _categoryService;
   
   List<Category> _categories = [];
   List<Category> _filteredCategories = [];
   String _searchQuery = '';
   bool _isLoading = true;
+  StreamSubscription<List<Category>>? _categoriesSubscription;
 
   List<Category> get categories => _filteredCategories;
   bool get isLoading => _isLoading;
   String get searchQuery => _searchQuery;
 
-  CategoryProvider() {
+  CategoryProvider({CategoryService? categoryService}) {
+    _categoryService = categoryService ?? CategoryService();
     _loadCategories();
   }
 
   void _loadCategories() {
-    _categoryService.getCategories().listen((List<Category> categories) {
+    _categoriesSubscription?.cancel();
+    _categoriesSubscription = _categoryService.getCategories().listen((List<Category> categories) {
       _categories = categories;
       _applySearch();
       _isLoading = false;
@@ -45,5 +49,11 @@ class CategoryProvider extends ChangeNotifier {
     _searchQuery = '';
     _applySearch();
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _categoriesSubscription?.cancel();
+    super.dispose();
   }
 }

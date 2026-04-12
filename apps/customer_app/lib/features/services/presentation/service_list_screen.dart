@@ -31,7 +31,7 @@ class ServiceListScreen extends StatefulWidget {
 class _ServiceListScreenState extends State<ServiceListScreen> {
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final CategoryService _categoryService = CategoryService();
+  late final CategoryService _categoryService;
 
   Timer? _debounceTimer;
   bool _isNavigating = false;
@@ -46,6 +46,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   @override
   void initState() {
     super.initState();
+    _categoryService = context.read<CategoryService>();
     _selectedCategory = widget.category;
     if (widget.initialSearchQuery != null) {
       _searchQuery = widget.initialSearchQuery!;

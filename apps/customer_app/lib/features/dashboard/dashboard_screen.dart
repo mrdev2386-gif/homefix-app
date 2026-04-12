@@ -35,6 +35,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAliveClientMixin {
   Stream<List<Booking>>? _bookingsStream;
+  late final CategoryService _categoryService;
   
 
   
@@ -48,6 +49,7 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   @override
   void initState() {
     super.initState();
+    _categoryService = context.read<CategoryService>();
     final auth = Provider.of<AuthService>(context, listen: false);
     if (auth.currentUser != null) {
       final firestore = Provider.of<FirestoreService>(context, listen: false);
@@ -124,21 +126,82 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
                   // SECTION: Upcoming Booking
                   _buildUpcomingBooking(context),
                   
-                  // SECTION 1: All Services (Primary discovery)
-                  const AllServicesSection(),
-                  const SizedBox(height: 32),
-                  
-                  // SECTION 2: Top Rated Services
-                  const TopRatedRealServicesSection(),
-                  const SizedBox(height: 32),
+                  // SECTION: All Services with Single StreamBuilder
+                  StreamBuilder<List<HomeService>>(
+                    stream: context.read<FirestoreService>().getCachedServicesStream(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(32.0),
+                            child: CircularProgressIndicator(),
+                          ),
+                        );
+                      }
+                      
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32.0),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Something went wrong',
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 14,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                ElevatedButton(
+                                  onPressed: () => setState(() {}),
+                                  child: const Text('Retry'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+                      
+                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32.0),
+                            child: Text(
+                              'Services loading...',
+                              style: GoogleFonts.outfit(
+                                fontSize: 14,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                      
+                      final allServices = snapshot.data!;
+                      
+                      return Column(
+                        children: [
+                          // SECTION 1: All Services (Primary discovery)
+                          AllServicesSection(data: allServices),
+                          const SizedBox(height: 32),
+                          
+                          // SECTION 2: Top Rated Services
+                          TopRatedRealServicesSection(data: allServices),
+                          const SizedBox(height: 32),
 
-                  // SECTION 3: Recently Added Services
-                  const RecentlyAddedServicesSection(),
-                  const SizedBox(height: 32),
-                  
-                  // SECTION 4: Recommended For You (AI Driven)
-                  const RecommendedServicesSection(),
-                  const SizedBox(height: 32),
+                          // SECTION 3: Recently Added Services
+                          RecentlyAddedServicesSection(data: allServices),
+                          const SizedBox(height: 32),
+                          
+                          // SECTION 4: Recommended For You (AI Driven)
+                          RecommendedServicesSection(data: allServices),
+                          const SizedBox(height: 32),
+                        ],
+                      );
+                    },
+                  ),
 
                   // SECTION 5: Support
                   _buildOffersBanner(),
@@ -885,9 +948,8 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
   }
 
   Widget _buildCategoriesSection() {
-    final categoryService = CategoryService();
     return StreamBuilder<List<Category>>(
-      stream: categoryService.streamCategories(),
+      stream: _categoryService.streamCategories(),
       builder: (context, snapshot) {
         if (!snapshot.hasData || snapshot.data!.isEmpty) {
           return const SizedBox();

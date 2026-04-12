@@ -1,0 +1,258 @@
+PRODUCTION-LEVEL TEST PATTERNS - QUICK REFERENCE
+=================================================
+
+1. CACHE IDENTITY TESTING
+=========================
+
+❌ WEAK:
+  expect(stream1, equals(stream2));
+
+✅ PRODUCTION:
+  expect(identical(stream1, stream2), isTrue);
+  
+  // After clear:
+  expect(identical(stream1, stream2), isFalse);
+
+WHY: identical() checks object reference, not value equality.
+     Streams don't implement equals() reliably.
+
+
+2. STREAM TYPE VALIDATION
+==========================
+
+❌ WEAK:
+  expect(stream, isNotNull);
+
+✅ PRODUCTION:
+  expect(stream, isA<Stream<List<Booking>>>());
+  expect(stream, isA<Stream<Booking>>());
+  expect(stream, isA<Stream<List<Address>>>());
+
+WHY: Validates actual type, not just existence.
+     Catches type mismatches at test time.
+
+
+3. EXCEPTION TESTING
+====================
+
+❌ WEAK:
+  expect(() => fn(), throwsException);
+
+✅ PRODUCTION:
+  expect(() => fn(), throwsA(isA<Exception>()));
+  expect(() => fn(), throwsA(isA<FirebaseFunctionsException>()));
+
+WHY: Validates specific exception type.
+     Generic throwsException is too broad.
+
+
+4. MOCK SETUP & VERIFICATION
+=============================
+
+❌ WEAK:
+  class MockBookingService extends Mock implements BookingService {}
+
+✅ PRODUCTION:
+  @GenerateMocks([BookingService])
+  
+  setUp(() {
+    mockService = MockBookingService();
+  });
+  
+  // Verify interactions:
+  verify(mockService.method()).called(1);
+  verify(mockService.method()).called(greaterThan(0));
+  verifyNever(mockService.method());
+
+WHY: @GenerateMocks generates type-safe mocks.
+     verify() ensures mock was called correctly.
+
+
+5. EMPTY/NULL HANDLING
+======================
+
+❌ WEAK:
+  expect(data['categories'], isNotNull);
+
+✅ PRODUCTION:
+  expect(data['categories'], isA<Set>());
+  expect((data['categories'] as Set).isEmpty, isTrue);
+
+WHY: Validates type AND content.
+     Catches empty collections that pass isNotNull.
+
+
+6. STREAM EMISSION TESTING
+===========================
+
+❌ WEAK:
+  final stream = firestoreService.streamCart('');
+  expect(stream, isNotNull);
+
+✅ PRODUCTION:
+  final stream = firestoreService.streamCart('');
+  expect(stream, isNotNull);
+  final result = await stream.first;
+  expect(result, isA<List>());
+  expect(result.isEmpty, isTrue);
+
+WHY: Actually subscribes to stream and validates emitted data.
+     Catches stream behavior issues.
+
+
+7. MOCK INTERACTION PATTERNS
+=============================
+
+✅ PRODUCTION:
+  // Setup mock to return value
+  when(mockService.method()).thenReturn(value);
+  
+  // Setup mock to return async value
+  when(mockService.asyncMethod()).thenAnswer((_) async => value);
+  
+  // Setup mock to throw
+  when(mockService.method()).thenThrow(Exception('error'));
+  
+  // Verify called once
+  verify(mockService.method()).called(1);
+  
+  // Verify called multiple times
+  verify(mockService.method()).called(3);
+  
+  // Verify never called
+  verifyNever(mockService.method());
+  
+  // Verify called with specific args
+  verify(mockService.method(testData)).called(1);
+
+
+8. LOCATION SERVICE MOCKING
+============================
+
+✅ PRODUCTION:
+  late MockUserLocationService mockLocationService;
+  
+  setUp(() {
+    mockLocationService = MockUserLocationService();
+    firestoreService = FirestoreService(
+      locationService: mockLocationService
+    );
+  });
+  
+  // Mock location available
+  when(mockLocationService.getUserLocationCached())
+      .thenAnswer((_) async => {'state': 'maharashtra', 'district': 'mumbai'});
+  
+  // Mock location unavailable
+  when(mockLocationService.getUserLocationCached())
+      .thenAnswer((_) async => null);
+  
+  // Verify location service was called
+  verify(mockLocationService.getUserLocationCached()).called(greaterThan(0));
+  
+  // Verify location service was NOT called
+  verifyNever(mockLocationService.getUserLocationCached());
+
+
+9. PAGINATION TESTING
+=====================
+
+✅ PRODUCTION:
+  test('streamTechnicianServices accepts limit parameter', () {
+    final stream = firestoreService.streamTechnicianServices(
+      limit: 25,
+      filterByLocation: false,
+    );
+    expect(stream, isA<Stream<List<HomeService>>>());
+  });
+  
+  test('streamTechnicianServices accepts startAfter parameter', () {
+    final stream = firestoreService.streamTechnicianServices(
+      limit: 15,
+      startAfter: null,
+      filterByLocation: false,
+    );
+    expect(stream, isA<Stream<List<HomeService>>>());
+  });
+
+
+10. ERROR RESILIENCE TESTING
+=============================
+
+✅ PRODUCTION:
+  test('streamCart emits data without throwing', () async {
+    final stream = firestoreService.streamCart('user-123');
+    expect(stream, isNotNull);
+    expect(stream, isA<Stream<List>>());
+  });
+  
+  test('streamTechnicianServices handles location filtering gracefully', () async {
+    when(mockLocationService.getUserLocationCached())
+        .thenAnswer((_) async => null);
+    
+    final stream = firestoreService.streamTechnicianServices(
+      filterByLocation: true,
+    );
+    
+    expect(stream, isNotNull);
+    expect(stream, isA<Stream<List<HomeService>>>());
+  });
+
+
+KEY PRINCIPLES
+==============
+
+1. Type Safety: Always validate types, not just existence
+2. Mock Verification: Use verify() to ensure mocks were called correctly
+3. Stream Testing: Subscribe and validate emitted data
+4. Cache Testing: Use identical() for object identity
+5. Error Handling: Test specific exception types
+6. Integration: Mock dependencies properly
+7. Meaningful Assertions: Replace weak checks with strong validation
+8. Clean Code: Remove unused mocks and imports
+9. Organization: Group related tests
+10. Documentation: Add reason strings to assertions
+
+
+RUNNING TESTS
+=============
+
+All tests:
+  flutter test
+
+Specific file:
+  flutter test test/firestore_service_test.dart
+
+Specific group:
+  flutter test test/firestore_service_test.dart -k "Cache"
+
+With coverage:
+  flutter test --coverage
+
+Watch mode:
+  flutter test --watch
+
+
+COMMON PATTERNS TO AVOID
+========================
+
+❌ expect(stream, isNotNull)
+   → Use: expect(stream, isA<Stream<Type>>())
+
+❌ expect(() => fn(), throwsException)
+   → Use: expect(() => fn(), throwsA(isA<SpecificException>()))
+
+❌ expect(stream1, equals(stream2))
+   → Use: expect(identical(stream1, stream2), isTrue)
+
+❌ No mock verification
+   → Use: verify(mock.method()).called(1)
+
+❌ No stream subscription
+   → Use: final result = await stream.first
+
+❌ Unused mock classes
+   → Use: @GenerateMocks annotation
+
+❌ Generic error handling
+   → Use: Specific exception types and error scenarios

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 class Booking {
   final String id;
@@ -66,11 +67,17 @@ class Booking {
     final data = doc.data() as Map<String, dynamic>? ?? {};
     final servicesList = List<Map<String, dynamic>>.from(data['services'] ?? []);
     
+    // CRITICAL FIX 5: Validate technicianId is not null
+    final technicianId = (data['technicianId'] ?? data['assignedTechnicianId'])?.toString();
+    if (technicianId == null || technicianId.isEmpty) {
+      if (kDebugMode) debugPrint('⚠️ [Booking] WARNING: Booking ${doc.id} has no technicianId');
+    }
+    
     return Booking(
       id: doc.id,
       customerId: (data['customerId'] ?? '').toString(),
       customerName: data['customerName']?.toString(),
-      technicianId: (data['technicianId'] ?? data['assignedTechnicianId'])?.toString(),
+      technicianId: technicianId,
       technicianName: (data['technicianName'] ?? data['assignedTechnicianName'])?.toString(),
       services: servicesList,
       serviceId: (data['serviceId'] ?? data['serviceKey'] ?? (servicesList.isNotEmpty ? servicesList[0]['id'] : '')).toString(),

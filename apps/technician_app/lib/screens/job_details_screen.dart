@@ -60,6 +60,8 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
       'admin_approved',
       'approved_by_admin',
       'technician_accepted',
+      'service_in_progress',
+      'en_route',
       'awaiting_payment',
       'awaiting_customer_payment',
       'pending',
@@ -70,6 +72,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
       'completed',
       'cancelled',
       'rejected',
+      'technician_rejected',
     ];
     return knownStatuses.contains(status);
   }
@@ -334,7 +337,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     }
 
     // STEP 5: IN PROGRESS - Show when technician accepts
-    if (status == 'confirmed' || status == 'accepted' || status == 'technician_accepted') {
+    if (status == 'confirmed' || status == 'accepted' || status == 'technician_accepted' || status == 'en_route') {
       return _ActionBar(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -380,7 +383,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     }
 
     // STEP 5: COMPLETE SERVICE BUTTON - Show when work is in progress
-    if (status == 'in_progress' || status == 'started') {
+    if (status == 'in_progress' || status == 'service_in_progress' || status == 'started') {
       return _ActionBar(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -502,7 +505,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
       } else if (action == 'reject') {
         await service.rejectBooking(_booking.id, idempotencyKey: idempotencyKey);
       } else if (action == 'start') {
-        await service.updateBookingStatus(_booking.id, 'in_progress');
+        await service.updateBookingStatus(_booking.id, 'service_in_progress');
       } else if (action == 'complete') {
         await service.markWorkCompleted(_booking.id);
       }
@@ -639,7 +642,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     if (status == 'completed') {
       color = const Color(0xFF10B981);
       displayText = 'COMPLETED';
-    } else if (status == 'started' || status == 'in_progress') {
+    } else if (status == 'started' || status == 'in_progress' || status == 'service_in_progress') {
       color = const Color(0xFFF59E0B);
       displayText = 'IN PROGRESS';
     } else if (status == 'cancelled' || status == 'rejected') {

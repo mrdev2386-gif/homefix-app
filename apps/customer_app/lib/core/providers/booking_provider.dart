@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
-import 'package:cloud_functions/cloud_functions.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:math';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/booking_service.dart';
 import '../models/booking.dart';
 
@@ -17,15 +16,66 @@ class BookingProvider extends ChangeNotifier {
   // FIX: Idempotency key persistence - generate ONCE per booking session
   String? _currentBookingIdempotencyKey;
   DateTime? _idempotencyKeyCreatedAt;
+  SharedPreferences? _prefs;
+  
+  static const String _idempotencyKeyPrefKey = 'booking_idempotency_key';
+  static const String _idempotencyKeyTimePrefKey = 'booking_idempotency_key_time';
+
+  BookingProvider() {
+    _initializePreferences();
+  }
+
+  /// Initialize SharedPreferences and restore idempotency key if available
+  Future<void> _initializePreferences() async {
+    try {
+      _prefs = await SharedPreferences.getInstance();
+      
+      // Restore idempotency key from SharedPreferences
+      final savedKey = _prefs?.getString(_idempotencyKeyPrefKey);
+      final savedTime = _prefs?.getInt(_idempotencyKeyTimePrefKey);
+      
+      if (savedKey != null && savedTime != null) {
+        _currentBookingIdempotencyKey = savedKey;
+        _idempotencyKeyCreatedAt = DateTime.fromMillisecondsSinceEpoch(savedTime);
+        
+        // Check if key is still valid (less than 5 minutes old)
+        final age = DateTime.now().difference(_idempotencyKeyCreatedAt!);
+        if (age.inMinutes >= 5) {
+          // Key expired, clear it
+          _clearIdempotencyKey();
+        } else if (kDebugMode) {
+          debugPrint('[BookingProvider] Restored idempotency key from SharedPreferences: $_currentBookingIdempotencyKey');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[BookingProvider] Error initializing preferences: $e');
+    }
+  }
 
   /// Generate or reuse idempotency key for booking session
+  /// Persists key to SharedPreferences for recovery on app restart
+  /// HARDENING: Ensures same key is used for retries (prevents duplicates)
   String _getOrCreateIdempotencyKey() {
+    // CRITICAL FIX: Ensure _prefs is initialized before use
+    // If not initialized, generate key without persistence (fallback)
+    if (_prefs == null) {
+      if (kDebugMode) debugPrint('[BookingProvider] WARNING: _prefs not initialized, generating key without persistence');
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final random = Random().nextInt(9999);
+      return 'BK_${timestamp}_$random';
+    }
+    
     // If key exists and was created less than 5 minutes ago, reuse it
+    // HARDENING: This ensures retry uses SAME key (idempotency)
     if (_currentBookingIdempotencyKey != null && _idempotencyKeyCreatedAt != null) {
       final age = DateTime.now().difference(_idempotencyKeyCreatedAt!);
       if (age.inMinutes < 5) {
-        if (kDebugMode) debugPrint('[BookingProvider] Reusing idempotency key: $_currentBookingIdempotencyKey');
+        if (kDebugMode) debugPrint('[BookingProvider] Reusing idempotency key for retry: $_currentBookingIdempotencyKey');
         return _currentBookingIdempotencyKey!;
+      } else {
+        // Key expired, clear and generate new one
+        if (kDebugMode) debugPrint('[BookingProvider] Idempotency key expired, generating new one');
+        _clearIdempotencyKey();
       }
     }
     
@@ -35,15 +85,43 @@ class BookingProvider extends ChangeNotifier {
     _currentBookingIdempotencyKey = 'BK_${timestamp}_$random';
     _idempotencyKeyCreatedAt = DateTime.now();
     
+    // Persist to SharedPreferences for recovery on app restart
+    _prefs?.setString(_idempotencyKeyPrefKey, _currentBookingIdempotencyKey!);
+    _prefs?.setInt(_idempotencyKeyTimePrefKey, _idempotencyKeyCreatedAt!.millisecondsSinceEpoch);
+    
     if (kDebugMode) debugPrint('[BookingProvider] Generated new idempotency key: $_currentBookingIdempotencyKey');
     return _currentBookingIdempotencyKey!;
   }
   
   /// Clear idempotency key after successful booking
+  /// Also removes from SharedPreferences
+  /// HARDENING: Only clears on SUCCESS to allow retries
   void _clearIdempotencyKey() {
     _currentBookingIdempotencyKey = null;
     _idempotencyKeyCreatedAt = null;
-    if (kDebugMode) debugPrint('[BookingProvider] Cleared idempotency key');
+    
+    // Clear from SharedPreferences
+    _prefs?.remove(_idempotencyKeyPrefKey);
+    _prefs?.remove(_idempotencyKeyTimePrefKey);
+    
+    if (kDebugMode) debugPrint('[BookingProvider] Cleared idempotency key (booking succeeded)');
+  }
+  
+  /// Verify idempotency key is valid and not expired
+  /// HARDENING: Ensures key is still usable for retry
+  bool _isIdempotencyKeyValid() {
+    if (_currentBookingIdempotencyKey == null || _idempotencyKeyCreatedAt == null) {
+      return false;
+    }
+    
+    final age = DateTime.now().difference(_idempotencyKeyCreatedAt!);
+    final isValid = age.inMinutes < 5;
+    
+    if (!isValid && kDebugMode) {
+      debugPrint('[BookingProvider] Idempotency key expired (${age.inMinutes} minutes old)');
+    }
+    
+    return isValid;
   }
 
   /// Live verification before creating a booking request
@@ -69,6 +147,15 @@ class BookingProvider extends ChangeNotifier {
     String? paymentMode,
     bool isUrgent = false,
   }) async {
+    // CRITICAL FIX: Ensure SharedPreferences is initialized before proceeding
+    if (_prefs == null) {
+      if (kDebugMode) debugPrint('[BookingProvider] _prefs not initialized, waiting...');
+      await _initializePreferences();
+      if (_prefs == null) {
+        throw Exception('Failed to initialize preferences. Please try again.');
+      }
+    }
+    
     // Prevent duplicate booking requests
     if (_isBooking) {
       if (kDebugMode) debugPrint('[BookingProvider] ⚠️ Booking already in progress, ignoring duplicate request');
@@ -84,8 +171,8 @@ class BookingProvider extends ChangeNotifier {
       // ─────────────────────────────────────────────────────────────────────
       // 1. RE-FETCH AND VERIFY SERVICE FROM technician_services (SOURCE OF TRUTH)
       // ─────────────────────────────────────────────────────────────────────
-      print('[BOOKING_FLOW] serviceId received: $serviceId');
-      print('[BOOKING_FLOW] Fetching from technician_services');
+      if (kDebugMode) debugPrint('[BOOKING_FLOW] serviceId received: $serviceId');
+      if (kDebugMode) debugPrint('[BOOKING_FLOW] Fetching from technician_services');
       
       final techServiceDoc = await db.collection('technician_services')
           .doc(serviceId).get();
@@ -162,8 +249,13 @@ class BookingProvider extends ChangeNotifier {
       // ─────────────────────────────────────────────────────────────────────
       // 5. CREATE BOOKING REQUEST WITH PERSISTENT IDEMPOTENCY KEY
       // ─────────────────────────────────────────────────────────────────────
-      print('[BOOKING_FLOW] Creating booking with idempotency key');
+      if (kDebugMode) debugPrint('[BOOKING_FLOW] Creating booking with idempotency key');
       final idempotencyKey = _getOrCreateIdempotencyKey();
+      
+      // HARDENING: Verify key is valid before sending
+      if (!_isIdempotencyKeyValid()) {
+        throw Exception('Idempotency key expired. Please try again.');
+      }
       
       final response = await _bookingService.createBookingRequest(
         serviceId: serviceId,
@@ -184,7 +276,7 @@ class BookingProvider extends ChangeNotifier {
       
       // Clear idempotency key after successful booking
       _clearIdempotencyKey();
-      print('[BOOKING_FLOW] Booking created successfully');
+      if (kDebugMode) debugPrint('[BOOKING_FLOW] Booking created successfully');
       
       return response;
     } catch (e) {
@@ -214,5 +306,12 @@ class BookingProvider extends ChangeNotifier {
 
   Future<void> cancelBooking(String bookingId, {String reason = 'Cancelled by customer'}) async {
     await _bookingService.cancelBooking(bookingId, reason);
+  }
+
+  @override
+  void dispose() {
+    // Clear idempotency key on provider disposal
+    _clearIdempotencyKey();
+    super.dispose();
   }
 }

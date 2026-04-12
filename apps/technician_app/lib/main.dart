@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,7 +15,6 @@ import 'screens/technician_onboarding_flow_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/complete_location_screen.dart';
 import 'features/technician/services/add_service_screen.dart';
-import 'core/services/technician_catalog_service.dart';
 import 'core/firebase/firebase_init.dart';
 import 'core/utils/app_logger.dart';
 import 'core/widgets/technician_status_guard.dart';
@@ -40,6 +40,13 @@ void main() async {
   await FirebaseInit.init();
   AppLogger.info('MAIN', 'Firebase initialization complete | package: com.homefix.technician');
   
+  // CRITICAL FIX: Enable Firestore cache for real-time updates
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: true,
+    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+  );
+  AppLogger.info('MAIN', 'Firestore cache enabled - real-time updates active');
+  
   // Initialize Crashlytics & Performance AFTER App Check
   FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
   await FirebasePerformance.instance.setPerformanceCollectionEnabled(true);
@@ -57,7 +64,6 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => TechnicianProvider()),
-        Provider(create: (_) => TechnicianCatalogService()),
         ChangeNotifierProvider(create: (_) => NotificationsService()),
       ],
       child: const TechnicianApp(),

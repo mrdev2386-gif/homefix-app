@@ -183,14 +183,12 @@ class AuthService {
       }
     }
     
-    // CRITICAL: Update FCM token after login
+    // CRITICAL: Update FCM token after login via Cloud Function
     try {
       final fcmToken = await FirebaseMessaging.instance.getToken();
       if (fcmToken != null) {
-        await userDoc.update({
-          'fcmToken': fcmToken,
-          'fcmTokenUpdatedAt': FieldValue.serverTimestamp(),
-        });
+        final callable = FunctionsService.instance.httpsCallable('saveFcmToken');
+        await callable.call({'token': fcmToken, 'userType': 'customer'});
         debugPrint('✅ [FCM] Token saved after login: ${fcmToken.substring(0, 20)}...');
       }
     } catch (e) {

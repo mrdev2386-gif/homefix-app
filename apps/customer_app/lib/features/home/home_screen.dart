@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:customer_app/core/services/auth_service.dart';
 import '../../core/services/firestore_service.dart';
 import 'package:customer_app/core/services/category_service.dart';
-import 'package:customer_app/core/models/category.dart';
+import 'package:customer_app/core/models/category.dart' as category_model;
 import 'package:customer_app/core/models/address.dart';
+import 'package:customer_app/core/models/service.dart';
 import '../../core/models/booking.dart';
 import '../../core/providers/location_provider.dart';
 import '../../core/services/notifications_service.dart';
@@ -37,7 +39,7 @@ class _HomeScreenState extends State<HomeScreen>
   final _customRequestDebounceDuration = const Duration(milliseconds: 500);
   
   // Banner state
-  final CategoryService _categoryService = CategoryService();
+  late final CategoryService _categoryService;
   final PageController _bannerPageController = PageController(viewportFraction: 0.92);
   int _currentBannerIndex = 0;
 
@@ -47,18 +49,27 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
+    _categoryService = context.read<CategoryService>();
     final auth = Provider.of<AuthService>(context, listen: false);
     if (auth.currentUser != null) {
       final firestore = Provider.of<FirestoreService>(context, listen: false);
       _bookingsStream =
           firestore.streamBookings(auth.currentUser!.uid, limit: 1);
 
-      // Initialize location provider with user ID to load district
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final locationProvider =
-            Provider.of<LocationProvider>(context, listen: false);
-        locationProvider.initialize(auth.currentUser!.uid);
-      });
+          // FIX 2: LOCATION RACE FIX - Initialize location FIRST, then clear cache
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            try {
+              final locationProvider =
+                  Provider.of<LocationProvider>(context, listen: false);
+              // CRITICAL: Await initialization to complete before clearing cache
+              await locationProvider.initialize(auth.currentUser!.uid);
+              // ONLY AFTER location is loaded, clear services cache to refetch with new location
+              _categoryService.clearLocationCache();
+              if (kDebugMode) debugPrint('✅ [HOME] Location initialized and cache cleared');
+            } catch (e) {
+              if (kDebugMode) debugPrint('❌ [HOME] Location initialization error: $e');
+            }
+          });
     }
   }
 
@@ -113,14 +124,95 @@ class _HomeScreenState extends State<HomeScreen>
             // Popular Services
             SliverToBoxAdapter(child: _buildPopularServices()),
             
-            // Recently Added Services (TOP)
-            SliverToBoxAdapter(child: _buildNearYouSection()),
-            
-            // Top Rated Services
-            SliverToBoxAdapter(child: _buildTopRatedSection()),
-            
-            // Recommended For You (BOTTOM)
-            SliverToBoxAdapter(child: _buildRecommendedSection()),
+            // All Service Sections with Single StreamBuilder
+            SliverToBoxAdapter(
+              child: StreamBuilder<List<HomeService>>(
+                stream: context.read<FirestoreService>().getCachedServicesStream(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(32.0),
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+                  }
+                  
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Something went wrong',
+                              style: GoogleFonts.outfit(
+                                fontSize: 14,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton(
+                              onPressed: () => setState(() {}),
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                  
+                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32.0),
+                        child: Text(
+                          'Services loading...',
+                          style: GoogleFonts.outfit(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                  
+                  final allServices = snapshot.data!;
+                  
+                  return Column(
+                    children: [
+                      // Recently Added Services (TOP)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: RecentlyAddedServicesSection(
+                          data: allServices,
+                          displayedServiceIds: _displayedServiceIds,
+                        ),
+                      ),
+                      
+                      // Top Rated Services
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: TopRatedRealServicesSection(
+                          data: allServices,
+                          displayedServiceIds: _displayedServiceIds,
+                        ),
+                      ),
+                      
+                      // Recommended For You (BOTTOM)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: RecommendedServicesSection(
+                          data: allServices,
+                          displayedServiceIds: _displayedServiceIds,
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
             
             // Need Assistance
             SliverToBoxAdapter(child: _buildNeedAssistance(context)),
@@ -587,7 +679,6 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildPopularServices() {
-    final categoryService = CategoryService();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -622,8 +713,8 @@ class _HomeScreenState extends State<HomeScreen>
             ],
           ),
         ),
-        StreamBuilder<List<Category>>(
-          stream: categoryService.getCategories(),
+        StreamBuilder<List<category_model.Category>>(
+          stream: _categoryService.getCategories(),
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
               return const Center(
@@ -659,7 +750,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildServiceCard(Category category) {
+  Widget _buildServiceCard(category_model.Category category) {
     final categoryIcons = _getCategoryIconData(category.name);
     final color = categoryIcons['color'] as Color;
     final icon = categoryIcons['icon'] as IconData;
@@ -727,27 +818,6 @@ class _HomeScreenState extends State<HomeScreen>
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildRecommendedSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: RecommendedServicesSection(displayedServiceIds: _displayedServiceIds),
-    );
-  }
-
-  Widget _buildTopRatedSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: TopRatedRealServicesSection(displayedServiceIds: _displayedServiceIds),
-    );
-  }
-
-  Widget _buildNearYouSection() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: RecentlyAddedServicesSection(displayedServiceIds: _displayedServiceIds),
     );
   }
 

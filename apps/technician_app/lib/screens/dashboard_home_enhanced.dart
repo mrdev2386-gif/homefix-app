@@ -15,7 +15,16 @@ import 'package:technician_app/features/technician/services/add_service_screen.d
 import 'package:technician_app/screens/job_details_screen.dart';
 
 // ============================================================================
-// MAIN DASHBOARD HOME SCREEN
+// ✅ ACTIVE DASHBOARD HOME SCREEN - USED IN PRODUCTION
+// ============================================================================
+// This is the ACTIVE home screen used in DashboardScreen.
+// See: lib/screens/dashboard_screen.dart (imports DashboardHomeEnhanced)
+// 
+// VERIFIED: This is the ONLY home screen in use.
+// Any other home screen files are legacy/unused.
+// 
+// STATUS: PRODUCTION READY
+// LAST VERIFIED: Production audit - actively used in dashboard navigation
 // ============================================================================
 
 /// Dashboard Home Enhanced - ULTRA MODERN UI Redesign
@@ -1349,12 +1358,16 @@ class _DashboardHomeEnhancedState extends State<DashboardHomeEnhanced> with Widg
     Color color;
     switch (status.toLowerCase()) {
       case 'assigned':
+      case 'approved_by_admin':
         color = const Color(0xFF6366F1);
         break;
       case 'accepted':
+      case 'technician_accepted':
+      case 'en_route':
         color = const Color(0xFF10B981);
         break;
       case 'in_progress':
+      case 'service_in_progress':
         color = const Color(0xFFF59E0B);
         break;
       default:

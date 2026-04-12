@@ -820,8 +820,24 @@ export const createBookingRequest = functions
       console.log('🆔 [createBookingRequest] Generated booking ID:', bookingId);
 
       // PHASE 5: Protect Booking Integrity - Define outside transaction
-      // ENFORCE: ONLY after_service payment mode - NO EXCEPTIONS
-      const finalPaymentMethod = 'after_service';
+      // ALLOW: Customer to choose payment method (online or after_service)
+      const requestedPaymentMethod = data.paymentMethod || data.paymentMode || 'after_service';
+      
+      // Validate payment method
+      if (!['online', 'after_service', 'pay_before_work', 'pay_after_work'].includes(requestedPaymentMethod)) {
+        console.error('❌ [createBookingRequest] Invalid paymentMethod:', requestedPaymentMethod);
+        throw new functions.https.HttpsError('invalid-argument', 'paymentMethod must be "online" or "after_service"');
+      }
+      
+      // Map legacy payment modes to standard methods
+      let finalPaymentMethod = 'after_service';
+      if (requestedPaymentMethod === 'online' || requestedPaymentMethod === 'pay_before_work') {
+        finalPaymentMethod = 'online';
+      } else if (requestedPaymentMethod === 'after_service' || requestedPaymentMethod === 'pay_after_work') {
+        finalPaymentMethod = 'after_service';
+      }
+      
+      console.log(`[PAYMENT METHOD] Requested: ${requestedPaymentMethod}, Final: ${finalPaymentMethod}`);
       // All bookings go through admin review first
       const initialStatus = 'pending_admin_review';
 

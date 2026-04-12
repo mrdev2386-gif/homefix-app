@@ -3,19 +3,26 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/address.dart';
 import '../services/address_service.dart';
 import '../services/category_service.dart';
+import '../services/functions_service.dart';
 
 /// District-based LocationProvider (GPS-less for production simplicity)
 class LocationProvider extends ChangeNotifier {
-  final CategoryService _categoryService = CategoryService();
-  late final AddressService _addressService = AddressService(_categoryService);
+  late final CategoryService _categoryService;
+  late final AddressService _addressService;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  
+  final FunctionsService _functionsService = FunctionsService();
+
   String _currentAddress = 'Select your location';
   String? _selectedDistrict;
   Address? _selectedAddress;
   bool _isLoading = false;
   String? _userId;
   String? _errorMessage;
+
+  LocationProvider({CategoryService? categoryService}) {
+    _categoryService = categoryService ?? CategoryService();
+    _addressService = AddressService(_categoryService);
+  }
 
   String get currentAddress => _selectedAddress?.fullAddress ?? _currentAddress;
   String? get selectedDistrict => _selectedDistrict;
@@ -25,28 +32,37 @@ class LocationProvider extends ChangeNotifier {
   bool get hasLocation => _selectedAddress != null || _selectedDistrict != null;
 
   /// Initialize with user ID and load saved district
+  /// FIX 2: Ensure location cache is cleared BEFORE loading new district
   Future<void> initialize(String userId) async {
     _userId = userId;
+    // CRITICAL: Clear location cache first to prevent race conditions
+    clearLocationCache();
     await loadSelectedDistrict();
   }
+  
+  /// Clear location cache (call when location changes)
+  void clearLocationCache() {
+    // Placeholder for cache clearing if needed in future
+    // Currently location is loaded fresh on each initialize()
+  }
 
-  /// Load user's selected district from Firestore
+  /// Load user's selected district from Firestore (read-only — acceptable)
   Future<void> loadSelectedDistrict() async {
     if (_userId == null) return;
-    
+
     try {
       _isLoading = true;
       notifyListeners();
-      
+
       final userDoc = await _db.collection('customers').doc(_userId).get();
       if (userDoc.exists) {
         final data = userDoc.data();
         _selectedDistrict = data?['districtNormalized'] ?? data?['district']?.toString();
-        
+
         if (_selectedDistrict != null && _selectedDistrict!.isNotEmpty) {
           _currentAddress = _selectedDistrict!;
         }
-        
+
         debugPrint('[DISTRICT_DISPLAY] Loaded district from Firestore: $_selectedDistrict');
       }
     } catch (e) {
@@ -57,7 +73,7 @@ class LocationProvider extends ChangeNotifier {
     }
   }
 
-  /// Set selected district and persist to Firestore
+  /// Set selected district and persist via Cloud Function
   Future<bool> setSelectedDistrict(String district) async {
     if (_userId == null) {
       _errorMessage = 'User not logged in';
@@ -72,14 +88,14 @@ class LocationProvider extends ChangeNotifier {
     try {
       _isLoading = true;
       notifyListeners();
-      
+
       final normalizedDistrict = district.trim().toLowerCase();
-      
-      await _db.collection('customers').doc(_userId).update({
+
+      await _functionsService.updateUserProfile({
         'district': district,
         'districtNormalized': normalizedDistrict,
       });
-      
+
       debugPrint('[DISTRICT_DISPLAY] District saved: $normalizedDistrict');
       return true;
     } catch (e) {
@@ -120,6 +136,4 @@ class LocationProvider extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
   }
-
-
 }

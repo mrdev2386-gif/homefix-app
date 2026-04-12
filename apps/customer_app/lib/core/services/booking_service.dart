@@ -4,11 +4,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../models/booking.dart';
 import '../firebase/functions_instance.dart';
+import 'firestore_service.dart';
 
 class BookingService {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirestoreService _firestoreService;
 
-  FirebaseFirestore get db => _db;
+  BookingService({FirestoreService? firestoreService})
+      : _firestoreService = firestoreService ?? FirestoreService();
+
+  FirebaseFirestore get db => _firestoreService.db;
 
   /// Creates a new booking request (NEW FLOW)
   /// 
@@ -80,16 +84,21 @@ class BookingService {
       if (user == null) throw Exception("User not logged in");
       await user.getIdToken(true);
       
-      // Debug logging
-      print('[AUTH DEBUG] UID: ${user.uid}');
-      print('[AUTH DEBUG] Token: ${await user.getIdToken()}');
-      print('[BOOKING_FLOW] Sending booking payload: $payload');
+      // Debug logging (no sensitive data)
+      if (kDebugMode) {
+        debugPrint('[BOOKING_FLOW] Creating booking request');
+      }
       
       
       final HttpsCallable callable = FunctionsService.instance.httpsCallable('createBookingRequest');
-      final results = await callable.call(payload);
+      final results = await callable.call(payload).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () => throw Exception('Booking request timed out. Please try again.'),
+      );
       
-      print('[BOOKING_FLOW] Cloud Function response: ${results.data}');
+      if (kDebugMode) {
+        debugPrint('[BOOKING_FLOW] Cloud Function response: ${results.data}');
+      }
       return results.data as Map<String, dynamic>;
     } catch (e) {
       if (kDebugMode) debugPrint("Error creating booking request: $e");
@@ -98,29 +107,7 @@ class BookingService {
   }
 
   Stream<List<Booking>> getCustomerBookings(String customerId) {
-    return _db
-        .collection('bookings')
-        .where('customerId', isEqualTo: customerId)
-        .orderBy('createdAt', descending: true)
-        .limit(20)
-        .snapshots()
-        .map((snapshot) =>
-            snapshot.docs.map((doc) => Booking.fromFirestore(doc)).toList())
-        .handleError((e) {
-      // FIX 3 & 4: Firestore Network Resilience - handle UNAVAILABLE and other errors gracefully
-      final errorStr = e.toString().toLowerCase();
-      final bool isUnavailable = errorStr.contains('unavailable') || errorStr.contains('network');
-      
-      if (kDebugMode) {
-        if (isUnavailable) {
-          debugPrint('⚠️ [BookingService] Network unavailable - returning empty list');
-        } else {
-          debugPrint('❌ [BookingService] Error fetching customer bookings (logged once): $e');
-        }
-      }
-      // Return empty list, NEVER crash, NEVER infinite loader
-      return <Booking>[];
-    });
+    return _firestoreService.streamBookings(customerId, limit: 20);
   }
 
   /// Cancel a booking
@@ -169,36 +156,15 @@ class BookingService {
   }
 
   Stream<Booking?> getBookingStream(String bookingId) {
-    debugPrint('[BOOKING SERVICE] Creating stream for booking: $bookingId');
-    return _db.collection('bookings').doc(bookingId).snapshots().map((doc) {
-      debugPrint('[FIRESTORE SNAPSHOT] Received for booking: $bookingId, exists: ${doc.exists}');
-      if (!doc.exists) {
-        debugPrint('[FIRESTORE SNAPSHOT] Document does not exist');
-        return null;
-      }
-      final data = doc.data();
-      debugPrint('[FIRESTORE SNAPSHOT] Data: $data');
-      final booking = Booking.fromFirestore(doc);
-      debugPrint('[FIRESTORE SNAPSHOT] Parsed booking status: ${booking.bookingStatus}');
-      return booking;
-    }).handleError((e) {
-      // FIX 3 & 4: Network resilience
-      final errorStr = e.toString().toLowerCase();
-      final bool isUnavailable = errorStr.contains('unavailable') || errorStr.contains('network');
-      if (kDebugMode) {
-        if (isUnavailable) {
-          debugPrint('⚠️ [BookingService] Network unavailable for booking $bookingId');
-        } else {
-          debugPrint('❌ [BookingService] Error fetching booking $bookingId: $e');
-        }
-      }
-      return null;
-    });
+    return _firestoreService.streamBookingDetail(bookingId);
   }
 
   Future<Booking?> getBooking(String bookingId) async {
-    final doc = await _db.collection('bookings').doc(bookingId).get();
-    if (!doc.exists) return null;
-    return Booking.fromFirestore(doc);
+    try {
+      return await _firestoreService.streamBookingDetail(bookingId).first;
+    } catch (e) {
+      if (kDebugMode) debugPrint('❌ [BookingService] Error fetching booking: $e');
+      return null;
+    }
   }
 }

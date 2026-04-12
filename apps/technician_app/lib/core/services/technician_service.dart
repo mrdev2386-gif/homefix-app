@@ -5,6 +5,15 @@ import 'package:flutter/foundation.dart';
 import '../models/technician.dart';
 import '../firebase/firebase_functions.dart';
 
+/// ⚠️ DEPRECATED: Use FunctionsService for service management instead.
+/// This service is kept for backward compatibility with profile operations only.
+/// 
+/// MIGRATION GUIDE:
+/// - For service CRUD: Use FunctionsService (addService, updateService, deleteService)
+/// - For profile updates: Use Cloud Functions via FunctionsService
+/// - For profile reads: Use getTechnician() or getTechnicianStream() (still valid)
+/// 
+/// DO NOT add new methods to this service. All new operations should use FunctionsService.
 class TechnicianService {
   late final FirebaseFirestore _db;
   late final FirebaseFunctions _functions;
@@ -14,42 +23,24 @@ class TechnicianService {
     _functions = FirebaseFunctionsService.instance;
   }
 
+  /// ❌ DEPRECATED: Use FunctionsService.updateTechnicianPersonalDetails() instead
+  /// This method is BLOCKED and will throw an exception
+  @Deprecated('Use FunctionsService via Cloud Functions')
   Future<void> saveTechnicianProfile(User user, {
     required List<String> skills,
   }) async {
-    try {
-      final callable = _functions.httpsCallable('updateTechnicianProfile');
-      await callable.call({
-        'name': user.displayName ?? 'Technician',
-        'email': user.email ?? '',
-        'phone': user.phoneNumber ?? '',
-        'photoUrl': user.photoURL,
-        'skills': skills,
-      });
-    } catch (e) {
-      debugPrint("Error saving technician profile via CF: $e");
-      rethrow;
-    }
+    throw Exception(
+      'Deprecated method blocked. Use FunctionsService.updateTechnicianPersonalDetails() via Cloud Functions.'
+    );
   }
 
-  /// Update technician skills via Cloud Function (required by Firestore rules)
+  /// ❌ DEPRECATED: Use FunctionsService.updateTechnicianPersonalDetails() instead
+  /// This method is BLOCKED and will throw an exception
+  @Deprecated('Use FunctionsService via Cloud Functions')
   Future<void> updateSkills(String uid, List<String> skills) async {
-    try {
-      // Use Cloud Function - Firestore rules block direct writes
-      final callable = _functions.httpsCallable('updateTechnicianSkills');
-      final result = await callable.call({
-        'skills': skills,
-      });
-      
-      if (result.data['success'] == true) {
-        debugPrint('[WRITE VERIFY] technician skills updated via CF');
-      } else {
-        throw Exception(result.data['message'] ?? 'Failed to update skills');
-      }
-    } catch (e) {
-      debugPrint('[TechnicianService] Error updating skills: $e');
-      rethrow;
-    }
+    throw Exception(
+      'Deprecated method blocked. Use FunctionsService.updateTechnicianPersonalDetails() via Cloud Functions.'
+    );
   }
   Future<Technician?> getTechnician(String uid) async {
     final doc = await _db.collection('technicians').doc(uid).get();

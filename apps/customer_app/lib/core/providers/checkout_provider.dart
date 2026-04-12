@@ -31,6 +31,12 @@ class CheckoutProvider with ChangeNotifier {
   }
 
   void setItems(List<CartItem> items) {
+    // FIX 3: Validate items before setting
+    if (items.isEmpty) {
+      debugPrint('⚠️ [CheckoutProvider] Attempted to set empty items list');
+      return;
+    }
+    
     _items = items;
     if (items.isNotEmpty && items.first.technicianId != null && items.first.technicianId!.isNotEmpty) {
       _selectedTechnicianId = items.first.technicianId;

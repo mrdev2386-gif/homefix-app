@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:customer_app/core/models/category.dart';
 import 'package:customer_app/core/models/service.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
@@ -23,8 +24,14 @@ class SubServiceScreen extends StatefulWidget {
 }
 
 class _SubServiceScreenState extends State<SubServiceScreen> {
-  final CategoryService _categoryService = CategoryService();
+  late final CategoryService _categoryService;
   bool _isNavigating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _categoryService = context.read<CategoryService>();
+  }
 
   @override
   Widget build(BuildContext context) {

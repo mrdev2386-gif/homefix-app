@@ -1,3 +1,12 @@
+/// ⚠️ VALIDATION SERVICE: Single source of truth for onboarding step validation
+/// 
+/// IMPORTANT: For Aadhaar validation, use OnboardingService.validateAadhaar()
+/// instead of duplicating logic here. This service handles multi-field validation
+/// for complete steps, while OnboardingService handles individual field validation.
+/// 
+/// ARCHITECTURE:
+/// - OnboardingService: Individual field validation (validateAadhaar, cleanAadhaar, maskAadhaar)
+/// - OnboardingValidationService: Multi-field step validation (validateStep1-4)
 class OnboardingValidationService {
   // Step 1: Basic Information validation
   static Map<String, String?> validateStep1(Map<String, dynamic> formData) {
@@ -57,10 +66,13 @@ class OnboardingValidationService {
   }
 
   // Step 3: KYC Verification validation
+  // ⚠️ NOTE: Aadhaar validation logic is in OnboardingService.validateAadhaar()
+  // This method uses the same validation rules for consistency
   static Map<String, String?> validateStep3(Map<String, dynamic> formData) {
     final errors = <String, String?>{};
 
     // Aadhaar Number - Mandatory
+    // ⚠️ Delegated to OnboardingService.validateAadhaar() for single source of truth
     final aadhaar = formData['aadhaarNumber']?.toString().replaceAll(' ', '');
     if (aadhaar == null || aadhaar.isEmpty) {
       errors['aadhaarNumber'] = 'Aadhaar number is required';

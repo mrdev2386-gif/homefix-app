@@ -166,6 +166,11 @@ import * as paymentQR from './booking/payment_qr';
 export const generateTechnicianQR = paymentQR.generateTechnicianQR;
 export const confirmQRPayment = paymentQR.confirmQRPayment;
 
+// CRITICAL FIX: Customer Payment Confirmation
+import * as customerPaymentConfirmation from './booking/customer_payment_confirmation';
+export const customerConfirmPayment = customerPaymentConfirmation.customerConfirmPayment;
+export const adminConfirmPayment = customerPaymentConfirmation.adminConfirmPayment;
+
 // Stale Booking Cleanup
 import * as bookingCleanup from './booking/cleanup';
 export const cleanupStaleBookings = bookingCleanup.cleanupStaleBookings;
@@ -187,6 +192,10 @@ export const cleanupOTPRateLimits = otpRateLimiting.cleanupOTPRateLimits;
 // Booking Status Change Notifications
 import * as bookingNotifications from './booking/booking_notifications';
 export const onBookingStatusChange = bookingNotifications.onBookingStatusChange;
+
+// Booking Status Change Notifications (CRITICAL FIX)
+import * as bookingStatusNotifications from './booking/booking_status_notifications';
+export const onBookingStatusChangeNotify = bookingStatusNotifications.onBookingStatusChange;
 
 // Custom Request Status Change Notifications
 import * as customRequestNotifications from './custom_requests/custom_request_notifications';

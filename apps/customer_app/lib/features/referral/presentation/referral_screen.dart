@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -52,7 +53,12 @@ class _ReferralScreenState extends State<ReferralScreen> {
         _referralHistory = [];
       }
     } catch (e) {
-      print('Error loading referral data: $e');
+      if (kDebugMode) debugPrint('Error loading referral data: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load referral data: $e')),
+        );
+      }
     } finally {
       setState(() => _isLoading = false);
     }

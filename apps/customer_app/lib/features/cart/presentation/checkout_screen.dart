@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:async';
 import 'package:customer_app/core/theme/app_theme.dart';
 import '../../../core/providers/checkout_provider.dart';
 import '../../../core/providers/cart_provider.dart';
@@ -11,6 +13,7 @@ import '../../../core/providers/location_provider.dart';
 import '../../../core/providers/booking_provider.dart';
 import 'package:customer_app/core/services/functions_service.dart';
 import 'package:customer_app/core/models/address.dart';
+import '../../../core/utils/connectivity_helper.dart';
 import '../../profile/presentation/saved_addresses_screen.dart';
 import '../../home/main_wrapper_screen.dart';
 import '../../../core/constants/navigation_constants.dart';
@@ -68,61 +71,73 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _finishBooking() async {
-    print("BOOKING CONFIRM BUTTON CLICKED");
+    if (kDebugMode) debugPrint('[Checkout] Confirm booking tapped');
     
-    // ── Duplicate-submit guard ──────────────────────────────────────────────
-    if (_submitLock || _isProcessing) {
+    // CRITICAL FIX 3: ATOMIC SUBMIT LOCK - Single synchronous check
+    if (_submitLock) {
       debugPrint('⚠️ [Checkout] Submit already in progress – ignoring duplicate tap');
+      _showError('Please wait, processing your booking...');
       return;
     }
 
-    final checkout = Provider.of<CheckoutProvider>(context, listen: false);
-
-    // ── Pre-flight validation ───────────────────────────────────────────────
-    if (checkout.selectedAddress == null) {
-      _showError('Please select a delivery address.');
-      return;
+    // Set lock IMMEDIATELY (synchronous, no race)
+    _submitLock = true;
+    
+    // Update UI state AFTER lock is set
+    if (mounted) {
+      setState(() {
+        _isProcessing = true;
+      });
     }
-    if (checkout.selectedDate == null || checkout.selectedTimeSlot == null) {
-      _showError('Please select a date and time slot.');
-      return;
-    }
-    if (checkout.items.isEmpty) {
-      _showError('Your cart is empty. Please add services first.');
-      return;
-    }
-
-    // Validate every cart item has the required IDs
-    for (final item in checkout.items) {
-      if (item.categoryId.isEmpty) {
-        _showError('Service "${item.serviceName}" is missing category info. Please remove and re-add it.');
-        return;
-      }
-      if (item.serviceId.isEmpty) {
-        _showError('Service "${item.serviceName}" has an invalid ID. Please remove and re-add it.');
-        return;
-      }
-    }
-
-    // ── Get authenticated user ──────────────────────────────────────────────
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) {
-      _showError('You must be logged in to place a booking.');
-      return;
-    }
-
-    setState(() {
-      _isProcessing = true;
-      _submitLock = true;
-    });
 
     try {
+      final checkout = Provider.of<CheckoutProvider>(context, listen: false);
+
+      // ── Pre-flight validation ───────────────────────────────────────────────
+      if (checkout.selectedAddress == null) {
+        _showError('Please select a delivery address.');
+        return;
+      }
+      if (checkout.selectedDate == null || checkout.selectedTimeSlot == null) {
+        _showError('Please select a date and time slot.');
+        return;
+      }
+      if (checkout.items.isEmpty) {
+        _showError('Your cart is empty. Please add services first.');
+        return;
+      }
+
+      // Validate every cart item has the required IDs
+      for (final item in checkout.items) {
+        if (item.categoryId.isEmpty) {
+          _showError('Service "${item.serviceName}" is missing category info. Please remove and re-add it.');
+          return;
+        }
+        if (item.serviceId.isEmpty) {
+          _showError('Service "${item.serviceName}" has an invalid ID. Please remove and re-add it.');
+          return;
+        }
+      }
+
+      // ── Get authenticated user ──────────────────────────────────────────────
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        _showError('You must be logged in to place a booking.');
+        return;
+      }
+
+      // REAL NETWORK CHECK: Check actual internet connectivity
+      final isOnline = await ConnectivityHelper.hasInternetConnection();
+      if (!isOnline) {
+        _showError('No internet connection. Please check your network and try again.');
+        return;
+      }
+
       final bookingProvider = Provider.of<BookingProvider>(context, listen: false);
 
       // ── Build scheduled datetime ────────────────────────────────────────
       final scheduledDate = checkout.selectedDate!;
       final timeSlot = checkout.selectedTimeSlot!;
-      // Parse time slot like "09:00 AM" into hours/minutes
       final scheduledAt = _buildScheduledAt(scheduledDate, timeSlot);
 
       // ── NEW BOOKING FLOW: Check if technician is selected ─────────────
@@ -137,17 +152,52 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         }
 
         // PAY AFTER WORK: create booking first, pay later
-        final result = await bookingProvider.createBookingRequest(
-          serviceId: firstItem.serviceId,
-          technicianId: checkout.selectedTechnicianId!,
-          categoryId: firstItem.categoryId,
-          categoryName: firstItem.categoryName,
-          scheduledDate: scheduledDate.toIso8601String(),
-          scheduledTime: timeSlot,
-          address: checkout.selectedAddress!.toMap(),
-          subcategoryId: firstItem.subServiceId,
-          paymentMode: _paymentMode,
-        );
+        // HARDENING FIX 1: Add timeout with backend verification
+        Map<String, dynamic> result;
+        try {
+          result = await bookingProvider.createBookingRequest(
+            serviceId: firstItem.serviceId,
+            technicianId: checkout.selectedTechnicianId!,
+            categoryId: firstItem.categoryId,
+            categoryName: firstItem.categoryName,
+            scheduledDate: scheduledDate.toIso8601String(),
+            scheduledTime: timeSlot,
+            address: checkout.selectedAddress!.toMap(),
+            subcategoryId: firstItem.subServiceId,
+            paymentMode: _paymentMode,
+          ).timeout(
+            const Duration(seconds: 15),
+            onTimeout: () => throw TimeoutException('Booking request timed out'),
+          );
+        } on TimeoutException catch (_) {
+          // HARDENING: After timeout, verify booking from backend
+          if (kDebugMode) debugPrint('[Checkout] Timeout occurred - verifying booking from backend');
+          
+          // Wait 2 seconds for backend to process
+          await Future.delayed(const Duration(seconds: 2));
+          
+          // Try to fetch recent booking for this user
+          try {
+            final bookings = await bookingProvider.customerBookings(currentUser.uid).first.timeout(
+              const Duration(seconds: 10),
+            );
+            
+            if (bookings.isNotEmpty) {
+              final recentBooking = bookings.first;
+              if (kDebugMode) debugPrint('[Checkout] Booking verified from backend: ${recentBooking.id}');
+              result = {
+                'success': true,
+                'bookingId': recentBooking.id,
+                'status': recentBooking.status,
+              };
+            } else {
+              throw Exception('Booking verification failed. Please check your bookings.');
+            }
+          } catch (e) {
+            if (kDebugMode) debugPrint('[Checkout] Backend verification failed: $e');
+            throw Exception('Booking request timed out. Please check your bookings to confirm.');
+          }
+        }
 
         final bookingId = result['bookingId'] as String?;
         if (bookingId == null || bookingId.isEmpty) {
@@ -170,21 +220,51 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     } on Exception catch (e) {
       debugPrint('❌ [Checkout] Booking failed: $e');
       if (mounted) {
-        _showError('Booking failed: ${e.toString().replaceAll('Exception: ', '')}');
+        final errorMsg = e.toString().replaceAll('Exception: ', '');
+        _showErrorWithRetry('Booking failed: $errorMsg');
       }
     } catch (e, stack) {
       debugPrint('❌ [Checkout] Unexpected error: $e\n$stack');
       if (mounted) {
-        _showError('An unexpected error occurred. Please try again.');
+        _showErrorWithRetry('An unexpected error occurred. Please try again.');
       }
     } finally {
+      // ALWAYS release lock in finally block
+      _submitLock = false;
       if (mounted) {
         setState(() {
           _isProcessing = false;
-          _submitLock = false;
         });
       }
     }
+  }
+
+  void _showErrorWithRetry(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: GoogleFonts.outfit(fontSize: 14),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.red[600],
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'Retry',
+          textColor: Colors.white,
+          onPressed: !_isProcessing ? _finishBooking : () {},
+        ),
+      ),
+    );
   }
 
   /// Parses a time slot string like "09:00 AM" and combines with the date.
@@ -203,7 +283,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: Row(
+          children: [
+            const Icon(Icons.info_outline, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                message,
+                style: GoogleFonts.outfit(fontSize: 14),
+              ),
+            ),
+          ],
+        ),
         backgroundColor: AppTheme.errorColor,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 4),
@@ -1152,7 +1243,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               width: 160,
               height: 56,
               child: ElevatedButton(
-                onPressed: canContinue && !_isProcessing && !_submitLock ? _nextStep : null,
+                onPressed: (canContinue && !_isProcessing && !_submitLock) ? _nextStep : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primaryColor,
                   foregroundColor: Colors.white,

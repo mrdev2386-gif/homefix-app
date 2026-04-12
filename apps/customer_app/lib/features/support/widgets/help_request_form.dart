@@ -176,9 +176,8 @@ class _HelpRequestFormState extends State<HelpRequestForm> {
   Future<void> _submitRequest() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isSubmitting = true);
-
     try {
+      setState(() => _isSubmitting = true);
       final authService = Provider.of<AuthService>(context, listen: false);
       final user = authService.currentUser;
 

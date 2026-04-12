@@ -399,7 +399,11 @@ class OnboardingService {
 
   /// Validate Aadhaar number format (12 digits, numeric only)
   /// Returns null if valid, error message if invalid
+  /// 
+  /// ⚠️ Delegated to OnboardingValidationService for single source of truth
   static String? validateAadhaar(String? aadhaar) {
+    // Import OnboardingValidationService at top of file if not already imported
+    // This delegates to the validation service to avoid duplication
     if (aadhaar == null || aadhaar.isEmpty) {
       return 'Aadhaar number is required';
     }

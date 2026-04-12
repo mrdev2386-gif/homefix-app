@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import 'package:customer_app/core/models/category.dart';
 import 'package:customer_app/core/services/category_service.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
@@ -21,7 +22,7 @@ class ServicesCategoriesScreen extends StatefulWidget {
 }
 
 class _ServicesCategoriesScreenState extends State<ServicesCategoriesScreen> {
-  final CategoryService _categoryService = CategoryService();
+  late final CategoryService _categoryService;
   bool _isLoading = true;
   List<Category> _categories = [];
   ErrorType? _errorType;
@@ -32,6 +33,7 @@ class _ServicesCategoriesScreenState extends State<ServicesCategoriesScreen> {
   @override
   void initState() {
     super.initState();
+    _categoryService = context.read<CategoryService>();
     _fetchCategories();
   }
 

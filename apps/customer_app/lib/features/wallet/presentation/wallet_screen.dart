@@ -53,6 +53,10 @@ class _CustomerWalletScreenState extends State<CustomerWalletScreen> {
               return _buildErrorWidget(balanceSnapshot.error?.toString() ?? 'Unknown error');
             }
             
+            if (txnSnapshot.hasError) {
+              return _buildErrorWidget(txnSnapshot.error?.toString() ?? 'Failed to load transactions');
+            }
+            
             final balance = balanceSnapshot.data ?? 0.0;
             final transactions = txnSnapshot.data ?? [];
             

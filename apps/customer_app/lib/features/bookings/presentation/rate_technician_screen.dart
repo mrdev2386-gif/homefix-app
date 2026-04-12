@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import '../../../core/services/functions_helper.dart';
 
 class RateTechnicianScreen extends StatefulWidget {
@@ -44,7 +44,7 @@ class _RateTechnicianScreenState extends State<RateTechnicianScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('User not authenticated');
 
-      print("CALLING FUNCTION: submitServiceRating");
+      if (kDebugMode) debugPrint('[RateTechnician] Calling submitServiceRating');
       final callable = await FunctionsHelper.getCallable('submitServiceRating');
       await callable.call({
         'bookingId': widget.bookingId,

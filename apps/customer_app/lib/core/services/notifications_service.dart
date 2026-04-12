@@ -96,6 +96,11 @@ class NotificationsService extends ChangeNotifier {
   List<NotificationModel> _notifications = [];
   int _unreadCount = 0;
   bool _isInitialized = false;
+  StreamSubscription<User?>? _authStateSubscription;
+  StreamSubscription<String>? _tokenRefreshSubscription;
+  StreamSubscription<RemoteMessage>? _foregroundMessageSubscription;
+  StreamSubscription<RemoteMessage>? _messageOpenedAppSubscription;
+  StreamSubscription<QuerySnapshot>? _notificationsSubscription;
 
   List<NotificationModel> get notifications => _notifications;
   int get unreadCount => _unreadCount;
@@ -163,27 +168,15 @@ class NotificationsService extends ChangeNotifier {
   }
 
   void _setupTokenHandlers() {
-    FirebaseAuth.instance.authStateChanges().listen((user) async {
+    _authStateSubscription?.cancel();
+    _authStateSubscription = FirebaseAuth.instance.authStateChanges().listen((user) async {
       if (user != null) {
         final token = await _messaging.getToken();
         if (token != null) await _saveToken(token);
         _setupDataStreams(user.uid);
       } else {
-        // IMPROVEMENT: Potential cleanup of token on logout for reliability
-        try {
-          final token = await _messaging.getToken();
-          if (token != null) {
-            
-            final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('removeFcmToken');
-            await callable.call({
-              'token': token,
-              'userType': 'customer',
-            });
-            debugPrint('[NotificationsService] Token removed on logout');
-          }
-        } catch (e) {
-          debugPrint('[NotificationsService] Token removal failed or skip: $e');
-        }
+        // Token removal with retry logic
+        await _removeTokenWithRetry();
         
         _notifications = [];
         _unreadCount = 0;
@@ -191,7 +184,38 @@ class NotificationsService extends ChangeNotifier {
       }
     });
 
-    _messaging.onTokenRefresh.listen((token) => _saveToken(token));
+    _tokenRefreshSubscription?.cancel();
+    _tokenRefreshSubscription = _messaging.onTokenRefresh.listen((token) => _saveToken(token));
+  }
+
+  Future<void> _removeTokenWithRetry() async {
+    const maxRetries = 3;
+    const retryDelay = Duration(seconds: 2);
+
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        final token = await _messaging.getToken();
+        if (token != null) {
+          final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('removeFcmToken');
+          await callable.call({
+            'token': token,
+            'userType': 'customer',
+          });
+          debugPrint('[NotificationsService] Token removed on logout (attempt $attempt)');
+          return;
+        } else {
+          debugPrint('[NotificationsService] No token to remove');
+          return;
+        }
+      } catch (e) {
+        debugPrint('[NotificationsService] Token removal attempt $attempt failed: $e');
+        if (attempt < maxRetries) {
+          await Future.delayed(retryDelay);
+        } else {
+          debugPrint('[NotificationsService] Token removal failed after $maxRetries attempts');
+        }
+      }
+    }
   }
 
   Future<void> _saveToken(String token) async {
@@ -214,12 +238,14 @@ class NotificationsService extends ChangeNotifier {
   }
 
   void _setupMessageHandlers() {
-    FirebaseMessaging.onMessage.listen((message) {
+    _foregroundMessageSubscription?.cancel();
+    _foregroundMessageSubscription = FirebaseMessaging.onMessage.listen((message) {
       debugPrint('[NotificationsService] Foreground message: ${message.notification?.title}');
       _showLocalNotification(message);
     });
 
-    FirebaseMessaging.onMessageOpenedApp.listen((message) {
+    _messageOpenedAppSubscription?.cancel();
+    _messageOpenedAppSubscription = FirebaseMessaging.onMessageOpenedApp.listen((message) {
       debugPrint('[NotificationsService] Message opened app');
       _handleNotificationClick(message.data);
     });
@@ -268,7 +294,8 @@ class NotificationsService extends ChangeNotifier {
   }
 
   void _setupDataStreams(String userId) {
-    _firestore
+    _notificationsSubscription?.cancel();
+    _notificationsSubscription = _firestore
         .collection('notifications')
         .where('userId', isEqualTo: userId)
         .orderBy('createdAt', descending: true)
@@ -366,6 +393,44 @@ class NotificationsService extends ChangeNotifier {
       await callable.call();
     } catch (e) {
       debugPrint('[NotificationsService] Delete all failed: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    // CRITICAL FIX: Cancel subscriptions safely
+    // This singleton is registered as a ChangeNotifierProvider — Provider calls
+    // dispose() when the widget tree is torn down. We must cancel subscriptions
+    // but NOT call super.dispose() to prevent marking ChangeNotifier as disposed.
+    // After dispose, notifyListeners() would crash if called.
+    try {
+      _authStateSubscription?.cancel();
+      _tokenRefreshSubscription?.cancel();
+      _foregroundMessageSubscription?.cancel();
+      _messageOpenedAppSubscription?.cancel();
+      _notificationsSubscription?.cancel();
+      
+      // Reset subscriptions to null to prevent double-cancel
+      _authStateSubscription = null;
+      _tokenRefreshSubscription = null;
+      _foregroundMessageSubscription = null;
+      _messageOpenedAppSubscription = null;
+      _notificationsSubscription = null;
+      
+      if (kDebugMode) debugPrint('[NotificationsService] Subscriptions cancelled (singleton preserved)');
+    } catch (e) {
+      if (kDebugMode) debugPrint('[NotificationsService] Error during dispose: $e');
+    }
+    // CRITICAL: Do NOT call super.dispose() - singleton must survive app lifetime
+  }
+  
+  /// Safe notifyListeners that checks if disposed
+  @override
+  void notifyListeners() {
+    try {
+      super.notifyListeners();
+    } catch (e) {
+      if (kDebugMode) debugPrint('[NotificationsService] notifyListeners failed (likely disposed): $e');
     }
   }
 }

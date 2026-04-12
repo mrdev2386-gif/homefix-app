@@ -34,8 +34,12 @@ class HomeService {
 
   // Derived status helper
   bool get isActiveStatus => status;
+  String get categoryId => category;
 
   String get name => title;
+  double get basePrice => price;
+  double get discount => (offerPrice != null && offerPrice! > 0 && offerPrice! < price) ? ((price - offerPrice!) / price * 100) : 0.0;
+  String get estimatedTime => duration;
 
   double get finalPrice {
     if (offerPrice != null && offerPrice! > 0 && offerPrice! < price) {

@@ -1,9 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:customer_app/core/models/sub_service.dart';
 import 'package:customer_app/core/models/service.dart';
 import 'package:customer_app/core/models/cart_item.dart';
@@ -12,6 +13,7 @@ import 'package:customer_app/core/providers/cart_provider.dart';
 import 'package:customer_app/core/providers/favorites_provider.dart';
 import 'package:customer_app/core/theme/app_theme.dart';
 import 'package:customer_app/core/services/category_service.dart';
+import 'package:customer_app/core/services/firestore_service.dart';
 import 'package:customer_app/features/cart/presentation/cart_screen.dart';
 
 class ServiceDetailsScreen extends StatefulWidget {
@@ -41,11 +43,13 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
   bool _isSubServicesLoading = true;
   SubService? _selectedSubService;
   bool _subServicesExpanded = true;
-  final CategoryService _categoryService = CategoryService();
+  late final CategoryService _categoryService;
   final ScrollController _scrollController = ScrollController();
+  StreamSubscription<List<HomeService>>? _subServicesSubscription;
 
   @override
   void dispose() {
+    _subServicesSubscription?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
@@ -53,6 +57,7 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
   @override
   void initState() {
     super.initState();
+    _categoryService = context.read<CategoryService>();
     _service = widget.serviceData;
     _initialLoad();
   }
@@ -70,27 +75,9 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
       _isLoading = false;
       return;
     }
-    
     try {
-      // Try to get service from technician_services collection directly
-      final doc = await FirebaseFirestore.instance
-          .collection('technician_services')
-          .doc(widget.serviceId)
-          .get();
-      
-      if (doc.exists) {
-        final service = HomeService.fromFirestore(doc);
-        if (mounted) {
-          setState(() {
-            _service = service;
-            _isLoading = false;
-          });
-        }
-        return;
-      }
-      
-      // Fallback to category service
-      final service = await _categoryService.getServiceById(widget.serviceId);
+      final firestoreService = context.read<FirestoreService>();
+      final service = await firestoreService.getServiceById(widget.serviceId);
       if (mounted) {
         setState(() {
           _service = service;
@@ -99,12 +86,7 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
       }
     } catch (e) {
       debugPrint('Error fetching service: $e');
-      if (mounted) {
-        setState(() {
-          _service = null;
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() { _service = null; _isLoading = false; });
     }
   }
 
@@ -119,7 +101,8 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
       return;
     }
 
-    _categoryService.getSubServices(categoryId, serviceId).asBroadcastStream().listen((homeServices) {
+    _subServicesSubscription?.cancel();
+    _subServicesSubscription = _categoryService.getSubServices(categoryId, serviceId).asBroadcastStream().listen((homeServices) {
       if (!mounted) return;
       setState(() {
         _subServices = homeServices.map((hs) => SubService(
@@ -142,47 +125,30 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
   Future<void> _fetchTechnicianCount() async {
     if (!mounted || _service == null) return;
     try {
-      // Get technicians in same district offering this service
       final userLocation = await _getUserLocation();
-      
-      Query query = FirebaseFirestore.instance
-          .collection('technicians')
-          .where('status', isEqualTo: 'approved')
-          .where('isAvailable', isEqualTo: true);
-      
-      // Filter by district if available
-      if (userLocation != null && userLocation['district'] != null) {
-        query = query.where('district', isEqualTo: userLocation['district']);
-      }
-      
-      final snapshot = await query.get();
-      
-      if (mounted) {
-        setState(() {
-          _techCount = snapshot.docs.length;
-        });
-      }
+      if (userLocation == null) return;
+      final firestoreService = context.read<FirestoreService>();
+      final stream = firestoreService.streamOnlineTechnicians(
+        state: userLocation['state'] ?? '',
+        district: userLocation['district'] ?? '',
+      );
+      final technicians = await stream.first;
+      if (mounted) setState(() => _techCount = technicians.length);
     } catch (e) {
       debugPrint('Error fetching technician count: $e');
     }
   }
-  
+
   Future<Map<String, String>?> _getUserLocation() async {
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return null;
-      
-      final userDoc = await FirebaseFirestore.instance
-          .collection('customers')
-          .doc(user.uid)
-          .get();
-      
-      if (!userDoc.exists) return null;
-      
-      final data = userDoc.data();
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return null;
+      final firestoreService = context.read<FirestoreService>();
+      final data = await firestoreService.getUserProfile(uid);
+      if (data == null) return null;
       return {
-        'state': (data?['state'] ?? '').toString().toLowerCase(),
-        'district': (data?['district'] ?? '').toString().toLowerCase(),
+        'state': (data['state'] ?? '').toString().toLowerCase(),
+        'district': (data['district'] ?? '').toString().toLowerCase(),
       };
     } catch (e) {
       debugPrint('Error getting user location: $e');
@@ -715,11 +681,10 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
   }
 
   Future<void> _handleAddToCart(BuildContext context, HomeService service) async {
-    print('🛒 [ADD TO CART] Button tapped for: ${service.title}');
+    if (kDebugMode) debugPrint('🛒 [ADD TO CART] Button tapped for: ${service.title}');
     if (_isAddingToCart || !mounted) return;
     
     if (_subServices.isNotEmpty && _selectedSubService == null) {
-      print('⚠️ [ADD TO CART] Sub-services exist but none selected');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please select an option to proceed'),
@@ -730,13 +695,9 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
       return;
     }
     
-    setState(() {
-      _isAddingToCart = true;
-    });
-    print('🛒 [ADD TO CART] State set to loading');
+    setState(() => _isAddingToCart = true);
 
     try {
-      print('🛒 [ADD TO CART] Getting CartProvider');
       final cart = Provider.of<CartProvider>(context, listen: false);
 
       // Check if already in cart
@@ -797,8 +758,8 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
       
       final itemPrice = _selectedSubService?.price ?? (service.offerPrice ?? service.price);
       final itemName = _selectedSubService?.name ?? service.title;
-      final finalPrice = itemPrice; // Use the actual price that will be charged
-      print('🛒 [ADD TO CART] Item: $itemName, Price: $itemPrice, FinalPrice: $finalPrice');
+      final finalPrice = itemPrice;
+      if (kDebugMode) debugPrint('🛒 [ADD TO CART] Item: $itemName, Price: $itemPrice');
       
       if (service.category.isEmpty || service.categoryName.isEmpty || service.technicianId == null || service.technicianId!.isEmpty) {
         if (mounted) {
@@ -815,7 +776,7 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
         return;
       }
 
-      print('🛒 [ADD TO CART] Creating CartItem and calling addItem()');
+      if (kDebugMode) debugPrint('🛒 [ADD TO CART] Creating CartItem and calling addItem()');
       await cart.addItem(CartItem(
         id: '',
         categoryId: service.category,
@@ -831,9 +792,7 @@ class _ServiceDetailsScreenState extends State<ServiceDetailsScreen> {
         technicianId: service.technicianId,
         finalPriceSnapshot: finalPrice, // Store the final price that will be charged
       ));
-      print('✅ [ADD TO CART] Item added successfully');
-      
-      print('✅ [ADD TO CART] Showing success dialog');
+      if (kDebugMode) debugPrint('✅ [ADD TO CART] Item added successfully');
       HapticFeedback.mediumImpact();
       setState(() => _isAddingToCart = false);
       if (!mounted) return;
@@ -944,12 +903,9 @@ class _FavoriteActionButtonState extends State<_FavoriteActionButton>
   }
 
   void _handleTap() {
-    print('❤️ [LIKE BUTTON] Tapped for service: ${widget.service.title}');
     _animationController.forward().then((_) => _animationController.reverse());
-    print('❤️ [LIKE BUTTON] Calling toggleFavorite()');
     context.read<FavoritesProvider>().toggleFavorite(widget.service.id, widget.service.category);
     final isFav = context.read<FavoritesProvider>().isFavorite(widget.service.id);
-    print('❤️ [LIKE BUTTON] After toggle, isFavorite: $isFav');
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(isFav ? 'Added to favorites' : 'Removed from favorites'),

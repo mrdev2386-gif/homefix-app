@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -32,65 +31,19 @@ class CategoryServicesScreen extends StatefulWidget {
 }
 
 class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
-  final CategoryService _categoryService = CategoryService();
   final MatchingService _matchingService = MatchingService();
-  bool _isLoading = true;
-  List<HomeService> _services = [];
-  List<HomeService> _filteredServices = [];
-  StreamSubscription? _servicesSubscription;
   String _selectedFilter = 'all';
   String _searchQuery = '';
 
-  @override
-  void initState() {
-    super.initState();
-    _fetchServices();
-  }
+  void _applyFilters(List<HomeService> services, Function(List<HomeService>) onFiltered) {
+    List<HomeService> filtered = List.from(services);
 
-  @override
-  void dispose() {
-    _servicesSubscription?.cancel();
-    super.dispose();
-  }
-
-  void _fetchServices() {
-    setState(() => _isLoading = true);
-    debugPrint('🔍 [CategoryServicesScreen] Fetching services for: ${widget.category.name}');
-
-    _servicesSubscription?.cancel();
-    _servicesSubscription = _categoryService
-        .getServicesByCategoryResult(widget.category.id)
-        .listen(
-      (result) {
-        final services = result.data ?? [];
-        if (mounted) {
-          setState(() {
-            _services = services.take(20).toList();
-            _applyFilters();
-            _isLoading = false;
-          });
-        }
-      },
-      onError: (error) {
-        debugPrint('❌ Error: $error');
-        if (mounted) {
-          setState(() => _isLoading = false);
-        }
-      },
-    );
-  }
-
-  void _applyFilters() {
-    List<HomeService> filtered = List.from(_services);
-
-    // Apply search filter
     if (_searchQuery.isNotEmpty) {
       filtered = filtered
           .where((s) => s.title.toLowerCase().contains(_searchQuery.toLowerCase()))
           .toList();
     }
 
-    // Apply sort filter
     switch (_selectedFilter) {
       case 'toprated':
         filtered.sort((a, b) => b.rating.compareTo(a.rating));
@@ -108,7 +61,7 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
         break;
     }
 
-    setState(() => _filteredServices = filtered);
+    onFiltered(filtered);
   }
 
   Future<void> _handleServiceTap(HomeService service) async {
@@ -201,11 +154,12 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final categoryService = Provider.of<CategoryService>(context);
+    
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
       body: CustomScrollView(
         slivers: [
-          // Gradient Header
           SliverAppBar(
             expandedHeight: 180,
             pinned: true,
@@ -273,14 +227,12 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
             ),
           ),
 
-          // Search Bar
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
               child: TextField(
                 onChanged: (value) {
                   setState(() => _searchQuery = value);
-                  _applyFilters();
                 },
                 decoration: InputDecoration(
                   hintText: 'Search services...',
@@ -290,7 +242,6 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
                           icon: const Icon(Icons.close_rounded),
                           onPressed: () {
                             setState(() => _searchQuery = '');
-                            _applyFilters();
                           },
                         )
                       : null,
@@ -314,7 +265,6 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
             ),
           ),
 
-          // Filter Chips
           SliverToBoxAdapter(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -326,7 +276,6 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
                     isSelected: _selectedFilter == 'all',
                     onTap: () {
                       setState(() => _selectedFilter = 'all');
-                      _applyFilters();
                     },
                   ),
                   const SizedBox(width: 8),
@@ -335,7 +284,6 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
                     isSelected: _selectedFilter == 'toprated',
                     onTap: () {
                       setState(() => _selectedFilter = 'toprated');
-                      _applyFilters();
                     },
                   ),
                   const SizedBox(width: 8),
@@ -344,7 +292,6 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
                     isSelected: _selectedFilter == 'lowestprice',
                     onTap: () {
                       setState(() => _selectedFilter = 'lowestprice');
-                      _applyFilters();
                     },
                   ),
                   const SizedBox(width: 8),
@@ -353,7 +300,6 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
                     isSelected: _selectedFilter == 'fastest',
                     onTap: () {
                       setState(() => _selectedFilter = 'fastest');
-                      _applyFilters();
                     },
                   ),
                   const SizedBox(width: 8),
@@ -362,7 +308,6 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
                     isSelected: _selectedFilter == 'recent',
                     onTap: () {
                       setState(() => _selectedFilter = 'recent');
-                      _applyFilters();
                     },
                   ),
                 ],
@@ -372,37 +317,48 @@ class _CategoryServicesScreenState extends State<CategoryServicesScreen> {
 
           const SliverToBoxAdapter(child: SizedBox(height: 12)),
 
-          // Services Grid
-          if (_isLoading)
-            SliverToBoxAdapter(
-              child: _buildShimmerLoading(),
-            )
-          else if (_filteredServices.isEmpty)
-            SliverToBoxAdapter(
-              child: _buildEmptyState(),
-            )
-          else
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 0.72,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
+          StreamBuilder<List<HomeService>>(
+            stream: categoryService.getServicesByCategoryResult(widget.category.id),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return SliverToBoxAdapter(child: _buildShimmerLoading());
+              }
+
+              final services = snapshot.data ?? [];
+              final limitedServices = services.take(20).toList();
+              
+              List<HomeService> filteredServices = [];
+              _applyFilters(limitedServices, (filtered) {
+                filteredServices = filtered;
+              });
+
+              if (filteredServices.isEmpty) {
+                return SliverToBoxAdapter(child: _buildEmptyState());
+              }
+
+              return SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                sliver: SliverGrid(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    childAspectRatio: 0.72,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final service = filteredServices[index];
+                      return _ServiceGridCard(
+                        service: service,
+                        onTap: () => _handleServiceTap(service),
+                      );
+                    },
+                    childCount: filteredServices.length,
+                  ),
                 ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final service = _filteredServices[index];
-                    return _ServiceGridCard(
-                      service: service,
-                      onTap: () => _handleServiceTap(service),
-                    );
-                  },
-                  childCount: _filteredServices.length,
-                ),
-              ),
-            ),
+              );
+            },
+          ),
 
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
@@ -564,7 +520,6 @@ class _ServiceGridCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image with overlay
             Expanded(
               flex: 3,
               child: Stack(
@@ -595,7 +550,6 @@ class _ServiceGridCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // Gradient overlay
                   Positioned.fill(
                     child: Container(
                       decoration: BoxDecoration(
@@ -610,13 +564,11 @@ class _ServiceGridCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // Favorite button
                   Positioned(
                     top: 8,
                     right: 8,
                     child: _SmallFavoriteButton(service: service),
                   ),
-                  // Discount badge
                   if (service.discount != null && service.discount! > 0)
                     Positioned(
                       top: 8,
@@ -640,7 +592,6 @@ class _ServiceGridCard extends StatelessWidget {
                 ],
               ),
             ),
-            // Content
             Expanded(
               flex: 2,
               child: Padding(
@@ -648,7 +599,6 @@ class _ServiceGridCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Title
                     Text(
                       service.title,
                       style: GoogleFonts.outfit(
@@ -660,7 +610,6 @@ class _ServiceGridCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 6),
-                    // Rating
                     Row(
                       children: [
                         const Icon(Icons.star_rounded, size: 14, color: Colors.amber),
@@ -685,7 +634,6 @@ class _ServiceGridCard extends StatelessWidget {
                       ],
                     ),
                     const Spacer(),
-                    // Price
                     Row(
                       children: [
                         Text(
