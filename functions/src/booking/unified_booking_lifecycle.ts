@@ -749,7 +749,8 @@ export const createBookingRequest = functions
       }
 
       const service = serviceDoc.data()!;
-      console.log('📦 [createBookingRequest] Service data:', { name: service.name, price: service.price, technicianId: service.technicianId });
+      const serviceImage = service?.imageUrl ?? null;
+      console.log('📦 [createBookingRequest] Service data:', { name: service.name, price: service.price, technicianId: service.technicianId, imageUrl: serviceImage });
       
       if (service.technicianId !== technicianId) {
         console.error('❌ [createBookingRequest] Technician mismatch. Expected:', service.technicianId, 'Got:', technicianId);
@@ -861,6 +862,8 @@ export const createBookingRequest = functions
           technicianPhone: techData.phone || '',
           serviceId,
           serviceName: service.name || service.title || 'Service',
+          serviceImage: serviceImage,
+          imageUrl: serviceImage,
           price: calculatedPrice,
           finalAmount: finalPrice,
           offerPrice: offer,

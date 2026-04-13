@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/services/booking_service.dart';
 import '../../core/models/booking.dart';
 import '../../core/providers/technician_provider.dart';
@@ -18,7 +19,19 @@ class JobRequestsScreen extends StatefulWidget {
 
 class _JobRequestsScreenState extends State<JobRequestsScreen> {
   final BookingService _bookingService = BookingService();
-  bool _isLoading = false;
+  final Map<String, bool> _loadingMap = {};
+  final Map<String, String?> _serviceImageCache = {};
+  late final Stream<List<Booking>> _bookingsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    final provider = Provider.of<TechnicianProvider>(context, listen: false);
+    final tech = provider.technician;
+    if (tech != null) {
+      _bookingsStream = _bookingService.getPendingBookings(tech.uid);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +55,7 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
       body: tech == null
           ? const Center(child: CircularProgressIndicator())
           : StreamBuilder<List<Booking>>(
-              stream: _bookingService.getPendingBookings(tech.uid),
+              stream: _bookingsStream,
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
                   return Center(
@@ -63,21 +76,10 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
 
                 final bookings = snapshot.data ?? [];
 
-                // DEBUG: Log booking data to identify field structure
+                // Clean up loading map for removed bookings
                 if (bookings.isNotEmpty) {
-                  debugPrint('=== JOB REQUESTS DEBUG ===');
-                  debugPrint('Total bookings received: ${bookings.length}');
-                  for (var i = 0; i < bookings.length && i < 3; i++) {
-                    final b = bookings[i];
-                    debugPrint('--- Booking ${i + 1} ---');
-                    debugPrint('ID: ${b.bookingId}');
-                    debugPrint('Service: ${b.serviceTitle}');
-                    debugPrint('Image: ${b.serviceImage ?? "NULL"}');
-                    debugPrint('Address fields: ${b.addressSnapshot.keys.toList()}');
-                    debugPrint('Address data: ${b.addressSnapshot}');
-                    debugPrint('Status: ${b.status}');
-                  }
-                  debugPrint('=========================');
+                  final currentBookingIds = bookings.map((b) => b.bookingId).toSet();
+                  _loadingMap.removeWhere((key, value) => !currentBookingIds.contains(key));
                 }
 
                 return RefreshIndicator(
@@ -99,7 +101,9 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
                           ),
                           itemCount: bookings.length,
                           itemBuilder: (context, index) {
-                            return _buildCompactJobCard(bookings[index], tech);
+                            final booking = bookings[index];
+                            final isFirstCard = index == 0;
+                            return _buildCompactJobCardWithFlag(booking, tech, isFirstCard);
                           },
                         ),
                 );
@@ -148,17 +152,24 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
     );
   }
 
-  Widget _buildCompactJobCard(Booking b, dynamic tech) {
+  Widget _buildCompactJobCardWithFlag(Booking b, dynamic tech, bool isFirstCard) {
+    final isLoading = _loadingMap[b.bookingId] ?? false;
+    
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(
+          color: isFirstCard ? const Color(0xFF6366F1) : const Color(0xFFE5E7EB),
+          width: isFirstCard ? 2 : 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 20,
+            color: isFirstCard 
+                ? const Color(0xFF6366F1).withOpacity(0.15)
+                : Colors.black.withOpacity(0.06),
+            blurRadius: isFirstCard ? 24 : 20,
             offset: const Offset(0, 4),
           ),
         ],
@@ -171,6 +182,44 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // "NEW" Badge for first card
+              if (isFirstCard)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(18),
+                      topRight: Radius.circular(18),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.new_releases_rounded,
+                        color: Colors.white,
+                        size: 14,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Latest Job',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              
               // Top Section: Image + Service Info
               Container(
                 padding: const EdgeInsets.all(16),
@@ -180,10 +229,12 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    topRight: Radius.circular(20),
-                  ),
+                  borderRadius: isFirstCard 
+                      ? null 
+                      : const BorderRadius.only(
+                          topLeft: Radius.circular(20),
+                          topRight: Radius.circular(20),
+                        ),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -192,7 +243,7 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: SafeNetworkImage(
-                        imageUrl: b.serviceImage,
+                        imageUrl: _getImageUrl(b),
                         height: 80,
                         width: 80,
                         borderRadius: 0,
@@ -280,7 +331,7 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
                     _buildCompactInfoRow(
                       icon: Icons.location_on_rounded,
                       iconColor: const Color(0xFFEF4444),
-                      value: _getCompactAddress(b.addressSnapshot),
+                      value: _getAddress(b),
                       maxLines: 2,
                     ),
                     const SizedBox(height: 16),
@@ -300,30 +351,30 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
                     ),
                     const SizedBox(height: 16),
                     
-                    // Action Buttons
+                    // Action Buttons with increased spacing
                     Row(
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: _isLoading ? null : () => _showConfirmationDialog(
+                            onPressed: isLoading ? null : () => _showConfirmationDialog(
                               b.bookingId,
                               'reject',
                             ),
                             style: OutlinedButton.styleFrom(
-                              minimumSize: const Size(0, 44),
+                              minimumSize: const Size(0, 48),
                               foregroundColor: const Color(0xFFEF4444),
                               side: BorderSide(
-                                color: _isLoading ? const Color(0xFFE2E8F0) : const Color(0xFFEF4444),
-                                width: 1.5,
+                                color: isLoading ? const Color(0xFFE2E8F0) : const Color(0xFFEF4444),
+                                width: 2,
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            child: _isLoading
+                            child: isLoading
                                 ? const SizedBox(
-                                    height: 16,
-                                    width: 16,
+                                    height: 18,
+                                    width: 18,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
                                       valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF94A3B8)),
@@ -332,46 +383,47 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
                                 : Text(
                                     "Decline",
                                     style: GoogleFonts.plusJakartaSans(
-                                      fontSize: 14,
+                                      fontSize: 15,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 12),
                         Expanded(
                           flex: 2,
                           child: ElevatedButton(
-                            onPressed: _isLoading ? null : () => _showConfirmationDialog(
+                            onPressed: isLoading ? null : () => _showConfirmationDialog(
                               b.bookingId,
                               'accept',
                             ),
                             style: ElevatedButton.styleFrom(
-                              minimumSize: const Size(0, 44),
-                              backgroundColor: _isLoading ? const Color(0xFFE2E8F0) : const Color(0xFF6366F1),
+                              minimumSize: const Size(0, 48),
+                              backgroundColor: isLoading ? const Color(0xFFE2E8F0) : const Color(0xFF6366F1),
                               disabledBackgroundColor: const Color(0xFFE2E8F0),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
+                              elevation: isLoading ? 0 : 2,
                             ),
-                            child: _isLoading
+                            child: isLoading
                                 ? Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       const SizedBox(
-                                        height: 16,
-                                        width: 16,
+                                        height: 18,
+                                        width: 18,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
                                           valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                         ),
                                       ),
-                                      const SizedBox(width: 8),
+                                      const SizedBox(width: 10),
                                       Text(
                                         "Processing...",
                                         style: GoogleFonts.plusJakartaSans(
-                                          fontSize: 13,
+                                          fontSize: 14,
                                           fontWeight: FontWeight.bold,
                                           color: const Color(0xFF64748B),
                                         ),
@@ -381,7 +433,7 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
                                 : Text(
                                     "Accept Job",
                                     style: GoogleFonts.plusJakartaSans(
-                                      fontSize: 14,
+                                      fontSize: 15,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
@@ -437,20 +489,41 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
     );
   }
 
-  String _getCompactAddress(Map<String, dynamic> addressSnapshot) {
-    final parts = <String>[];
-    
-    if (addressSnapshot['street'] != null && addressSnapshot['street'].toString().isNotEmpty) {
-      parts.add(addressSnapshot['street'].toString());
-    }
-    if (addressSnapshot['area'] != null && addressSnapshot['area'].toString().isNotEmpty) {
-      parts.add(addressSnapshot['area'].toString());
-    }
-    if (addressSnapshot['city'] != null && addressSnapshot['city'].toString().isNotEmpty) {
-      parts.add(addressSnapshot['city'].toString());
+  String _getAddress(Booking booking) {
+    // Use booking model's address getter which handles all fallback logic
+    return booking.address;
+  }
+
+  Future<String?> _fetchServiceImage(String serviceId) async {
+    if (_serviceImageCache.containsKey(serviceId)) {
+      return _serviceImageCache[serviceId];
     }
     
-    return parts.isNotEmpty ? parts.join(', ') : 'Address not available';
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('technician_services')
+          .doc(serviceId)
+          .get();
+      
+      if (doc.exists) {
+        final data = doc.data();
+        final image = data?['image'] ?? data?['imageUrl'];
+        _serviceImageCache[serviceId] = image?.toString();
+        return _serviceImageCache[serviceId];
+      }
+    } catch (e) {
+      debugPrint('[JOB_REQUESTS] Error fetching service image: $e');
+    }
+    
+    _serviceImageCache[serviceId] = null;
+    return null;
+  }
+
+  String? _getImageUrl(Booking b) {
+    if (b.serviceImage == null) return null;
+    if (b.serviceImage == "NO_IMAGE") return null;
+    if (b.serviceImage!.isEmpty) return null;
+    return b.serviceImage;
   }
 
   void _showJobDetails(Booking b, dynamic tech) {
@@ -458,69 +531,74 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.9,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        builder: (context, scrollController) => Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFFF8FAFC),
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(24),
-              topRight: Radius.circular(24),
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.9,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) => Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(24),
+                topRight: Radius.circular(24),
+              ),
             ),
-          ),
-          child: Column(
-            children: [
-              // Handle bar
-              Container(
-                margin: const EdgeInsets.only(top: 12, bottom: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE2E8F0),
-                  borderRadius: BorderRadius.circular(2),
+            child: Column(
+              children: [
+                // Handle bar
+                Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE2E8F0),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
-              // Header
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                child: Row(
-                  children: [
-                    Text(
-                      "Job Details",
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF0F172A),
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close_rounded),
-                      style: IconButton.styleFrom(
-                        backgroundColor: const Color(0xFFF1F5F9),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              // Content
-              Expanded(
-                child: SingleChildScrollView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                // Header
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  child: Row(
                     children: [
-                      _buildFullScreenJobCard(b, tech),
+                      Text(
+                        "Job Details",
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF0F172A),
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close_rounded),
+                        style: IconButton.styleFrom(
+                          backgroundColor: const Color(0xFFF1F5F9),
+                        ),
+                      ),
                     ],
                   ),
                 ),
-              ),
-            ],
+                const Divider(height: 1),
+                // Content
+                Expanded(
+                  child: SingleChildScrollView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildFullScreenJobCard(b, tech),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -552,7 +630,7 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(24),
                   child: SafeNetworkImage(
-                    imageUrl: b.serviceImage,
+                    imageUrl: _getImageUrl(b),
                     height: 240,
                     width: double.infinity,
                     borderRadius: 0,
@@ -692,7 +770,7 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _getFullAddress(b.addressSnapshot),
+                  _getAddress(b),
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 15,
                     color: const Color(0xFF0F172A),
@@ -721,53 +799,62 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
           ),
           const SizedBox(height: 16),
           
-          // Customer Details Section
-          _buildInfoCard(
-            title: "CUSTOMER DETAILS",
-            icon: Icons.person_rounded,
-            iconColor: const Color(0xFF6366F1),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  b.customerName,
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF0F172A),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                InkWell(
-                  onTap: () => _makePhoneCall(b.addressSnapshot['phone'] ?? ''),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF0FDF4),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFF10B981)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.phone, size: 18, color: Color(0xFF10B981)),
-                        const SizedBox(width: 8),
-                        Text(
-                          b.addressSnapshot['phone']?.toString() ?? 'No phone',
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFF10B981),
+          // Customer Details Section - Only show after job acceptance
+          if (b.status == 'technician_accepted' || b.status == 'service_in_progress') ...[
+            Builder(
+              builder: (context) {
+                final dynamic rawPhone = b.addressSnapshot['phone'];
+                final String phone = rawPhone != null ? rawPhone.toString() : '';
+                return _buildInfoCard(
+                  title: "CUSTOMER DETAILS",
+                  icon: Icons.person_rounded,
+                  iconColor: const Color(0xFF6366F1),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        b.customerName.isNotEmpty ? b.customerName : 'Customer',
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      IconButton(
+                        onPressed: phone.isNotEmpty
+                            ? () => _makePhoneCall(phone)
+                            : null,
+                        icon: Icon(
+                          phone.isNotEmpty
+                              ? Icons.phone
+                              : Icons.phone_disabled,
+                          color: phone.isNotEmpty
+                              ? const Color(0xFF10B981)
+                              : Colors.grey.shade400,
+                        ),
+                        style: IconButton.styleFrom(
+                          backgroundColor: phone.isNotEmpty
+                              ? const Color(0xFFF0FDF4)
+                              : Colors.grey.shade100,
+                          padding: const EdgeInsets.all(12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(
+                              color: phone.isNotEmpty
+                                  ? const Color(0xFF10B981)
+                                  : Colors.grey.shade300,
+                            ),
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
+                );
+              }
             ),
-          ),
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
+          ],
           
           // Job Info Section
           _buildInfoCard(
@@ -890,31 +977,46 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
     );
   }
 
-  String _getFullAddress(Map<String, dynamic> addressSnapshot) {
-    final parts = <String>[];
-    
-    if (addressSnapshot['street'] != null && addressSnapshot['street'].toString().isNotEmpty) {
-      parts.add(addressSnapshot['street'].toString());
-    }
-    if (addressSnapshot['area'] != null && addressSnapshot['area'].toString().isNotEmpty) {
-      parts.add(addressSnapshot['area'].toString());
-    }
-    if (addressSnapshot['city'] != null && addressSnapshot['city'].toString().isNotEmpty) {
-      parts.add(addressSnapshot['city'].toString());
-    }
-    if (addressSnapshot['pincode'] != null && addressSnapshot['pincode'].toString().isNotEmpty) {
-      parts.add(addressSnapshot['pincode'].toString());
-    }
-    
-    return parts.isNotEmpty ? parts.join(', ') : 'Address not available';
-  }
-
   void _makePhoneCall(String phoneNumber) async {
-    if (phoneNumber.isEmpty) return;
-    final uri = Uri.parse('tel:$phoneNumber');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
+    if (phoneNumber.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "Phone number not available",
+            style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: const Color(0xFFF59E0B),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
     }
+    
+    final uri = Uri(scheme: 'tel', path: phoneNumber);
+    
+    if (!await canLaunchUrl(uri)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "Calling not supported on this device",
+            style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: const Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+    
+    await launchUrl(uri);
   }
 
   void _showConfirmationDialog(String bookingId, String action) {
@@ -1024,9 +1126,9 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
   void _handleAction(String bookingId, String action) async {
     if (!mounted) return;
     
-    // Set loading state and disable buttons
+    // Set per-card loading state
     setState(() {
-      _isLoading = true;
+      _loadingMap[bookingId] = true;
     });
     
     try {
@@ -1036,86 +1138,88 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
         await _bookingService.rejectBooking(bookingId);
       }
       
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-        
-        // Clear any existing snackbars before showing new one
-        ScaffoldMessenger.of(context).clearSnackBars();
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Icon(
-                  action == 'accept' ? Icons.check_circle : Icons.info_outline,
-                  color: Colors.white,
+      if (!mounted) return;
+      
+      // Clear loading state for this card
+      setState(() {
+        _loadingMap.remove(bookingId);
+      });
+      
+      // Clear any existing snackbars before showing new one
+      ScaffoldMessenger.of(context).clearSnackBars();
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                action == 'accept' ? Icons.check_circle : Icons.info_outline,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                action == 'accept' 
+                    ? "Job accepted successfully" 
+                    : "Job declined",
+                style: GoogleFonts.plusJakartaSans(
+                  fontWeight: FontWeight.w600,
                 ),
-                const SizedBox(width: 12),
-                Text(
-                  action == 'accept' 
-                      ? "Job accepted successfully" 
-                      : "Job declined",
+              ),
+            ],
+          ),
+          backgroundColor: action == 'accept' 
+              ? const Color(0xFF10B981) 
+              : const Color(0xFFF59E0B),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      
+      // Stream will auto-update UI when Firestore changes
+      // No manual refresh needed - real-time listener handles it
+    } catch (e) {
+      if (!mounted) return;
+      
+      // Clear loading state on error
+      setState(() {
+        _loadingMap.remove(bookingId);
+      });
+      
+      // Clear any existing snackbars before showing error
+      ScaffoldMessenger.of(context).clearSnackBars();
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  "Failed to ${action} job. Please try again.",
                   style: GoogleFonts.plusJakartaSans(
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-              ],
-            ),
-            backgroundColor: action == 'accept' 
-                ? const Color(0xFF10B981) 
-                : const Color(0xFFF59E0B),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            duration: const Duration(seconds: 3),
+              ),
+            ],
           ),
-        );
-        
-        // Stream will auto-update UI when Firestore changes
-        // No manual refresh needed - real-time listener handles it
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-        
-        // Clear any existing snackbars before showing error
-        ScaffoldMessenger.of(context).clearSnackBars();
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error_outline, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    "Failed to ${action} job. Please try again.",
-                    style: GoogleFonts.plusJakartaSans(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: const Color(0xFFEF4444),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            duration: const Duration(seconds: 4),
-            action: SnackBarAction(
-              label: 'Retry',
-              textColor: Colors.white,
-              onPressed: () => _showConfirmationDialog(bookingId, action),
-            ),
+          backgroundColor: const Color(0xFFEF4444),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
-        );
-      }
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'Retry',
+            textColor: Colors.white,
+            onPressed: () => _showConfirmationDialog(bookingId, action),
+          ),
+        ),
+      );
     }
   }
 
