@@ -8,7 +8,7 @@ import 'package:customer_app/core/theme/app_theme.dart';
 
 /// Category Filter Chips Widget (Section 2)
 /// Horizontal scrollable chips with selected state highlight
-class CategoryChipBar extends StatelessWidget {
+class CategoryChipBar extends StatefulWidget {
   final String? selectedCategoryId;
   final Function(String?) onCategorySelected;
   final double height;
@@ -21,9 +21,26 @@ class CategoryChipBar extends StatelessWidget {
   });
 
   @override
+  State<CategoryChipBar> createState() => _CategoryChipBarState();
+}
+
+class _CategoryChipBarState extends State<CategoryChipBar> {
+  late final Stream<QuerySnapshot> _categoriesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _categoriesStream = FirebaseFirestore.instance
+        .collection('categories')
+        .where('isActive', isEqualTo: true)
+        .orderBy('order')
+        .snapshots();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Container(
-      height: height,
+      height: widget.height,
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
@@ -35,11 +52,7 @@ class CategoryChipBar extends StatelessWidget {
         ],
       ),
       child: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('categories')
-            .where('isActive', isEqualTo: true)
-            .orderBy('order')
-            .snapshots(),
+        stream: _categoriesStream,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return _buildShimmer();
@@ -61,8 +74,8 @@ class CategoryChipBar extends StatelessWidget {
               final isAll = index == 0;
               final category = isAll ? null : categories[index - 1];
               final isSelected = isAll
-                  ? selectedCategoryId == null
-                  : selectedCategoryId == category!.id;
+                  ? widget.selectedCategoryId == null
+                  : widget.selectedCategoryId == category!.id;
 
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
@@ -71,7 +84,7 @@ class CategoryChipBar extends StatelessWidget {
                   isSelected: isSelected,
                   onTap: () {
                     HapticFeedback.selectionClick();
-                    onCategorySelected(category?.id);
+                    widget.onCategorySelected(category?.id);
                   },
                 ),
               );

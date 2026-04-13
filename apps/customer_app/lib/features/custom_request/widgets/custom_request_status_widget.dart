@@ -3,21 +3,37 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
-class CustomRequestStatusWidget extends StatelessWidget {
+class CustomRequestStatusWidget extends StatefulWidget {
   const CustomRequestStatusWidget({Key? key}) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return const SizedBox.shrink();
+  State<CustomRequestStatusWidget> createState() => _CustomRequestStatusWidgetState();
+}
 
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
+class _CustomRequestStatusWidgetState extends State<CustomRequestStatusWidget> {
+  Stream<QuerySnapshot>? _requestsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _requestsStream = FirebaseFirestore.instance
           .collection('custom_requests')
           .where('userId', isEqualTo: user.uid)
           .orderBy('createdAt', descending: true)
           .limit(1)
-          .snapshots(),
+          .snapshots();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || _requestsStream == null) return const SizedBox.shrink();
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: _requestsStream!,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Padding(

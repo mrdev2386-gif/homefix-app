@@ -30,31 +30,8 @@ class CouponService {
     return coupon;
   }
 
-  // Seed initial coupons
+  // SECURITY: Coupon creation disabled from client - must be done via admin panel or Cloud Functions
   Future<void> seedCoupons() async {
-    final snapshot = await _db.collection('coupons').limit(1).get();
-    if (snapshot.docs.isEmpty) {
-      final List<Map<String, dynamic>> initialCoupons = [
-        {
-          'code': 'WELCOME100',
-          'discountType': 'flat',
-          'value': 100.0,
-          'minOrderValue': 400.0,
-          'isActive': true,
-          'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
-        },
-        {
-          'code': 'SAVE20',
-          'discountType': 'percent',
-          'value': 20.0,
-          'minOrderValue': 200.0,
-          'isActive': true,
-          'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
-        },
-      ];
-      for (var coupon in initialCoupons) {
-        await _db.collection('coupons').add(coupon);
-      }
-    }
+    throw Exception('Coupon creation is disabled from client for security. Use admin panel or Cloud Functions.');
   }
 }

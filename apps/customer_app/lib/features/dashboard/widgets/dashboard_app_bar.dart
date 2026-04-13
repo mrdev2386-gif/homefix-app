@@ -83,7 +83,7 @@ class NotificationBellButton extends StatelessWidget {
   }
 }
 
-class DashboardAppBar extends StatelessWidget implements PreferredSizeWidget {
+class DashboardAppBar extends StatefulWidget implements PreferredSizeWidget {
   final String city;
   final String address;
   final VoidCallback onLocationTap;
@@ -101,13 +101,31 @@ class DashboardAppBar extends StatelessWidget implements PreferredSizeWidget {
   Size get preferredSize => const Size.fromHeight(80);
 
   @override
+  State<DashboardAppBar> createState() => _DashboardAppBarState();
+}
+
+class _DashboardAppBarState extends State<DashboardAppBar> {
+  late final Stream<QuerySnapshot> _notificationsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _notificationsStream = FirebaseFirestore.instance
+        .collection('users')
+        .doc(FirebaseAuth.instance.currentUser?.uid)
+        .collection('notifications')
+        .where('isRead', isEqualTo: false)
+        .snapshots();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return AppBar(
       backgroundColor: Colors.white,
       elevation: 0,
       toolbarHeight: 80,
       title: InkWell(
-        onTap: onLocationTap,
+        onTap: widget.onLocationTap,
         child: Row(
           children: [
             const Icon(Icons.location_on, color: Colors.black87, size: 20),
@@ -120,7 +138,7 @@ class DashboardAppBar extends StatelessWidget implements PreferredSizeWidget {
                   Row(
                     children: [
                       Text(
-                        city,
+                        widget.city,
                         style: const TextStyle(
                           color: Colors.black87,
                           fontSize: 16,
@@ -133,7 +151,7 @@ class DashboardAppBar extends StatelessWidget implements PreferredSizeWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    address,
+                    widget.address,
                     style: const TextStyle(
                       color: Colors.black54,
                       fontSize: 12,
@@ -150,12 +168,7 @@ class DashboardAppBar extends StatelessWidget implements PreferredSizeWidget {
       ),
       actions: [
         StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('users')
-              .doc(FirebaseAuth.instance.currentUser?.uid)
-              .collection('notifications')
-              .where('isRead', isEqualTo: false)
-              .snapshots(),
+          stream: _notificationsStream,
           builder: (context, snapshot) {
             int unreadCount = 0;
             if (snapshot.hasData) {
@@ -177,7 +190,7 @@ class DashboardAppBar extends StatelessWidget implements PreferredSizeWidget {
         ),
         IconButton(
           icon: const Icon(Icons.shopping_cart_outlined, color: Colors.black87),
-          onPressed: onCartTap,
+          onPressed: widget.onCartTap,
         ),
         const SizedBox(width: 8),
       ],
