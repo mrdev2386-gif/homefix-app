@@ -187,14 +187,16 @@ class StatusTracker extends StatelessWidget {
   int _getCurrentStepIndex() {
     final statusLower = status.toLowerCase();
     
-    if (statusLower == 'cancelled' || statusLower == 'admin_rejected' || statusLower == 'technician_rejected') {
+    if (statusLower == 'cancelled' || statusLower == 'admin_rejected' || statusLower == 'technician_rejected' || statusLower == 'rejected') {
       return 1;
     }
 
     switch (statusLower) {
       case 'pending_admin_review':
+      case 'pending_admin_approval':
         return 0;
       case 'admin_approved':
+      case 'approved_by_admin':
       case 'assigned':
         return 1;
       case 'awaiting_payment':
@@ -203,10 +205,13 @@ class StatusTracker extends StatelessWidget {
       case 'on_the_way':
       case 'started':
       case 'in_progress':
+      case 'service_in_progress':
+      case 'technician_accepted':
         return 3;
       case 'awaiting_customer_payment':
         return 3;
       case 'completed':
+      case 'service_completed':
         return 4;
       default:
         // Fallback for legacy

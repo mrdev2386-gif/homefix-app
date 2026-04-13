@@ -60,7 +60,7 @@ class Booking {
     required this.updatedAt,
   });
 
-  // Backward compatibility getter
+  // Primary status getter - always use this
   String get status => bookingStatus;
 
   factory Booking.fromFirestore(DocumentSnapshot doc) {
@@ -72,6 +72,9 @@ class Booking {
     if (technicianId == null || technicianId.isEmpty) {
       if (kDebugMode) debugPrint('⚠️ [Booking] WARNING: Booking ${doc.id} has no technicianId');
     }
+    
+    // CRITICAL FIX: Status field priority - trust 'status' over 'bookingStatus'
+    final status = data['status'] ?? data['bookingStatus'] ?? 'pending';
     
     return Booking(
       id: doc.id,
@@ -90,7 +93,7 @@ class Booking {
           : null,
       scheduledTime: data['scheduledTime']?.toString(),
       addressSnapshot: Map<String, dynamic>.from(data['addressSnapshot'] ?? data['address'] ?? {}),
-      bookingStatus: (data['bookingStatus'] ?? 'pending').toString(),
+      bookingStatus: status.toString(),
       statusHistory: data['statusHistory'] != null 
           ? List<Map<String, dynamic>>.from(data['statusHistory'])
           : null,

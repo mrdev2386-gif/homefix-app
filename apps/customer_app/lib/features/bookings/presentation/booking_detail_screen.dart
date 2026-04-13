@@ -28,8 +28,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
   void initState() {
     super.initState();
     _booking = widget.booking;
-    final status = _booking.bookingStatus.isNotEmpty ? _booking.bookingStatus : _booking.status;
-    if (status == 'completed' && _booking.paymentStatus == 'paid' && !_booking.isRated) {
+    if (_booking.status == 'completed' && _booking.paymentStatus == 'paid' && !_booking.isRated) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _rateService(context));
     }
   }
@@ -60,7 +59,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
           }
           
           final booking = _booking;
-          final currentStatus = booking.bookingStatus.isNotEmpty ? booking.bookingStatus : booking.status;
+          final currentStatus = booking.status;
           
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
@@ -136,7 +135,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                 ),
                 const SizedBox(height: 20),
                 // Technician - Show when approved_by_admin or technician_accepted
-                if ((currentStatus == 'approved_by_admin' || currentStatus == 'technician_accepted' || currentStatus == 'in_progress' || currentStatus == 'started' || currentStatus == 'awaiting_payment') && booking.technicianName != null) ...[
+                if ((currentStatus == 'approved_by_admin' || currentStatus == 'technician_accepted' || currentStatus == 'service_in_progress' || currentStatus == 'in_progress' || currentStatus == 'started' || currentStatus == 'awaiting_payment') && booking.technicianName != null) ...[
                   _buildSectionTitle('Technician Details'),
                   const SizedBox(height: 12),
                   _buildInfoCard(
@@ -160,14 +159,14 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                                   Text(
                                     currentStatus == 'approved_by_admin' ? 'Technician Assigned' : 
                                     currentStatus == 'technician_accepted' ? 'Technician On The Way' :
-                                    currentStatus == 'in_progress' || currentStatus == 'started' ? 'Service In Progress' :
+                                    currentStatus == 'service_in_progress' || currentStatus == 'in_progress' || currentStatus == 'started' ? 'Service In Progress' :
                                     'Assigned Technician',
                                     style: GoogleFonts.outfit(fontSize: 12, color: Colors.grey[600]),
                                   ),
                                 ],
                               ),
                             ),
-                            if (currentStatus != 'completed' && currentStatus != 'cancelled' && currentStatus != 'cancelled_by_customer')
+                            if (currentStatus != 'completed' && currentStatus != 'service_completed' && currentStatus != 'cancelled' && currentStatus != 'cancelled_by_customer' && currentStatus != 'rejected')
                               IconButton(
                                 icon: const Icon(Icons.phone, color: Color(0xFF6366F1)),
                                 onPressed: _callTechnician,
@@ -196,7 +195,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                                 child: Text(
                                   currentStatus == 'approved_by_admin' ? 'Technician has been assigned to your booking' : 
                                   currentStatus == 'technician_accepted' ? 'Technician is on the way to your location' :
-                                  currentStatus == 'in_progress' || currentStatus == 'started' ? 'Technician is working on your service' :
+                                  currentStatus == 'service_in_progress' || currentStatus == 'in_progress' || currentStatus == 'started' ? 'Technician is working on your service' :
                                   'Technician assigned',
                                   style: GoogleFonts.outfit(
                                     fontSize: 13,
@@ -255,8 +254,8 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                 ),
                 const SizedBox(height: 32),
                 // ── ACTION BUTTONS ──
-                // Cancel: only for pending_admin_review (customer can only cancel before admin approves)
-                if (currentStatus == 'pending_admin_review') ...[
+                // Cancel: only for pending_admin_approval (customer can only cancel before admin approves)
+                if (currentStatus == 'pending_admin_approval' || currentStatus == 'pending_admin_review') ...[
                   SizedBox(
                     width: double.infinity,
                     height: 50,
@@ -271,7 +270,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                   ),
                 ],
                 // Pay Now button
-                if (currentStatus == 'awaiting_payment') ...[
+                if (currentStatus == 'awaiting_payment' || currentStatus == 'confirmed') ...[
                   SizedBox(
                     width: double.infinity,
                     height: 55,
@@ -290,7 +289,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                   ),
                 ],
                 // Cancelled state
-                if (currentStatus == 'cancelled' || currentStatus == 'cancelled_by_customer') ...[
+                if (currentStatus == 'cancelled' || currentStatus == 'cancelled_by_customer' || currentStatus == 'rejected') ...[
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
@@ -306,7 +305,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                   ),
                 ],
                 // Rate service - only show if completed AND paid
-                if (currentStatus == 'completed' && booking.paymentStatus == 'paid') ...[
+                if ((currentStatus == 'completed' || currentStatus == 'service_completed') && booking.paymentStatus == 'paid') ...[
                   if (!booking.isRated)
                     SizedBox(
                       width: double.infinity,

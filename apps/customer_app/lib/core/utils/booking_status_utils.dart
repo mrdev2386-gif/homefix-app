@@ -19,6 +19,10 @@ const List<String> validBookingStatuses = [
   'pending',
   'accepted',
   'on_the_way',
+  'started',
+  'admin_rejected',
+  'technician_rejected',
+  'cancelled_by_customer',
 ];
 
 /// Sanitize booking status to ensure it's always a valid value
@@ -69,12 +73,16 @@ String getBookingStatusDisplayName(String status) {
     case 'completed':
       return 'Service Completed';
     case 'rejected':
+    case 'admin_rejected':
       return 'Rejected';
+    case 'technician_rejected':
+      return 'Declined by Technician';
     case 'awaiting_payment':
       return 'Awaiting Payment';
     case 'confirmed':
       return 'Confirmed';
     case 'cancelled':
+    case 'cancelled_by_customer':
       return 'Cancelled';
     // Legacy statuses
     case 'pending':
@@ -83,6 +91,8 @@ String getBookingStatusDisplayName(String status) {
       return 'Accepted';
     case 'on_the_way':
       return 'On the Way';
+    case 'started':
+      return 'Started';
     // Safe fallback
     default:
       return 'Processing';

@@ -95,12 +95,12 @@ class FirestoreService {
 
   /// Stream bookings with pagination support
   /// CRITICAL FIX: includeMetadataChanges: true forces real-time updates
+  /// CRITICAL FIX: Only sort by createdAt - updatedAt sorting prevents real-time UI refresh
   Stream<List<Booking>> streamBookings(String userId, {int limit = FirebaseConstants.bookingLimit, DocumentSnapshot? startAfter}) {
     Query query = _db
         .collection(FirebaseConstants.bookingsCollection)
         .where('customerId', isEqualTo: userId)
-        .orderBy('updatedAt', descending: true) // Sort by updatedAt for UI refresh
-        .orderBy('createdAt', descending: true) // Secondary sort
+        .orderBy('createdAt', descending: true) // FIXED: Only use createdAt for reliable stream updates
         .limit(limit);
     
     if (startAfter != null) {
@@ -110,7 +110,7 @@ class FirestoreService {
     return query.snapshots(includeMetadataChanges: true).asBroadcastStream().map((snapshot) {
       debugPrint('[BOOKING_STREAM] Snapshot received: ${snapshot.docs.length} bookings, metadata: ${snapshot.metadata}');
       final bookings = snapshot.docs.map((doc) => Booking.fromFirestore(doc)).toList();
-      // Sort by updatedAt to ensure UI refresh on changes
+      // In-memory sort by updatedAt for display order (doesn't affect stream reactivity)
       bookings.sort((a, b) {
         final aTime = a.updatedAt?.millisecondsSinceEpoch ?? a.createdAt.millisecondsSinceEpoch;
         final bTime = b.updatedAt?.millisecondsSinceEpoch ?? b.createdAt.millisecondsSinceEpoch;

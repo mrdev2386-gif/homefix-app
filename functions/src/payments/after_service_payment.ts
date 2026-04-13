@@ -13,6 +13,7 @@ import * as admin from 'firebase-admin';
 import { db } from '../shared/config';
 import { secureCallable } from '../shared/security';
 import { logger } from '../shared/utils';
+import { updateBookingStatus } from '../shared/status_history_tracker';
 
 /**
  * Confirm after-service payment received
@@ -80,17 +81,23 @@ export const confirmAfterServicePayment = functions
 
       const amount = booking.pricing?.total || booking.finalAmount || booking.price || 0;
 
-      // Update booking with payment confirmation
-      await bookingRef.update({
-        'payment.status': 'paid',
-        'payment.paidAt': admin.firestore.FieldValue.serverTimestamp(),
-        'payment.confirmedBy': uid,
-        'payment.amountPaid': amount,
-        'paymentStatus': 'paid',
-        'status': 'completed',
-        'bookingStatus': 'completed',
-        'completedAt': admin.firestore.FieldValue.serverTimestamp(),
-        'updatedAt': admin.firestore.FieldValue.serverTimestamp()
+      // Update booking with payment confirmation using transaction and helper
+      await db.runTransaction(async (transaction) => {
+        const freshDoc = await transaction.get(bookingRef);
+        if (!freshDoc.exists) {
+          throw new functions.https.HttpsError('not-found', 'Booking not found');
+        }
+        const freshBooking = freshDoc.data()!;
+
+        // Use updateBookingStatus helper to ensure both status and bookingStatus are updated
+        updateBookingStatus(transaction, bookingRef, 'completed', freshBooking, {
+          'payment.status': 'paid',
+          'payment.paidAt': admin.firestore.FieldValue.serverTimestamp(),
+          'payment.confirmedBy': uid,
+          'payment.amountPaid': amount,
+          'paymentStatus': 'paid',
+          'completedAt': admin.firestore.FieldValue.serverTimestamp(),
+        });
       });
 
       // Log payment confirmation
