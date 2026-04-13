@@ -76,7 +76,7 @@ export default function BookingDetailsPage() {
     if (booking?.customerId) getCustomerBookingCount(booking.customerId).then(setCustomerBookingCount);
   }, [booking?.customerId]);
 
-  const withConfirm = (title: string, message: string, action: () => Promise<void>, variant?: 'danger') => {
+  const withConfirm = (title: string, message: string, action: () => Promise<any>, variant?: 'danger') => {
     setConfirmDialog({
       isOpen: true, title, message, variant,
       onConfirm: async () => {

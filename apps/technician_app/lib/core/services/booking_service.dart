@@ -31,10 +31,18 @@ class BookingService {
         .snapshots(includeMetadataChanges: true)
         .map((snapshot) {
           debugPrint('[PENDING_BOOKINGS] Snapshot received: ${snapshot.docs.length} bookings, metadata: ${snapshot.metadata}');
-          // STEP 3: Verify bookingStatus values
+          
+          // DEBUG: Log raw Firestore data
           for (var doc in snapshot.docs) {
-            debugPrint('[PENDING_BOOKINGS] STATUS: ${doc["bookingStatus"]}');
+            debugPrint('[RAW_DATA] Booking ID: ${doc.id}');
+            debugPrint('[RAW_DATA] technicianId: ${doc.data()['technicianId']}');
+            debugPrint('[RAW_DATA] bookingStatus: ${doc.data()['bookingStatus']}');
+            debugPrint('[RAW_DATA] serviceImage: ${doc.data()['serviceImage']}');
+            debugPrint('[RAW_DATA] imageUrl: ${doc.data()['imageUrl']}');
+            debugPrint('[RAW_DATA] addressSnapshot: ${doc.data()['addressSnapshot']}');
+            debugPrint('[RAW_DATA] address: ${doc.data()['address']}');
           }
+          
           final bookings = snapshot.docs
               .map((doc) => Booking.fromFirestore(doc))
               .toList();

@@ -1,35 +1,53 @@
 {
   "pages": {
-    "/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/commons.js",
-      "static/chunks/app/page.js"
-    ],
     "/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
     ],
+    "/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/commons.js",
+      "static/chunks/app/page.js"
+    ],
     "/(admin)/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/commons.js",
-      "static/chunks/vendors-_app-pages-browser_node_modules_next_link_js-_app-pages-browser_node_modules_lucide-r-1ce05f.js",
+      "static/chunks/vendors-_app-pages-browser_node_modules_next_link_js-_app-pages-browser_node_modules_lucide-r-6755e1.js",
       "static/chunks/app/(admin)/layout.js"
-    ],
-    "/(admin)/technicians/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/commons.js",
-      "static/chunks/app/(admin)/technicians/page.js"
     ],
     "/(admin)/bookings/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/commons.js",
       "static/chunks/app/(admin)/bookings/page.js"
+    ],
+    "/login/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/commons.js",
+      "static/chunks/app/login/page.js"
+    ],
+    "/login/layout": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/commons.js",
+      "static/chunks/app/login/layout.js"
+    ],
+    "/(admin)/admin/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/commons.js",
+      "static/chunks/app/(admin)/admin/page.js"
+    ],
+    "/(admin)/bookings/[bookingId]/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/commons.js",
+      "static/chunks/app/(admin)/bookings/[bookingId]/page.js"
     ],
     "/(admin)/loading": [
       "static/chunks/webpack.js",

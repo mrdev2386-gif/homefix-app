@@ -5,10 +5,27 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../../../core/models/technician.dart';
 
-class ReviewsScreen extends StatelessWidget {
+class ReviewsScreen extends StatefulWidget {
   final Technician technician;
 
   const ReviewsScreen({super.key, required this.technician});
+
+  @override
+  State<ReviewsScreen> createState() => _ReviewsScreenState();
+}
+
+class _ReviewsScreenState extends State<ReviewsScreen> {
+  late final Stream<QuerySnapshot> _reviewsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _reviewsStream = FirebaseFirestore.instance
+        .collection('reviews')
+        .where('technicianId', isEqualTo: widget.technician.uid)
+        .orderBy('createdAt', descending: true)
+        .snapshots();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,11 +46,7 @@ class ReviewsScreen extends StatelessWidget {
 
           // Reviews List
           StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('reviews')
-                .where('technicianId', isEqualTo: technician.uid)
-                .orderBy('createdAt', descending: true)
-                .snapshots(),
+            stream: _reviewsStream,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const SliverFillRemaining(
@@ -79,8 +92,8 @@ class ReviewsScreen extends StatelessWidget {
   }
 
   Widget _buildRatingSummary() {
-    final breakdown = technician.ratingBreakdown;
-    final total = technician.totalRatings == 0 ? 1 : technician.totalRatings;
+    final breakdown = widget.technician.ratingBreakdown;
+    final total = widget.technician.totalRatings == 0 ? 1 : widget.technician.totalRatings;
 
     return Container(
       margin: const EdgeInsets.all(24),
@@ -106,7 +119,7 @@ class ReviewsScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     Text(
-                      technician.avgRating.toStringAsFixed(1),
+                      widget.technician.avgRating.toStringAsFixed(1),
                       style: GoogleFonts.outfit(
                         fontSize: 48,
                         fontWeight: FontWeight.bold,
@@ -117,7 +130,7 @@ class ReviewsScreen extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: List.generate(5, (index) {
                         return Icon(
-                          index < technician.avgRating.floor()
+                          index < widget.technician.avgRating.floor()
                               ? Icons.star_rounded
                               : Icons.star_outline_rounded,
                           color: Colors.amber[600],
@@ -127,7 +140,7 @@ class ReviewsScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      "${technician.totalRatings} Reviews",
+                      "${widget.technician.totalRatings} Reviews",
                       style: GoogleFonts.outfit(color: Colors.grey, fontSize: 12),
                     ),
                   ],

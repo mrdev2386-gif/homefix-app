@@ -28,7 +28,9 @@ export async function signInWithGoogle(): Promise<UserCredential> {
 export async function verifyAdminClaim(user: User): Promise<boolean> {
   try {
     const tokenResult = await getAdminToken(user);
-    console.log('User Claims:', tokenResult.claims);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('User Claims:', tokenResult.claims);
+    }
     return !!tokenResult.claims.admin;
   } catch (error) {
     console.error('Error verifying admin claim:', error);

@@ -16,10 +16,40 @@ class CustomRequestsScreen extends StatefulWidget {
 class _CustomRequestsScreenState extends State<CustomRequestsScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseFunctions _functions = FirebaseFunctionsService.instance;
+  late final Stream<QuerySnapshot>? _requestsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    final technicianId = FirebaseAuth.instance.currentUser?.uid;
+    if (technicianId != null) {
+      _requestsStream = _db
+          .collection('custom_requests')
+          .where('technicianId', isEqualTo: technicianId)
+          .where('status', whereIn: ['technician_assigned', 'accepted'])
+          .snapshots();
+    } else {
+      _requestsStream = null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final technicianId = FirebaseAuth.instance.currentUser?.uid;
+    if (_requestsStream == null) {
+      return Scaffold(
+        backgroundColor: Colors.grey[50],
+        appBar: AppBar(
+          title: Text(
+            'Custom Service Requests',
+            style: GoogleFonts.outfit(fontWeight: FontWeight.w800),
+          ),
+          centerTitle: true,
+          backgroundColor: Colors.white,
+          elevation: 0,
+        ),
+        body: const Center(child: Text('Not authenticated')),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -33,11 +63,7 @@ class _CustomRequestsScreenState extends State<CustomRequestsScreen> {
         elevation: 0,
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: _db
-            .collection('custom_requests')
-            .where('technicianId', isEqualTo: technicianId)
-            .where('status', whereIn: ['technician_assigned', 'accepted'])
-            .snapshots(),
+        stream: _requestsStream,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());

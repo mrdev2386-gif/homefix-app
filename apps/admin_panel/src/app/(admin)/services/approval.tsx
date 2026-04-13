@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { httpsCallable } from 'firebase/functions';
-import { functions } from '@/lib/firebase';
+import { functions } from '@/lib/firebaseClient';
 
 interface PendingService {
   id: string;

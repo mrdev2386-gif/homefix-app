@@ -2,12 +2,12 @@ import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
 import { getFirestore, Firestore } from "firebase/firestore";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyADfM4cMfTlz3Cth0QwalYntQv3AoU9daI",
-    authDomain: "homefix-aa42d.firebaseapp.com",
-    projectId: "homefix-aa42d",
-    storageBucket: "homefix-aa42d.firebasestorage.app",
-    messagingSenderId: "663243229047",
-    appId: "1:663243229047:web:generic_web_id"
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
 };
 
 // Initialize Firebase (shared config - NO AUTH here to prevent SSR issues)

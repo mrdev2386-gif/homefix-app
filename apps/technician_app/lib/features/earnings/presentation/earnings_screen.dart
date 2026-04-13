@@ -17,6 +17,21 @@ class _EarningsScreenState extends State<EarningsScreen> {
   final _scrollController = ScrollController();
   String _selectedFilter = 'all';
   bool _isWithdrawing = false;
+  late final Stream<DocumentSnapshot>? _walletStream;
+
+  @override
+  void initState() {
+    super.initState();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      _walletStream = FirebaseFirestore.instance
+          .collection('technician_wallets')
+          .doc(uid)
+          .snapshots();
+    } else {
+      _walletStream = null;
+    }
+  }
 
   @override
   void dispose() {
@@ -72,11 +87,12 @@ class _EarningsScreenState extends State<EarningsScreen> {
   }
 
   Widget _buildEarningsHero(String uid) {
+    if (_walletStream == null) {
+      return const SizedBox.shrink();
+    }
+
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('technician_wallets')
-          .doc(uid)
-          .snapshots(),
+      stream: _walletStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _buildShimmerHero();
@@ -187,11 +203,12 @@ class _EarningsScreenState extends State<EarningsScreen> {
   }
 
   Widget _buildWalletCard(String uid) {
+    if (_walletStream == null) {
+      return const SizedBox.shrink();
+    }
+
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('technician_wallets')
-          .doc(uid)
-          .snapshots(),
+      stream: _walletStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return _buildShimmerCard();

@@ -31,13 +31,17 @@ export default function BookingsPage() {
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   useEffect(() => {
-    console.log('[BookingsPage] Mounting, starting subscription...');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[BookingsPage] Mounting, starting subscription...');
+    }
     let unsubscribe: (() => void) | undefined;
 
     try {
       // Fetch ALL bookings without status filter — filter client-side
       unsubscribe = subscribeToBookings((bookingsData) => {
-        console.log('[BookingsPage] Received bookings:', bookingsData.length);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[BookingsPage] Received bookings:', bookingsData.length);
+        }
         setBookings(bookingsData);
         setLoading(false);
         setError(null);
@@ -70,7 +74,9 @@ export default function BookingsPage() {
       );
     }
     setFilteredBookings(filtered);
-    console.log('[BookingsPage] Filtered:', filtered.length, 'from', bookings.length, 'status:', statusFilter);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[BookingsPage] Filtered:', filtered.length, 'from', bookings.length, 'status:', statusFilter);
+    }
   }, [bookings, searchTerm, statusFilter]);
 
   const stats = {
@@ -234,13 +240,6 @@ export default function BookingsPage() {
       label: 'Price',
       render: (item) => {
         const hasOffer = item.offerPrice && item.offerPrice < item.price;
-        console.log('[UI RENDER PRICE DEBUG]', item.id, {
-          item_price: item.price,
-          item_finalAmount: item.finalAmount,
-          item_offerPrice: item.offerPrice,
-          hasOffer: hasOffer,
-          condition_result: item.offerPrice && item.offerPrice < item.price,
-        });
         return hasOffer ? (
           <div>
             <span className="text-sm font-semibold text-emerald-400">₹{item.finalAmount}</span>

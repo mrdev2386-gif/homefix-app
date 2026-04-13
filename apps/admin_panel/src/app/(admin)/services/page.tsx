@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { PageHeader, DataTable, StatusBadge, Column, ConfirmDialog, StatCard, Modal } from '@/components/ui';
 import { Eye, CheckCircle, XCircle, Ban, Trash2, Package, Clock, Search, X, Check, Ban as BanIcon, ChevronDown } from 'lucide-react';
-import { db, functions, app } from '@/lib/firebase';
+import { db, app } from '@/lib/firebase';
+import { functions } from '@/lib/firebaseClient';
 import { collection, query, getDocs, orderBy, where, Timestamp, limit, startAfter, DocumentSnapshot, doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 

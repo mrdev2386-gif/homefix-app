@@ -333,22 +333,35 @@ class _ServicesScreenState extends State<ServicesScreen> {
 
 }
 
-class _ServicesListStream extends StatelessWidget {
+class _ServicesListStream extends StatefulWidget {
   final String uid;
 
   const _ServicesListStream({required this.uid});
 
   @override
+  State<_ServicesListStream> createState() => _ServicesListStreamState();
+}
+
+class _ServicesListStreamState extends State<_ServicesListStream> {
+  late final Stream<QuerySnapshot> _servicesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _servicesStream = FirebaseFirestore.instance
+        .collection('technician_services')
+        .where('technicianId', isEqualTo: widget.uid)
+        .where('isDeleted', isEqualTo: false)
+        .orderBy('createdAt', descending: true)
+        .limit(100)
+        .snapshots();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    debugPrint('[SERVICES LIST] Querying technician_services for uid: $uid');
+    debugPrint('[SERVICES LIST] Querying technician_services for uid: ${widget.uid}');
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('technician_services')
-          .where('technicianId', isEqualTo: uid)
-          .where('isDeleted', isEqualTo: false)
-          .orderBy('createdAt', descending: true)
-          .limit(100)
-          .snapshots(),
+      stream: _servicesStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());

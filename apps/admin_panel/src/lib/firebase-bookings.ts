@@ -1,5 +1,5 @@
 import { httpsCallable } from 'firebase/functions';
-import { functions } from '@/lib/firebase';
+import { functions } from '@/lib/firebaseClient';
 
 export async function approveBooking(bookingId: string): Promise<void> {
   const approveBookingByAdmin = httpsCallable(functions, 'approveBookingByAdmin');

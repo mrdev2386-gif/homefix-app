@@ -83,7 +83,9 @@ function parseBookingData(bookingDoc: any, user: any, technician: any, service: 
   // Handle all variants: pending_admin_review, pending_admin_approval, pending, etc.
   let effectiveStatus = data.bookingStatus || data.status || 'pending_admin_review';
   effectiveStatus = effectiveStatus.toLowerCase().trim();
-  console.log('[parseBookingData] Booking', bookingDoc.id, 'raw status:', data.bookingStatus || data.status, '-> normalized:', effectiveStatus);
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[parseBookingData] Booking', bookingDoc.id, 'raw status:', data.bookingStatus || data.status, '-> normalized:', effectiveStatus);
+  }
 
   const parsed = {
     id: bookingDoc.id,
@@ -127,21 +129,23 @@ function parseBookingData(bookingDoc: any, user: any, technician: any, service: 
     rejectionReason: data.rejectionReason || data.cancellationReason
   } as AdminBooking;
   
-  console.log('[PARSE BOOKING DATA] Firestore raw data:', {
-    data_price: data.price,
-    data_finalAmount: data.finalAmount,
-    data_offerPrice: data.offerPrice,
-    data_bookingStatus: data.bookingStatus,
-    data_status: data.status,
-  });
-  
-  console.log('[PARSE BOOKING DATA] Parsed result:', {
-    parsed_price: parsed.price,
-    parsed_finalAmount: parsed.finalAmount,
-    parsed_offerPrice: parsed.offerPrice,
-    parsed_bookingStatus: parsed.bookingStatus,
-    parsed_status: parsed.status,
-  });
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[PARSE BOOKING DATA] Firestore raw data:', {
+      data_price: data.price,
+      data_finalAmount: data.finalAmount,
+      data_offerPrice: data.offerPrice,
+      data_bookingStatus: data.bookingStatus,
+      data_status: data.status,
+    });
+    
+    console.log('[PARSE BOOKING DATA] Parsed result:', {
+      parsed_price: parsed.price,
+      parsed_finalAmount: parsed.finalAmount,
+      parsed_offerPrice: parsed.offerPrice,
+      parsed_bookingStatus: parsed.bookingStatus,
+      parsed_status: parsed.status,
+    });
+  }
   
   return parsed;
 }
@@ -313,12 +317,16 @@ export function subscribeToBookings(
       clearTimeout(timeoutId);
       try {
         const docs = snapshot.docs;
-        console.log('[subscribeToBookings] Snapshot received:', docs.length, 'docs');
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[subscribeToBookings] Snapshot received:', docs.length, 'docs');
+        }
 
         // CRITICAL FIX: Do NOT reset state on empty snapshot
         // Empty snapshot can be transient Firestore issue
         if (docs.length === 0) {
-          console.log('[subscribeToBookings] Empty snapshot — skipping state update');
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[subscribeToBookings] Empty snapshot — skipping state update');
+          }
           return;
         }
 
@@ -350,7 +358,9 @@ export function subscribeToBookings(
           return parseBookingData(bookingDoc, user, technician, service);
         });
 
-        console.log('[subscribeToBookings] Parsed:', bookings.length, 'bookings');
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[subscribeToBookings] Parsed:', bookings.length, 'bookings');
+        }
         callback(bookings);
       } catch (error) {
         console.error('[subscribeToBookings] Error processing snapshot:', error);
@@ -380,10 +390,14 @@ export async function getCustomerBookingCount(customerId: string): Promise<numbe
 // Cloud Function calls
 export async function approveBookingAction(bookingId: string) {
   try {
-    console.log('[approveBookingAction] Calling approveBookingByAdmin with bookingId:', bookingId);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[approveBookingAction] Calling approveBookingByAdmin with bookingId:', bookingId);
+    }
     const approve = httpsCallable(functions, 'approveBookingByAdmin');
     const result = await approve({ bookingId });
-    console.log('[approveBookingAction] Success:', result.data);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[approveBookingAction] Success:', result.data);
+    }
     return result.data;
   } catch (error: any) {
     console.error('[approveBookingAction] Error:', error.code, error.message);
