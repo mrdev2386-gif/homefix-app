@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import '../../../core/models/booking.dart';
 import '../../../core/providers/booking_provider.dart';
 import '../../../core/services/firestore_service.dart';
@@ -56,10 +57,16 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
         builder: (context, snapshot) {
           if (snapshot.hasData && snapshot.data != null) {
             _booking = snapshot.data!;
+            if (kDebugMode) {
+              debugPrint('📱 [BookingDetailScreen] Booking updated: status=${_booking.status}, bookingStatus=${_booking.bookingStatus}');
+            }
           }
           
           final booking = _booking;
           final currentStatus = booking.status;
+          if (kDebugMode) {
+            debugPrint('📱 [BookingDetailScreen] Rendering with status: $currentStatus');
+          }
           
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),

@@ -5,7 +5,7 @@
 ### Change: Safe Dispose Implementation
 **Lines**: ~280-290
 
-**Before**:
+**Before**:                   
 ```dart
 @override
 void dispose() {

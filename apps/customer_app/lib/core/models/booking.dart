@@ -62,10 +62,21 @@ class Booking {
 
   // Primary status getter - always use this
   String get status => bookingStatus;
+  
+  /// Debug: Get raw Firestore field names
+  String get debugStatus => bookingStatus;
 
   factory Booking.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
     final servicesList = List<Map<String, dynamic>>.from(data['services'] ?? []);
+    
+    // DEBUG: Log raw Firestore data
+    if (kDebugMode) {
+      debugPrint('📋 [Booking.fromFirestore] Raw Firestore data for ${doc.id}:');
+      debugPrint('  - status field: ${data['status']}');
+      debugPrint('  - bookingStatus field: ${data['bookingStatus']}');
+      debugPrint('  - All fields: ${data.keys.toList()}');
+    }
     
     // CRITICAL FIX 5: Validate technicianId is not null
     final technicianId = (data['technicianId'] ?? data['assignedTechnicianId'])?.toString();
@@ -75,6 +86,9 @@ class Booking {
     
     // CRITICAL FIX: Status field priority - trust 'status' over 'bookingStatus'
     final status = data['status'] ?? data['bookingStatus'] ?? 'pending';
+    if (kDebugMode) {
+      debugPrint('✅ [Booking.fromFirestore] Mapped status for ${doc.id}: $status');
+    }
     
     return Booking(
       id: doc.id,

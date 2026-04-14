@@ -80,7 +80,7 @@ const db = admin.firestore();
  */
 function updateBookingStatus(transaction, bookingRef, newStatus, currentBookingData, additionalUpdates = {}) {
     const bookingId = bookingRef.id;
-    const oldStatus = currentBookingData.status || 'unknown';
+    const oldStatus = currentBookingData.bookingStatus || currentBookingData.status || 'unknown';
     const existingHistory = currentBookingData.statusHistory || [];
     console.log(`[STATUS TRACKING] Booking: ${bookingId}`);
     console.log(`[STATUS TRACKING] Old: ${oldStatus} → New: ${newStatus}`);

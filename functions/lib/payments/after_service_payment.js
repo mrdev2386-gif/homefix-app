@@ -48,6 +48,7 @@ const admin = __importStar(require("firebase-admin"));
 const config_1 = require("../shared/config");
 const security_1 = require("../shared/security");
 const utils_1 = require("../shared/utils");
+const status_history_tracker_1 = require("../shared/status_history_tracker");
 /**
  * Confirm after-service payment received
  * Called by technician after customer pays in cash/UPI/other method
@@ -92,17 +93,22 @@ exports.confirmAfterServicePayment = functions
         throw new functions.https.HttpsError('already-exists', 'Payment already confirmed');
     }
     const amount = booking.pricing?.total || booking.finalAmount || booking.price || 0;
-    // Update booking with payment confirmation
-    await bookingRef.update({
-        'payment.status': 'paid',
-        'payment.paidAt': admin.firestore.FieldValue.serverTimestamp(),
-        'payment.confirmedBy': uid,
-        'payment.amountPaid': amount,
-        'paymentStatus': 'paid',
-        'status': 'completed',
-        'bookingStatus': 'completed',
-        'completedAt': admin.firestore.FieldValue.serverTimestamp(),
-        'updatedAt': admin.firestore.FieldValue.serverTimestamp()
+    // Update booking with payment confirmation using transaction and helper
+    await config_1.db.runTransaction(async (transaction) => {
+        const freshDoc = await transaction.get(bookingRef);
+        if (!freshDoc.exists) {
+            throw new functions.https.HttpsError('not-found', 'Booking not found');
+        }
+        const freshBooking = freshDoc.data();
+        // Use updateBookingStatus helper to ensure both status and bookingStatus are updated
+        (0, status_history_tracker_1.updateBookingStatus)(transaction, bookingRef, 'completed', freshBooking, {
+            'payment.status': 'paid',
+            'payment.paidAt': admin.firestore.FieldValue.serverTimestamp(),
+            'payment.confirmedBy': uid,
+            'payment.amountPaid': amount,
+            'paymentStatus': 'paid',
+            'completedAt': admin.firestore.FieldValue.serverTimestamp(),
+        });
     });
     // Log payment confirmation
     await config_1.db.collection('payment_logs').add({

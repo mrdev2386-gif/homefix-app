@@ -489,7 +489,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     _isActionRunning = true;
     
     // Generate idempotency key for this action
-    final idempotencyKey = '${widget.booking.id}_${action}_${DateTime.now().millisecondsSinceEpoch}';
+    final idempotencyKey = '${_booking.id}_${action}_${DateTime.now().millisecondsSinceEpoch}';
     
     // Show loading indicator
     showDialog(
@@ -501,28 +501,27 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     final service = BookingService();
     try {
       if (action == 'accept') {
+        debugPrint('CALLING technicianAcceptBooking with: ${_booking.id}');
         await service.acceptBooking(_booking.id, idempotencyKey: idempotencyKey);
       } else if (action == 'reject') {
         await service.rejectBooking(_booking.id, idempotencyKey: idempotencyKey);
       } else if (action == 'start') {
-        await service.updateBookingStatus(_booking.id, 'service_in_progress');
+        await service.startServiceJob(_booking.id);
       } else if (action == 'complete') {
         await service.markWorkCompleted(_booking.id);
       }
       
       if (!mounted) return;
-      Navigator.pop(context);
+      Navigator.pop(context); // close loading dialog only
       
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Job ${action}ed successfully"),
+          content: Text(action == 'accept' ? 'Job accepted! Status updating...' : 'Action completed'),
           backgroundColor: Colors.green,
         ),
       );
-      
-      if (!mounted) return;
-      Navigator.pop(context);
+      // Do NOT pop the screen — StreamBuilder will reflect the new status in real-time
     } catch (e) {
       if (!mounted) return;
       Navigator.pop(context);

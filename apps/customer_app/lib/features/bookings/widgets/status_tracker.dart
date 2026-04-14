@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
+import '../../../core/utils/booking_step_mapper.dart';
 
 class StatusTracker extends StatelessWidget {
   final String status;
@@ -10,6 +12,9 @@ class StatusTracker extends StatelessWidget {
   Widget build(BuildContext context) {
     final steps = _getSteps();
     final currentStepIndex = _getCurrentStepIndex();
+    if (kDebugMode) {
+      debugPrint('📊 [StatusTracker] Building with status="$status", stepIndex=$currentStepIndex, totalSteps=${steps.length}');
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -133,90 +138,35 @@ class StatusTracker extends StatelessWidget {
   }
 
   List<Map<String, dynamic>> _getSteps() {
-    final statusLower = status.toLowerCase();
-
-    // Handle terminal negative statuses
-    if (statusLower == 'cancelled' || statusLower == 'admin_rejected' || statusLower == 'technician_rejected') {
-      String title = 'Cancelled';
-      if (statusLower == 'admin_rejected') title = 'Rejected by Admin';
-      if (statusLower == 'technician_rejected') title = 'Declined by Technician';
-
+    if (BookingStepMapper.isTerminalNegativeState(status)) {
       return [
         {
-          'title': 'Booking Requested',
+          'title': 'Request Placed',
           'subtitle': 'Your request was submitted',
-          'icon': Icons.receipt_long,
+          'icon': Icons.receipt_long_rounded,
         },
         {
-          'title': title,
+          'title': BookingStepMapper.getTerminalStateTitle(status),
           'subtitle': 'Booking will not proceed',
-          'icon': Icons.cancel,
+          'icon': Icons.cancel_rounded,
         },
       ];
     }
 
-    return [
-      {
-        'title': 'Booking Requested',
-        'subtitle': 'Awaiting admin approval',
-        'icon': Icons.history,
-      },
-      {
-        'title': 'Technician Assigned',
-        'subtitle': 'Technician is reviewing',
-        'icon': Icons.person_search,
-      },
-      {
-        'title': 'Payment & Confirmation',
-        'subtitle': 'Secure your booking',
-        'icon': Icons.payments,
-      },
-      {
-        'title': 'Service in Progress',
-        'subtitle': 'Technician is working',
-        'icon': Icons.build,
-      },
-      {
-        'title': 'Completed',
-        'subtitle': 'Service is done',
-        'icon': Icons.check_circle,
-      },
-    ];
+    return BookingStepMapper.getAllSteps()
+        .map((step) => {
+              'title': step.title,
+              'subtitle': step.subtitle,
+              'icon': step.icon,
+            })
+        .toList();
   }
 
   int _getCurrentStepIndex() {
-    final statusLower = status.toLowerCase();
-    
-    if (statusLower == 'cancelled' || statusLower == 'admin_rejected' || statusLower == 'technician_rejected' || statusLower == 'rejected') {
-      return 1;
+    final index = BookingStepMapper.getStepIndexFromStatus(status);
+    if (kDebugMode) {
+      debugPrint('📊 [StatusTracker._getCurrentStepIndex] status="$status" -> index=$index');
     }
-
-    switch (statusLower) {
-      case 'pending_admin_review':
-      case 'pending_admin_approval':
-        return 0;
-      case 'admin_approved':
-      case 'approved_by_admin':
-      case 'assigned':
-        return 1;
-      case 'awaiting_payment':
-      case 'confirmed':
-        return 2;
-      case 'on_the_way':
-      case 'started':
-      case 'in_progress':
-      case 'service_in_progress':
-      case 'technician_accepted':
-        return 3;
-      case 'awaiting_customer_payment':
-        return 3;
-      case 'completed':
-      case 'service_completed':
-        return 4;
-      default:
-        // Fallback for legacy
-        if (statusLower == 'pending') return 0;
-        return 0;
-    }
+    return index;
   }
 }

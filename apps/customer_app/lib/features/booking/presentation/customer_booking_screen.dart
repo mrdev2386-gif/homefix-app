@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import '../../../core/services/firestore_service.dart';
 import '../../../core/providers/booking_provider.dart';
 
@@ -370,6 +371,9 @@ class _CustomerBookingScreenState extends State<CustomerBookingScreen> {
     String statusText;
     Color statusColor;
     IconData statusIcon;
+    if (kDebugMode) {
+      debugPrint('🔍 [StatusIndicator] Current status: $_bookingStatus');
+    }
 
     switch (_bookingStatus) {
       case 'pending_admin_approval':
@@ -553,6 +557,10 @@ class _CustomerBookingScreenState extends State<CustomerBookingScreen> {
           _bookingId = result['bookingId'];
           _bookingStatus = result['status'];
         });
+        if (kDebugMode) {
+          debugPrint('✅ [CustomerBookingScreen] Booking created: id=$_bookingId, status=$_bookingStatus');
+          debugPrint('📊 [CustomerBookingScreen] Full response: $result');
+        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

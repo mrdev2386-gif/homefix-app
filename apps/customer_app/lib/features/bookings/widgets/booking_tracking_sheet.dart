@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../core/models/booking.dart';
+import '../../../core/utils/booking_step_mapper.dart';
 
 class BookingTrackingSheet extends StatelessWidget {
   final Booking booking;
@@ -225,10 +226,7 @@ class BookingTrackingSheet extends StatelessWidget {
   }
 
   List<Map<String, dynamic>> _getTimelineSteps() {
-    final statusLower = booking.status.toLowerCase();
-
-    // Handle cancelled/rejected
-    if (statusLower.contains('cancel') || statusLower.contains('reject')) {
+    if (BookingStepMapper.isTerminalNegativeState(booking.status)) {
       return [
         {
           'title': 'Request Placed',
@@ -237,7 +235,7 @@ class BookingTrackingSheet extends StatelessWidget {
           'timestamp': booking.createdAt,
         },
         {
-          'title': statusLower.contains('reject') ? 'Request Rejected' : 'Booking Cancelled',
+          'title': BookingStepMapper.getTerminalStateTitle(booking.status),
           'subtitle': 'This booking will not proceed',
           'icon': Icons.cancel_rounded,
           'timestamp': booking.updatedAt,
@@ -245,68 +243,18 @@ class BookingTrackingSheet extends StatelessWidget {
       ];
     }
 
-    // Normal flow
-    return [
-      {
-        'title': 'Request Placed',
-        'subtitle': 'Booking created successfully',
-        'icon': Icons.receipt_long_rounded,
-        'timestamp': _getStepTimestamp(0),
-      },
-      {
-        'title': 'Admin Approved',
-        'subtitle': 'Request verified and approved',
-        'icon': Icons.verified_rounded,
-        'timestamp': _getStepTimestamp(1),
-      },
-      {
-        'title': 'Technician Assigned',
-        'subtitle': 'Professional assigned to your job',
-        'icon': Icons.person_add_rounded,
-        'timestamp': _getStepTimestamp(2),
-      },
-      {
-        'title': 'Work Started',
-        'subtitle': 'Service is in progress',
-        'icon': Icons.engineering_rounded,
-        'timestamp': _getStepTimestamp(3),
-      },
-      {
-        'title': 'Completed',
-        'subtitle': 'Service finished successfully',
-        'icon': Icons.check_circle_rounded,
-        'timestamp': _getStepTimestamp(4),
-      },
-    ];
+    return BookingStepMapper.getAllSteps()
+        .map((step) => {
+              'title': step.title,
+              'subtitle': step.subtitle,
+              'icon': step.icon,
+              'timestamp': _getStepTimestamp(step.index),
+            })
+        .toList();
   }
 
   int _getCurrentStepIndex() {
-    final statusLower = booking.status.toLowerCase();
-
-    if (statusLower.contains('cancel') || statusLower.contains('reject')) {
-      return 1;
-    }
-
-    if (statusLower.contains('pending') || statusLower == 'pending_admin_review') {
-      return 0;
-    }
-    if (statusLower.contains('approved') || statusLower.contains('accepted') || 
-        statusLower == 'admin_approved' || statusLower == 'technician_pending') {
-      return 1;
-    }
-    if (statusLower.contains('assigned') || statusLower.contains('confirmed') ||
-        statusLower.contains('awaiting_payment')) {
-      return 2;
-    }
-    if (statusLower.contains('progress') || statusLower.contains('started') || 
-        statusLower.contains('on_the_way')) {
-      return 3;
-    }
-    if (statusLower.contains('completed')) {
-      return 4;
-    }
-
-    return 0;
+    return BookingStepMapper.getStepIndexFromStatus(booking.status);
   }
 
   DateTime? _getStepTimestamp(int stepIndex) {

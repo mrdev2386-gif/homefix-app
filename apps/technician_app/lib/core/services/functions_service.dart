@@ -225,13 +225,6 @@ class FunctionsService {
         'description': description ?? 'Professional service provided by experienced technician',
       };
       
-      if (urgentBooking != null) {
-        data['urgentBooking'] = urgentBooking;
-      }
-      if (nightService != null) {
-        data['nightService'] = nightService;
-      }
-      
       debugPrint('[FunctionsService] addService REQUEST PAYLOAD: $data');
       debugPrint('[FunctionsService] addService - Sending ONLY price + offerPrice (NO basePrice)');
       
@@ -495,40 +488,6 @@ class FunctionsService {
       rethrow;
     } catch (e) {
       debugPrint('[FunctionsService] checkBankVerificationStatus: Unexpected error: $e');
-      rethrow;
-    }
-  }
-
-  /// Update technician bank details via Cloud Function
-  /// Submits bank details for admin verification
-  Future<Map<String, dynamic>> updateTechnicianBankDetails({
-    required String accountHolderName,
-    required String bankName,
-    required String accountNumber,
-    required String ifscCode,
-  }) async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        throw Exception('User not authenticated');
-      }
-      debugPrint('[FunctionsService] updateTechnicianBankDetails: Current user UID: ${user.uid}');
-      await user.getIdToken(true);
-      debugPrint('[FunctionsService] updateTechnicianBankDetails: Token refreshed successfully');
-      
-      final callable = _functions.httpsCallable('updateTechnicianBankDetails');
-      final result = await callable.call({
-        'accountHolderName': accountHolderName,
-        'bankName': bankName,
-        'accountNumber': accountNumber,
-        'ifscCode': ifscCode.toUpperCase(),
-      });
-      return Map<String, dynamic>.from(result.data);
-    } on FirebaseFunctionsException catch (e) {
-      debugPrint('[FunctionsService] updateTechnicianBankDetails: FirebaseFunctionsException - Code: ${e.code}, Message: ${e.message}');
-      rethrow;
-    } catch (e) {
-      debugPrint('[FunctionsService] updateTechnicianBankDetails: Unexpected error: $e');
       rethrow;
     }
   }

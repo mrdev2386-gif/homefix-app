@@ -139,6 +139,41 @@ exports.approveBookingByAdmin = functions
         });
         throw new functions.https.HttpsError('failed-precondition', 'Selected technician is not approved. Please select an approved technician.');
     }
+    // ✅ FETCH SERVICE IMAGE - Add to booking during approval
+    let serviceImage = null;
+    if (booking.serviceId) {
+        try {
+            const serviceDoc = await db.collection('technician_services').doc(booking.serviceId).get();
+            if (serviceDoc.exists) {
+                const serviceData = serviceDoc.data();
+                const rawImage = serviceData?.image ||
+                    serviceData?.serviceImage ||
+                    serviceData?.imageUrl ||
+                    (Array.isArray(serviceData?.images) ? serviceData.images[0] : null) ||
+                    serviceData?.photoUrl ||
+                    null;
+                serviceImage = rawImage && rawImage !== 'NO_IMAGE' ? rawImage : null;
+                console.log('🔍 [approveBookingByAdmin] Service image detected:', {
+                    serviceId: booking.serviceId,
+                    hasImage: !!serviceImage,
+                    imageUrl: serviceImage,
+                    allFields: {
+                        image: serviceData?.image,
+                        serviceImage: serviceData?.serviceImage,
+                        imageUrl: serviceData?.imageUrl,
+                        images: serviceData?.images,
+                        photoUrl: serviceData?.photoUrl
+                    }
+                });
+            }
+        }
+        catch (error) {
+            console.warn('⚠️ [approveBookingByAdmin] Failed to fetch service image:', error);
+            // Non-fatal - continue with approval
+        }
+    }
+    // Use placeholder if no image found
+    const finalServiceImage = serviceImage || 'https://via.placeholder.com/300';
     await db.runTransaction(async (t) => {
         const freshDoc = await t.get(bookingRef);
         if (!freshDoc.exists)
@@ -161,6 +196,15 @@ exports.approveBookingByAdmin = functions
             approvedAt: admin.firestore.FieldValue.serverTimestamp(),
             approvedBy: uid,
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            serviceImage: finalServiceImage,
+            imageUrl: finalServiceImage,
+        });
+        console.log('🔥 [FINAL IMAGE SAVED]:', {
+            bookingId,
+            serviceImage: finalServiceImage,
+            imageUrl: finalServiceImage,
+            wasNull: !serviceImage,
+            usedPlaceholder: !serviceImage
         });
         console.log('[APPROVE PRICE DEBUG] Approval complete - pricing unchanged');
     });
@@ -615,8 +659,27 @@ exports.createBookingRequest = functions
             console.error('❌ [createBookingRequest] Service not found:', serviceId);
             throw new functions.https.HttpsError('not-found', `Service listing not found: ${serviceId}`);
         }
+        console.log('🔍 [IMAGE DEBUG] SERVICE ID:', serviceId);
+        console.log('🔍 [IMAGE DEBUG] SERVICE EXISTS:', serviceDoc.exists);
+        console.log('🔍 [IMAGE DEBUG] SERVICE DATA:', JSON.stringify(serviceDoc.data()));
         const service = serviceDoc.data();
-        console.log('📦 [createBookingRequest] Service data:', { name: service.name, price: service.price, technicianId: service.technicianId });
+        // ✅ ROBUST IMAGE FIELD DETECTION - Check all possible field names
+        const rawImage = service?.image ||
+            service?.serviceImage ||
+            service?.imageUrl ||
+            (Array.isArray(service?.images) ? service.images[0] : null) ||
+            service?.photoUrl ||
+            null;
+        console.log('🔍 [IMAGE DEBUG] DETECTED FIELDS:', {
+            image: service?.image,
+            serviceImage: service?.serviceImage,
+            imageUrl: service?.imageUrl,
+            images: service?.images,
+            photoUrl: service?.photoUrl,
+            selectedImage: rawImage
+        });
+        const serviceImage = rawImage && rawImage !== 'NO_IMAGE' ? rawImage : null;
+        console.log('📦 [createBookingRequest] Service data:', { name: service.name, price: service.price, technicianId: service.technicianId, imageUrl: serviceImage });
         if (service.technicianId !== technicianId) {
             console.error('❌ [createBookingRequest] Technician mismatch. Expected:', service.technicianId, 'Got:', technicianId);
             throw new functions.https.HttpsError('invalid-argument', 'Service does not belong to the selected technician');
@@ -673,8 +736,22 @@ exports.createBookingRequest = functions
         console.log('🔑 [createBookingRequest] Idempotency key:', finalIdempotencyKey);
         console.log('🆔 [createBookingRequest] Generated booking ID:', bookingId);
         // PHASE 5: Protect Booking Integrity - Define outside transaction
-        // ENFORCE: ONLY after_service payment mode - NO EXCEPTIONS
-        const finalPaymentMethod = 'after_service';
+        // ALLOW: Customer to choose payment method (online or after_service)
+        const requestedPaymentMethod = data.paymentMethod || data.paymentMode || 'after_service';
+        // Validate payment method
+        if (!['online', 'after_service', 'pay_before_work', 'pay_after_work'].includes(requestedPaymentMethod)) {
+            console.error('❌ [createBookingRequest] Invalid paymentMethod:', requestedPaymentMethod);
+            throw new functions.https.HttpsError('invalid-argument', 'paymentMethod must be "online" or "after_service"');
+        }
+        // Map legacy payment modes to standard methods
+        let finalPaymentMethod = 'after_service';
+        if (requestedPaymentMethod === 'online' || requestedPaymentMethod === 'pay_before_work') {
+            finalPaymentMethod = 'online';
+        }
+        else if (requestedPaymentMethod === 'after_service' || requestedPaymentMethod === 'pay_after_work') {
+            finalPaymentMethod = 'after_service';
+        }
+        console.log(`[PAYMENT METHOD] Requested: ${requestedPaymentMethod}, Final: ${finalPaymentMethod}`);
         // All bookings go through admin review first
         const initialStatus = 'pending_admin_review';
         try {
@@ -695,6 +772,8 @@ exports.createBookingRequest = functions
                     technicianPhone: techData.phone || '',
                     serviceId,
                     serviceName: service.name || service.title || 'Service',
+                    serviceImage: serviceImage,
+                    imageUrl: serviceImage,
                     price: calculatedPrice,
                     finalAmount: finalPrice,
                     offerPrice: offer,

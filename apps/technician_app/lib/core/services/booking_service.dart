@@ -241,15 +241,36 @@ class BookingService {
   }
 
   Future<void> updateBookingStatus(String bookingId, String status) async {
-    await _functions.httpsCallable('updateBookingStatusNew').call({
-      'bookingId': bookingId,
-      'status': status,
-    });
+    // CRITICAL FIX: Use correct function name based on status
+    // For 'service_in_progress' → use 'startService'
+    // For other statuses → use appropriate function
+    if (status == 'service_in_progress' || status == 'in_progress' || status == 'started') {
+      debugPrint("CALLING FUNCTION: startService");
+      await _functions.httpsCallable('startService').call({
+        'bookingId': bookingId,
+      });
+    } else {
+      // For other status updates, use completeService or appropriate function
+      debugPrint("CALLING FUNCTION: completeService for status: $status");
+      await _functions.httpsCallable('completeService').call({
+        'bookingId': bookingId,
+      });
+    }
   }
 
   Future<Map<String, dynamic>> markWorkCompleted(String bookingId) async {
     debugPrint("CALLING FUNCTION: completeService");
     final result = await _functions.httpsCallable('completeService').call({
+      'bookingId': bookingId,
+    });
+    return Map<String, dynamic>.from(result.data);
+  }
+  
+  /// Start service (technician clicks START JOB button)
+  /// Maps to Cloud Function: startService
+  Future<Map<String, dynamic>> startServiceJob(String bookingId) async {
+    debugPrint("CALLING FUNCTION: startService for bookingId: $bookingId");
+    final result = await _functions.httpsCallable('startService').call({
       'bookingId': bookingId,
     });
     return Map<String, dynamic>.from(result.data);

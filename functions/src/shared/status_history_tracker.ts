@@ -54,7 +54,7 @@ export function updateBookingStatus(
   additionalUpdates: Record<string, any> = {}
 ): void {
   const bookingId = bookingRef.id;
-  const oldStatus = currentBookingData.status || 'unknown';
+  const oldStatus = currentBookingData.bookingStatus || currentBookingData.status || 'unknown';
   const existingHistory = currentBookingData.statusHistory || [];
 
   console.log(`[STATUS TRACKING] Booking: ${bookingId}`);

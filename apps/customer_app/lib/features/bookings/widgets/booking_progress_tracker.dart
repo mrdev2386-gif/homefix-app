@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../core/utils/booking_step_mapper.dart';
 
 class BookingProgressTracker extends StatelessWidget {
   final String currentStatus;
@@ -101,63 +102,17 @@ class BookingProgressTracker extends StatelessWidget {
   }
 
   List<_ProgressStep> _getSteps() {
-    return [
-      _ProgressStep(
-        status: 'pending_admin',
-        label: 'Pending',
-        icon: Icons.hourglass_empty_rounded,
-      ),
-      _ProgressStep(
-        status: 'technician_pending',
-        label: 'Assigned',
-        icon: Icons.person_rounded,
-      ),
-      _ProgressStep(
-        status: 'awaiting_payment',
-        label: 'Payment',
-        icon: Icons.payment_rounded,
-      ),
-      _ProgressStep(
-        status: 'confirmed',
-        label: 'Confirmed',
-        icon: Icons.check_circle_rounded,
-      ),
-      _ProgressStep(
-        status: 'completed',
-        label: 'Done',
-        icon: Icons.done_all_rounded,
-      ),
-    ];
+    return BookingStepMapper.getAllSteps()
+        .map((step) => _ProgressStep(
+              status: step.status,
+              label: step.title,
+              icon: step.icon,
+            ))
+        .toList();
   }
 
   int _getCurrentStepIndex() {
-    final steps = _getSteps();
-    final normalizedStatus = currentStatus.toLowerCase();
-
-    // Map statuses to step indices
-    switch (normalizedStatus) {
-      case 'pending':
-      case 'pending_admin':
-        return 0;
-      case 'technician_pending':
-      case 'assigned':
-      case 'accepted':
-        return 1;
-      case 'awaiting_payment':
-        return 2;
-      case 'confirmed':
-      case 'on_the_way':
-        return 3;
-      case 'in_progress':
-      case 'started':
-        return 3;
-      case 'completed':
-        return 4;
-      case 'cancelled':
-        return -1; // Special case
-      default:
-        return 0;
-    }
+    return BookingStepMapper.getStepIndexFromStatus(currentStatus);
   }
 }
 
