@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -41,27 +42,36 @@ void main() async {
   
   // CRITICAL: Initialize Firebase with App Check FIRST
   await FirebaseInit.init();
-  AppLogger.info('MAIN', 'Firebase initialization complete | package: com.homefix.technician');
+  if (kDebugMode) {
+    debugPrint('Firebase initialization complete | package: com.homefix.technician');
+  }
   
-  // CRITICAL FIX: Enable Firestore cache for real-time updates
+  // CRITICAL FIX: Enable Firestore cache with controlled size (50MB)
   FirebaseFirestore.instance.settings = const Settings(
     persistenceEnabled: true,
-    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    cacheSizeBytes: 50 * 1024 * 1024, // 50MB - controlled cache size
   );
-  AppLogger.info('MAIN', 'Firestore cache enabled - real-time updates active');
+  if (kDebugMode) {
+    debugPrint('Firestore cache enabled - 50MB limit');
+  }
   
-  // Initialize Crashlytics & Performance AFTER App Check
-  FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
-  await FirebasePerformance.instance.setPerformanceCollectionEnabled(true);
+  // Initialize Crashlytics & Performance AFTER App Check (disabled in debug)
+  if (!kDebugMode) {
+    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+    await FirebasePerformance.instance.setPerformanceCollectionEnabled(true);
+  }
 
   // Initialize Messaging AFTER App Check
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-  AppLogger.info('MAIN', 'Background message handler set');
-  
+  if (kDebugMode) {
+    debugPrint('Background message handler set');
+  }
 
   // Initialize Notifications UI Service (Notification management) AFTER App Check
   await NotificationsService().initialize();
-  AppLogger.info('MAIN', 'Notifications service initialized');
+  if (kDebugMode) {
+    debugPrint('Notifications service initialized');
+  }
 
   runApp(
     MultiProvider(

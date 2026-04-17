@@ -502,6 +502,16 @@ class _ServiceGridCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // PRICE CALCULATION (CONSISTENT WITH OTHER SCREENS)
+    final double price = service.price ?? 0;
+    final double offerPrice = service.offerPrice ?? 0;
+    
+    final bool hasOffer = offerPrice > 0 && offerPrice < price;
+    final double finalPrice = hasOffer ? offerPrice : price;
+    
+    final int discount = hasOffer 
+        ? ((price - offerPrice) / price * 100).round()
+        : 0;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -569,7 +579,7 @@ class _ServiceGridCard extends StatelessWidget {
                     right: 8,
                     child: _SmallFavoriteButton(service: service),
                   ),
-                  if (service.discount != null && service.discount! > 0)
+                  if (discount > 0)
                     Positioned(
                       top: 8,
                       left: 8,
@@ -580,7 +590,7 @@ class _ServiceGridCard extends StatelessWidget {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          '${service.discount}% OFF',
+                          '$discount% OFF',
                           style: GoogleFonts.outfit(
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
@@ -637,17 +647,17 @@ class _ServiceGridCard extends StatelessWidget {
                     Row(
                       children: [
                         Text(
-                          '₹${service.basePrice.toStringAsFixed(0)}',
+                          "₹${finalPrice.toStringAsFixed(0)}",
                           style: GoogleFonts.outfit(
                             fontSize: 16,
                             fontWeight: FontWeight.w900,
-                            color: AppTheme.primaryColor,
+                            color: Colors.green,
                           ),
                         ),
-                        if (service.discount != null && service.discount! > 0) ...[
-                          const SizedBox(width: 4),
+                        const SizedBox(width: 6),
+                        if (hasOffer)
                           Text(
-                            '₹${(service.basePrice * (1 + service.discount! / 100)).toStringAsFixed(0)}',
+                            "₹${price.toStringAsFixed(0)}",
                             style: GoogleFonts.outfit(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
@@ -655,7 +665,6 @@ class _ServiceGridCard extends StatelessWidget {
                               decoration: TextDecoration.lineThrough,
                             ),
                           ),
-                        ],
                       ],
                     ),
                   ],

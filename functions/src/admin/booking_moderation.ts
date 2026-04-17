@@ -3,7 +3,7 @@ import * as admin from 'firebase-admin';
 import { secureCallable, sanitize } from '../shared/security';
 import { updateBookingStatus } from '../shared/status_history_tracker';
 
-const db = admin.firestore();
+const getDb = () => admin.firestore();
 
 // Normalize booking status to handle different variations
 function normalizeBookingStatus(status: string): string {
@@ -29,6 +29,7 @@ async function sendNotification(userId: string, userType: 'customer' | 'technici
     data?: any;
 }) {
     try {
+        const db = getDb();
         const tokensSnap = await db.collection(userType === 'customer' ? 'users' : 'technicians')
             .doc(userId)
             .collection('fcmTokens')
@@ -55,6 +56,8 @@ async function sendNotification(userId: string, userType: 'customer' | 'technici
 
 export const approveBooking = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
+        console.log('FUNCTION START: approveBooking');
+        const db = getDb();
         const uid = context.auth?.uid;
         await assertAdmin(uid);
 
@@ -116,6 +119,8 @@ export const approveBooking = functions.region('asia-south1').https.onCall(
 
 export const rejectBooking = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
+        console.log('FUNCTION START: rejectBooking');
+        const db = getDb();
         const uid = context.auth?.uid;
         await assertAdmin(uid);
 
@@ -176,6 +181,8 @@ export const rejectBooking = functions.region('asia-south1').https.onCall(
 
 export const updateBookingPayment = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
+        console.log('FUNCTION START: updateBookingPayment');
+        const db = getDb();
         const uid = context.auth?.uid;
         await assertAdmin(uid);
 
@@ -221,6 +228,8 @@ export const updateBookingPayment = functions.region('asia-south1').https.onCall
 
 export const markBookingActive = functions.region('asia-south1').https.onCall(
     secureCallable(async (data: any, context: any) => {
+        console.log('FUNCTION START: markBookingActive');
+        const db = getDb();
         const uid = context.auth?.uid;
         await assertAdmin(uid);
 

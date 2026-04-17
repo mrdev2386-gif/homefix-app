@@ -42,6 +42,13 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   List<HomeService> _filteredServices = [];
 
   late Stream<List<HomeService>> _servicesStream;
+  
+  bool _isFetching = false;
+  bool _hasMore = true;
+  DateTime? _lastFetchTime;
+  static const Duration _fetchThrottle = Duration(milliseconds: 500);
+  bool _hasError = false;
+  String _errorMessage = '';
 
   @override
   void initState() {
@@ -53,11 +60,13 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
       _searchController.text = _searchQuery;
     }
     _initStreams();
+    _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _debounceTimer?.cancel();
     super.dispose();
@@ -87,6 +96,44 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
   void _clearSearch() {
     _searchController.clear();
     setState(() => _searchQuery = '');
+  }
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.offset;
+    if (currentScroll >= maxScroll * 0.8) {
+      _loadMoreServices();
+    }
+  }
+  Future<void> _loadMoreServices() async {
+    if (_isFetching || !_hasMore) return;
+    final now = DateTime.now();
+    if (_lastFetchTime != null && now.difference(_lastFetchTime!) < _fetchThrottle) {
+      return;
+    }
+    setState(() => _isFetching = true);
+    _lastFetchTime = now;
+    try {
+      await Future.delayed(const Duration(milliseconds: 300));
+      const int limit = 15;
+      if (_filteredServices.length < limit) {
+        setState(() => _hasMore = false);
+      }
+      if (mounted) {
+        setState(() {
+          _isFetching = false;
+          _hasError = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isFetching = false;
+          _hasError = true;
+          _errorMessage = 'Failed to load more services';
+        });
+      }
+    }
   }
 
   List<HomeService> _applyFilters(List<HomeService> services) {
@@ -430,6 +477,7 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
                   ),
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
+                      if (index >= filtered.length) return null;
                       final service = filtered[index];
                       return _ServiceGridCard(
                         key: ValueKey(service.id),
@@ -445,6 +493,90 @@ class _ServiceListScreenState extends State<ServiceListScreen> {
           ),
 
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          
+          if (_isFetching)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Center(
+                  child: SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          
+          if (!_hasMore && _allServices.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Center(
+                  child: Text(
+                    'No more services',
+                    style: GoogleFonts.outfit(
+                      fontSize: 14,
+                      color: AppTheme.subtitleColor,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (_hasError)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.error_outline, color: Colors.red.shade600, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _errorMessage,
+                          style: GoogleFonts.outfit(
+                            fontSize: 13,
+                            color: Colors.red.shade600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: () {
+                          setState(() => _hasError = false);
+                          _loadMoreServices();
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade600,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            'Retry',
+                            style: GoogleFonts.outfit(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -632,6 +764,7 @@ class _ServiceGridCard extends StatelessWidget {
                     child: CachedNetworkImage(
                       imageUrl: service.imageUrl,
                       width: double.infinity,
+                      height: double.infinity,
                       fit: BoxFit.cover,
                       placeholder: (context, url) => Container(
                         color: Colors.grey[200],

@@ -486,7 +486,7 @@ export const updateTechnicianAssignment = functions.region('asia-south1').https.
  */
 export const cleanupStaleTechnicianStatus = functions
   .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
-  .pubsub.schedule('every 5 minutes')
+  .pubsub.schedule('every 15 minutes')
   .onRun(async () => {
     console.log('Running cleanupStaleTechnicianStatus at', new Date().toISOString());
 

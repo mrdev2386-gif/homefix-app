@@ -178,7 +178,6 @@ class HomeService {
       if (kDebugMode) {
         debugPrint('❌ [MODEL_ERROR] Failed to parse service ${doc.id}: $e');
         debugPrint('Stack trace: $stackTrace');
-        debugPrint('Data: ${doc.data()}');
       }
       return null;
     }

@@ -136,6 +136,7 @@ async function retryWalletAdjustment(compensationId: string): Promise<{
 export const retryRefundCompensation = functions
     .region('asia-south1')
     .https.onCall(async (data, context) => {
+        console.log('FUNCTION START: retryRefundCompensation');
         await assertAdmin(context);
 
         const { compensationId } = data;
@@ -279,10 +280,12 @@ export const getPendingCompensations = functions
  * FIX 3: Automatic retry mechanism (runs every hour)
  */
 export const autoRetryCompensations = functions
+    .region('asia-south1')
     .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
-    .pubsub.schedule('every 1 hours')
+    .pubsub.schedule('0 */1 * * *') // Every hour at minute 0
+    .timeZone('Asia/Kolkata')
     .onRun(async (context) => {
-        console.log('Running autoRetryCompensations at', new Date().toISOString());
+        console.log('FUNCTION START: autoRetryCompensations', new Date().toISOString());
 
         try {
             // Get pending compensations (max 50 per run)

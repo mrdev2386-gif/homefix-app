@@ -1,7 +1,14 @@
-
 import * as admin from 'firebase-admin';
 
-export const db = admin.firestore();
+// Lazy getter — Firestore is NOT instantiated at module load time.
+// This prevents cold-start initialization failures.
+let _db: admin.firestore.Firestore | null = null;
+export const db = new Proxy({} as admin.firestore.Firestore, {
+    get(_target, prop: string) {
+        if (!_db) _db = admin.firestore();
+        return (_db as any)[prop];
+    }
+});
 
 export interface AppConfig {
     isTestMode: boolean;

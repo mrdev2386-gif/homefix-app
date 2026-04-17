@@ -42,7 +42,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.manualCleanupIdempotency = exports.cleanupExpiredIdempotencyRecords = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
-const db = admin.firestore();
+const getDb = () => admin.firestore();
 /**
  * Scheduled function to clean up expired idempotency records
  * Runs daily at 2 AM UTC
@@ -50,11 +50,12 @@ const db = admin.firestore();
 exports.cleanupExpiredIdempotencyRecords = functions
     .region('asia-south1')
     .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
-    .pubsub.schedule('0 2 * * *') // Daily at 2 AM UTC
-    .timeZone('UTC')
+    .pubsub.schedule('0 2 */3 * *') // Every 3 days at 2 AM IST
+    .timeZone('Asia/Kolkata')
     .onRun(async (context) => {
-    console.log('Running cleanupExpiredIdempotencyRecords at', new Date().toISOString());
+    console.log('FUNCTION START: cleanupExpiredIdempotencyRecords', new Date().toISOString());
     try {
+        const db = getDb();
         // Calculate cutoff time (24 hours ago)
         const cutoffTime = admin.firestore.Timestamp.fromDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
         console.log(`[IDEMPOTENCY_CLEANUP] Deleting records older than: ${cutoffTime.toDate().toISOString()}`);
@@ -96,10 +97,12 @@ exports.cleanupExpiredIdempotencyRecords = functions
 exports.manualCleanupIdempotency = functions
     .region('asia-south1')
     .https.onCall(async (data, context) => {
+    console.log('FUNCTION START: manualCleanupIdempotency');
     // Verify admin
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
     }
+    const db = getDb();
     const adminDoc = await db.collection('admins').doc(context.auth.uid).get();
     if (!adminDoc.exists) {
         throw new functions.https.HttpsError('permission-denied', 'Only admins can run manual cleanup');

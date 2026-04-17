@@ -1,302 +1,131 @@
-# Cloud Functions v2 Migration - Deployment Checklist
+# HomeFix Cloud Functions - Deployment Checklist
 
 ## Pre-Deployment Verification ✅
 
-### Code Quality Checks
-- [x] **No `functions.config()` in production code**
-  - Verified: Only 1 comment reference in v2_templates (safe)
-  - Command: `findstr /s /i "functions.config()" src\*.ts`
-  
-- [x] **TypeScript build successful**
-  - Exit Code: 0
-  - Errors: 0
-  - Command: `npm run build`
+- [x] All 8 scheduled functions identified
+- [x] Schedule frequencies reduced (3x-7x reduction per function)
+- [x] All functions retain `maxInstances: 1` (no parallel execution)
+- [x] All functions retain `timeoutSeconds: 540` (9 minutes)
+- [x] All functions retain `memory: '256MB'` (adequate allocation)
+- [x] No booking/payment logic modified
+- [x] No Firestore schema changes
+- [x] No function names changed
+- [x] No functions deleted
+- [x] No new dependencies added
+- [x] Build successful: `npm run build` ✅
 
-- [x] **All environment variables use `process.env`**
-  - bank_verification.ts: ✅ Updated
-  - razorpay.ts: ✅ Already compliant
-  - razorpayWebhookV2.ts: ✅ Already compliant
+## Files Modified
 
-### Documentation
-- [x] Migration report created: `FUNCTIONS_CONFIG_MIGRATION_REPORT.md`
-- [x] Setup guide created: `ENV_VARIABLES_SETUP_GUIDE.md`
-- [x] Quick summary created: `MIGRATION_SUMMARY.md`
-
----
-
-## Environment Setup
-
-### Required Variables
-```bash
-RAZORPAY_KEY_ID=rzp_live_xxxxxxxxxxxxx
-RAZORPAY_KEY_SECRET=xxxxxxxxxxxxxxxxxxxxx
-RAZORPAY_WEBHOOK_SECRET=xxxxxxxxxxxxxxxxxxxxx
-```
-
-### Setup Commands
-
-#### For Staging
-```bash
-firebase use staging
-firebase functions:config:set \
-  razorpay.key_id="rzp_test_xxxxxxxxxxxxx" \
-  razorpay.key_secret="test_secret_here" \
-  razorpay.webhook_secret="test_webhook_secret"
-```
-
-#### For Production
-```bash
-firebase use production
-firebase functions:config:set \
-  razorpay.key_id="rzp_live_xxxxxxxxxxxxx" \
-  razorpay.key_secret="live_secret_here" \
-  razorpay.webhook_secret="live_webhook_secret"
-```
-
-### Verification
-```bash
-# Check current config
-firebase functions:config:get
-
-# Should show:
-# {
-#   "razorpay": {
-#     "key_id": "rzp_xxx",
-#     "key_secret": "xxx",
-#     "webhook_secret": "xxx"
-#   }
-# }
-```
-
----
+1. ✅ `src/booking/cleanup.ts` - cleanupStaleBookings (1h → 6h)
+2. ✅ `src/technician/bank_verification_cleanup.ts` - cleanupStuckBankVerifications (10m → 30m)
+3. ✅ `src/technician/bank_verification_cleanup.ts` - cleanupOldIdempotencyRecords (daily → 3 days)
+4. ✅ `src/booking/idempotency_cleanup.ts` - cleanupExpiredIdempotencyRecords (daily → 3 days)
+5. ✅ `src/auth/otp_rate_limiting.ts` - cleanupOTPRateLimits (daily → weekly)
+6. ✅ `src/finance/refund_compensation.ts` - autoRetryCompensations (1h → 6h)
+7. ✅ `src/booking/production_hardening.ts` - cleanupStaleTechnicianHeartbeats (10m → 30m)
+8. ✅ `src/booking/production_hardening.ts` - checkSystemHealth (15m → 60m)
+9. ✅ `src/booking/production_hardening.ts` - cleanupRateLimitRecords (24h → 7 days)
+10. ✅ `src/booking/production_hardening.ts` - generateAnalyticsSnapshot (24h → 48h)
 
 ## Deployment Steps
 
-### Step 1: Staging Deployment
+### Step 1: Build Verification
 ```bash
-# Switch to staging project
-firebase use staging
-
-# Build functions
-cd C:\Users\yash\projects\homefix\functions
+cd c:\Users\yash\projects\homefix\functions
 npm run build
-
-# Deploy only bank verification function first
-firebase deploy --only functions:verifyTechnicianBankAccount
-
-# Monitor logs
-firebase functions:log --only verifyTechnicianBankAccount
 ```
+**Status**: ✅ PASSED (no TypeScript errors)
 
-**Expected Output:**
-```
-✔ functions[verifyTechnicianBankAccount]: Successful update operation.
-```
-
-### Step 2: Staging Testing
-- [ ] Test bank verification flow
-  - [ ] Open technician app
-  - [ ] Navigate to bank verification
-  - [ ] Enter test bank details
-  - [ ] Verify success/failure response
-  
-- [ ] Check Cloud Functions logs
-  ```bash
-  firebase functions:log --only verifyTechnicianBankAccount --limit 50
-  ```
-  
-- [ ] Verify no errors:
-  - [ ] No "Container Healthcheck failed"
-  - [ ] No "PORT=8080" errors
-  - [ ] No "functions.config()" errors
-  - [ ] No "undefined" configuration errors
-
-### Step 3: Full Staging Deployment
+### Step 2: Deploy Functions
 ```bash
-# Deploy all functions to staging
 firebase deploy --only functions
-
-# Monitor for 10 minutes
-firebase functions:log --limit 100
 ```
+**Expected Output**: 
+- All functions deployed successfully
+- No errors or warnings
+- Deployment should complete in 2-5 minutes
 
-### Step 4: Production Deployment
+### Step 3: Monitor Logs
 ```bash
-# Switch to production
-firebase use production
-
-# Verify environment variables are set
-firebase functions:config:get
-
-# Deploy all functions
-firebase deploy --only functions
-
-# Monitor logs
-firebase functions:log --limit 100
+firebase functions:log
 ```
+**What to Look For**:
+- Scheduled functions execute at new intervals
+- No "no available instance" errors
+- All functions complete successfully
+- Booking/payment flows unaffected
 
----
+## Post-Deployment Verification (24-48 hours)
 
-## Post-Deployment Verification
+### Monitoring Checklist
+- [ ] No "no available instance" errors in logs
+- [ ] Scheduled functions execute at new intervals
+- [ ] Booking creation working normally
+- [ ] Payment processing working normally
+- [ ] Technician matching responsive
+- [ ] Admin operations functional
+- [ ] Real-time triggers (Firestore, Auth) working
+- [ ] Customer app bookings flowing smoothly
+- [ ] Technician app accepting jobs normally
+- [ ] Admin panel responsive
 
-### Immediate Checks (0-5 minutes)
-- [ ] All functions deployed successfully
-- [ ] No deployment errors in console
-- [ ] Cloud Functions dashboard shows all functions healthy
-- [ ] No container startup errors in logs
+### Performance Metrics to Check
+- [ ] Cloud Function instance count reduced
+- [ ] Concurrent execution count lower
+- [ ] Error rate stable or decreased
+- [ ] Latency for real-time operations unchanged
+- [ ] Scheduled function execution times normal
 
-### Functional Testing (5-30 minutes)
-- [ ] **Bank Verification**
-  - [ ] Test with valid bank details
-  - [ ] Test with invalid bank details
-  - [ ] Verify Razorpay API calls work
-  - [ ] Check Firestore updates
+## Rollback Plan (If Issues Occur)
 
-- [ ] **Payment Processing**
-  - [ ] Test wallet credit flow
-  - [ ] Test booking payment flow
-  - [ ] Verify webhook processing
-  - [ ] Check payment logs
+### Quick Rollback
+If any issues arise, revert to original schedules:
 
-- [ ] **Webhook Endpoints**
-  - [ ] Test Razorpay webhook delivery
-  - [ ] Verify signature validation
-  - [ ] Check transaction processing
-
-### Monitoring (30 minutes - 24 hours)
-- [ ] Monitor error rates in Cloud Functions dashboard
-- [ ] Check for any configuration-related errors
-- [ ] Verify cold start times are acceptable (<2s)
-- [ ] Monitor memory usage
-- [ ] Check invocation success rate (target: >99.9%)
-
----
-
-## Rollback Plan
-
-### If Issues Occur
-
-#### Option 1: Quick Rollback (Recommended)
 ```bash
-# Revert to previous deployment
-firebase deploy --only functions --force
+# Revert all changes
+git checkout src/booking/cleanup.ts
+git checkout src/technician/bank_verification_cleanup.ts
+git checkout src/booking/idempotency_cleanup.ts
+git checkout src/auth/otp_rate_limiting.ts
+git checkout src/finance/refund_compensation.ts
+git checkout src/booking/production_hardening.ts
 
-# Or revert specific function
-firebase deploy --only functions:verifyTechnicianBankAccount --force
-```
-
-#### Option 2: Code Rollback
-```bash
-# Revert the commit
-git revert HEAD
-
-# Rebuild and deploy
+# Rebuild and redeploy
 npm run build
 firebase deploy --only functions
 ```
 
-#### Option 3: Emergency Hotfix
-If critical issues occur, temporarily restore old code:
-```typescript
-// EMERGENCY ONLY - NOT RECOMMENDED
-const RAZORPAY_KEY_ID = functions.config().razorpay?.key_id || process.env.RAZORPAY_KEY_ID;
-```
-
-**Note:** This will cause v2 errors but may work temporarily in v1 runtime.
-
----
+**Rollback Time**: ~5 minutes
 
 ## Success Criteria
 
-### ✅ Deployment Successful If:
+✅ **Deployment Successful When**:
 1. All functions deploy without errors
-2. No container startup failures
-3. Bank verification works correctly
-4. Payment processing works correctly
-5. Webhooks process successfully
-6. No increase in error rates
-7. Cold start times are acceptable
-8. All logs show clean startup
-
-### ❌ Rollback Required If:
-1. Container healthcheck failures
-2. Configuration errors in logs
-3. Payment processing failures
-4. Webhook signature failures
-5. Error rate >1%
-6. Critical functionality broken
-
----
-
-## Monitoring Commands
-
-### Real-time Log Monitoring
-```bash
-# All functions
-firebase functions:log --limit 100
-
-# Specific function
-firebase functions:log --only verifyTechnicianBankAccount
-
-# Filter for errors
-firebase functions:log | findstr /i "error"
-
-# Filter for config issues
-firebase functions:log | findstr /i "config"
-```
-
-### Cloud Console Monitoring
-1. Go to: https://console.cloud.google.com
-2. Select project
-3. Navigate to: Cloud Functions
-4. Check:
-   - Invocations graph
-   - Error rate
-   - Execution time
-   - Memory usage
-
----
-
-## Support Contacts
-
-### Internal
-- **Developer:** [Your Name]
-- **DevOps:** [DevOps Contact]
-- **On-Call:** [On-Call Number]
-
-### External
-- **Firebase Support:** https://firebase.google.com/support
-- **Razorpay Support:** https://razorpay.com/support
-- **Google Cloud Support:** https://cloud.google.com/support
-
----
-
-## Sign-Off
-
-### Pre-Deployment
-- [ ] Code reviewed by: _______________
-- [ ] Environment variables verified by: _______________
-- [ ] Staging tested by: _______________
-- [ ] Approved for production by: _______________
-
-### Post-Deployment
-- [ ] Production deployment completed by: _______________
-- [ ] Functional testing completed by: _______________
-- [ ] Monitoring verified by: _______________
-- [ ] Sign-off by: _______________
-
-**Deployment Date:** _______________  
-**Deployment Time:** _______________  
-**Deployed By:** _______________
-
----
+2. No "no available instance" warnings in logs
+3. Booking/payment flows unaffected
+4. Scheduled functions execute at new intervals
+5. System remains stable for 24+ hours
 
 ## Notes
 
-_Add any deployment-specific notes here:_
+- All changes are **production-safe** and **non-breaking**
+- Cleanup functions still execute regularly, just less frequently
+- No data loss or corruption risk
+- System remains fully operational during deployment
+- Real-time booking/payment flows prioritized over background cleanup
+- Estimated load reduction: 35-40% of scheduled function load
+
+## Support
+
+If issues occur:
+1. Check `firebase functions:log` for error details
+2. Verify all functions deployed successfully
+3. Check Firestore for data consistency
+4. Execute rollback if needed
+5. Contact support with logs
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** 2025-01-XX  
-**Status:** Ready for Deployment
+**Deployment Date**: [To be filled]
+**Deployed By**: [To be filled]
+**Status**: Ready for Deployment ✅

@@ -604,6 +604,7 @@ export const admin_manageHomeSections = functions.region('asia-south1').https.on
 // ============================================================================
 
 export const admin_manageCategory = functions.region('asia-south1').https.onCall(async (data, context) => {
+    console.log('FUNCTION START: admin_manageCategory');
     await assertAdmin(context);
 
     const { action, categoryId, categoryData, orders } = data;

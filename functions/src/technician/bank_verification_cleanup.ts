@@ -21,7 +21,7 @@ const VERIFICATION_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 export const cleanupStuckBankVerifications = functions
   .region('asia-south1')
   .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
-  .pubsub.schedule('every 10 minutes')
+  .pubsub.schedule('every 15 minutes')
   .onRun(async (context) => {
     console.log('Running cleanupStuckBankVerifications at', new Date().toISOString());
 
@@ -93,7 +93,7 @@ export const cleanupStuckBankVerifications = functions
 export const cleanupOldIdempotencyRecords = functions
   .region('asia-south1')
   .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
-  .pubsub.schedule('0 2 * * *')
+  .pubsub.schedule('0 2 */3 * *') // Every 3 days at 2 AM
   .timeZone('Asia/Kolkata')
   .onRun(async (context) => {
     console.log('Running cleanupOldIdempotencyRecords at', new Date().toISOString());

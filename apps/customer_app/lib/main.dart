@@ -92,20 +92,30 @@ void main() async {
   // MICRO FIX 3: Remove sensitive data from logs
   if (kDebugMode) debugPrint('🔑 Firebase Auth initialized');
   
-  // CRITICAL: Enable Firestore cache for production performance
-  if (kDebugMode) debugPrint('✅ [PRODUCTION] Enabling Firestore persistence cache...');
+  // CRITICAL: Enable Firestore cache with controlled size (50MB)
+  if (kDebugMode) debugPrint('✅ [PRODUCTION] Enabling Firestore persistence cache (50MB limit)...');
   FirebaseFirestore.instance.settings = const Settings(
     persistenceEnabled: true,
-    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    cacheSizeBytes: 50 * 1024 * 1024, // 50MB - controlled cache size
   );
-  if (kDebugMode) debugPrint('✅ Firestore cache enabled - data will be cached locally');
+  if (kDebugMode) debugPrint('✅ Firestore cache enabled - 50MB limit');
 
   // Enable Firebase App Check for production security
-  if (kDebugMode) debugPrint('🔒 [SECURITY] Enabling Firebase App Check...');
-  await FirebaseAppCheck.instance.activate(
-    androidProvider: kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
-  );
-  if (kDebugMode) debugPrint('✅ Firebase App Check enabled');
+  if (kDebugMode) {
+    // Debug mode: Use debug provider for development
+    if (kDebugMode) debugPrint('🔒 [SECURITY] Enabling Firebase App Check (debug provider)...');
+    await FirebaseAppCheck.instance.activate(
+      androidProvider: AndroidProvider.debug,
+    );
+    if (kDebugMode) debugPrint('✅ Firebase App Check enabled (debug mode)');
+  } else {
+    // Production mode: Use Play Integrity
+    if (kDebugMode) debugPrint('🔒 [SECURITY] Enabling Firebase App Check (production provider)...');
+    await FirebaseAppCheck.instance.activate(
+      androidProvider: AndroidProvider.playIntegrity,
+    );
+    if (kDebugMode) debugPrint('✅ Firebase App Check enabled (production mode)');
+  }
 
   // STEP 3: Wait for Firebase Auth to be ready
   if (kDebugMode) debugPrint('🔑 Waiting for Firebase Auth to initialize...');

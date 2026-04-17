@@ -82,6 +82,7 @@ class CategoryService extends ChangeNotifier {
   /// Recently Added Services - derived from base stream
   Stream<List<HomeService>> getRecentlyAddedServices({int limit = 10}) {
     return _baseServicesStream.map((services) {
+      if (services.isEmpty) return const [];
       final sorted = services.toList()
         ..sort((a, b) {
           final aTime = a.createdAt;

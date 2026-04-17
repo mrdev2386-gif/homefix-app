@@ -15,21 +15,31 @@ class FirebaseInit {
     );
     AppLogger.firebase('Firebase Core initialized');
 
-    // Initialize App Check with debug provider
-    await FirebaseAppCheck.instance.activate(
-      androidProvider: AndroidProvider.debug,
-      appleProvider: AppleProvider.debug,
-    );
-    AppLogger.firebase('Firebase App Check activated with debug provider');
-    
-    // Force generate and print debug token
-    try {
-      final token = await FirebaseAppCheck.instance.getToken(true);
-      debugPrint('🔥 DEBUG TOKEN: $token');
-      AppLogger.firebase('Firebase AppCheck Debug Token: $token');
-    } catch (e) {
-      debugPrint('❌ Failed to get App Check token: $e');
-      AppLogger.error('FIREBASE', 'AppCheck token generation failed', data: e);
+    // Initialize App Check with conditional provider (debug vs release)
+    if (kDebugMode) {
+      // Debug mode: Use debug provider for development
+      await FirebaseAppCheck.instance.activate(
+        androidProvider: AndroidProvider.debug,
+        appleProvider: AppleProvider.debug,
+      );
+      AppLogger.firebase('Firebase App Check activated with debug provider (development)');
+      
+      // Force generate and print debug token for testing
+      try {
+        final token = await FirebaseAppCheck.instance.getToken(true);
+        debugPrint('🔥 DEBUG TOKEN: $token');
+        AppLogger.firebase('Firebase AppCheck Debug Token: $token');
+      } catch (e) {
+        debugPrint('❌ Failed to get App Check token: $e');
+        AppLogger.error('FIREBASE', 'AppCheck token generation failed', data: e);
+      }
+    } else {
+      // Production mode: Use Play Integrity for Android
+      await FirebaseAppCheck.instance.activate(
+        androidProvider: AndroidProvider.playIntegrity,
+        appleProvider: AppleProvider.deviceCheck,
+      );
+      AppLogger.firebase('Firebase App Check activated with production provider (Play Integrity)');
     }
 
     _initialized = true;

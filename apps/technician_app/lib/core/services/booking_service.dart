@@ -17,18 +17,18 @@ class BookingService {
   /// NEW FLOW: Get pending bookings that need technician response
   /// Status: ASSIGNED or APPROVED_BY_ADMIN - admin approved, waiting for technician
   /// CRITICAL FIX: Use exact Cloud Function status values
-  /// CRITICAL FIX: includeMetadataChanges: true forces real-time updates
+  /// Optimized: includeMetadataChanges removed for pending list (reduces overhead)
   Stream<List<Booking>> getPendingBookings(String techId) {
     debugPrint('[PENDING_BOOKINGS] Starting stream for techId: $techId');
     return _db.collection('bookings')
         .where('technicianId', isEqualTo: techId)
         .where('bookingStatus', whereIn: [
           BookingStatus.assigned,
-          BookingStatus.approvedByAdmin,  // ✅ Cloud Function sets this
+          BookingStatus.approvedByAdmin,
         ])
         .orderBy('updatedAt', descending: true)
         .limit(20)
-        .snapshots(includeMetadataChanges: true)
+        .snapshots()
         .map((snapshot) {
           debugPrint('[PENDING_BOOKINGS] Snapshot received: ${snapshot.docs.length} bookings, metadata: ${snapshot.metadata}');
           
@@ -63,7 +63,7 @@ class BookingService {
   /// NEW FLOW: Get bookings that are awaiting payment
   /// Status: awaiting_payment - technician accepted, waiting for customer payment
   /// CRITICAL FIX: Use exact Cloud Function status value
-  /// CRITICAL FIX: includeMetadataChanges: true forces real-time updates
+  /// Optimized: includeMetadataChanges removed for awaiting payment list
   Stream<List<Booking>> getAwaitingPaymentBookings(String techId) {
     debugPrint('[AWAITING_PAYMENT] Starting stream for techId: $techId');
     return _db.collection('bookings')
@@ -71,7 +71,7 @@ class BookingService {
         .where('bookingStatus', isEqualTo: BookingStatus.awaitingPayment)
         .orderBy('updatedAt', descending: true)
         .limit(20)
-        .snapshots(includeMetadataChanges: true)
+        .snapshots()
         .map((snapshot) {
           debugPrint('[AWAITING_PAYMENT] Snapshot received: ${snapshot.docs.length} bookings, metadata: ${snapshot.metadata}');
           // STEP 3: Verify bookingStatus values
@@ -133,7 +133,7 @@ class BookingService {
 
   /// Get active bookings for dashboard (assigned, accepted, technician_accepted, in_progress, service_in_progress)
   /// CRITICAL FIX: Include 'technician_accepted' so accepted bookings are visible in dashboard
-  /// CRITICAL FIX: includeMetadataChanges: true forces real-time updates
+  /// Optimized: includeMetadataChanges kept for active bookings (status changes are critical)
   Stream<List<Booking>> getActiveBookings(String techId) {
     debugPrint('[ACTIVE_BOOKINGS] Starting stream for techId: $techId with statuses: ${BookingStatus.activeStatuses}');
     return _db.collection('bookings')
@@ -302,7 +302,7 @@ class BookingService {
   }
 
   /// STEP 2: REAL-TIME STREAM - Get single booking stream for live updates
-  /// CRITICAL FIX: includeMetadataChanges: true forces real-time updates
+  /// CRITICAL FIX: includeMetadataChanges: true forces real-time updates for booking status changes
   Stream<Booking?> getBookingStream(String bookingId) {
     debugPrint('[BOOKING_DETAIL] Starting stream for bookingId: $bookingId');
     return _db.collection('bookings')

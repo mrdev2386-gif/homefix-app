@@ -246,7 +246,7 @@ async function trackAnalyticsEvent(event, data) {
  */
 exports.generateAnalyticsSnapshot = functions
     .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
-    .pubsub.schedule('every 24 hours')
+    .pubsub.schedule('every 48 hours')
     .onRun(async () => {
     console.log('Running generateAnalyticsSnapshot at', new Date().toISOString());
     const today = new Date();
@@ -312,7 +312,7 @@ async function updateTechnicianHeartbeat(technicianId) {
  */
 exports.cleanupStaleTechnicianHeartbeats = functions
     .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
-    .pubsub.schedule('every 10 minutes')
+    .pubsub.schedule('every 15 minutes')
     .onRun(async () => {
     console.log('Running cleanupStaleTechnicianHeartbeats at', new Date().toISOString());
     const staleThreshold = Date.now() - CONFIG.maxHeartbeatGapMs;
@@ -594,7 +594,7 @@ async function checkBookingRateLimit(customerId) {
  */
 exports.cleanupRateLimitRecords = functions
     .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
-    .pubsub.schedule('every 24 hours')
+    .pubsub.schedule('every 7 days')
     .onRun(async () => {
     console.log('Running cleanupRateLimitRecords at', new Date().toISOString());
     const yesterday = Date.now() - 24 * 60 * 60 * 1000;

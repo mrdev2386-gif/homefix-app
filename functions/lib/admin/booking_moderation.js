@@ -38,7 +38,7 @@ const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const security_1 = require("../shared/security");
 const status_history_tracker_1 = require("../shared/status_history_tracker");
-const db = admin.firestore();
+const getDb = () => admin.firestore();
 // Normalize booking status to handle different variations
 function normalizeBookingStatus(status) {
     if (!status)
@@ -58,6 +58,7 @@ async function assertAdmin(uid) {
 }
 async function sendNotification(userId, userType, payload) {
     try {
+        const db = getDb();
         const tokensSnap = await db.collection(userType === 'customer' ? 'users' : 'technicians')
             .doc(userId)
             .collection('fcmTokens')
@@ -81,6 +82,8 @@ async function sendNotification(userId, userType, payload) {
     }
 }
 exports.approveBooking = functions.region('asia-south1').https.onCall((0, security_1.secureCallable)(async (data, context) => {
+    console.log('FUNCTION START: approveBooking');
+    const db = getDb();
     const uid = context.auth?.uid;
     await assertAdmin(uid);
     const { bookingId } = data;
@@ -134,6 +137,8 @@ exports.approveBooking = functions.region('asia-south1').https.onCall((0, securi
     }
 }));
 exports.rejectBooking = functions.region('asia-south1').https.onCall((0, security_1.secureCallable)(async (data, context) => {
+    console.log('FUNCTION START: rejectBooking');
+    const db = getDb();
     const uid = context.auth?.uid;
     await assertAdmin(uid);
     const { bookingId, reason } = data;
@@ -186,6 +191,8 @@ exports.rejectBooking = functions.region('asia-south1').https.onCall((0, securit
     }
 }));
 exports.updateBookingPayment = functions.region('asia-south1').https.onCall((0, security_1.secureCallable)(async (data, context) => {
+    console.log('FUNCTION START: updateBookingPayment');
+    const db = getDb();
     const uid = context.auth?.uid;
     await assertAdmin(uid);
     const { bookingId, paymentStatus } = data;
@@ -226,6 +233,8 @@ exports.updateBookingPayment = functions.region('asia-south1').https.onCall((0, 
     }
 }));
 exports.markBookingActive = functions.region('asia-south1').https.onCall((0, security_1.secureCallable)(async (data, context) => {
+    console.log('FUNCTION START: markBookingActive');
+    const db = getDb();
     const uid = context.auth?.uid;
     await assertAdmin(uid);
     const { bookingId } = data;

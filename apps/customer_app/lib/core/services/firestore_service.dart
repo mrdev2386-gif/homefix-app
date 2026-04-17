@@ -94,23 +94,22 @@ class FirestoreService {
   }
 
   /// Stream bookings with pagination support
-  /// CRITICAL FIX: includeMetadataChanges: true forces real-time updates
-  /// CRITICAL FIX: Only sort by createdAt - updatedAt sorting prevents real-time UI refresh
+  /// CRITICAL FIX: includeMetadataChanges: true forces real-time updates for booking status
+  /// Single listener - NO broadcast needed
   Stream<List<Booking>> streamBookings(String userId, {int limit = FirebaseConstants.bookingLimit, DocumentSnapshot? startAfter}) {
     Query query = _db
         .collection(FirebaseConstants.bookingsCollection)
         .where('customerId', isEqualTo: userId)
-        .orderBy('createdAt', descending: true) // FIXED: Only use createdAt for reliable stream updates
-        .limit(limit);
+        .orderBy('createdAt', descending: true)
+        .limit(limit > 20 ? 20 : limit);
     
     if (startAfter != null) {
       query = query.startAfterDocument(startAfter);
     }
     
-    return query.snapshots(includeMetadataChanges: true).asBroadcastStream().map((snapshot) {
-      debugPrint('[BOOKING_STREAM] Snapshot received: ${snapshot.docs.length} bookings, metadata: ${snapshot.metadata}');
+    return query.snapshots(includeMetadataChanges: true).map((snapshot) {
+      if (kDebugMode) debugPrint('[BOOKING_STREAM] Snapshot: ${snapshot.docs.length} bookings');
       final bookings = snapshot.docs.map((doc) => Booking.fromFirestore(doc)).toList();
-      // In-memory sort by updatedAt for display order (doesn't affect stream reactivity)
       bookings.sort((a, b) {
         final aTime = a.updatedAt?.millisecondsSinceEpoch ?? a.createdAt.millisecondsSinceEpoch;
         final bTime = b.updatedAt?.millisecondsSinceEpoch ?? b.createdAt.millisecondsSinceEpoch;
@@ -121,28 +120,29 @@ class FirestoreService {
   }
 
   // Single booking detail
-  /// CRITICAL FIX: includeMetadataChanges: true forces real-time updates
+  /// CRITICAL FIX: includeMetadataChanges: true forces real-time updates for booking status changes
+  /// Single listener - NO broadcast needed
   Stream<Booking> streamBookingDetail(String bookingId) {
     return _db
         .collection(FirebaseConstants.bookingsCollection)
         .doc(bookingId)
         .snapshots(includeMetadataChanges: true)
-        .asBroadcastStream()
         .map((doc) {
-          debugPrint('[BOOKING_DETAIL] Snapshot received for $bookingId, metadata: ${doc.metadata}');
+          if (kDebugMode) debugPrint('[BOOKING_DETAIL] Snapshot for $bookingId');
           return Booking.fromFirestore(doc);
         });
   }
   
   /// SINGLE UNIFIED METHOD for all technician service queries
   /// SAFE MODE: Stream-level fallback - tries orderBy, falls back if error
+  /// Pagination-ready: Supports startAfter for cursor-based pagination
   Stream<List<HomeService>> streamTechnicianServices({
     String sortBy = 'recent',
     int limit = 15,
     bool filterByLocation = false,
     DocumentSnapshot? startAfter,
   }) {
-    if (kDebugMode) debugPrint('[SERVICES_SAFE_MODE] Starting query');
+    if (kDebugMode) debugPrint('[SERVICES_SAFE_MODE] Starting query with limit=$limit');
     
     // Build primary query with sorting
     Query query = _db.collection(FirebaseConstants.technicianServicesCollection);
@@ -167,27 +167,27 @@ class FirestoreService {
     return query.snapshots()
         .handleError((error) {
           if (kDebugMode) {
-            debugPrint('[SERVICES_ERROR] Primary query failed: $error');
+            debugPrint('[SERVICES_ERROR] Primary query failed');
           }
         })
         .asyncExpand((snapshot) {
           // If snapshot has data, use it
           if (snapshot.docs.isNotEmpty) {
             if (kDebugMode) {
-              debugPrint('[SERVICES_SAFE_MODE] Documents fetched: ${snapshot.docs.length}');
+              debugPrint('[SERVICES_SAFE_MODE] Documents: ${snapshot.docs.length}');
             }
             return Stream.value(snapshot);
           }
           
           // If empty, switch to fallback query
           if (kDebugMode) {
-            debugPrint('[SERVICES_FALLBACK] Switching to fallback query');
+            debugPrint('[SERVICES_FALLBACK] Switching to fallback');
           }
           return fallbackQuery.snapshots();
         })
         .map((snapshot) {
           if (kDebugMode) {
-            debugPrint('[SERVICES_PARSE] Processing ${snapshot.docs.length} documents');
+            debugPrint('[SERVICES_PARSE] Processing ${snapshot.docs.length} docs');
           }
           
           List<HomeService> services = snapshot.docs
@@ -207,7 +207,7 @@ class FirestoreService {
               .toList();
           
           if (kDebugMode) {
-            debugPrint('[SERVICES_PARSE] Parsed: ${services.length} services');
+            debugPrint('[SERVICES_PARSE] Parsed: ${services.length}');
           }
           
           return services;
@@ -234,10 +234,10 @@ class FirestoreService {
   Stream<List<HomeService>> streamAllServicesNoFilter() {
     Query query = _db.collection(FirebaseConstants.technicianServicesCollection)
         .orderBy('createdAt', descending: true)
-        .limit(FirebaseConstants.maxLimit); // PERFORMANCE: Add limit even for debug
+        .limit(FirebaseConstants.maxLimit);
     
     return _withErrorHandling(
-      query.snapshots().asBroadcastStream().map((snapshot) {
+      query.snapshots().map((snapshot) {
         final services = snapshot.docs
             .map((doc) => HomeService.fromFirestore(doc))
             .whereType<HomeService>()
@@ -254,8 +254,13 @@ class FirestoreService {
       _cachedServicesStream = null;
     });
     if (kDebugMode) {
-      debugPrint('[CACHE] clearCachedServicesStream called - stream cache cleared');
+      debugPrint('[CACHE] clearCachedServicesStream called - stream cache cleared for refresh');
     }
+  }
+  
+  Stream<List<HomeService>> refreshCachedServicesStream() {
+    clearCachedServicesStream();
+    return getCachedServicesStream();
   }
 
   /// Expose user location for delegates
@@ -279,17 +284,15 @@ class FirestoreService {
   Stream<List<BannerModel>> streamBanners() {
     return _withErrorHandling(
       _db.collection('home_banners')
-          .where('active', isEqualTo: true) // Filter active banners
-          .orderBy('order') // FIRESTORE ORDERBY - NO IN-MEMORY SORTING
-          .limit(10) // PERFORMANCE: Limit banner count
+          .where('active', isEqualTo: true)
+          .orderBy('order')
+          .limit(10)
           .snapshots()
-          .asBroadcastStream()
           .map((snapshot) {
             final List<BannerModel> banners = [];
             for (var doc in snapshot.docs) {
               try {
                 final banner = BannerModel.fromFirestore(doc);
-                // AUDIT: Defensive check for imageUrl
                 if (banner.imageUrl.isEmpty) {
                   if (kDebugMode) debugPrint('⚠️ [FirestoreService] Skipping banner ${doc.id} due to missing imageUrl');
                   continue;
@@ -299,7 +302,6 @@ class FirestoreService {
                 if (kDebugMode) debugPrint('❌ [FirestoreService] Error parsing banner ${doc.id}: $e');
               }
             }
-            // NO IN-MEMORY SORTING - Already ordered by Firestore
             return banners;
           }),
     );
@@ -316,31 +318,30 @@ class FirestoreService {
   
   // --- Address Management ---
   Stream<List<Address>> streamAddresses(String userId) {
-    debugPrint('[ADDRESS_LIST] Starting stream for user $userId');
+    if (kDebugMode) debugPrint('[ADDRESS_LIST] Stream started');
     return _db
         .collection('customers')
         .doc(userId)
         .collection('addresses')
         .orderBy('createdAt', descending: true)
         .snapshots()
-        .asBroadcastStream()
         .map((snapshot) {
-          debugPrint('[ADDRESS_LIST] Loaded ${snapshot.docs.length} addresses');
+          if (kDebugMode) debugPrint('[ADDRESS_LIST] Loaded ${snapshot.docs.length}');
           final addresses = snapshot.docs.map((doc) {
             try {
               return Address.fromFirestore(doc);
             } catch (e) {
-              debugPrint('[ADDRESS_LIST] Error parsing address ${doc.id}: $e');
+              if (kDebugMode) debugPrint('[ADDRESS_LIST] Parse error: ${doc.id}');
               return null;
             }
           }).whereType<Address>().toList();
-          debugPrint('[ADDRESS_LIST] Returning ${addresses.length} valid addresses');
+          if (kDebugMode) debugPrint('[ADDRESS_LIST] Valid: ${addresses.length}');
           return addresses;
         });
   }
   
   Future<void> saveAddress(String userId, Address address) async {
-    debugPrint('[ADDRESS_SAVE] Starting save for user $userId, isDefault: ${address.isDefault}');
+    if (kDebugMode) debugPrint('[ADDRESS_SAVE] Saving address');
     
     if (address.isDefault) {
       try {
@@ -356,9 +357,9 @@ class FirestoreService {
             await doc.reference.update({'isDefault': false});
           }
         }
-        debugPrint('[ADDRESS_SAVE] Cleared ${existingDefaults.docs.length} existing default addresses');
+        if (kDebugMode) debugPrint('[ADDRESS_SAVE] Cleared ${existingDefaults.docs.length} defaults');
       } catch (e) {
-        debugPrint('[ADDRESS_SAVE] Error clearing existing defaults: $e');
+        if (kDebugMode) debugPrint('[ADDRESS_SAVE] Error clearing defaults: $e');
       }
     }
     
@@ -410,10 +411,10 @@ class FirestoreService {
       _locationService.clearLocationCache();
       // OPTIMIZATION: Clear services cache to refetch with new location
       clearCachedServicesStream();
-      if (kDebugMode) debugPrint('✅ [ADDRESS_SAVE] Location cache and services cache cleared');
+      if (kDebugMode) debugPrint('✅ [ADDRESS_SAVE] Caches cleared');
     }
     
-    debugPrint('[ADDRESS_SAVE] Address saved successfully for user $userId');
+    if (kDebugMode) debugPrint('[ADDRESS_SAVE] Saved');
   }
 
   Future<void> deleteAddress(String userId, String addressId) async {
@@ -533,7 +534,6 @@ class FirestoreService {
         .where('isDefault', isEqualTo: true)
         .limit(1)
         .snapshots()
-        .asBroadcastStream()
         .map((snapshot) {
       if (snapshot.docs.isEmpty) return null;
       return Address.fromFirestore(snapshot.docs.first);
@@ -583,7 +583,6 @@ class FirestoreService {
     
     return userDoc.collection('cart')
         .snapshots()
-        .asBroadcastStream()
         .map((snapshot) {
           final items = snapshot.docs.map((doc) => CartItem.fromFirestore(doc)).toList();
           
@@ -969,7 +968,6 @@ class FirestoreService {
         .orderBy('createdAt', descending: true)
         .limit(FirebaseConstants.defaultLimit)
         .snapshots()
-        .asBroadcastStream()
         .map((snapshot) => snapshot.docs
             .map((doc) => ServiceRequest.fromFirestore(doc))
             .toList())
@@ -988,7 +986,6 @@ class FirestoreService {
         .orderBy('createdAt', descending: true)
         .limit(20)
         .snapshots()
-        .asBroadcastStream()
         .map((snapshot) => snapshot.docs
             .map((doc) => Proposal.fromFirestore(doc))
             .toList())
@@ -1095,7 +1092,7 @@ class FirestoreService {
   }
 
   Stream<UserModel> streamUserModel(String userId) {
-    return _db.collection('customers').doc(userId).snapshots().asBroadcastStream().map((doc) {
+    return _db.collection('customers').doc(userId).snapshots().map((doc) {
       if (!doc.exists) {
         return UserModel(uid: userId);
       }
@@ -1206,7 +1203,7 @@ class FirestoreService {
   }
 
   Stream<List<Map<String, String>>> streamFavoriteIdsWithCategory(String userId) {
-    return _db.collection('customers').doc(userId).collection('favorites').snapshots().asBroadcastStream().map((snapshot) => 
+    return _db.collection('customers').doc(userId).collection('favorites').snapshots().map((snapshot) => 
       snapshot.docs.map((doc) => {
         'serviceId': doc.id,
         'categoryId': (doc.data()['categoryId'] ?? '').toString(),
@@ -1240,13 +1237,11 @@ class FirestoreService {
     return _db
         .collection('cleaning_essentials')
         .where('isActive', isEqualTo: true)
-        .orderBy('order') // FIRESTORE ORDERBY - NO IN-MEMORY SORTING
-        .limit(20) // PERFORMANCE: Add limit
+        .orderBy('order')
+        .limit(20)
         .snapshots()
-        .asBroadcastStream()
         .map((snapshot) {
           return snapshot.docs.map((doc) => CleaningEssential.fromFirestore(doc)).toList();
-          // NO IN-MEMORY SORTING - Already ordered by Firestore
         });
   }
 
@@ -1256,7 +1251,6 @@ class FirestoreService {
         .orderBy('order')
         .limit(6)
         .snapshots()
-        .asBroadcastStream()
         .asyncMap((snapshot) async {
       final spotlights = <Map<String, dynamic>>[];
       for (var doc in snapshot.docs) {
@@ -1288,16 +1282,14 @@ class FirestoreService {
     return _db
         .collection('service_bottom_banners')
         .where('isActive', isEqualTo: true)
-        .orderBy('order') // FIRESTORE ORDERBY - NO IN-MEMORY SORTING
-        .limit(10) // PERFORMANCE: Add limit
+        .orderBy('order')
+        .limit(10)
         .snapshots()
-        .asBroadcastStream()
         .map((snapshot) {
           final List<ServiceBanner> banners = [];
           for (var doc in snapshot.docs) {
             try {
               final banner = ServiceBanner.fromFirestore(doc);
-              // AUDIT: Defensive check for imageUrl
               if (banner.imageUrl.isEmpty) {
                 continue;
               }
@@ -1306,7 +1298,6 @@ class FirestoreService {
               debugPrint('❌ [FirestoreService] Error parsing bottom banner ${doc.id}: $e');
             }
           }
-          // NO IN-MEMORY SORTING - Already ordered by Firestore
           return banners;
         });
   }
@@ -1315,15 +1306,13 @@ class FirestoreService {
   Stream<List<TechnicianCategory>> streamTechnicianCategories() {
     return _db.collection('categories')
         .where('isActive', isEqualTo: true)
-        .orderBy('order') // FIRESTORE ORDERBY - NO IN-MEMORY SORTING
-        .limit(50) // PERFORMANCE: Add reasonable limit
+        .orderBy('order')
+        .limit(50)
         .snapshots()
-        .asBroadcastStream()
         .map((snapshot) {
           return snapshot.docs
             .map((doc) => TechnicianCategory.fromFirestore(doc))
             .toList();
-          // NO IN-MEMORY SORTING - Already ordered by Firestore
         });
   }
 
@@ -1336,15 +1325,13 @@ class FirestoreService {
     }
 
     return query
-        .orderBy('order') // FIRESTORE ORDERBY - NO IN-MEMORY SORTING
-        .limit(100) // PERFORMANCE: Add reasonable limit
+        .orderBy('order')
+        .limit(100)
         .snapshots()
-        .asBroadcastStream()
         .map((snapshot) {
           return snapshot.docs
             .map((doc) => TechnicianSubcategory.fromFirestore(doc))
             .toList();
-          // NO IN-MEMORY SORTING - Already ordered by Firestore
         });
   }
 
@@ -1414,7 +1401,6 @@ class FirestoreService {
         .collection('subServices')
         .where('isActive', isEqualTo: true)
         .snapshots()
-        .asBroadcastStream()
         .map((snapshot) {
           return snapshot.docs
               .map((doc) => HomeService.fromFirestore(doc))
@@ -1468,7 +1454,6 @@ class FirestoreService {
         .orderBy('createdAt', descending: true)
         .limit(FirebaseConstants.defaultLimit)
         .snapshots()
-        .asBroadcastStream()
         .map((snapshot) =>
             snapshot.docs.map((doc) => {...doc.data(), "id": doc.id}).toList())
         .handleError((e) {
@@ -1479,8 +1464,8 @@ class FirestoreService {
 
   // --- NEW METHODS FOR CLEAN ARCHITECTURE ---
 
-  /// Get user profile data
-  /// Replaces direct FirebaseFirestore.instance access in UI components
+  /// Get user profile data with offline support
+  /// Uses Source.serverAndCache for critical reads
   Future<Map<String, dynamic>?> getUserProfile(String userId) async {
     if (userId.isEmpty) {
       if (kDebugMode) debugPrint('[PATH GUARD] blocked empty id in getUserProfile');
@@ -1488,7 +1473,10 @@ class FirestoreService {
     }
     
     try {
-      final doc = await _db.collection('customers').doc(userId).get();
+      // Use serverAndCache for offline consistency
+      final doc = await _db.collection('customers').doc(userId).get(
+        const GetOptions(source: Source.serverAndCache),
+      );
       return doc.data();
     } catch (e) {
       if (kDebugMode) debugPrint('❌ [FirestoreService] Failed to get user profile: $e');
@@ -1509,7 +1497,6 @@ class FirestoreService {
           .where('district', isEqualTo: district)
           .limit(50)
           .snapshots()
-          .asBroadcastStream()
           .map((snapshot) => snapshot.docs.map((doc) => {
             'id': doc.id,
             ...doc.data(),

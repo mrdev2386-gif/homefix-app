@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:customer_app/core/models/service.dart';
 import 'package:customer_app/core/providers/favorites_provider.dart';
@@ -122,6 +123,26 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
                         ),
                       ),
                     ),
+                  if (hasOffer)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEF4444),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '${((price - finalPrice) / price * 100).toStringAsFixed(0)}% OFF',
+                          style: GoogleFonts.outfit(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
                   Positioned(
                     bottom: 8,
                     right: 8,
@@ -178,20 +199,7 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
                     // Price row - main price gets priority with Expanded
                     Row(
                       children: [
-                        Expanded(
-                          child: Text(
-                            "₹${finalPrice.toStringAsFixed(0)}",
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (hasOffer) ...[
-                          const SizedBox(width: 4),
+                        if (hasOffer)
                           Flexible(
                             child: Text(
                               "₹${price.toStringAsFixed(0)}",
@@ -204,7 +212,20 @@ class _UniversalServiceCardState extends State<UniversalServiceCard> {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                        ],
+                        if (hasOffer)
+                          const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            "₹${finalPrice.toStringAsFixed(0)}",
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ],
                     ),
                     const Spacer(),

@@ -578,6 +578,7 @@ exports.admin_manageHomeSections = functions.region('asia-south1').https.onCall(
 // CATEGORY MANAGEMENT (Under categories collection)
 // ============================================================================
 exports.admin_manageCategory = functions.region('asia-south1').https.onCall(async (data, context) => {
+    console.log('FUNCTION START: admin_manageCategory');
     await (0, utils_1.assertAdmin)(context);
     const { action, categoryId, categoryData, orders } = data;
     // action: 'add' | 'update' | 'delete' | 'reorder'

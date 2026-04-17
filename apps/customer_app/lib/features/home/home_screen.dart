@@ -57,22 +57,12 @@ class _HomeScreenState extends State<HomeScreen>
     super.initState();
     _categoryService = context.read<CategoryService>();
     final auth = Provider.of<AuthService>(context, listen: false);
-    
-    // CRITICAL FIX: Initialize stable stream ONCE
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
     _servicesStream = firestoreService.getCachedServicesStream();
-    if (kDebugMode) debugPrint('[STREAM] Home stream created only once');
-    
-    // TEMPORARY DEBUG: Verify Firestore data structure
-    // REMOVE AFTER DEBUGGING
+    if (kDebugMode) debugPrint('[STREAM] Home stream created once');
     firestoreService.debugCheckServices();
-    
     if (auth.currentUser != null) {
-      _bookingsStream =
-          firestoreService.streamBookings(auth.currentUser!.uid, limit: 1);
-
-          // REMOVED: Do not clear cache on init - causes services to disappear
-          // Location is already initialized, stream will use cached location
+      _bookingsStream = firestoreService.streamBookings(auth.currentUser!.uid, limit: 1);
     }
   }
   

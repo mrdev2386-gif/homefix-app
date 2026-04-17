@@ -56,6 +56,7 @@ function getRazorpayConfig() {
  * Admin triggers manual payout for a technician
  */
 exports.triggerTechnicianPayout = functions.region('asia-south1').https.onCall(async (data, context) => {
+    console.log('FUNCTION START: triggerTechnicianPayout');
     await (0, utils_1.assertAdmin)(context);
     const { technicianId, amount } = data;
     if (!technicianId || !amount || amount <= 0) {

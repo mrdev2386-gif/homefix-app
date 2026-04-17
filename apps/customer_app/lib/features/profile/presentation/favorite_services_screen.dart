@@ -79,6 +79,9 @@ class FavoriteServicesScreen extends StatelessWidget {
                      service.offerPrice! > 0 && 
                      service.offerPrice! < service.price;
     final finalPrice = hasOffer ? service.offerPrice! : service.price;
+    final int discount = hasOffer 
+        ? ((service.price - service.offerPrice!) / service.price * 100).round()
+        : 0;
     
     return GestureDetector(
       onTap: () {
@@ -161,33 +164,27 @@ class FavoriteServicesScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-                  // Remove favorite button
-                  Positioned(
-                    top: 8,
-                    left: 8,
-                    child: Consumer<FavoritesProvider>(
-                      builder: (context, favorites, _) {
-                        return GestureDetector(
-                          onTap: () => favorites.toggleFavorite(
-                            service.id,
-                            service.category,
+                  // Discount badge
+                  if (discount > 0)
+                    Positioned(
+                      bottom: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEF4444),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '$discount% OFF',
+                          style: GoogleFonts.outfit(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
                           ),
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.9),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.favorite_rounded,
-                              color: Colors.red,
-                              size: 16,
-                            ),
-                          ),
-                        );
-                      },
+                        ),
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),

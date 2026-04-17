@@ -70,12 +70,11 @@ class Booking {
     final data = doc.data() as Map<String, dynamic>? ?? {};
     final servicesList = List<Map<String, dynamic>>.from(data['services'] ?? []);
     
-    // DEBUG: Log raw Firestore data
+    // DEBUG: Log raw Firestore data (debug mode only)
     if (kDebugMode) {
-      debugPrint('📋 [Booking.fromFirestore] Raw Firestore data for ${doc.id}:');
-      debugPrint('  - status field: ${data['status']}');
-      debugPrint('  - bookingStatus field: ${data['bookingStatus']}');
-      debugPrint('  - All fields: ${data.keys.toList()}');
+      debugPrint('📋 [Booking.fromFirestore] Parsed booking ${doc.id}');
+      debugPrint('  - status: ${data['status']}');
+      debugPrint('  - bookingStatus: ${data['bookingStatus']}');
     }
     
     // CRITICAL FIX 5: Validate technicianId is not null
@@ -87,7 +86,9 @@ class Booking {
     // CRITICAL FIX: Status field priority - trust 'status' over 'bookingStatus'
     final status = data['status'] ?? data['bookingStatus'] ?? 'pending';
     if (kDebugMode) {
+      if (kDebugMode) {
       debugPrint('✅ [Booking.fromFirestore] Mapped status for ${doc.id}: $status');
+    }
     }
     
     return Booking(

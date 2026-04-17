@@ -43,7 +43,7 @@ exports.cleanupOTPRateLimits = exports.checkOTPRateLimitCallable = void 0;
 exports.checkOTPRateLimit = checkOTPRateLimit;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
-const db = admin.firestore();
+const getDb = () => admin.firestore();
 // Rate limiting configuration
 const OTP_COOLDOWN_SECONDS = 60; // 60 seconds between OTP requests
 const MAX_OTP_ATTEMPTS_PER_DAY = 10; // Maximum 10 OTP requests per phone per day
@@ -54,6 +54,7 @@ const MAX_OTP_ATTEMPTS_PER_HOUR = 5; // Maximum 5 OTP requests per phone per hou
  */
 async function checkOTPRateLimit(phoneNumber) {
     try {
+        const db = getDb();
         // Normalize phone number (remove spaces, dashes, etc.)
         const normalizedPhone = phoneNumber.replace(/[\s\-\(\)]/g, '');
         // Get or create rate limit record
@@ -160,11 +161,12 @@ exports.checkOTPRateLimitCallable = functions
 exports.cleanupOTPRateLimits = functions
     .region('asia-south1')
     .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
-    .pubsub.schedule('0 3 * * *') // Daily at 3 AM UTC
-    .timeZone('UTC')
+    .pubsub.schedule('0 3 * * *') // Daily at 3 AM IST
+    .timeZone('Asia/Kolkata')
     .onRun(async (context) => {
-    console.log('Running cleanupOTPRateLimits at', new Date().toISOString());
+    console.log('FUNCTION START: cleanupOTPRateLimits', new Date().toISOString());
     try {
+        const db = getDb();
         // Delete records older than 30 days
         const cutoffTime = admin.firestore.Timestamp.fromDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
         const oldRecords = await db

@@ -1,16 +1,14 @@
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
 
+console.log("INIT START");
+
 // Safe initialization - only initialize if not already initialized
 if (!admin.apps.length) {
     admin.initializeApp();
 }
-console.log("BOOT OK - Functions loading...");
 
-import * as testing from './testing';
 import { testAuth } from './testing/testAuth';
-import { getAppConfig } from './shared/config';
-import * as crypto from 'crypto';
 
 
 
@@ -669,3 +667,13 @@ export { testAuth };
 import * as testRazorpay from './payments/testRazorpay';
 export const testRazorpayConnection = testRazorpay.testRazorpayConnection;
 export const testBankVerification = testRazorpay.testBankVerification;
+
+// ==========================================
+// HEALTH CHECK
+// ==========================================
+
+export const healthCheck = functions.https.onRequest((req, res) => {
+    res.status(200).send("OK");
+});
+
+console.log("INIT END");

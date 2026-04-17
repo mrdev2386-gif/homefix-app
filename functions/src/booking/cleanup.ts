@@ -6,7 +6,7 @@ const db = admin.firestore();
 
 export const cleanupStaleBookings = functions
     .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
-    .pubsub.schedule('every 1 hours')
+    .pubsub.schedule('every 6 hours')
     .onRun(async (context) => {
         console.log('Running cleanupStaleBookings at', new Date().toISOString());
         const now = Date.now();

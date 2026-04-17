@@ -107,7 +107,7 @@ class BookingService {
   }
 
   Stream<List<Booking>> getCustomerBookings(String customerId) {
-    return _firestoreService.streamBookings(customerId, limit: 20);
+    return _firestoreService.streamBookings(customerId, limit: 10);
   }
 
   /// Cancel a booking

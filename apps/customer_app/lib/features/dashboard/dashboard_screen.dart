@@ -57,10 +57,10 @@ class _DashboardScreenState extends State<DashboardScreen> with AutomaticKeepAli
     _categoryService = context.read<CategoryService>();
     final auth = Provider.of<AuthService>(context, listen: false);
     
-    // CRITICAL FIX: Initialize stable stream ONCE
+    // CRITICAL FIX: Initialize stable stream ONCE in initState
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
     _servicesStream = firestoreService.getCachedServicesStream();
-    if (kDebugMode) debugPrint('[STREAM] Dashboard stream created only once');
+    if (kDebugMode) debugPrint('[STREAM] Dashboard stream created only once in initState');
     
     if (auth.currentUser != null) {
       _bookingsStream = firestoreService.streamBookings(auth.currentUser!.uid, limit: 1);
