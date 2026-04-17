@@ -159,10 +159,11 @@ exports.checkOTPRateLimitCallable = functions
  */
 exports.cleanupOTPRateLimits = functions
     .region('asia-south1')
+    .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
     .pubsub.schedule('0 3 * * *') // Daily at 3 AM UTC
     .timeZone('UTC')
     .onRun(async (context) => {
-    console.log('[OTP_RATE_LIMIT_CLEANUP] Starting cleanup...');
+    console.log('Running cleanupOTPRateLimits at', new Date().toISOString());
     try {
         // Delete records older than 30 days
         const cutoffTime = admin.firestore.Timestamp.fromDate(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));

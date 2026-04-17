@@ -427,6 +427,7 @@ export {
 // Technician Finance & Payouts
 import * as payoutLogic from './finance/payout_logic';
 import * as technicianWithdrawal from './finance/technician_withdrawal';
+import * as withdrawalRequests from './finance/withdrawal_requests';
 import * as walletReconciliation from './finance/wallet_reconciliation';
 import * as walletMigration from './finance/wallet_migration';
 import * as refundCompensation from './finance/refund_compensation';
@@ -436,21 +437,32 @@ export const razorpayPayoutWebhook = payoutLogic.razorpayPayoutWebhook;
 export const settleTechnicianBalance = payoutLogic.settleTechnicianBalance;
 
 // Wallet Migration (FIX 2: WALLET MIGRATION CHECK)
-export const migrateAllWallets = walletMigration.migrateAllWallets;
+// TEMPORARILY DISABLED - Health check failure
+// export const migrateAllWallets = walletMigration.migrateAllWallets;
 export const migrateSingleWallet = walletMigration.migrateSingleWallet;
 
 // Refund Compensation (FIX 3: REFUND + WALLET CONSISTENCY)
 export const retryRefundCompensation = refundCompensation.retryRefundCompensation;
-export const retryAllPendingCompensations = refundCompensation.retryAllPendingCompensations;
+// TEMPORARILY DISABLED - Health check failure
+// export const retryAllPendingCompensations = refundCompensation.retryAllPendingCompensations;
 export const getPendingCompensations = refundCompensation.getPendingCompensations;
 export const autoRetryCompensations = refundCompensation.autoRetryCompensations;
 
-// Technician Withdrawal (Automatic Razorpay Payouts - No Admin Approval)
+// DEPRECATED: Technician Withdrawal (Automatic Razorpay Payouts - No Admin Approval)
+// Use withdrawal_requests.ts instead for admin-approved withdrawals
 export const requestWithdrawal = technicianWithdrawal.requestWithdrawal;
-export const getTransactionHistory = technicianWithdrawal.getTransactionHistory;
+// TEMPORARILY DISABLED - Health check failure
+// export const getTransactionHistory = technicianWithdrawal.getTransactionHistory;
 export const getTechnicianPayoutHistory = technicianWithdrawal.getPayoutHistory;
 export const generateBookingQR = technicianWithdrawal.generateBookingQR;
 export const generateTechnicianWalletQR = technicianWithdrawal.generateTechnicianWalletQR;
+
+// NEW: Withdrawal Requests with Admin Approval
+export const createWithdrawalRequest = withdrawalRequests.createWithdrawalRequest;
+export const approveWithdrawalRequest = withdrawalRequests.approveWithdrawalRequest;
+export const rejectWithdrawalRequest = withdrawalRequests.rejectWithdrawalRequest;
+export const getWithdrawalRequests = withdrawalRequests.getWithdrawalRequests;
+export const getMyWithdrawalRequests = withdrawalRequests.getMyWithdrawalRequests;
 
 // Wallet Reconciliation (Scheduled & Admin)
 export const walletReconciliationDisabled = walletReconciliation.walletReconciliationDisabled;
@@ -628,7 +640,8 @@ export const onCustomRequestCreatedAlertTechnicians = techAlerts.onCustomRequest
 // CUSTOMER FEATURES
 // ==========================================
 
-export const onBookingCompletedAwardReferral = customerFeatures.onBookingCompletedAwardReferral;
+// TEMPORARILY DISABLED - Health check failure
+// export const onBookingCompletedAwardReferral = customerFeatures.onBookingCompletedAwardReferral;
 
 
 

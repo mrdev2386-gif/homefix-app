@@ -697,21 +697,20 @@ async function processBookingPayment(
             "payment.amountPaid": amount,
             "payment.paymentMethod": payment.method,
             "payment.paidAt": admin.firestore.FieldValue.serverTimestamp(),
-            "paymentStatus": "paid",
+            "paymentStatus": "paid",  // FIX #5: UNIFIED PAYMENT STATUS
+            "bookingStatus": "paid",  // FIX #5: UNIFIED PAYMENT STATUS
             "payout.status": "pending",
             "payout.totalAmount": booking.pricing?.total || booking.finalAmount || booking.price || amount,
         };
 
-        // Determine status based on payment method
+        // Determine booking status based on payment method
         const paymentMethod = booking.payment?.paymentMethod || booking.paymentMethod || 'after_service';
         if (paymentMethod === 'online') {
             // Online payment: move to confirmed (ready for service)
             updateData["status"] = "confirmed";
-            updateData["bookingStatus"] = "confirmed";
         } else {
             // After-service payment: mark as completed
             updateData["status"] = "completed";
-            updateData["bookingStatus"] = "completed";
         }
 
         if (booking.pricing) {
@@ -757,7 +756,9 @@ async function processBookingPayment(
 
 /**
  * Process technician wallet credit
- * CRITICAL: Uses atomic transaction to prevent double credit
+ * FIX #2: GLOBAL IDEMPOTENCY - Check ALL sources
+ * FIX #3: IDEMPOTENCY INSIDE TRANSACTION
+ * FIX #4: FORCE PLATFORM FEE CONSISTENCY
  */
 async function processTechnicianWalletCredit(
     orderData: { orderId: string; technicianId: string; amount: number },
@@ -768,8 +769,39 @@ async function processTechnicianWalletCredit(
 
     console.log(`${LOG_PREFIX} credit_attempt - Technician: ${technicianId}, Amount: ${amount}`);
 
-    // STEP 2: WALLET AUTO-CREATE GUARD - Use transaction for atomic wallet credit
+    // FIX #2: GLOBAL IDEMPOTENCY CHECK (BEFORE TRANSACTION)
+    const walletRef = db.collection("technician_wallets").doc(technicianId);
+    const existingTxnSnapshot = await walletRef.collection('transactions')
+        .where('referenceId', '==', orderId)
+        .where('status', '==', 'completed')
+        .limit(1)
+        .get();
+
+    if (!existingTxnSnapshot.empty) {
+        console.log(`${LOG_PREFIX} duplicate_credit_prevented - Order: ${orderId}`);
+        return; // EXIT - Already credited
+    }
+
+    // FIX #4: FORCE PLATFORM FEE CONSISTENCY
+    const PLATFORM_FEE_PERCENT = 0.10;
+    const platformFee = Math.round(amount * PLATFORM_FEE_PERCENT * 100) / 100;
+    const technicianAmount = amount - platformFee;
+
+    // FIX #3: IDEMPOTENCY INSIDE TRANSACTION
     await db.runTransaction(async (transaction) => {
+        // Re-check idempotency INSIDE transaction
+        const existingTxnQuery = await transaction.get(
+            walletRef.collection('transactions')
+                .where('referenceId', '==', orderId)
+                .where('status', '==', 'completed')
+                .limit(1)
+        );
+
+        if (!existingTxnQuery.empty) {
+            console.log(`${LOG_PREFIX} duplicate_credit_prevented_in_transaction - Order: ${orderId}`);
+            throw new Error("IDEMPOTENCY_CHECK_FAILED");
+        }
+
         // Re-read order inside transaction for idempotency
         const orderRef = db.collection("razorpayOrders").doc(orderId);
         const orderDoc = await transaction.get(orderRef);
@@ -788,26 +820,23 @@ async function processTechnicianWalletCredit(
             });
         }
 
-        const walletRef = db.collection("technician_wallets").doc(technicianId);
         const walletDoc = await transaction.get(walletRef);
 
-        // STEP 2: Wallet Auto-Create - Create if doesn't exist, update if exists
+        // Wallet Auto-Create - Create if doesn't exist, update if exists
         if (!walletDoc.exists) {
-            // Create new wallet document with initial balance
             transaction.set(walletRef, {
-                availableBalance: amount,
+                availableBalance: technicianAmount,
                 pendingBalance: 0,
-                lifetimeEarnings: amount,
+                lifetimeEarnings: technicianAmount,
                 lastPayoutAt: null,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
             console.log(`${LOG_PREFIX} wallet_created - New wallet for technician: ${technicianId}`);
         } else {
-            // Increment existing balance atomically
             transaction.update(walletRef, {
-                availableBalance: admin.firestore.FieldValue.increment(amount),
-                lifetimeEarnings: admin.firestore.FieldValue.increment(amount),
+                availableBalance: admin.firestore.FieldValue.increment(technicianAmount),
+                lifetimeEarnings: admin.firestore.FieldValue.increment(technicianAmount),
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
         }
@@ -818,11 +847,25 @@ async function processTechnicianWalletCredit(
             type: "credit",
             source: "razorpay",
             status: "completed",
-            amount: amount,
-            fee: 0,
+            amount: technicianAmount,
+            fee: platformFee,
+            grossAmount: amount,
             referenceId: orderId,
             paymentId,
-            description: "Wallet credit via Razorpay",
+            description: `Wallet credit via Razorpay (Platform fee: ₹${platformFee.toFixed(2)})`,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        // Log platform fee
+        const platformFeeRef = db.collection('platform_fees').doc();
+        transaction.set(platformFeeRef, {
+            orderId,
+            technicianId,
+            source: 'razorpay_wallet_credit',
+            totalAmount: amount,
+            feePercent: PLATFORM_FEE_PERCENT,
+            feeAmount: platformFee,
+            technicianAmount,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
     });
@@ -831,7 +874,8 @@ async function processTechnicianWalletCredit(
         orderId,
         paymentId,
         technicianId,
-        amount,
+        amount: technicianAmount,
+        platformFee,
         action: "wallet_credit_v2",
         createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
@@ -839,12 +883,12 @@ async function processTechnicianWalletCredit(
     await db.collection("notifications").add({
         userId: technicianId,
         title: "Wallet Credited",
-        body: `Your wallet has been credited with ₹${amount}.`,
+        body: `Your wallet has been credited with ₹${technicianAmount.toFixed(2)} (₹${platformFee.toFixed(2)} platform fee deducted).`,
         type: "wallet_credit",
         createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    console.log(`${LOG_PREFIX} credit_success - Wallet credited for technician: ${technicianId}, Amount: ${amount}`);
+    console.log(`${LOG_PREFIX} credit_success - Wallet credited for technician: ${technicianId}, Amount: ${technicianAmount}, Fee: ${platformFee}`);
 }
 
 /**
@@ -874,7 +918,9 @@ async function sendPaymentNotifications(booking: any, bookingId: string, amount:
 
 /**
  * Credit technician wallet after booking payment
- * STEP 1: Uses safe platform fee extraction and prevents negative amounts
+ * FIX #2: GLOBAL IDEMPOTENCY - Check ALL sources before credit
+ * FIX #3: IDEMPOTENCY INSIDE TRANSACTION - Prevent race conditions
+ * FIX #4: FORCE PLATFORM FEE CONSISTENCY - Always calculate 10%
  */
 async function creditTechnicianWalletV2(
     techId: string,
@@ -883,21 +929,36 @@ async function creditTechnicianWalletV2(
     pricing: any
 ) {
     try {
-        // STEP 1: FIX PLATFORM FEE SOURCE - Safe extraction from multiple sources
-        let platformFee = 0;
-        if (pricing && pricing.platformFee != null) {
-            platformFee = pricing.platformFee;
+        // FIX #2: GLOBAL IDEMPOTENCY CHECK (BEFORE TRANSACTION)
+        // Check if wallet already credited from ANY source (client OR webhook)
+        const walletRef = db.collection('technician_wallets').doc(techId);
+        const existingTxnSnapshot = await walletRef.collection('transactions')
+            .where('referenceId', '==', bookingId)
+            .where('status', '==', 'completed')
+            .limit(1)
+            .get();
+
+        if (!existingTxnSnapshot.empty) {
+            console.log(`${LOG_PREFIX} duplicate_credit_prevented - Booking: ${bookingId}, Technician: ${techId}`);
+            await db.collection('payment_logs').add({
+                bookingId,
+                technicianId: techId,
+                status: 'duplicate_credit_prevented',
+                action: 'idempotency_check_passed',
+                source: 'webhook',
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            }).catch(err => console.error(`${LOG_PREFIX} Failed to log duplicate prevention:`, err));
+            return; // EXIT - Already credited
         }
+
+        // FIX #4: FORCE PLATFORM FEE CONSISTENCY - Always calculate 10%
+        const PLATFORM_FEE_PERCENT = 0.10;
+        const platformFee = Math.round(totalAmount * PLATFORM_FEE_PERCENT * 100) / 100;
+        const technicianAmount = totalAmount - platformFee;
         
-        // Calculate technician amount
-        let technicianAmount = totalAmount - platformFee;
-        
-        // STEP 1: Ensure technicianAmount NEVER negative
+        // Ensure technicianAmount NEVER negative
         if (technicianAmount < 0) {
-            console.warn(`${LOG_PREFIX} Negative technician amount prevented in wallet credit - Booking: ${bookingId}, Total: ${totalAmount}, Fee: ${platformFee}`);
-            technicianAmount = 0;
-            
-            // Log edge case
+            console.warn(`${LOG_PREFIX} Negative technician amount prevented - Booking: ${bookingId}, Total: ${totalAmount}, Fee: ${platformFee}`);
             await db.collection('payment_logs').add({
                 bookingId,
                 technicianId: techId,
@@ -908,16 +969,30 @@ async function creditTechnicianWalletV2(
                 source: 'webhook',
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             }).catch(err => console.error(`${LOG_PREFIX} Failed to log edge case:`, err));
+            return; // EXIT - Invalid amount
         }
 
-        const walletRef = db.collection('technician_wallets').doc(techId);
         const txnRef = walletRef.collection('transactions').doc();
 
+        // FIX #3: IDEMPOTENCY INSIDE TRANSACTION - Prevent race conditions
         await db.runTransaction(async (transaction) => {
+            // RE-CHECK idempotency INSIDE transaction (critical for race conditions)
+            const existingTxnQuery = await transaction.get(
+                walletRef.collection('transactions')
+                    .where('referenceId', '==', bookingId)
+                    .where('status', '==', 'completed')
+                    .limit(1)
+            );
+
+            if (!existingTxnQuery.empty) {
+                console.log(`${LOG_PREFIX} duplicate_credit_prevented_in_transaction - Booking: ${bookingId}`);
+                throw new Error('IDEMPOTENCY_CHECK_FAILED');
+            }
+
             const walletDoc = await transaction.get(walletRef);
 
             if (!walletDoc.exists) {
-                // STEP 2: Wallet Auto-Create with proper initial values
+                // Create new wallet with proper initial values
                 transaction.set(walletRef, {
                     availableBalance: technicianAmount,
                     pendingBalance: 0,
@@ -941,14 +1016,33 @@ async function creditTechnicianWalletV2(
                 status: 'completed',
                 amount: technicianAmount,
                 fee: platformFee,
+                grossAmount: totalAmount,
                 referenceId: bookingId,
-                description: `Payment for booking`,
+                description: `Payment for booking (Platform fee: ₹${platformFee.toFixed(2)})`,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            // Log platform fee collection
+            const platformFeeRef = db.collection('platform_fees').doc();
+            transaction.set(platformFeeRef, {
+                bookingId,
+                technicianId: techId,
+                source: 'booking_payment_webhook',
+                totalAmount,
+                feePercent: PLATFORM_FEE_PERCENT,
+                feeAmount: platformFee,
+                technicianAmount,
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
         });
 
         console.log(`${LOG_PREFIX} credit_success - Technician: ${techId}, Booking: ${bookingId}, Amount: ${technicianAmount}, Platform Fee: ${platformFee}`);
-    } catch (error) {
+    } catch (error: any) {
+        if (error.message === 'IDEMPOTENCY_CHECK_FAILED') {
+            console.log(`${LOG_PREFIX} duplicate_credit_prevented - Already processed`);
+            return; // Safe exit
+        }
         console.error(`${LOG_PREFIX} credit_error - Technician: ${techId}, Error:`, error);
+        throw error;
     }
 }

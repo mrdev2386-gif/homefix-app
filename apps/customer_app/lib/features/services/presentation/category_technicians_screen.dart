@@ -18,6 +18,36 @@ class CategoryTechniciansScreen extends StatefulWidget {
 class _CategoryTechniciansScreenState extends State<CategoryTechniciansScreen> {
   final UserLocationService _locationService = UserLocationService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  
+  // SCALABILITY: Pagination support
+  static const int _pageSize = 20;
+  final List<DocumentSnapshot> _allDocs = [];
+  bool _hasMore = true;
+  bool _isLoadingMore = false;
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent * 0.8) {
+      _loadMore();
+    }
+  }
+
+  void _loadMore() {
+    if (!_hasMore || _isLoadingMore) return;
+    setState(() => _isLoadingMore = true);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -48,9 +78,10 @@ class _CategoryTechniciansScreenState extends State<CategoryTechniciansScreen> {
                 .where('category', isEqualTo: widget.categoryId)
                 .where('state', isEqualTo: state)
                 .where('district', isEqualTo: district)
-                .where('status', isEqualTo: 'approved') // CRITICAL FIX: Only show approved services
+                .where('status', isEqualTo: 'approved')
                 .where('isActive', isEqualTo: true)
                 .where('isDeleted', isEqualTo: false)
+                .limit(_pageSize)
                 .snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
@@ -78,11 +109,28 @@ class _CategoryTechniciansScreenState extends State<CategoryTechniciansScreen> {
               }
 
               final technicians = snapshot.data!.docs;
+              
+              // Update pagination state
+              if (technicians.isNotEmpty) {
+                _allDocs.clear();
+                _allDocs.addAll(technicians);
+                _hasMore = technicians.length >= _pageSize;
+              }
+              _isLoadingMore = false;
 
               return ListView.builder(
+                controller: _scrollController,
                 padding: const EdgeInsets.all(16),
-                itemCount: technicians.length,
+                itemCount: technicians.length + (_hasMore ? 1 : 0),
                 itemBuilder: (context, index) {
+                  if (index >= technicians.length) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+                  }
                   final tech = technicians[index].data() as Map<String, dynamic>;
                   return Card(
                     margin: const EdgeInsets.only(bottom: 12),

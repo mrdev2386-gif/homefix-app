@@ -53,9 +53,10 @@ const VERIFICATION_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
  */
 exports.cleanupStuckBankVerifications = functions
     .region('asia-south1')
+    .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
     .pubsub.schedule('every 10 minutes')
     .onRun(async (context) => {
-    console.log('[CLEANUP] Starting stuck bank verification cleanup...');
+    console.log('Running cleanupStuckBankVerifications at', new Date().toISOString());
     const now = admin.firestore.Timestamp.now();
     const timeoutThreshold = admin.firestore.Timestamp.fromMillis(now.toMillis() - VERIFICATION_TIMEOUT_MS);
     try {
@@ -109,10 +110,11 @@ exports.cleanupStuckBankVerifications = functions
  */
 exports.cleanupOldIdempotencyRecords = functions
     .region('asia-south1')
+    .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
     .pubsub.schedule('0 2 * * *')
     .timeZone('Asia/Kolkata')
     .onRun(async (context) => {
-    console.log('[CLEANUP] Starting old idempotency records cleanup...');
+    console.log('Running cleanupOldIdempotencyRecords at', new Date().toISOString());
     const now = admin.firestore.Timestamp.now();
     try {
         // Find expired idempotency records

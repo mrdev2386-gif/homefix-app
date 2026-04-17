@@ -663,14 +663,15 @@ class _EarningsScreenState extends State<EarningsScreen> {
     setState(() => _isWithdrawing = true);
 
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('requestWithdrawal');
+      // Use new withdrawal request system with admin approval
+      final callable = FirebaseFunctions.instance.httpsCallable('createWithdrawalRequest');
       await callable.call({'amount': amount});
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Withdrawal request submitted successfully',
+              'Withdrawal request submitted. Awaiting admin approval.',
               style: GoogleFonts.plusJakartaSans(),
             ),
             backgroundColor: const Color(0xFF10B981),

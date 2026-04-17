@@ -276,8 +276,8 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                     ),
                   ),
                 ],
-                // Pay Now button
-                if (currentStatus == 'awaiting_payment' || currentStatus == 'confirmed') ...[
+                // Pay Now button - ONLY show when awaiting payment
+                if (currentStatus == 'awaiting_payment') ...[
                   SizedBox(
                     width: double.infinity,
                     height: 55,

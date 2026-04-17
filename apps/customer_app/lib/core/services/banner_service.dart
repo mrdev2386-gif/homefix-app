@@ -6,6 +6,8 @@ class BannerService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   /// Stream active home banners (limited to 10)
+  /// DEPRECATED: Use getHomeBannersOnce() for better scalability
+  @Deprecated('Use getHomeBannersOnce() instead for better performance')
   Stream<List<BannerModel>> streamHomeBanners() {
     return _db
         .collection('home_banners')
@@ -24,6 +26,7 @@ class BannerService {
   }
 
   /// Get active home banners once (limited to 10)
+  /// SCALABILITY: Converted from stream to one-time fetch
   /// Returns empty list on error instead of throwing
   Future<List<BannerModel>> getHomeBannersOnce() async {
     try {
@@ -31,7 +34,7 @@ class BannerService {
           .collection('home_banners')
           .where('isActive', isEqualTo: true)
           .orderBy('order')
-          .limit(10) // FIX: Limit to 10 banners
+          .limit(10)
           .get();
       
       return snapshot.docs
@@ -39,7 +42,6 @@ class BannerService {
           .toList();
     } catch (e) {
       if (kDebugMode) debugPrint('❌ [BannerService] Failed to fetch banners: $e');
-      // Return empty list instead of crashing
       return [];
     }
   }

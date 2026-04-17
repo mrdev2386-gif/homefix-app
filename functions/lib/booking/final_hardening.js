@@ -95,9 +95,11 @@ async function storeFailedWebhook(webhookId, payload, error) {
 /**
  * Retry failed webhooks - scheduled every 5 minutes
  */
-exports.retryFailedWebhooks = functions.pubsub
-    .schedule('every 5 minutes')
+exports.retryFailedWebhooks = functions
+    .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
+    .pubsub.schedule('every 5 minutes')
     .onRun(async () => {
+    console.log('Running retryFailedWebhooks at', new Date().toISOString());
     const retryWindow = Date.now() - CONFIG.webhookRetryIntervalMinutes * 60 * 1000;
     const failedWebhooks = await db
         .collection('failedWebhooks')
@@ -468,9 +470,11 @@ function withAppCheck(handler) {
 /**
  * Run payout integrity check
  */
-exports.runPayoutIntegrityCheck = functions.pubsub
-    .schedule('every 24 hours')
+exports.runPayoutIntegrityCheck = functions
+    .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
+    .pubsub.schedule('every 24 hours')
     .onRun(async (context) => {
+    console.log('Running runPayoutIntegrityCheck at', new Date().toISOString());
     log.info('payout_integrity_check_started', {});
     const discrepancies = [];
     // Get all completed bookings in last 30 days

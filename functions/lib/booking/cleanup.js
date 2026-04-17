@@ -38,9 +38,11 @@ const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const notify = __importStar(require("../shared/notification_helper"));
 const db = admin.firestore();
-exports.cleanupStaleBookings = functions.pubsub
-    .schedule('every 1 hours')
+exports.cleanupStaleBookings = functions
+    .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
+    .pubsub.schedule('every 1 hours')
     .onRun(async (context) => {
+    console.log('Running cleanupStaleBookings at', new Date().toISOString());
     const now = Date.now();
     const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000);
     // Cancel bookings stuck in technician_pending for 24+ hours

@@ -341,32 +341,55 @@ exports.updateTechnicianAssignment = functions.region('asia-south1').https.onCal
 });
 /**
  * Batch job to clean up stale technician online status.
- * Should be scheduled to run every minute.
+ * Runs every 5 minutes with maxInstances:1 to prevent parallel execution.
  */
-exports.cleanupStaleTechnicianStatus = functions.pubsub
-    .schedule('every 1 minutes')
+exports.cleanupStaleTechnicianStatus = functions
+    .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
+    .pubsub.schedule('every 5 minutes')
     .onRun(async () => {
-    const staleThreshold = Date.now() - 5 * 60 * 1000; // 5 minutes
-    const snapshot = await db
-        .collection('technicians')
-        .where('isOnline', '==', true)
-        .get();
-    const batch = db.batch();
-    let updateCount = 0;
-    for (const doc of snapshot.docs) {
-        const tech = doc.data();
-        const lastHeartbeat = tech.lastHeartbeatAt;
-        if (lastHeartbeat) {
-            const heartbeatTime = lastHeartbeat.toDate().getTime();
-            if (heartbeatTime < staleThreshold) {
-                batch.update(doc.ref, { isOnline: false });
-                updateCount++;
+    console.log('Running cleanupStaleTechnicianStatus at', new Date().toISOString());
+    // Firestore lock to prevent overlapping execution
+    const lockRef = db.collection('system_locks').doc('cleanupStaleTechnicianStatus');
+    const now = admin.firestore.Timestamp.now();
+    const lockExpiry = admin.firestore.Timestamp.fromMillis(now.toMillis() - 4 * 60 * 1000); // 4 min lock
+    const acquired = await db.runTransaction(async (t) => {
+        const lockDoc = await t.get(lockRef);
+        if (lockDoc.exists && lockDoc.data().lockedAt > lockExpiry) {
+            return false; // still locked
+        }
+        t.set(lockRef, { lockedAt: now });
+        return true;
+    });
+    if (!acquired) {
+        console.log('[cleanupStaleTechnicianStatus] Skipped — previous run still active');
+        return null;
+    }
+    try {
+        const staleThreshold = Date.now() - 5 * 60 * 1000; // 5 minutes
+        const snapshot = await db
+            .collection('technicians')
+            .where('isOnline', '==', true)
+            .get();
+        const batch = db.batch();
+        let updateCount = 0;
+        for (const doc of snapshot.docs) {
+            const tech = doc.data();
+            const lastHeartbeat = tech.lastHeartbeatAt;
+            if (lastHeartbeat) {
+                const heartbeatTime = lastHeartbeat.toDate().getTime();
+                if (heartbeatTime < staleThreshold) {
+                    batch.update(doc.ref, { isOnline: false });
+                    updateCount++;
+                }
             }
         }
+        if (updateCount > 0) {
+            await batch.commit();
+            console.log(`[MATCH] Marked ${updateCount} technicians as offline`);
+        }
     }
-    if (updateCount > 0) {
-        await batch.commit();
-        console.log(`[MATCH] Marked ${updateCount} technicians as offline`);
+    finally {
+        await lockRef.delete().catch(() => { });
     }
     return null;
 });

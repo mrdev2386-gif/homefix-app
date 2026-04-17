@@ -75,7 +75,7 @@ exports.createTechnicianProfile = functions.region('asia-south1').https.onCall(a
     if (!phone || phone.length < 10) {
         throw new functions.https.HttpsError('invalid-argument', 'Valid phone number is required');
     }
-    // Check if technician profile already exists
+    // Check if technician profile already exists for this UID
     const existingDoc = await db.collection('technicians').doc(uid).get();
     if (existingDoc.exists) {
         // Return existing onboarding state instead of throwing error
@@ -90,6 +90,16 @@ exports.createTechnicianProfile = functions.region('asia-south1').https.onCall(a
             status: status,
             existing: true
         };
+    }
+    // CRITICAL: Check for duplicate phone number across all technicians
+    const duplicatePhoneQuery = await db.collection('technicians')
+        .where('phone', '==', phone)
+        .limit(1)
+        .get();
+    if (!duplicatePhoneQuery.empty) {
+        const duplicateTech = duplicatePhoneQuery.docs[0];
+        console.warn(`[SECURITY] Duplicate phone number detected: ${phone} (existing UID: ${duplicateTech.id}, new UID: ${uid})`);
+        throw new functions.https.HttpsError('already-exists', 'This phone number is already registered. Please use a different number or contact support.');
     }
     // Create new technician profile
     const now = admin.firestore.FieldValue.serverTimestamp();
@@ -149,9 +159,9 @@ exports.createTechnicianProfile = functions.region('asia-south1').https.onCall(a
  * - basic_completed (basic details saved, can re-save)
  * - basicDetails (current step)
  * - phone (before basic details)
- * - documents (if user goes back)
  *
  * Stage progression: draft/phone → basicDetails → documents
+ * STRICT: Cannot skip to documents without completing basic details first
  */
 exports.saveTechnicianBasicDetails = functions.region('asia-south1').https.onCall(async (data, context) => {
     (0, security_1.assertAuthenticated)(context);
@@ -176,39 +186,26 @@ exports.saveTechnicianBasicDetails = functions.region('asia-south1').https.onCal
     if (techData?.isLocked === true) {
         throw new functions.https.HttpsError('failed-precondition', 'Profile is locked. Contact support to make changes.');
     }
-    // ALLOWED STEPS FOR BASIC DETAILS UPDATE:
-    // - undefined/null: draft state (profile created but no step assigned)
-    // - 'phone': after OTP, before basic details
-    // - 'basicDetails': current step
-    // - 'documents': user went back from documents
-    // - 'basic_completed': legacy state from older implementation
-    // - 'basic_pending': legacy state from older implementation
+    // STRICT FLOW ENFORCEMENT: Only allow basic details update at appropriate stages
+    // Allowed: undefined/null (new profile), 'phone', 'basicDetails' (current step)
+    // NOT allowed: 'documents', 'services', 'review', 'submitted' (must not go backward)
     const allowedSteps = [
         undefined,
         null,
         '',
         'phone',
         'basicDetails',
-        'documents',
         'basic_completed',
         'basic_pending',
-        'draft' // explicit draft state
+        'draft'
     ];
     const isStepAllowed = currentStep === undefined ||
         currentStep === null ||
         currentStep === '' ||
         allowedSteps.includes(currentStep);
-    // Also allow if we're already past documents (shouldn't happen but being defensive)
-    const isBeforeServices = !currentStep ||
-        currentStep === 'phone' ||
-        currentStep === 'basicDetails' ||
-        currentStep === 'documents' ||
-        currentStep === 'basic_completed' ||
-        currentStep === 'basic_pending' ||
-        currentStep === 'draft';
-    if (!isStepAllowed && !isBeforeServices) {
-        console.log(`[saveTechnicianBasicDetails] Rejected update for uid ${uid}, currentStep: ${currentStep}`);
-        throw new functions.https.HttpsError('failed-precondition', 'Cannot modify basic details at this stage. Please complete the current step first.');
+    if (!isStepAllowed) {
+        console.log(`[saveTechnicianBasicDetails] REJECTED: Cannot modify basic details at step '${currentStep}'`);
+        throw new functions.https.HttpsError('failed-precondition', 'Cannot modify basic details after moving to next steps. Please contact support if you need to make changes.');
     }
     // Check if data is already the same (idempotent update)
     const existingFullName = techData?.fullName || techData?.name || '';
@@ -219,8 +216,8 @@ exports.saveTechnicianBasicDetails = functions.region('asia-south1').https.onCal
         existingEmail === (email || '') &&
         existingDistrict === (district || '') &&
         existingExperience === (experienceYears || 0);
-    if (isDataUnchanged && currentStep === 'documents') {
-        // Data unchanged and already past this step - return success
+    if (isDataUnchanged && currentStep === 'basicDetails') {
+        // Data unchanged and at current step - return success
         console.log(`[saveTechnicianBasicDetails] Idempotent update for uid ${uid}, data unchanged`);
         return {
             success: true,
@@ -228,13 +225,8 @@ exports.saveTechnicianBasicDetails = functions.region('asia-south1').https.onCal
             idempotent: true
         };
     }
-    // Determine target step based on current position
-    // If already at documents or beyond, stay there; otherwise move to documents
-    let targetStep = 'documents';
-    if (currentStep === 'documents' || currentStep === 'services' || currentStep === 'review') {
-        // User went back - keep them at current step
-        targetStep = currentStep;
-    }
+    // Always move to documents step after saving basic details
+    const targetStep = 'documents';
     // Update technician profile
     await db.collection('technicians').doc(uid).update({
         fullName: sanitizedFullName,
@@ -246,7 +238,7 @@ exports.saveTechnicianBasicDetails = functions.region('asia-south1').https.onCal
         'stepsCompleted.basic': true,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
-    console.log(`[saveTechnicianBasicDetails] Updated basic details for uid ${uid}, targetStep: ${targetStep}`);
+    console.log(`[saveTechnicianBasicDetails] Updated basic details for uid ${uid}, nextStep: ${targetStep}`);
     return {
         success: true,
         nextStep: targetStep
@@ -279,9 +271,15 @@ exports.saveTechnicianDocuments = functions.region('asia-south1').https.onCall(a
     if (techData?.isLocked === true) {
         throw new functions.https.HttpsError('failed-precondition', 'Profile is locked. Contact support to make changes.');
     }
-    // Allow if in documents step or earlier
+    // STRICT FLOW ENFORCEMENT: Must complete basic details before documents
+    // Only allow if at 'documents' step or 'basicDetails' (moving forward)
     if (currentStep && currentStep !== 'documents' && currentStep !== 'basicDetails') {
-        throw new functions.https.HttpsError('failed-precondition', 'Cannot modify documents at this stage');
+        console.log(`[saveTechnicianDocuments] REJECTED: Cannot save documents at step '${currentStep}'`);
+        throw new functions.https.HttpsError('failed-precondition', 'Please complete previous steps before uploading documents.');
+    }
+    // Verify basic details are complete before allowing document upload
+    if (!techData?.fullName || !techData?.district) {
+        throw new functions.https.HttpsError('failed-precondition', 'Please complete basic details before uploading documents.');
     }
     // CRITICAL SECURITY FIX: Encrypt Aadhaar before storing
     const encryptedAadhaar = (0, security_1.encrypt)(sanitizedAadhaar);
@@ -331,9 +329,19 @@ exports.saveTechnicianServices = functions.region('asia-south1').https.onCall(as
     }
     const techData = techDoc.data();
     const currentStep = techData?.onboardingStep;
-    // Allow if in services step or earlier
+    // FIX: Check if profile is locked (submitted for review)
+    if (techData?.isLocked === true) {
+        throw new functions.https.HttpsError('failed-precondition', 'Profile is locked. Contact support to make changes.');
+    }
+    // STRICT FLOW ENFORCEMENT: Must complete documents before services
+    // Only allow if at 'services' step or 'documents' (moving forward)
     if (currentStep && currentStep !== 'services' && currentStep !== 'documents') {
-        throw new functions.https.HttpsError('failed-precondition', 'Cannot modify services at this stage');
+        console.log(`[saveTechnicianServices] REJECTED: Cannot save services at step '${currentStep}'`);
+        throw new functions.https.HttpsError('failed-precondition', 'Please complete previous steps before selecting services.');
+    }
+    // Verify documents are complete before allowing service selection
+    if (!techData?.aadhaarNumber || !techData?.profilePhotoUrl) {
+        throw new functions.https.HttpsError('failed-precondition', 'Please complete document upload before selecting services.');
     }
     // Update technician profile with services
     await db.collection('technicians').doc(uid).update({

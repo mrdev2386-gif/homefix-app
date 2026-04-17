@@ -13,13 +13,15 @@ import {
   AlertTriangle,
   Wrench,
   Shield,
-  Settings
+  Settings,
+  Wallet
 } from 'lucide-react';
 
 const menuItems = [
   { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
   { name: 'Bookings', href: '/bookings', icon: Calendar },
   { name: 'Custom Requests', href: '/custom-requests', icon: FileText },
+  { name: 'Withdrawals', href: '/withdrawals', icon: Wallet },
   { name: 'Technicians', href: '/technicians', icon: Users },
   { name: 'Technician Approvals', href: '/technician-approvals', icon: Shield },
   { name: 'Service Approvals', href: '/service-approvals', icon: Settings },

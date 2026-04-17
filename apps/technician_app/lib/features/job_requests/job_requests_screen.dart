@@ -22,6 +22,7 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
   final Map<String, bool> _loadingMap = {};
   final Map<String, String?> _serviceImageCache = {};
   late final Stream<List<Booking>> _bookingsStream;
+  bool _isActionRunning = false;
 
   @override
   void initState() {
@@ -1124,18 +1125,24 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
   }
 
   void _handleAction(String bookingId, String action) async {
+    // Action spam guard - prevent double-clicks
+    if (_isActionRunning) return;
     if (!mounted) return;
     
-    // Set per-card loading state
-    setState(() {
-      _loadingMap[bookingId] = true;
-    });
-    
     try {
+      // Set action running flag and per-card loading state
+      setState(() {
+        _isActionRunning = true;
+        _loadingMap[bookingId] = true;
+      });
+      
+      // Generate idempotency key for this action
+      final idempotencyKey = '${bookingId}_${action}_${DateTime.now().millisecondsSinceEpoch}';
+      
       if (action == 'accept') {
-        await _bookingService.acceptBooking(bookingId);
+        await _bookingService.acceptBooking(bookingId, idempotencyKey: idempotencyKey);
       } else {
-        await _bookingService.rejectBooking(bookingId);
+        await _bookingService.rejectBooking(bookingId, idempotencyKey: idempotencyKey);
       }
       
       if (!mounted) return;
@@ -1220,6 +1227,13 @@ class _JobRequestsScreenState extends State<JobRequestsScreen> {
           ),
         ),
       );
+    } finally {
+      // Always reset the action lock
+      if (mounted) {
+        setState(() {
+          _isActionRunning = false;
+        });
+      }
     }
   }
 

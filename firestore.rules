@@ -89,7 +89,10 @@ service cloud.firestore {
           'verificationStatus', 'profileCompletion', 'approvedAt', 'approvedBy',
           'rejectionReason', 'isApproved', 'isKycComplete', 'kycSubmittedAt',
           'isSuspended', 'suspendedAt', 'suspendedBy', 'suspensionReason',
-          'avgRating', 'totalRatings', 'totalJobs', 'walletBalance'
+          'avgRating', 'totalRatings', 'totalJobs', 'walletBalance',
+          'onboardingStep', 'isLocked', 'status', 'kycStatus', 
+          'onboardingCompleted', 'role', 'adminApproved', 'earnings', 
+          'jobsDone', 'blockedAt', 'adminNotes'
         ])
         && !(request.resource.data.verificationStatus == 'approved');
       allow update: if isAdmin();
@@ -201,6 +204,36 @@ service cloud.firestore {
       allow read: if isSignedIn()
         && (resource.data.userId == request.auth.uid || isAdmin());
       allow write: if false;
+    }
+
+    // ==========================================
+    // TECHNICIAN WALLET SYSTEM
+    // ==========================================
+
+    match /technician_wallets/{technicianId} {
+      allow read: if isOwner(technicianId) || isAdmin();
+      allow write: if false;
+
+      match /transactions/{txnId} {
+        allow read: if isOwner(technicianId) || isAdmin();
+        allow write: if false;
+      }
+    }
+
+    // ==========================================
+    // WITHDRAWAL REQUESTS COLLECTION
+    // ==========================================
+
+    match /withdrawal_requests/{requestId} {
+      // Technicians can read their own requests
+      allow read: if isSignedIn()
+        && (resource.data.technicianId == request.auth.uid || isAdmin());
+
+      // Technicians can create requests (via Cloud Function)
+      // All writes go through Cloud Functions only
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
     }
 
     // ==========================================

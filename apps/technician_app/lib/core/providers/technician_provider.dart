@@ -177,8 +177,10 @@ class TechnicianProvider extends ChangeNotifier {
       
       // Stream will update local state automatically
     } catch (e) {
-      debugPrint("Error updating online status: $e");
-      rethrow;
+      debugPrint("⚠️ Error updating online status: $e");
+      // DO NOT rethrow - fail silently to prevent UI crashes
+      // The stream will eventually sync the correct state
+      // Log for debugging but don't crash the app
     }
   }
 

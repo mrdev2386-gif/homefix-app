@@ -244,9 +244,11 @@ async function trackAnalyticsEvent(event, data) {
 /**
  * Generate daily analytics snapshot
  */
-exports.generateAnalyticsSnapshot = functions.pubsub
-    .schedule('every 24 hours')
+exports.generateAnalyticsSnapshot = functions
+    .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
+    .pubsub.schedule('every 24 hours')
     .onRun(async () => {
+    console.log('Running generateAnalyticsSnapshot at', new Date().toISOString());
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
@@ -308,9 +310,11 @@ async function updateTechnicianHeartbeat(technicianId) {
 /**
  * Clean up stale technician heartbeats
  */
-exports.cleanupStaleTechnicianHeartbeats = functions.pubsub
-    .schedule('every 5 minutes')
+exports.cleanupStaleTechnicianHeartbeats = functions
+    .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
+    .pubsub.schedule('every 10 minutes')
     .onRun(async () => {
+    console.log('Running cleanupStaleTechnicianHeartbeats at', new Date().toISOString());
     const staleThreshold = Date.now() - CONFIG.maxHeartbeatGapMs;
     const staleTechnicians = await db
         .collection('technicians')
@@ -444,35 +448,40 @@ exports.generateWeeklyPayoutReport = functions.region('asia-south1').https.onCal
 /**
  * Monitor for anomalies and trigger alerts
  */
-exports.checkSystemHealth = functions.pubsub
-    .schedule('every 15 minutes')
+exports.checkSystemHealth = functions
+    .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
+    .pubsub.schedule('every 15 minutes')
     .onRun(async () => {
+    console.log('Running checkSystemHealth at', new Date().toISOString());
     const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
-    // Check for consecutive failures
-    const recentFailuresSnapshot = await db
-        .collection('bookingRequests')
-        .where('status', '==', 'failed')
-        .where('failedAt', '>', admin.firestore.Timestamp.fromDate(thirtyMinutesAgo))
-        .count()
-        .get();
-    const failureCount = recentFailuresSnapshot.data().count;
-    if (failureCount >= 5) {
-        await triggerAdminAlert('high_booking_failures', {
-            count: failureCount,
-            timeframe: '30 minutes',
-        });
+    try {
+        const recentFailuresSnapshot = await db
+            .collection('bookingRequests')
+            .where('status', '==', 'failed')
+            .where('failedAt', '>', admin.firestore.Timestamp.fromDate(thirtyMinutesAgo))
+            .count()
+            .get();
+        const failureCount = recentFailuresSnapshot.data().count;
+        if (failureCount >= 5) {
+            await triggerAdminAlert('high_booking_failures', { count: failureCount, timeframe: '30 minutes' });
+        }
     }
-    // Check for reassignment loops
-    const reassignmentLoopsSnapshot = await db
-        .collection('bookings')
-        .where('reassignmentAttempt', '>=', 3)
-        .count()
-        .get();
-    const loopCount = reassignmentLoopsSnapshot.data().count;
-    if (loopCount >= 3) {
-        await triggerAdminAlert('reassignment_loops', {
-            count: loopCount,
-        });
+    catch (e) {
+        console.warn('[checkSystemHealth] bookingRequests count query failed:', e);
+    }
+    try {
+        const reassignmentLoopsSnapshot = await db
+            .collection('bookings')
+            .where('reassignmentAttempt', '>=', 3)
+            .count()
+            .get();
+        const loopCount = reassignmentLoopsSnapshot.data().count;
+        if (loopCount >= 3) {
+            await triggerAdminAlert('reassignment_loops', { count: loopCount });
+        }
+    }
+    catch (e) {
+        console.warn('[checkSystemHealth] bookings count query failed:', e);
     }
     return null;
 });
@@ -583,9 +592,11 @@ async function checkBookingRateLimit(customerId) {
 /**
  * Clean up old rate limit records
  */
-exports.cleanupRateLimitRecords = functions.pubsub
-    .schedule('every 24 hours')
+exports.cleanupRateLimitRecords = functions
+    .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
+    .pubsub.schedule('every 24 hours')
     .onRun(async () => {
+    console.log('Running cleanupRateLimitRecords at', new Date().toISOString());
     const yesterday = Date.now() - 24 * 60 * 60 * 1000;
     const oldRecords = await db
         .collection('rateLimits')

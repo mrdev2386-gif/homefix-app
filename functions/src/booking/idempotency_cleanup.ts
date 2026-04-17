@@ -16,10 +16,11 @@ const db = admin.firestore();
  */
 export const cleanupExpiredIdempotencyRecords = functions
   .region('asia-south1')
+  .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
   .pubsub.schedule('0 2 * * *') // Daily at 2 AM UTC
   .timeZone('UTC')
   .onRun(async (context) => {
-    console.log('[IDEMPOTENCY_CLEANUP] Starting cleanup job...');
+    console.log('Running cleanupExpiredIdempotencyRecords at', new Date().toISOString());
     
     try {
       // Calculate cutoff time (24 hours ago)

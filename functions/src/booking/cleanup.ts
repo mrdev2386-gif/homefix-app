@@ -4,9 +4,11 @@ import * as notify from '../shared/notification_helper';
 
 const db = admin.firestore();
 
-export const cleanupStaleBookings = functions.pubsub
-    .schedule('every 1 hours')
+export const cleanupStaleBookings = functions
+    .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
+    .pubsub.schedule('every 1 hours')
     .onRun(async (context) => {
+        console.log('Running cleanupStaleBookings at', new Date().toISOString());
         const now = Date.now();
         const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000);
 

@@ -17,9 +17,22 @@ service firebase.storage {
                    && request.resource.contentType.matches('image/.*');
     }
 
+    // CRITICAL FIX: Technician service images - PUBLIC READ for customer app
+    // Path: technicians/{technicianId}/services/{imageFile}
+    match /technicians/{technicianId}/services/{imageFile} {
+      // Allow public read so customers can see service images
+      allow read: if true;
+      // Only the technician can upload their service images
+      allow write: if request.auth != null
+                   && request.auth.uid == technicianId
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
     // Deny all other access
     match /{allPaths=**} {
       allow read, write: if false;
     }
   }
 }
+

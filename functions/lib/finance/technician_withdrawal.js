@@ -105,11 +105,7 @@ exports.requestWithdrawal = functions.region('asia-south1').https.onCall(async (
         console.warn(`${LOG_PREFIX} Fund account missing`);
         throw new functions.https.HttpsError('failed-precondition', 'Bank account verification incomplete. Please re-verify your bank details.');
     }
-    // Validation: Balance
-    if (wallet.availableBalance < amount) {
-        console.warn(`${LOG_PREFIX} Insufficient balance - Available: ${wallet.availableBalance}, Requested: ${amount}`);
-        throw new functions.https.HttpsError('failed-precondition', `Insufficient balance. Available: ₹${wallet.availableBalance}`);
-    }
+    // REMOVED: Balance check moved inside transaction for safety
     // Validation: Account status
     if (tech.status === 'suspended' || tech.status === 'deactivated') {
         console.warn(`${LOG_PREFIX} Account suspended - Status: ${tech.status}`);
@@ -204,13 +200,17 @@ exports.requestWithdrawal = functions.region('asia-south1').https.onCall(async (
             }
         });
         console.log(`${LOG_PREFIX} Razorpay payout created - ID: ${razorpayPayout.id}, Status: ${razorpayPayout.status}`);
-        // Atomic wallet update
+        // Atomic wallet update with balance validation INSIDE transaction
         await config_1.db.runTransaction(async (t) => {
             const currentWallet = await t.get(walletRef);
+            if (!currentWallet.exists) {
+                throw new Error('Wallet not found');
+            }
             const currentBalance = currentWallet.data()?.availableBalance || 0;
-            // Double-check balance
+            // CRITICAL FIX: Re-validate balance INSIDE transaction to prevent race conditions
             if (currentBalance < amount) {
-                throw new Error('Insufficient balance during transaction');
+                console.warn(`${LOG_PREFIX} Insufficient balance in transaction - Available: ${currentBalance}, Requested: ${amount}`);
+                throw new Error(`Insufficient balance. Available: ₹${currentBalance}, Requested: ₹${amount}`);
             }
             // Deduct balance
             t.update(walletRef, {

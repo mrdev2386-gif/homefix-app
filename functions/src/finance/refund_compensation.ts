@@ -278,10 +278,11 @@ export const getPendingCompensations = functions
  * Scheduled function to auto-retry pending compensations
  * FIX 3: Automatic retry mechanism (runs every hour)
  */
-export const autoRetryCompensations = functions.pubsub
-    .schedule('every 1 hours')
+export const autoRetryCompensations = functions
+    .runWith({ maxInstances: 1, timeoutSeconds: 540, memory: '256MB' })
+    .pubsub.schedule('every 1 hours')
     .onRun(async (context) => {
-        console.log(`${LOG_PREFIX} Auto-retry job started`);
+        console.log('Running autoRetryCompensations at', new Date().toISOString());
 
         try {
             // Get pending compensations (max 50 per run)

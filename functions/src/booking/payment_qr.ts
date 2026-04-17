@@ -81,7 +81,9 @@ export const confirmQRPayment = functions
                 if (booking.customerId !== customerId) {
                     throw new Error('Customer ID mismatch');
                 }
-                if (booking.status !== 'awaiting_customer_payment') {
+                // FIX 2: Use correct status field (bookingStatus takes precedence)
+                const currentStatus = booking.bookingStatus ?? booking.status;
+                if (currentStatus !== 'awaiting_payment') {
                     throw new Error('Booking is not in awaiting_payment status');
                 }
                 if (booking.paymentStatus === 'paid') {

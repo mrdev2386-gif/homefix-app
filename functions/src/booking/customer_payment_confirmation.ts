@@ -14,6 +14,12 @@
  * - Idempotent: Cannot pay twice
  * - Atomic: Wallet credit happens with booking update
  * - Validated: Only assigned technician's booking
+ * 
+ * PRODUCTION SAFETY:
+ * - Structured logging for all payment events
+ * - Duplicate credit detection
+ * - Platform fee tracking
+ * - Analytics updates
  */
 
 import * as functions from 'firebase-functions';
@@ -25,6 +31,35 @@ import { logger } from '../shared/utils';
 
 const db = admin.firestore();
 
+// Structured logging helper for payments
+function logPaymentEvent(
+  event: string,
+  data: {
+    bookingId?: string;
+    customerId?: string;
+    technicianId?: string;
+    amount?: number;
+    status?: string;
+    error?: string;
+    [key: string]: any;
+  }
+) {
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    event,
+    ...data
+  };
+  console.log(`[PAYMENT] ${JSON.stringify(logEntry)}`);
+  
+  // Store critical events in Firestore for monitoring
+  if (['payment_start', 'payment_success', 'payment_failed', 'duplicate_credit_detected'].includes(event)) {
+    db.collection('payment_logs').add({
+      ...logEntry,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    }).catch(err => console.error('Failed to store payment log:', err));
+  }
+}
+
 /**
  * CRITICAL: Customer confirms payment for completed service
  * 
@@ -35,29 +70,33 @@ export const customerConfirmPayment = functions
   .region('asia-south1')
   .https.onCall(
     secureCallable(async (data, context) => {
-      console.log('✅ [customerConfirmPayment] Auth UID:', context.auth?.uid);
+      const startTime = Date.now();
       
       const uid = context.auth?.uid;
       if (!uid) {
-        console.error('❌ [customerConfirmPayment] context.auth is NULL');
+        logPaymentEvent('payment_failed', { error: 'Unauthenticated' });
         throw new functions.https.HttpsError('unauthenticated', 'User not authenticated');
       }
 
       const { bookingId, paymentMethod } = data;
 
       if (!bookingId) {
+        logPaymentEvent('payment_failed', { customerId: uid, error: 'Missing bookingId' });
         throw new functions.https.HttpsError('invalid-argument', 'bookingId is required');
       }
 
       if (!paymentMethod || !['online', 'cash', 'after_service'].includes(paymentMethod)) {
+        logPaymentEvent('payment_failed', { bookingId, customerId: uid, error: 'Invalid payment method' });
         throw new functions.https.HttpsError('invalid-argument', 'paymentMethod must be "online", "cash", or "after_service"');
       }
+
+      logPaymentEvent('payment_start', { bookingId, customerId: uid, paymentMethod });
 
       const bookingRef = db.collection('bookings').doc(bookingId);
       const bookingSnap = await bookingRef.get();
 
       if (!bookingSnap.exists) {
-        console.error('❌ [customerConfirmPayment] Booking not found:', bookingId);
+        logPaymentEvent('payment_failed', { bookingId, customerId: uid, error: 'Booking not found' });
         throw new functions.https.HttpsError('not-found', 'Booking not found');
       }
 
@@ -65,7 +104,7 @@ export const customerConfirmPayment = functions
 
       // CRITICAL: Verify customer owns this booking
       if (booking.customerId !== uid) {
-        console.error('❌ [customerConfirmPayment] Permission denied - customer mismatch');
+        logPaymentEvent('payment_failed', { bookingId, customerId: uid, error: 'Permission denied' });
         throw new functions.https.HttpsError(
           'permission-denied',
           'You can only confirm payment for your own bookings'
@@ -75,7 +114,11 @@ export const customerConfirmPayment = functions
       // CRITICAL: Verify booking is in awaiting_payment status
       const currentStatus = booking.bookingStatus || booking.status;
       if (currentStatus !== 'awaiting_payment') {
-        console.error('❌ [customerConfirmPayment] Invalid status:', currentStatus);
+        logPaymentEvent('payment_failed', { 
+          bookingId, 
+          customerId: uid, 
+          error: `Invalid status: ${currentStatus}` 
+        });
         throw new functions.https.HttpsError(
           'failed-precondition',
           `Cannot confirm payment for booking in status: ${currentStatus}`
@@ -84,7 +127,7 @@ export const customerConfirmPayment = functions
 
       // CRITICAL: Prevent duplicate payment
       if (booking.paymentStatus === 'paid' || booking.payment?.status === 'paid') {
-        console.warn('⚠️ [customerConfirmPayment] Booking already paid - returning success');
+        logPaymentEvent('payment_duplicate', { bookingId, customerId: uid });
         return {
           success: true,
           message: 'Payment already confirmed',
@@ -97,7 +140,7 @@ export const customerConfirmPayment = functions
       const technicianId = booking.technicianId;
 
       if (!technicianId) {
-        console.error('❌ [customerConfirmPayment] No technician assigned');
+        logPaymentEvent('payment_failed', { bookingId, customerId: uid, error: 'No technician assigned' });
         throw new functions.https.HttpsError(
           'failed-precondition',
           'No technician assigned to this booking'
@@ -105,7 +148,7 @@ export const customerConfirmPayment = functions
       }
 
       if (amount <= 0) {
-        console.error('❌ [customerConfirmPayment] Invalid amount:', amount);
+        logPaymentEvent('payment_failed', { bookingId, customerId: uid, error: `Invalid amount: ${amount}` });
         throw new functions.https.HttpsError(
           'failed-precondition',
           'Invalid booking amount'
@@ -113,7 +156,10 @@ export const customerConfirmPayment = functions
       }
 
       try {
-        // ATOMIC TRANSACTION: Update booking + credit wallet
+        // FIX #1: CLIENT DOES NOT CREDIT WALLET - Webhook is single source of truth
+        // This function ONLY marks payment intent and updates booking status
+        // Wallet credit happens ONLY via Razorpay webhook (razorpayWebhookV2)
+        
         await db.runTransaction(async (transaction) => {
           // STEP 1: Verify booking hasn't been paid already (double-check in transaction)
           const freshBooking = await transaction.get(bookingRef);
@@ -126,8 +172,7 @@ export const customerConfirmPayment = functions
             throw new Error('ALREADY_PAID');
           }
 
-          // STEP 2: Update booking status to "paid"
-          console.log(`💾 [customerConfirmPayment] Updating booking ${bookingId} to paid status`);
+          // STEP 2: Update booking status to "paid" (UNIFIED STATUS FIELDS)
           transaction.update(bookingRef, {
             bookingStatus: 'paid',
             paymentStatus: 'paid',
@@ -135,79 +180,53 @@ export const customerConfirmPayment = functions
             'payment.paidAt': admin.firestore.FieldValue.serverTimestamp(),
             'payment.paymentMethod': paymentMethod,
             'payment.confirmedBy': uid,
+            'payment.confirmedByClient': true, // Mark that client confirmed
             'payment.amountPaid': amount,
             completedAt: admin.firestore.FieldValue.serverTimestamp(),
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           });
 
-          // STEP 3: Credit technician wallet (CRITICAL)
-          console.log(`💰 [customerConfirmPayment] Crediting technician ${technicianId} with ₹${amount}`);
-          const walletRef = db.collection('technician_wallets').doc(technicianId);
-          const walletDoc = await transaction.get(walletRef);
-
-          if (!walletDoc.exists) {
-            // Auto-create wallet if doesn't exist
-            console.log(`📝 [customerConfirmPayment] Creating wallet for technician ${technicianId}`);
-            transaction.set(walletRef, {
-              availableBalance: amount,
-              pendingBalance: 0,
-              lifetimeEarnings: amount,
-              lastPayoutAt: null,
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-          } else {
-            // Increment existing balance
-            transaction.update(walletRef, {
-              availableBalance: admin.firestore.FieldValue.increment(amount),
-              lifetimeEarnings: admin.firestore.FieldValue.increment(amount),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-          }
-
-          // STEP 4: Log transaction in wallet subcollection
-          const transactionRef = walletRef.collection('transactions').doc();
-          transaction.set(transactionRef, {
-            type: 'credit',
-            source: 'booking',
-            status: 'completed',
-            amount,
-            fee: 0,
-            referenceId: bookingId,
-            description: `Payment for booking ${bookingId}`,
-            customerId: uid,
-            paymentMethod,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-
-          // STEP 5: Log payment confirmation
+          // STEP 3: Log payment confirmation (NO WALLET CREDIT HERE)
           const paymentLogRef = db.collection('payment_logs').doc();
           transaction.set(paymentLogRef, {
             bookingId,
             customerId: uid,
             technicianId,
             amount,
+            action: 'client_payment_confirmed',
             paymentMethod,
-            action: 'payment_confirmed',
-            confirmedAt: admin.firestore.FieldValue.serverTimestamp(),
+            note: 'Client confirmed payment - wallet credit will happen via webhook',
             createdAt: admin.firestore.FieldValue.serverTimestamp()
           });
-
-          console.log(`✅ [customerConfirmPayment] Transaction complete for booking ${bookingId}`);
         });
+
+        const duration = Date.now() - startTime;
+        logPaymentEvent('payment_success', { 
+          bookingId, 
+          customerId: uid,
+          technicianId,
+          amount,
+          duration,
+          note: 'Client confirmed - wallet credit via webhook'
+        });
+
+        // Update analytics
+        await db.collection('system_analytics').doc('payments').set({
+          totalPayments: admin.firestore.FieldValue.increment(1),
+          totalRevenue: admin.firestore.FieldValue.increment(amount),
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true }).catch(err => console.error('Analytics update failed:', err));
 
         // STEP 6: Send notifications (non-blocking)
         try {
-          // Notify technician
           const techDoc = await db.collection('technicians').doc(technicianId).get();
           const techData = techDoc.data();
 
           if (techData?.fcmToken) {
-            console.log(`📲 [customerConfirmPayment] Notifying technician ${technicianId}`);
             await sendNotificationToToken({
               token: techData.fcmToken,
-              title: 'Payment Received',
-              body: `Payment of ₹${amount} received for booking ${bookingId}`,
+              title: 'Payment Confirmed',
+              body: `Customer confirmed payment of ₹${amount} for booking ${bookingId}. Wallet credit pending webhook.`,
               data: {
                 bookingId,
                 type: 'payment_confirmed',
@@ -216,12 +235,10 @@ export const customerConfirmPayment = functions
             });
           }
 
-          // Notify customer
           const customerDoc = await db.collection('customers').doc(uid).get();
           const customerData = customerDoc.data();
 
           if (customerData?.fcmToken) {
-            console.log(`📲 [customerConfirmPayment] Notifying customer ${uid}`);
             await sendNotificationToToken({
               token: customerData.fcmToken,
               title: 'Payment Confirmed',
@@ -234,11 +251,8 @@ export const customerConfirmPayment = functions
             });
           }
         } catch (notifError) {
-          console.warn('⚠️ [customerConfirmPayment] Notification error (non-fatal):', notifError);
-          // Don't throw - notifications are non-critical
+          console.warn('⚠️ Notification error (non-fatal):', notifError);
         }
-
-        console.log(`✅ [customerConfirmPayment] SUCCESS - Booking ${bookingId} paid, wallet credited`);
 
         return {
           success: true,
@@ -250,7 +264,7 @@ export const customerConfirmPayment = functions
 
       } catch (error: any) {
         if (error.message === 'ALREADY_PAID') {
-          console.log(`⚠️ [customerConfirmPayment] Booking already paid (idempotent)`);
+          logPaymentEvent('payment_duplicate', { bookingId, customerId: uid });
           return {
             success: true,
             message: 'Payment already confirmed',
@@ -259,7 +273,16 @@ export const customerConfirmPayment = functions
           };
         }
 
-        console.error('❌ [customerConfirmPayment] Transaction error:', error);
+        if (error.message === 'WALLET_ALREADY_CREDITED') {
+          logPaymentEvent('payment_duplicate', { bookingId, customerId: uid });
+          return {
+            success: true,
+            message: 'Payment already processed',
+            bookingStatus: 'paid',
+            isDuplicate: true
+          };
+        }
+        
         throw new functions.https.HttpsError(
           'internal',
           error.message || 'Failed to confirm payment'

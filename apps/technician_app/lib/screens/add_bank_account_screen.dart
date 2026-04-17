@@ -45,9 +45,8 @@ class _AddBankAccountScreenState extends State<AddBankAccountScreen> {
       final functionsService = context.read<FunctionsService>();
       
       // Submit bank details via Cloud Function (secure)
-      final result = await functionsService.updateTechnicianBankDetails(
+      final result = await functionsService.verifyTechnicianBankAccountSecure(
         accountHolderName: _accountHolderController.text.trim(),
-        bankName: _bankNameController.text.trim(),
         accountNumber: _accountNumberController.text.trim(),
         ifscCode: _ifscController.text.trim().toUpperCase(),
       );
